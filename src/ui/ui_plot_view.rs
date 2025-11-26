@@ -1,0 +1,526 @@
+use crate::analysis::selection_criteria::{FilterChain, ZoneSelectionCriteria};
+use crate::config::{
+    BACKGROUND_BAR_INTENSITY, CURRENT_PRICE_COLOR, CURRENT_PRICE_LINE_WIDTH,
+    CURRENT_PRICE_OUTER_COLOR, CURRENT_PRICE_OUTER_WIDTH, DEFAULT_BAR_COLOR, HIGH_WICKS_ZONE_COLOR,
+    LOW_WICKS_ZONE_COLOR, PLOT_ASPECT_RATIO, RESISTANCE_ZONE_COLOR, SHOW_HIGH_WICKS_ZONES_DEFAULT,
+    SHOW_LOW_WICKS_ZONES_DEFAULT, SHOW_RESISTANCE_ZONES_DEFAULT, SHOW_SLIPPY_ZONES_DEFAULT,
+    SHOW_STICKY_ZONES_DEFAULT, SHOW_SUPPORT_ZONES_DEFAULT, SLIPPY_ZONE_COLOR, STICKY_ZONE_COLOR,
+    SUPPORT_ZONE_COLOR, ZONE_FILL_OPACITY, ZONE_GRADIENT_COLORS,
+};
+use crate::config::debug::PRINT_CVA_CACHE_EVENTS;
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_PLOT_CACHE_STATS;
+use crate::models::cva::{CVACore, ScoreType};
+use crate::models::{SuperZone, TradingModel, Zone};
+use crate::utils::{maths_utils, time_utils};
+use colorgrad::{CatmullRomGradient, Color, Gradient};
+use eframe::egui::{self, Color32, Stroke};
+use egui_plot::{
+    AxisHints, Bar, BarChart, Corner, HLine, HPlacement, Legend, Plot, PlotPoints, Polygon,
+};
+use std::sync::Arc;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlotCache {
+    bars: Vec<Bar>,
+    x_min: f64,
+    x_max: f64,
+    y_min: f64,
+    y_max: f64,
+    bar_thickness: f64,
+    time_length_sec: f64,
+    zone_count: usize,
+    score_type: ScoreType,
+    cva_hash: u64,
+    time_decay_factor: f64,
+    sticky_zone_indices: Vec<usize>, // Zones passing the filter (for support/resistance)
+    zone_scores: Vec<f64>, // Full normalized scores for all zones (for gradient calculation)
+}
+
+#[derive(Default)]
+pub struct PlotView {
+    cache: Option<PlotCache>,
+    cache_hits: usize,
+    cache_misses: usize,
+}
+
+impl PlotView {
+    pub fn new() -> Self {
+        Self {
+            cache: None,
+            cache_hits: 0,
+            cache_misses: 0,
+        }
+    }
+
+    /// Returns the number of cache hits
+    pub fn cache_hits(&self) -> usize {
+        self.cache_hits
+    }
+
+    /// Returns the number of cache misses
+    pub fn cache_misses(&self) -> usize {
+        self.cache_misses
+    }
+
+    /// Returns the cache hit rate as a percentage
+    pub fn cache_hit_rate(&self) -> Option<f64> {
+        let total = self.cache_hits + self.cache_misses;
+        if total == 0 {
+            None
+        } else {
+            Some((self.cache_hits as f64 / total as f64) * 100.0)
+        }
+    }
+
+    /// Clears the cache and resets statistics
+    pub fn clear_cache(&mut self) {
+        self.cache = None;
+        self.cache_hits = 0;
+        self.cache_misses = 0;
+    }
+
+    /// Returns whether the cache is currently populated
+    pub fn has_cache(&self) -> bool {
+        self.cache.is_some()
+    }
+
+    pub fn show_my_plot(
+        &mut self,
+        ui: &mut egui::Ui,
+        cva_results: &CVACore,
+        current_pair_price: Option<f64>,
+    ) {
+        let pair_name = &cva_results.pair_name;
+
+        // Build trading model with zone classification
+        let trading_model =
+            TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);
+
+        // Background bars can be any member of ScoreType
+        let background_score_type = ScoreType::CandleBodyVW;
+        let cache = self.calculate_plot_data(cva_results, background_score_type);
+
+        // Legend setup
+        let _legend = Legend::default().position(Corner::RightTop);
+
+        // Show the plot within the CentralPanel
+        Plot::new("cva")
+            .view_aspect(PLOT_ASPECT_RATIO)
+            // .legend(_legend)
+            .custom_x_axes(vec![create_x_axis()])
+            .custom_y_axes(vec![create_y_axis(pair_name)])
+            .label_formatter(|_name, value| format_plot_background_label(value.x, value.y))
+            .allow_scroll(false)
+            .allow_zoom(false)
+            .allow_drag(false)
+            .allow_boxed_zoom(false)
+            .show(ui, |plot_ui| {
+                // Expand Y bounds to include current price if needed
+                let (y_min_adjusted, y_max_adjusted) = if let Some(price) = current_pair_price {
+                    (cache.y_min.min(price), cache.y_max.max(price))
+                } else {
+                    (cache.y_min, cache.y_max)
+                };
+
+                // #[cfg(debug_assertions)]
+                // println!("Plot y_min: {}", cache.y_min);
+
+                plot_ui.set_plot_bounds_y(y_min_adjusted..=y_max_adjusted);
+                plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
+
+                // draw background plot first
+                draw_background_plot(plot_ui, &cache, background_score_type);
+
+                // Draw all classified zones from TradingModel
+                draw_classified_zones(plot_ui, &trading_model, cache.x_min, cache.x_max);
+
+                // Draw current price line LAST for max. visibility
+                draw_current_price(plot_ui, current_pair_price);
+
+                // #[cfg(debug_assertions)]
+                // // Confirm the y_min_adjusted, y_max_adjusted are always at top and bottom of visible plot
+                // Self::draw_y_limits(plot_ui, y_min_adjusted, y_max_adjusted);
+            });
+    }
+
+    /// Draw the current price line with outer border for visibility
+    #[cfg(debug_assertions)]
+    #[allow(dead_code)]
+    fn draw_y_limits(plot_ui: &mut egui_plot::PlotUi, y_min: f64, y_max: f64) {
+        // Draw contrasting outer border first
+        let min_line = HLine::new("Lower Price Limit", y_min)
+            .color(Color32::MAGENTA)
+            .width(CURRENT_PRICE_OUTER_WIDTH)
+            .style(egui_plot::LineStyle::Solid);
+        plot_ui.hline(min_line);
+        // Draw inner colored line on top
+        let max_line = HLine::new("Upper Price Limit", y_max)
+            .color(Color32::RED)
+            .width(CURRENT_PRICE_LINE_WIDTH)
+            .style(egui_plot::LineStyle::Solid);
+        plot_ui.hline(max_line);
+    }
+
+    fn calculate_plot_data(&mut self, cva_results: &CVACore, score_type: ScoreType) -> PlotCache {
+        // Source of truth: read zone_count from the data itself
+        let zone_count = cva_results.zone_count;
+        let time_decay_factor = cva_results.time_decay_factor;
+
+        // Calculate hash of CVA results to detect changes
+        let cva_hash = {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            (
+                &cva_results.pair_name, // Include pair name to detect pair changes!
+                cva_results.start_timestamp_ms,
+                cva_results.end_timestamp_ms,
+                (
+                    cva_results.price_range.min_max().0 as i64,
+                    cva_results.price_range.min_max().1 as i64,
+                ),
+            )
+                .hash(&mut hasher);
+            hasher.finish()
+        };
+
+        // Check if we have cached data that matches
+        if let Some(cache) = &self.cache
+            && cache.zone_count == zone_count
+            && cache.score_type == score_type
+            && cache.cva_hash == cva_hash
+            && cache.time_decay_factor.to_bits() == time_decay_factor.to_bits()
+        {
+            self.cache_hits += 1;
+            if PRINT_CVA_CACHE_EVENTS {
+                println!(
+                    "[plot cache] HIT: {} zones for {} (cache key {:?})",
+                    cache.zone_scores.len(),
+                    cache.score_type,
+                    cache.cva_hash
+                );
+            }
+            return cache.clone();
+        }
+        // Cache miss
+        #[cfg(debug_assertions)]
+        if PRINT_PLOT_CACHE_STATS {
+            println!(
+                "Bar Plot Cache MISS for {} with {} zones.",
+                score_type, zone_count
+            );
+        }
+        self.cache_misses += 1;
+
+        // Calculate plot bounds
+        let (y_min, y_max) = cva_results.price_range.min_max();
+
+        let x_min: f64 = (cva_results.start_timestamp_ms as f64) / 1000.0;
+        let x_max: f64 = (cva_results.end_timestamp_ms as f64) / 1000.0;
+        let time_length_sec = x_max - x_min;
+        let zone_score_scalar = time_length_sec;
+        let bar_width_scalar = y_max - y_min;
+        let bar_thickness = bar_width_scalar / (zone_count as f64);
+
+        // Use CandleBodyVW for background bars (consolidated volume)
+        let data_for_display = maths_utils::normalize_max(cva_results.get_scores_ref(score_type));
+
+        // Apply filter chain to select all zones
+        let filter_chain =
+            FilterChain::new(score_type, ZoneSelectionCriteria::PercentileRange(0.0, 1.0));
+
+        let combined_indices: Vec<usize> = filter_chain
+            .evaluate(cva_results)
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+
+        // Create color gradient from config
+        let grad = colorgrad::GradientBuilder::new()
+            .html_colors(ZONE_GRADIENT_COLORS)
+            .build::<colorgrad::CatmullRomGradient>()
+            .expect("Failed to create color gradient");
+
+        // Generate bars using the display data (single or combined scores)
+        // Dim bars significantly so they serve as background layer
+        let bars = combined_indices
+            .iter()
+            .map(|&original_index| {
+                let zone_score = data_for_display[original_index];
+                let color = get_zone_color_from_zone_value(zone_score, &grad);
+                let dimmed_color = color.linear_multiply(BACKGROUND_BAR_INTENSITY);
+                let y_position = y_min + (original_index as f64) * bar_thickness;
+                let x_position = x_min + zone_score * zone_score_scalar;
+                Bar::new(y_position, x_position)
+                    .fill(dimmed_color)
+                    .name(format!("{}", original_index))
+            })
+            .collect();
+
+        // Create and store cache
+        let cache = PlotCache {
+            bars,
+            x_min,
+            x_max,
+            y_min,
+            y_max,
+            bar_thickness,
+            time_length_sec,
+            zone_count,
+            score_type,
+            cva_hash,
+            time_decay_factor,
+            sticky_zone_indices: combined_indices,
+            zone_scores: data_for_display,
+        };
+
+        self.cache = Some(cache.clone());
+        cache
+    }
+}
+
+fn create_x_axis() -> AxisHints<'static> {
+    AxisHints::new_x()
+        .label("Time")
+        .formatter(|grid_mark, _range| time_utils::epoch_sec_to_utc(grid_mark.value as i64))
+}
+
+fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
+    AxisHints::new_y()
+        .label(format!("{}  Price", pair_name))
+        .formatter(|grid_mark, _range| format!("${:.2}", grid_mark.value))
+        .placement(HPlacement::Left)
+}
+
+fn get_zone_color_from_zone_value(zone_value: f64, gradient: &CatmullRomGradient) -> Color32 {
+    debug_assert!(
+        (0.0..=1.).contains(&zone_value),
+        "zone_value must be between 0. and 1."
+    );
+    to_egui_color(gradient.at(zone_value as f32))
+}
+
+fn to_egui_color(colorgrad_color: Color) -> Color32 {
+    let rgba8 = colorgrad_color.to_rgba8();
+    Color32::from_rgba_unmultiplied(rgba8[0], rgba8[1], rgba8[2], rgba8[3])
+}
+
+fn format_plot_background_label(x_axis_value: f64, y_axis: f64) -> String {
+    format!(
+        "{}\n${:.4}",
+        time_utils::epoch_sec_to_utc(x_axis_value as i64),
+        y_axis
+    )
+}
+
+fn format_plot_tooltip_element(
+    x_axis_value: f64,
+    x_axis_width: f64,
+    y_axis: f64,
+    x_axis_min: f64,
+) -> String {
+    format!(
+        "{:.2}% (of max)\n${:.4}",
+        ((x_axis_value - x_axis_min) / x_axis_width) * 100.,
+        y_axis
+    )
+}
+
+/// Draw background plot with bars representing score type
+fn draw_background_plot(
+    plot_ui: &mut egui_plot::PlotUi,
+    cache: &PlotCache,
+    background_score_type: ScoreType,
+) {
+    let title = format!("{}", background_score_type);
+    let time_length_sec = cache.time_length_sec;
+    let x_min = cache.x_min;
+    let chart = BarChart::new(title, cache.bars.clone())
+        .color(DEFAULT_BAR_COLOR) // Legend color only
+        .width(cache.bar_thickness)
+        .horizontal()
+        .element_formatter(Box::new(move |bar, _chart| {
+            format_plot_tooltip_element(bar.value, time_length_sec, bar.argument, x_min)
+        }));
+    plot_ui.bar_chart(chart);
+}
+
+/// Draw the current price line with outer border for visibility
+fn draw_current_price(plot_ui: &mut egui_plot::PlotUi, current_pair_price: Option<f64>) {
+    if let Some(price) = current_pair_price {
+        // Draw contrasting outer border first
+        let outer_line = HLine::new("Current Price", price)
+            .color(CURRENT_PRICE_OUTER_COLOR)
+            .width(CURRENT_PRICE_OUTER_WIDTH)
+            .style(egui_plot::LineStyle::dashed_loose());
+        plot_ui.hline(outer_line);
+        // Draw inner colored line on top
+        let inner_line = HLine::new("Current Price", price)
+            .color(CURRENT_PRICE_COLOR)
+            .width(CURRENT_PRICE_LINE_WIDTH)
+            .style(egui_plot::LineStyle::dashed_loose());
+        plot_ui.hline(inner_line);
+    }
+}
+
+/// Draw all classified zones from a TradingModel
+fn draw_classified_zones(
+    plot_ui: &mut egui_plot::PlotUi,
+    model: &TradingModel,
+    x_min: f64,
+    x_max: f64,
+) {
+    // Draw sticky superzones (aggregated consolidation areas) - only if enabled
+    if SHOW_STICKY_ZONES_DEFAULT {
+        for superzone in &model.zones.sticky_superzones {
+            draw_superzone(
+                plot_ui,
+                superzone,
+                x_min,
+                x_max,
+                "Sticky",
+                STICKY_ZONE_COLOR,
+            );
+        }
+    }
+
+    // Draw slippy superzones (aggregated low activity areas) - only if enabled
+    if SHOW_SLIPPY_ZONES_DEFAULT {
+        for superzone in &model.zones.slippy_superzones {
+            draw_superzone(
+                plot_ui,
+                superzone,
+                x_min,
+                x_max,
+                "Slippy",
+                SLIPPY_ZONE_COLOR,
+            );
+        }
+    }
+
+    // Draw low wick (reversal) superzones (aggregated rejection areas) - only if enabled
+    if SHOW_LOW_WICKS_ZONES_DEFAULT {
+        for superzone in &model.zones.low_wicks_superzones {
+            draw_superzone(
+                plot_ui,
+                superzone,
+                x_min,
+                x_max,
+                "Low Wick(Reversal)",
+                LOW_WICKS_ZONE_COLOR,
+            );
+        }
+    }
+
+    // Draw high wick (reversal) superzones (aggregated rejection areas) - only if enabled
+    if SHOW_HIGH_WICKS_ZONES_DEFAULT {
+        for superzone in &model.zones.high_wicks_superzones {
+            draw_superzone(
+                plot_ui,
+                superzone,
+                x_min,
+                x_max,
+                "High Wick(Reversal)",
+                HIGH_WICKS_ZONE_COLOR,
+            );
+        }
+    }
+
+    // Draw support/resistance superzones LAST (on top of sticky zones for visibility)
+    if SHOW_SUPPORT_ZONES_DEFAULT {
+        for superzone in &model.zones.support_superzones {
+            draw_superzone(
+                plot_ui,
+                superzone,
+                x_min,
+                x_max,
+                "SR: Support",
+                SUPPORT_ZONE_COLOR,
+            );
+        }
+    }
+
+    if SHOW_RESISTANCE_ZONES_DEFAULT {
+        for superzone in &model.zones.resistance_superzones {
+            draw_superzone(
+                plot_ui,
+                superzone,
+                x_min,
+                x_max,
+                "SR: Resistance",
+                RESISTANCE_ZONE_COLOR,
+            );
+        }
+    }
+}
+
+/// Draw a Zone from TradingModel as a semi-transparent filled rectangle
+// Now never used because we only have superzones.... interesting.
+#[allow(dead_code)]
+fn draw_zone(
+    plot_ui: &mut egui_plot::PlotUi,
+    zone: &Zone,
+    x_min: f64,
+    x_max: f64,
+    label: &str,
+    color: Color32,
+) {
+    let zone_bottom = zone.price_bottom;
+    let zone_top = zone.price_top;
+
+    // Create rectangle vertices (spanning full X-axis)
+    let points = PlotPoints::new(vec![
+        [x_min, zone_bottom],
+        [x_max, zone_bottom],
+        [x_max, zone_top],
+        [x_min, zone_top],
+    ]);
+
+    // Draw semi-transparent filled polygon with matching stroke
+    // Name must be unique per zone to allow independent legend toggling
+    let polygon = Polygon::new(format!("{} #{}", label, zone.index), points)
+        .fill_color(color.linear_multiply(ZONE_FILL_OPACITY))
+        .stroke(Stroke::new(1.0, color))
+        .name(format!("{} #{}", label, zone.index)) // Unique legend entry per zone
+        .highlight(false) // Don't highlight on hover to avoid clutter
+        .allow_hover(false); // Don't show individual zone tooltips
+
+    plot_ui.polygon(polygon);
+}
+
+/// Draw a SuperZone from TradingModel as a semi-transparent filled rectangle
+fn draw_superzone(
+    plot_ui: &mut egui_plot::PlotUi,
+    superzone: &SuperZone,
+    x_min: f64,
+    x_max: f64,
+    label: &str,
+    color: Color32,
+) {
+    let zone_bottom = superzone.price_bottom;
+    let zone_top = superzone.price_top;
+
+    // Create rectangle vertices (spanning full X-axis)
+    let points = PlotPoints::new(vec![
+        [x_min, zone_bottom],
+        [x_max, zone_bottom],
+        [x_max, zone_top],
+        [x_min, zone_top],
+    ]);
+
+    // Draw semi-transparent filled polygon with matching stroke
+    // Each superzone gets a unique identifier and a unique legend entry
+    let polygon = Polygon::new(format!("{} #{}", label, superzone.id), points)
+        .fill_color(color.linear_multiply(ZONE_FILL_OPACITY))
+        .stroke(Stroke::new(1.0, color))
+        .name(format!("{} #{}", label, superzone.id)) // Unique legend entry per superzone
+        .highlight(false)
+        .allow_hover(false);
+
+    plot_ui.polygon(polygon);
+}
+
+#[cfg(test)]
+mod tests {
+    // use super::*;
+}

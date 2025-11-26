@@ -1,0 +1,332 @@
+use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, MIN_CANDLES_FOR_ANALYSIS};
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_CVA_CACHE_EVENTS;
+use crate::data::timeseries::TimeSeriesCollection;
+use crate::models::{CVACore, TimeSeriesSlice, find_matching_ohlcv};
+use anyhow::{Result, bail};
+
+use std::cmp::Eq;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::sync::{Arc, Mutex};
+
+// --- The cache key struct ---
+#[derive(Clone, Debug)]
+struct CacheKey {
+    pair: String,
+    zone_count: usize,
+    time_decay_factor: f64,
+    /// Vector of discontinuous slice ranges [(start_idx, end_idx), ...]
+    slice_ranges: Vec<(usize, usize)>,
+    #[allow(dead_code)]
+    price_range: (u64, u64), // Store as bits for Eq/Hash
+}
+
+impl Hash for CacheKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.pair.hash(state);
+        self.zone_count.hash(state);
+        self.time_decay_factor.to_bits().hash(state);
+        // Hash each range in the vector
+        for range in &self.slice_ranges {
+            range.hash(state);
+        }
+    }
+}
+
+#[cfg(debug_assertions)]
+fn log_cache_miss_reason(
+    cache: &HashMap<CacheKey, Arc<CVACore>>,
+    requested: &CacheKey,
+) {
+    if !PRINT_CVA_CACHE_EVENTS {
+        return;
+    }
+    use std::cmp::min;
+
+    let mut same_pair_zone_decay: Option<CacheKey> = None;
+    let mut same_pair_zone: Option<CacheKey> = None;
+    let mut same_pair: Option<CacheKey> = None;
+
+    for existing in cache.keys() {
+        if existing.pair != requested.pair {
+            continue;
+        }
+
+        if existing.zone_count == requested.zone_count {
+            if existing.time_decay_factor.to_bits() == requested.time_decay_factor.to_bits() {
+                same_pair_zone_decay = Some(existing.clone());
+                break;
+            } else if same_pair_zone.is_none() {
+                same_pair_zone = Some(existing.clone());
+            }
+        } else if same_pair.is_none() {
+            same_pair = Some(existing.clone());
+        }
+    }
+
+    if let Some(existing) = same_pair_zone_decay {
+        if existing.slice_ranges == requested.slice_ranges {
+            println!("   ↪ reason: identical key should have hit (possible hash collision)");
+            return;
+        }
+
+        let len_old = existing.slice_ranges.len();
+        let len_new = requested.slice_ranges.len();
+        let first_diff_idx = existing
+            .slice_ranges
+            .iter()
+            .zip(requested.slice_ranges.iter())
+            .position(|(a, b)| a != b);
+
+        let diff_summary = if let Some(idx) = first_diff_idx {
+            format!(
+                "first differing range [{}]: old {:?} vs new {:?}",
+                idx,
+                existing.slice_ranges[idx],
+                requested.slice_ranges[idx]
+            )
+        } else if len_old != len_new {
+            let preview_idx = min(len_old, len_new);
+            let preview_old = existing.slice_ranges.get(preview_idx).cloned();
+            let preview_new = requested.slice_ranges.get(preview_idx).cloned();
+            format!(
+                "range count changed (old {} vs new {}), next old {:?}, new {:?}",
+                len_old, len_new, preview_old, preview_new
+            )
+        } else {
+            "slice ranges differ (unable to locate first mismatch)".to_string()
+        };
+
+        println!(
+            "   ↪ reason: slice ranges changed (old {}, new {}) — {}",
+            len_old, len_new, diff_summary
+        );
+    } else if let Some(existing) = same_pair_zone {
+        println!(
+            "   ↪ reason: time_decay_factor changed {:.6} → {:.6}",
+            existing.time_decay_factor, requested.time_decay_factor
+        );
+    } else if let Some(existing) = same_pair {
+        println!(
+            "   ↪ reason: zone_count changed {} → {}",
+            existing.zone_count, requested.zone_count
+        );
+    } else if cache.is_empty() {
+        println!("   ↪ reason: cache is empty (first analysis run)");
+    } else {
+        println!(
+            "   ↪ reason: no prior cached entries for pair {} (likely first run in this session)",
+            requested.pair
+        );
+    }
+}
+
+impl PartialEq for CacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.pair == other.pair
+            && self.zone_count == other.zone_count
+            && self.time_decay_factor.to_bits() == other.time_decay_factor.to_bits()
+            && self.slice_ranges == other.slice_ranges
+    }
+}
+
+impl Eq for CacheKey {}
+
+pub struct ZoneGenerator {
+    cache: Arc<Mutex<HashMap<CacheKey, Arc<CVACore>>>>,
+}
+
+impl Default for ZoneGenerator {
+    fn default() -> Self {
+        Self {
+            // Instantiate an Arc<Mutex> containing an empty HashMap
+            cache: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+impl Clone for ZoneGenerator {
+    fn clone(&self) -> Self {
+        Self {
+            // Clone the Arc, not the HashMap - this shares the cache!
+            cache: Arc::clone(&self.cache),
+        }
+    }
+}
+
+impl ZoneGenerator {
+    // Clears the entire cache e.g if source data was changed whilst the app was running (doesn't happen rn)
+
+    pub fn get_cva_results(
+        &self,
+        selected_pair: &str,
+        zone_count: usize,
+        time_decay_factor: f64,
+        timeseries_data: &TimeSeriesCollection,
+        slice_ranges: Vec<(usize, usize)>,
+        price_range: (f64, f64),
+    ) -> Result<Arc<CVACore>> {
+        #[cfg(debug_assertions)]
+        let method_start_time = if PRINT_CVA_CACHE_EVENTS {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
+
+        // Return Ref with explicit lifetime
+        let key_for_lookup = CacheKey {
+            // Use a name that implies it's for lookup/borrowing
+            pair: selected_pair.to_string(),
+            zone_count,
+            time_decay_factor,
+            slice_ranges: slice_ranges.clone(),
+            price_range: (price_range.0.to_bits(), price_range.1.to_bits()),
+        };
+
+        // --- Step 1: Try to get a lock and check if the key exists ---
+        {
+            if let Ok(cache) = self.cache.lock()
+                && let Some(cached_result) = cache.get(&key_for_lookup)
+            {
+                #[cfg(debug_assertions)]
+                if PRINT_CVA_CACHE_EVENTS {
+                    let total_candles: usize = slice_ranges.iter().map(|(s, e)| e - s).sum();
+                    if let Some(start) = method_start_time.as_ref() {
+                        println!(
+                            "CVA Results Cache HIT for {} with {} ranges ({} total candles) and {} zones. Time: {:?}",
+                            selected_pair,
+                            slice_ranges.len(),
+                            total_candles,
+                            zone_count,
+                            start.elapsed()
+                        );
+                    }
+                }
+                return Ok(Arc::clone(cached_result));
+            }
+        } // Lock is released here.
+
+        // --- Step 2: If not found, compute the results and insert with a lock ---
+        let key_for_insertion = key_for_lookup.clone();
+
+        #[cfg(debug_assertions)]
+        let computation_start_time = if PRINT_CVA_CACHE_EVENTS {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        }; // Time just the computation
+        #[cfg(debug_assertions)]
+        if PRINT_CVA_CACHE_EVENTS {
+            let total_candles: usize = slice_ranges.iter().map(|(s, e)| e - s).sum();
+            println!(
+                "Cache MISS - Calculating CVA results for {} with {} ranges ({} total candles) and {} zones...",
+                selected_pair,
+                slice_ranges.len(),
+                total_candles,
+                zone_count
+            );
+
+            if let Ok(cache_guard) = self.cache.lock() {
+                log_cache_miss_reason(&cache_guard, &key_for_lookup);
+            }
+        }
+
+        let computed_results = pair_analysis(
+            selected_pair.to_string(),
+            zone_count,
+            time_decay_factor,
+            timeseries_data,
+            slice_ranges,
+            price_range,
+        )?;
+
+        #[cfg(debug_assertions)]
+        if PRINT_CVA_CACHE_EVENTS {
+            if let Some(start) = computation_start_time.as_ref() {
+                println!(
+                    "Computation for {} took: {:?}",
+                    selected_pair,
+                    start.elapsed()
+                );
+            }
+        }
+
+        let arc_results = Arc::new(computed_results);
+
+        // Insert into cache with lock
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.insert(key_for_insertion, Arc::clone(&arc_results));
+        }
+
+        // --- Step 3: Return the Arc ---
+        Ok(arc_results)
+    }
+}
+
+fn pair_analysis(
+    selected_pair: String,
+    zone_count: usize,
+    time_decay_factor: f64,
+    timeseries_data: &TimeSeriesCollection,
+    slice_ranges: Vec<(usize, usize)>,
+    price_range: (f64, f64),
+) -> Result<CVACore> {
+    let ohlcv_time_series = find_matching_ohlcv(
+        &timeseries_data.series_data,
+        &selected_pair,
+        INTERVAL_WIDTH_TO_ANALYSE_MS,
+    )
+    .unwrap_or_else(|_| {
+        panic!(
+            "No OHLCV data found for pair '{}' with interval {} ms",
+            selected_pair, INTERVAL_WIDTH_TO_ANALYSE_MS
+        )
+    });
+
+    // Validate minimum candle count for reliable analysis
+    let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();
+    if total_candle_count < MIN_CANDLES_FOR_ANALYSIS {
+        bail!(
+            "Insufficient data: {} has only {} candles across {} ranges (minimum: {}). \
+             This pair is not currently analyzable - likely due to rapid price discovery \
+             or limited historical data at current price levels. No tradeable opportunities detected.",
+            selected_pair,
+            total_candle_count,
+            slice_ranges.len(),
+            MIN_CANDLES_FOR_ANALYSIS
+        );
+    }
+
+    let timeseries_slice = TimeSeriesSlice {
+        series_data: ohlcv_time_series,
+        ranges: slice_ranges.clone(),
+    };
+
+    let mut cva_results = timeseries_slice.generate_cva_results(
+        zone_count,
+        selected_pair.clone(),
+        time_decay_factor,
+        price_range,
+    );
+
+    // Compute start/end timestamps based on the earliest and latest candles across all ranges
+    let first_kline_timestamp = ohlcv_time_series.first_kline_timestamp_ms;
+
+    if let (Some((first_start, _)), Some((_, last_end))) =
+        (slice_ranges.first(), slice_ranges.last())
+    {
+        cva_results.start_timestamp_ms =
+            first_kline_timestamp + (*first_start as i64 * INTERVAL_WIDTH_TO_ANALYSE_MS);
+        cva_results.end_timestamp_ms =
+            first_kline_timestamp + (*last_end as i64 * INTERVAL_WIDTH_TO_ANALYSE_MS);
+    }
+
+    Ok(cva_results)
+}
+
+#[cfg(test)]
+mod tests {
+    // use super::*;
+    // use std::sync::Arc;
+}
