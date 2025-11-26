@@ -1,1 +1,2 @@
-# Zone Sniper: Scope. Lock. Snipe.
+# Zone Sniper
+## Scope. Lock. Snipe.
