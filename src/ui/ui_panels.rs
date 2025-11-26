@@ -132,9 +132,7 @@ impl<'a> DataGenerationPanel<'a> {
 
         let helper_text = format!(
             "{}{}{}",
-            UI_TEXT.time_horizon_helper_prefix,
-            new_value,
-            UI_TEXT.time_horizon_helper_suffix
+            UI_TEXT.time_horizon_helper_prefix, new_value, UI_TEXT.time_horizon_helper_suffix
         );
         ui.label(
             eframe::egui::RichText::new(helper_text)

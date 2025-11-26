@@ -81,7 +81,8 @@ pub fn compute_zone_efficacy(
     let mut total_candles_considered = 0usize;
     let mut candles_in_zones = 0usize;
     let mut active_runs = vec![0usize; sticky_superzones.len()];
-    let mut pending_transitions: Vec<Option<PendingTransition>> = vec![None; sticky_superzones.len()];
+    let mut pending_transitions: Vec<Option<PendingTransition>> =
+        vec![None; sticky_superzones.len()];
     let mut run_lengths: Vec<usize> = Vec::new();
     let mut transition_records: HashMap<(usize, Option<usize>), Vec<usize>> = HashMap::new();
 
@@ -212,8 +213,8 @@ pub fn compute_zone_efficacy(
 
     let transitions = build_transition_summaries(&transition_records);
 
-    let time_in_zones_pct = (candles_in_zones as f64 / total_candles_considered as f64 * 100.0)
-        .clamp(0.0, 100.0);
+    let time_in_zones_pct =
+        (candles_in_zones as f64 / total_candles_considered as f64 * 100.0).clamp(0.0, 100.0);
 
     Some(ZoneEfficacyStats {
         price_occupancy_pct,

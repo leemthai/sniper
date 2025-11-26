@@ -301,11 +301,7 @@ impl<'a> JourneyAnalyzer<'a> {
                     let elapsed_days_debug = (elapsed_ms / MILLIS_PER_DAY).max(1.0);
                     println!(
                         "step {:04} | idx {} | elapsed_days ~ {:.2} | high {:.4} | low {:.4}",
-                        step,
-                        idx,
-                        elapsed_days_debug,
-                        high,
-                        low,
+                        step, idx, elapsed_days_debug, high, low,
                     );
                 }
 
@@ -423,11 +419,7 @@ impl<'a> JourneyAnalyzer<'a> {
             if debug_this_attempt {
                 println!(
                     "--- Attempt summary ---\nsteps_taken: {}\nelapsed_days: {:.2}\nmax_drawdown_pct: {:.2}%\nfinal_price: {:.4}\noutcome: {:?}\n========================\n",
-                    steps_taken,
-                    elapsed_days,
-                    max_drawdown_pct,
-                    final_price,
-                    outcome,
+                    steps_taken, elapsed_days, max_drawdown_pct, final_price, outcome,
                 );
             }
 

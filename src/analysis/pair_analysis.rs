@@ -1,6 +1,6 @@
-use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, MIN_CANDLES_FOR_ANALYSIS};
 #[cfg(debug_assertions)]
 use crate::config::debug::PRINT_CVA_CACHE_EVENTS;
+use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, MIN_CANDLES_FOR_ANALYSIS};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::{CVACore, TimeSeriesSlice, find_matching_ohlcv};
 use anyhow::{Result, bail};
@@ -35,10 +35,7 @@ impl Hash for CacheKey {
 }
 
 #[cfg(debug_assertions)]
-fn log_cache_miss_reason(
-    cache: &HashMap<CacheKey, Arc<CVACore>>,
-    requested: &CacheKey,
-) {
+fn log_cache_miss_reason(cache: &HashMap<CacheKey, Arc<CVACore>>, requested: &CacheKey) {
     if !PRINT_CVA_CACHE_EVENTS {
         return;
     }
@@ -82,9 +79,7 @@ fn log_cache_miss_reason(
         let diff_summary = if let Some(idx) = first_diff_idx {
             format!(
                 "first differing range [{}]: old {:?} vs new {:?}",
-                idx,
-                existing.slice_ranges[idx],
-                requested.slice_ranges[idx]
+                idx, existing.slice_ranges[idx], requested.slice_ranges[idx]
             )
         } else if len_old != len_new {
             let preview_idx = min(len_old, len_new);

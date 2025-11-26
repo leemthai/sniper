@@ -1,4 +1,4 @@
-use crate::data::timeseries::bnapi_version::bn_kline;
+use crate::data::timeseries::intervals::interval_ms_to_string;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
@@ -69,7 +69,7 @@ impl std::fmt::Display for PairInterval {
             quote,
             self.name(),
             self.interval_ms,
-            bn_kline::convert_binance_interval_ms_to_string(self.interval_ms)
+            interval_ms_to_string(self.interval_ms)
         )
     }
 }

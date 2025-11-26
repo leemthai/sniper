@@ -1,9 +1,11 @@
+#[cfg(not(target_arch = "wasm32"))]
 use crate::data::timeseries::bnapi_version::OhlcvTimeSeriesTemp;
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::{CVACore, ScoreType};
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Duration, Utc};
+#[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +32,7 @@ pub struct OhlcvTimeSeries {
     pub pct_gaps: f64,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 macro_rules! convert_ohlcv_field {
     ($old_struct:expr, $field:ident) => {
         $old_struct
@@ -40,6 +43,7 @@ macro_rules! convert_ohlcv_field {
     };
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl From<OhlcvTimeSeriesTemp> for OhlcvTimeSeries {
     fn from(old_struct: OhlcvTimeSeriesTemp) -> Self {
         OhlcvTimeSeries {

@@ -20,7 +20,14 @@ pub struct Candle {
 // Implement methods for the Candle struct
 impl Candle {
     // A constructor for convenience
-    pub fn new(open_price: f64, close_price: f64, low_price: f64, high_price: f64, base_volume: f64, quote_volume: f64) -> Self {
+    pub fn new(
+        open_price: f64,
+        close_price: f64,
+        low_price: f64,
+        high_price: f64,
+        base_volume: f64,
+        quote_volume: f64,
+    ) -> Self {
         Candle {
             open_price,
             high_price,

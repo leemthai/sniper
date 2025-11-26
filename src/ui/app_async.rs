@@ -4,10 +4,12 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 use poll_promise::Promise;
 
-use crate::models::{CVACore, PairContext, TradingModel};
-use crate::ui::app::{AppError, DataParams, LevelsApp};
+use crate::analysis::pair_analysis::ZoneGenerator;
 #[cfg(debug_assertions)]
 use crate::config::debug::{PRINT_MONITOR_PROGRESS, PRINT_TRIGGER_UPDATES};
+use crate::data::timeseries::TimeSeriesCollection;
+use crate::models::{CVACore, PairContext, TradingModel};
+use crate::ui::app::{AppError, DataParams, LevelsApp};
 
 pub(super) struct AsyncCalcResult {
     pub(super) result: Result<Arc<CVACore>, AppError>,
@@ -36,35 +38,16 @@ impl LevelsApp {
         let timeseries = self.data_state.timeseries_collection.clone();
         let params_clone = params.clone();
 
+        #[cfg(not(target_arch = "wasm32"))]
         let promise = Promise::spawn_thread("cva_calculation", move || {
-            let calc_start = Instant::now();
-
-            let result = match params_clone.pair() {
-                Ok(pair) => {
-                    if !timeseries.unique_pair_names().iter().any(|s| s == pair) {
-                        Err(AppError::InvalidPair(pair.to_string()))
-                    } else {
-                        generator
-                            .get_cva_results(
-                                pair,
-                                params_clone.zone_count,
-                                params_clone.time_decay_factor,
-                                &timeseries,
-                                params_clone.slice_ranges.clone(),
-                                params_clone.price_range,
-                            )
-                            .map_err(|e| AppError::CalculationFailed(e.to_string()))
-                    }
-                }
-                Err(e) => Err(e),
-            };
-
-            AsyncCalcResult {
-                result,
-                params: params_clone,
-                elapsed_time: calc_start.elapsed(),
-            }
+            run_cva_calculation(generator, timeseries, params_clone)
         });
+
+        #[cfg(target_arch = "wasm32")]
+        let promise = {
+            let result = run_cva_calculation(generator, timeseries, params_clone);
+            Promise::from_ready(result)
+        };
 
         self.calculation_promise = Some(promise);
     }
@@ -221,5 +204,39 @@ impl LevelsApp {
 
     pub(super) fn is_calculating(&self) -> bool {
         self.calculation_promise.is_some()
+    }
+}
+
+fn run_cva_calculation(
+    generator: ZoneGenerator,
+    timeseries: TimeSeriesCollection,
+    params_clone: DataParams,
+) -> AsyncCalcResult {
+    let calc_start = Instant::now();
+
+    let result = match params_clone.pair() {
+        Ok(pair) => {
+            if !timeseries.unique_pair_names().iter().any(|s| s == pair) {
+                Err(AppError::InvalidPair(pair.to_string()))
+            } else {
+                generator
+                    .get_cva_results(
+                        pair,
+                        params_clone.zone_count,
+                        params_clone.time_decay_factor,
+                        &timeseries,
+                        params_clone.slice_ranges.clone(),
+                        params_clone.price_range,
+                    )
+                    .map_err(|e| AppError::CalculationFailed(e.to_string()))
+            }
+        }
+        Err(e) => Err(e),
+    };
+
+    AsyncCalcResult {
+        result,
+        params: params_clone,
+        elapsed_time: calc_start.elapsed(),
     }
 }

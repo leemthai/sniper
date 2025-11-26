@@ -1,15 +1,27 @@
 #![allow(clippy::collapsible_if)]
-use crate::config::{BINANCE_WS_COMBINED_BASE, INITIAL_RECONNECT_DELAY_SECS, MAX_RECONNECT_DELAY_SECS};
+
+#[cfg(not(target_arch = "wasm32"))]
 use crate::config::debug::PRINT_PRICE_STREAM_UPDATES;
-#[cfg(debug_assertions)]
+#[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
 use crate::config::debug::PRINT_SIMULATION_EVENTS;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::{
+    BINANCE_WS_COMBINED_BASE, INITIAL_RECONNECT_DELAY_SECS, MAX_RECONNECT_DELAY_SECS,
+};
+#[cfg(not(target_arch = "wasm32"))]
 use futures::StreamExt;
+#[cfg(not(target_arch = "wasm32"))]
 use serde::Deserialize;
+#[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Arc, Mutex};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Deserialize)]
 struct MiniTickerData {
     #[serde(rename = "c")]
@@ -18,6 +30,7 @@ struct MiniTickerData {
     symbol: String,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Deserialize)]
 struct CombinedStreamMessage {
     #[serde(rename = "stream")]
@@ -25,6 +38,7 @@ struct CombinedStreamMessage {
     data: MiniTickerData,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ConnectionStatus {
     Connected,
@@ -34,6 +48,7 @@ pub enum ConnectionStatus {
 
 /// Manages WebSocket connections to Binance for live price updates
 /// Subscribes to all pairs upfront with automatic reconnection
+#[cfg(not(target_arch = "wasm32"))]
 pub struct PriceStreamManager {
     // Map of symbol -> current price
     prices: Arc<Mutex<HashMap<String, f64>>>,
@@ -44,6 +59,7 @@ pub struct PriceStreamManager {
     suspended: Arc<Mutex<bool>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl PriceStreamManager {
     pub fn new() -> Self {
         Self {
@@ -159,13 +175,47 @@ impl PriceStreamManager {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Default for PriceStreamManager {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Default, Clone)]
+pub struct PriceStreamManager;
+
+#[cfg(target_arch = "wasm32")]
+impl PriceStreamManager {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn get_price(&self, _symbol: &str) -> Option<f64> {
+        None
+    }
+
+    pub fn suspend(&self) {}
+
+    pub fn resume(&self) {}
+
+    pub fn is_suspended(&self) -> bool {
+        true
+    }
+
+    pub fn connection_health(&self) -> f64 {
+        0.0
+    }
+
+    pub fn subscribe_all(&self, _symbols: Vec<String>) {
+        #[cfg(debug_assertions)]
+        println!("Price stream disabled in WASM demo build.");
+    }
+}
+
 /// Wrapper that handles reconnection logic with exponential backoff for a combined stream
+#[cfg(not(target_arch = "wasm32"))]
 async fn run_combined_price_stream_with_reconnect(
     symbols: Vec<String>,
     prices_arc: Arc<Mutex<HashMap<String, f64>>>,
@@ -236,6 +286,7 @@ async fn run_combined_price_stream_with_reconnect(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn run_combined_price_stream(
     symbols: &[String],
     url: &str,
@@ -342,6 +393,7 @@ async fn run_combined_price_stream(
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn build_combined_stream_url(symbols: &[String]) -> String {
     let stream_descriptor = symbols
         .iter()

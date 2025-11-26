@@ -16,6 +16,7 @@ use binance_sdk::spot::{
 use binance_sdk::{errors, errors::ConnectorError as connection_error};
 use tokio::time::{Duration, sleep};
 // Local crates
+use crate::data::timeseries::intervals::interval_ms_to_string;
 use crate::domain::pair_interval::PairInterval;
 use crate::utils::time_utils::*; // Bring everything into scope
 
@@ -97,27 +98,7 @@ pub fn convert_binance_interval_enum_to_ms(interval: KlinesIntervalEnum) -> i64 
 
 #[allow(clippy::match_overlapping_arm)]
 pub fn convert_binance_interval_ms_to_string(interval_ms: i64) -> String {
-    match interval_ms {
-        // Direct pattern matching with constants
-        MS_IN_S => "1s".to_string(),
-        MS_IN_MIN => "1m".to_string(),
-        MS_IN_3_MIN => "3m".to_string(),
-        MS_IN_5_MIN => "5m".to_string(),
-        MS_IN_15_MIN => "15m".to_string(),
-        MS_IN_30_MIN => "30m".to_string(),
-        MS_IN_H => "1h".to_string(),
-        MS_IN_2_H => "2h".to_string(),
-        MS_IN_4_H => "4h".to_string(),
-        MS_IN_6_H => "6h".to_string(),
-        MS_IN_8_H => "8h".to_string(),
-        MS_IN_12_H => "12h".to_string(),
-        MS_IN_D => "1d".to_string(),
-        MS_IN_3_D => "3d".to_string(),
-        MS_IN_W => "1w".to_string(),
-        MS_IN_1_M => "1M".to_string(),
-        // Catch-all case
-        value => format!("`Matched an unknown number: {}`", value),
-    }
+    interval_ms_to_string(interval_ms).to_string()
 }
 
 #[derive(Debug)]

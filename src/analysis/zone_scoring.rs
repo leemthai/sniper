@@ -304,8 +304,7 @@ pub fn find_consolidation_zones_from_peaks(
             // Calculate prominence for boundary peak
             let prominence = left_val - right_val;
             #[cfg(debug_assertions)]
-            if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty()
-                && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
+            if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
             {
                 println!(
                     "{}: Adding left boundary peak at index 0 with prominence {}",
@@ -325,8 +324,7 @@ pub fn find_consolidation_zones_from_peaks(
             // Calculate prominence for boundary peak
             let prominence = right_val - left_val;
             #[cfg(debug_assertions)]
-            if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty()
-                && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
+            if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
             {
                 println!(
                     "{}: Adding right boundary peak at index {} with prominence {}",
@@ -347,9 +345,7 @@ pub fn find_consolidation_zones_from_peaks(
 
     // After dedup and sort:
     #[cfg(debug_assertions)]
-    if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty()
-        && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
-    {
+    if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name {
         println!(
             "DEBUG: Candidate peaks after boundary check: {:?}",
             candidate_peaks
@@ -394,8 +390,7 @@ pub fn find_consolidation_zones_from_peaks(
                     }
                 }
             };
-            if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty()
-                && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
+            if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
             {
                 println!(
                     "DEBUG: Peak at {} (prominence {:.6}): {}",
@@ -442,9 +437,7 @@ pub fn find_consolidation_zones_from_peaks(
         included_zones.insert(peak_idx); // Add the peak itself now
         let _after_expansion_count = included_zones.len();
         #[cfg(debug_assertions)]
-        if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty()
-            && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
-        {
+        if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name {
             println!(
                 "DEBUG: Peak at {} expanded zones: {} (pre-peak) -> {} (added {})",
                 peak_idx,

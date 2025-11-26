@@ -1,6 +1,6 @@
 use eframe::egui::Color32;
 
-pub use crate::ui::ui_text::{UiText, UI_TEXT};
+pub use crate::ui::ui_text::{UI_TEXT, UiText};
 
 /// UI Colors for consistent theming
 #[derive(Clone, Copy, Default)]

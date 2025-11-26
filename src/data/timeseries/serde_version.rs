@@ -2,21 +2,9 @@ use crate::config::{KLINE_PATH, kline_cache_filename};
 use crate::utils::time_utils::how_many_seconds_ago;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use std::fs::{self, File};
-use std::io::{BufReader, BufWriter};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection};
-
-/// Binary cache file wrapper with metadata
-#[derive(Serialize, Deserialize, Debug)]
-struct CacheFile {
-    pub version: f64,
-    pub timestamp_ms: i64,
-    pub interval_ms: i64,
-    pub data: TimeSeriesCollection,
-}
+use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_file::CacheFile};
 
 pub fn check_local_data_validity(
     recency_required_secs: i64,
@@ -31,13 +19,7 @@ pub fn check_local_data_validity(
         println!("Checking validity of local cache at {:?}...", full_path);
         println!("Fetching data from local disk...");
     }
-    // Open and read only the metadata (bincode reads sequentially)
-    let file = File::open(&full_path).context(format!("Failed to open file: {:?}", full_path))?;
-    let mut reader = BufReader::new(file);
-
-    // Deserialize full cache file (bincode is fast even for large files)
-    let cache: CacheFile = bincode::deserialize_from(&mut reader)
-        .context(format!("Failed to deserialize cache from: {:?}", full_path))?;
+    let cache = CacheFile::load_from_path(&full_path)?;
 
     // Check version
     if cache.version != version_required {
@@ -76,15 +58,6 @@ pub fn check_local_data_validity(
     Ok(())
 }
 
-// Helper function to create a new file and any missing parent directories.
-fn create_file_with_parents(path: &Path) -> Result<fs::File> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
-    }
-    fs::File::create(path).with_context(|| format!("Failed to create file: {}", path.display()))
-}
-
 /// Write timeseries data to binary cache file
 /// Uses bincode for ~10-20x faster serialization vs JSON
 pub fn write_timeseries_data_locally(
@@ -105,18 +78,12 @@ pub fn write_timeseries_data_locally(
     println!("Writing cache to disk: {:?}...", full_path);
     let start_time = std::time::Instant::now();
 
-    let file = create_file_with_parents(&full_path)?;
-    let writer = BufWriter::new(file);
-
-    let cache = CacheFile {
-        version: crate::config::KLINE_VERSION,
-        timestamp_ms: chrono::Utc::now().timestamp_millis(),
+    let cache = CacheFile::new(
         interval_ms,
-        data: timeseries_collection.clone(),
-    };
-
-    bincode::serialize_into(writer, &cache)
-        .with_context(|| format!("Failed to serialize cache to: {}", full_path.display()))?;
+        timeseries_collection.clone(),
+        crate::config::KLINE_VERSION,
+    );
+    cache.save_to_path(&full_path)?;
 
     let elapsed = start_time.elapsed();
     let file_size = std::fs::metadata(&full_path)?.len();
@@ -163,18 +130,13 @@ impl CreateTimeSeriesData for SerdeVersion {
         let start_time = std::time::Instant::now();
 
         // Read file content
-        let bytes = tokio::fs::read(&full_path)
-            .await
-            .with_context(|| format!("Failed to read cache: {:?}", full_path))?;
-
         #[cfg(debug_assertions)]
         println!("Reading cache from: {:?}...", full_path);
 
-        // Deserialize in blocking task (bincode is CPU-bound)
-        let cache: CacheFile = tokio::task::spawn_blocking(move || bincode::deserialize(&bytes))
+        let cache = tokio::task::spawn_blocking(move || CacheFile::load_from_path(&full_path))
             .await
             .context("Deserialization task panicked")?
-            .context(format!("Failed to deserialize cache from: {:?}", full_path))?;
+            .context("Failed to load cache file")?;
 
         #[cfg(debug_assertions)]
         {

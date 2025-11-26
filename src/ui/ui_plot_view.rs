@@ -1,4 +1,7 @@
 use crate::analysis::selection_criteria::{FilterChain, ZoneSelectionCriteria};
+use crate::config::debug::PRINT_CVA_CACHE_EVENTS;
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_PLOT_CACHE_STATS;
 use crate::config::{
     BACKGROUND_BAR_INTENSITY, CURRENT_PRICE_COLOR, CURRENT_PRICE_LINE_WIDTH,
     CURRENT_PRICE_OUTER_COLOR, CURRENT_PRICE_OUTER_WIDTH, DEFAULT_BAR_COLOR, HIGH_WICKS_ZONE_COLOR,
@@ -7,9 +10,6 @@ use crate::config::{
     SHOW_STICKY_ZONES_DEFAULT, SHOW_SUPPORT_ZONES_DEFAULT, SLIPPY_ZONE_COLOR, STICKY_ZONE_COLOR,
     SUPPORT_ZONE_COLOR, ZONE_FILL_OPACITY, ZONE_GRADIENT_COLORS,
 };
-use crate::config::debug::PRINT_CVA_CACHE_EVENTS;
-#[cfg(debug_assertions)]
-use crate::config::debug::PRINT_PLOT_CACHE_STATS;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::{SuperZone, TradingModel, Zone};
 use crate::utils::{maths_utils, time_utils};

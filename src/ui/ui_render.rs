@@ -243,9 +243,12 @@ impl LevelsApp {
                                         .and_then(|stream| stream.get_price(pair))
                                     {
                                         ui.label(
-                                            egui::RichText::new(format!("(live: ${:.2})", live_price))
-                                                .small()
-                                                .color(egui::Color32::GRAY),
+                                            egui::RichText::new(format!(
+                                                "(live: ${:.2})",
+                                                live_price
+                                            ))
+                                            .small()
+                                            .color(egui::Color32::GRAY),
                                         );
                                     }
                                 }
@@ -310,7 +313,10 @@ impl LevelsApp {
                                                 UI_TEXT.sticky_dwell_unit_candles_short,
                                             )
                                         } else {
-                                            format!("{}: (no dwell data)", UI_TEXT.sticky_dwell_prefix)
+                                            format!(
+                                                "{}: (no dwell data)",
+                                                UI_TEXT.sticky_dwell_prefix
+                                            )
                                         }
                                     } else {
                                         format!("{}: (no dwell data)", UI_TEXT.sticky_dwell_prefix)
@@ -352,11 +358,17 @@ impl LevelsApp {
                         #[cfg(debug_assertions)]
                         {
                             let horizon_heading = UI_TEXT.price_horizon_heading;
-                            let horizon_text = if let Some(ranges) = self.computed_slice_indices.as_ref() {
+                            let horizon_text = if let Some(ranges) =
+                                self.computed_slice_indices.as_ref()
+                            {
                                 let total_candles: usize = ranges.iter().map(|(s, e)| e - s).sum();
-                                let total_ms = total_candles as f64 * INTERVAL_WIDTH_TO_ANALYSE_MS as f64;
+                                let total_ms =
+                                    total_candles as f64 * INTERVAL_WIDTH_TO_ANALYSE_MS as f64;
                                 let days = total_ms / (1000.0 * 60.0 * 60.0 * 24.0);
-                                format!("🕒 {}: {} candles ({:.1}d)", horizon_heading, total_candles, days)
+                                format!(
+                                    "🕒 {}: {} candles ({:.1}d)",
+                                    horizon_heading, total_candles, days
+                                )
                             } else {
                                 format!("🕒 {}: calculating…", horizon_heading)
                             };
@@ -367,11 +379,13 @@ impl LevelsApp {
                                     .color(egui::Color32::from_rgb(150, 200, 255)),
                             );
                             ui.label(
-                                egui::RichText::new(format!("🧮 Decay: {:.3}", self.time_decay_factor))
-                                    .small()
-                                    .color(egui::Color32::from_rgb(180, 200, 255)),
+                                egui::RichText::new(format!(
+                                    "🧮 Decay: {:.3}",
+                                    self.time_decay_factor
+                                ))
+                                .small()
+                                .color(egui::Color32::from_rgb(180, 200, 255)),
                             );
-
                         }
 
                         ui.separator();
@@ -429,11 +443,7 @@ impl LevelsApp {
                         for (color, line) in zone_lines {
                             ui.horizontal(|ui| {
                                 ui.add_space(12.0);
-                                ui.label(
-                                    egui::RichText::new(line)
-                                        .small()
-                                        .color(color),
-                                );
+                                ui.label(egui::RichText::new(line).small().color(color));
                             });
                         }
 

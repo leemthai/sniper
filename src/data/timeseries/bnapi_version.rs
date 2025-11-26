@@ -5,9 +5,9 @@ use crate::config::{
     INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_VERSION, MAX_BN_KLINES_LOOKUPS_TOTAL, MAX_PAIRS,
     SIMULTANEOUS_KLINE_CALLS_CEILING,
 };
-use crate::models::OhlcvTimeSeries;
-use crate::domain::pair_interval::PairInterval;
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection};
+use crate::domain::pair_interval::PairInterval;
+use crate::models::OhlcvTimeSeries;
 #[allow(unused_imports)]
 use crate::utils::time_utils;
 use anyhow::{Result, anyhow, bail};

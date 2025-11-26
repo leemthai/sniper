@@ -3,19 +3,19 @@ use crate::ui::app_simulation::{SimDirection, SimStepSize};
 use crate::ui::app_triggers::PairTriggerState;
 
 // An application state that holds the result of our async task, plus all gui stats
-use crate::config::{DEFAULT_PRICE_ZONE_COUNT, TIME_HORIZON_DEFAULT_DAYS};
 use crate::analysis::MultiPairMonitor;
 use crate::analysis::pair_analysis::ZoneGenerator;
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_MONITOR_PROGRESS;
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_UI_INTERACTIONS;
+use crate::config::plot::MAX_JOURNEY_ZONE_LINES;
+use crate::config::{DEFAULT_PRICE_ZONE_COUNT, TIME_HORIZON_DEFAULT_DAYS};
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::journeys::{JourneyExecution, Outcome, ZoneEfficacyStats};
-#[cfg(debug_assertions)]
-use crate::config::debug::PRINT_UI_INTERACTIONS;
-#[cfg(debug_assertions)]
-use crate::config::debug::PRINT_MONITOR_PROGRESS;
 use crate::models::{CVACore, PairContext, TradingModel};
-use crate::ui::config::{UI_TEXT, UI_CONFIG};
-use crate::config::plot::MAX_JOURNEY_ZONE_LINES;
+use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::ui_plot_view::PlotView;
 use crate::ui::utils::setup_custom_visuals;
 use eframe::{Frame, egui};
@@ -23,8 +23,8 @@ use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
-use std::time::{Duration, Instant};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Error types for application operations
 #[derive(Debug, Clone)]
@@ -437,8 +437,7 @@ impl LevelsApp {
             median_ttt_days,
             p90_ttt_days,
         );
-        self
-            .journey_executions_by_pair
+        self.journey_executions_by_pair
             .insert(pair.to_string(), executions.to_vec());
         self.journey_summaries.insert(pair.to_string(), summary);
         self.recompute_journey_aggregate();
@@ -456,7 +455,10 @@ impl LevelsApp {
         self.recompute_journey_aggregate();
     }
 
-    pub(super) fn apply_journey_summary_updates(&mut self, updates: Vec<(String, JourneySummaryUpdate)>) {
+    pub(super) fn apply_journey_summary_updates(
+        &mut self,
+        updates: Vec<(String, JourneySummaryUpdate)>,
+    ) {
         for (pair, update) in updates {
             match update {
                 JourneySummaryUpdate::NoData(note) => {
@@ -465,7 +467,10 @@ impl LevelsApp {
                 JourneySummaryUpdate::Failure(note) => {
                     self.record_journey_summary_failure(&pair, note);
                 }
-                JourneySummaryUpdate::Success { executions, elapsed } => {
+                JourneySummaryUpdate::Success {
+                    executions,
+                    elapsed,
+                } => {
                     self.record_journey_summary_success(&pair, &executions, elapsed);
                 }
             }
@@ -516,8 +521,8 @@ impl LevelsApp {
             }
         }
 
-        let last_run_ago = latest_completion
-            .and_then(|inst| Instant::now().checked_duration_since(inst));
+        let last_run_ago =
+            latest_completion.and_then(|inst| Instant::now().checked_duration_since(inst));
 
         let (median_ttt_days, p90_ttt_days) = if success_days.is_empty() {
             (None, None)
@@ -569,9 +574,7 @@ impl LevelsApp {
                 egui::Color32::from_rgb(160, 160, 160),
                 format!(
                     "{} {}: {}",
-                    UI_TEXT.journey_status_current_prefix,
-                    pair,
-                    UI_TEXT.journey_status_waiting
+                    UI_TEXT.journey_status_current_prefix, pair, UI_TEXT.journey_status_waiting
                 ),
             );
         }
@@ -580,8 +583,7 @@ impl LevelsApp {
             egui::Color32::from_rgb(160, 160, 160),
             format!(
                 "{}: {}",
-                UI_TEXT.journey_status_current_prefix,
-                UI_TEXT.journey_status_waiting
+                UI_TEXT.journey_status_current_prefix, UI_TEXT.journey_status_waiting
             ),
         )
     }
@@ -597,8 +599,7 @@ impl LevelsApp {
             egui::Color32::from_rgb(160, 160, 160),
             format!(
                 "{}: {}",
-                UI_TEXT.journey_status_aggregate_prefix,
-                UI_TEXT.journey_status_waiting
+                UI_TEXT.journey_status_aggregate_prefix, UI_TEXT.journey_status_waiting
             ),
         )
     }
@@ -606,8 +607,7 @@ impl LevelsApp {
     fn format_current_journey_line(summary: &JourneySummary) -> String {
         let mut parts = vec![format!(
             "{} {}",
-            summary.zones_analyzed,
-            UI_TEXT.journey_status_zones_label
+            summary.zones_analyzed, UI_TEXT.journey_status_zones_label
         )];
 
         if summary.total_attempts > 0 {
@@ -752,25 +752,17 @@ impl LevelsApp {
                 if queued > 0 {
                     lines.push(format!(
                         "Journeys: {}/{} pairs ({:.0}%) complete • {} queued",
-                        aggregate.completed_pairs,
-                        aggregate.pair_count,
-                        pct,
-                        queued,
+                        aggregate.completed_pairs, aggregate.pair_count, pct, queued,
                     ));
                 } else if aggregate.completed_pairs < aggregate.pair_count {
                     lines.push(format!(
                         "Journeys: {}/{} pairs ({:.0}%) complete",
-                        aggregate.completed_pairs,
-                        aggregate.pair_count,
-                        pct,
+                        aggregate.completed_pairs, aggregate.pair_count, pct,
                     ));
                 }
             }
         } else if queued > 0 {
-            lines.push(format!(
-                "Journeys: {} pair(s) queued for analysis",
-                queued
-            ));
+            lines.push(format!("Journeys: {} pair(s) queued for analysis", queued));
         }
 
         lines
@@ -808,9 +800,7 @@ impl LevelsApp {
 
         Some(format!(
             "Model Update in Progress: {}/{} = {:.0}%.",
-            completed_pairs,
-            total_jobs,
-            pct,
+            completed_pairs, total_jobs, pct,
         ))
     }
 
@@ -822,9 +812,7 @@ impl LevelsApp {
 
         format!(
             "{} {}: {}",
-            UI_TEXT.journey_status_current_prefix,
-            summary.pair,
-            note
+            UI_TEXT.journey_status_current_prefix, summary.pair, note
         )
     }
 
@@ -840,16 +828,13 @@ impl LevelsApp {
 
         let mut parts = vec![format!(
             "{}/{} {}",
-            aggregate.completed_pairs,
-            aggregate.pair_count,
-            UI_TEXT.journey_status_pairs_label
+            aggregate.completed_pairs, aggregate.pair_count, UI_TEXT.journey_status_pairs_label
         )];
 
         if aggregate.zones_analyzed > 0 {
             parts.push(format!(
                 "{} {}",
-                aggregate.zones_analyzed,
-                UI_TEXT.journey_status_zones_label
+                aggregate.zones_analyzed, UI_TEXT.journey_status_zones_label
             ));
         }
 

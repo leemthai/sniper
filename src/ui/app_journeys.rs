@@ -113,9 +113,7 @@ impl LevelsApp {
     ) -> JourneyContextResult {
         let Some(zone_targets) = Self::collect_zone_targets(context, should_log_pair) else {
             return JourneyContextResult {
-                summary: JourneySummaryUpdate::NoData(
-                    UI_TEXT.journey_status_no_zones.to_string(),
-                ),
+                summary: JourneySummaryUpdate::NoData(UI_TEXT.journey_status_no_zones.to_string()),
             };
         };
 

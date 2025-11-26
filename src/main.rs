@@ -2,17 +2,32 @@
 //!
 //! Thin binary entry point - all logic lives in lib.rs
 
+#![cfg_attr(target_arch = "wasm32", allow(dead_code))]
+
+#[cfg(not(target_arch = "wasm32"))]
 use clap::Parser;
+#[cfg(not(target_arch = "wasm32"))]
 use eframe::NativeOptions;
+#[cfg(not(target_arch = "wasm32"))]
 use klines::{
     Cli,
     config::{APP_STATE_PATH, INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_ACCEPTABLE_AGE_SECONDS},
     data::{fetch_pair_data, timeseries::serde_version::write_timeseries_data_async},
     run_app,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::runtime::Runtime;
 
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    panic!(
+        "The native binary is not available for wasm32 builds. Build the wasm target via web entrypoints instead."
+    );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     std::panic::set_hook(Box::new(|panic_info| {
         eprintln!("Applicated panicked: {:?}", panic_info);
