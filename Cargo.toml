@@ -1,12 +1,12 @@
 [package]
-name = "klines"
+name = "zone-sniper"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.91"
 autobins = false # Disable automatic binary discovery (so need list bins explicitly below)
 
 # Set default bin name
-default-run = "official"
+default-run = "zone-sniper"
 
 # Library target for tests and benchmarks
 [lib]
@@ -14,7 +14,7 @@ name = "klines"
 path = "src/lib.rs"
 
 [[bin]]
-name="official"
+name="zone-sniper"
 path = "src/main.rs"
 
 [[bin]]
@@ -44,11 +44,21 @@ poll-promise = "0.3"
 env_logger = "0.11.8"
 log = "0.4.28"
 find_peaks = "0.1.5"
-getrandom = { version = "0.3.4", features = ["wasm_js"] }
+
+getrandom = { package = "getrandom", version = "0.3.4", features = ["wasm_js"] }
 getrandom02 = { package = "getrandom", version = "0.2.16", features = ["js"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.105"  # Must match my CLI version of wasm-bindgen
+console_error_panic_hook = "0.1" # <--- ADD THIS
+console_log = "1"                # <--- ADD THIS
+log = "0.4"                      # <--- ADD THIS
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
 futures = "0.3.31"
 binance-sdk = { version = "27.0", features = ["spot"] }
 tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
+
+[profile.release]
+panic = "unwind"

@@ -1,8 +1,12 @@
-//! Klines - Trading zone analysis application
+//! Zone Sniper - Trading zone analysis application
 //!
 //! Thin binary entry point - all logic lives in lib.rs
 
 #![cfg_attr(target_arch = "wasm32", allow(dead_code))]
+
+// Only import wasm_bindgen when targeting WASM
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 #[cfg(not(target_arch = "wasm32"))]
 use clap::Parser;
@@ -20,8 +24,15 @@ use std::path::PathBuf;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::runtime::Runtime;
 
+// Only compile this function when targeting WASM
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn _keep_alive() {}
+
 #[cfg(target_arch = "wasm32")]
 fn main() {
+    #[cfg(target_arch = "wasm32")]
+    console_error_panic_hook::set_once();
     panic!(
         "The native binary is not available for wasm32 builds. Build the wasm target via web entrypoints instead."
     );

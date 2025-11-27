@@ -6,7 +6,7 @@
 
 /// Maximum number of pairs that the WASM demo should load, even if
 /// more symbols are available in `pairs.txt` or the bundled cache.
-pub const WASM_MAX_PAIRS: usize = 12;
+pub const WASM_MAX_PAIRS: usize = 10;
 
 /// When `true` the WASM demo must rely exclusively on embedded /
 /// cached data sources and skip any network requests.

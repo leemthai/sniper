@@ -12,6 +12,8 @@ use crate::config::{
 use futures::StreamExt;
 #[cfg(not(target_arch = "wasm32"))]
 use serde::Deserialize;
+#[cfg(target_arch = "wasm32")]
+use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -20,6 +22,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+#[cfg(target_arch = "wasm32")]
+use serde_json;
+#[cfg(target_arch = "wasm32")]
+const DEMO_PRICES_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/kline_data/demo_prices.json"
+));
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Deserialize)]
@@ -183,17 +192,32 @@ impl Default for PriceStreamManager {
 }
 
 #[cfg(target_arch = "wasm32")]
-#[derive(Default, Clone)]
-pub struct PriceStreamManager;
+#[derive(Clone)]
+pub struct PriceStreamManager {
+    prices: HashMap<String, f64>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Default for PriceStreamManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[cfg(target_arch = "wasm32")]
 impl PriceStreamManager {
     pub fn new() -> Self {
-        Self
+        let parsed: HashMap<String, f64> = serde_json::from_str(DEMO_PRICES_JSON).unwrap_or_default();
+        let mut prices = HashMap::new();
+        for (symbol, price) in parsed {
+            prices.insert(symbol.to_lowercase(), price);
+        }
+        Self { prices }
     }
 
-    pub fn get_price(&self, _symbol: &str) -> Option<f64> {
-        None
+    pub fn get_price(&self, symbol: &str) -> Option<f64> {
+        let symbol_lower = symbol.to_lowercase();
+        self.prices.get(&symbol_lower).copied()
     }
 
     pub fn suspend(&self) {}
@@ -205,13 +229,10 @@ impl PriceStreamManager {
     }
 
     pub fn connection_health(&self) -> f64 {
-        0.0
+        100.0
     }
 
-    pub fn subscribe_all(&self, _symbols: Vec<String>) {
-        #[cfg(debug_assertions)]
-        println!("Price stream disabled in WASM demo build.");
-    }
+    pub fn subscribe_all(&self, _symbols: Vec<String>) {}
 }
 
 /// Wrapper that handles reconnection logic with exponential backoff for a combined stream
