@@ -10,9 +10,9 @@ use crate::ui::app_simulation::SimDirection;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
 
-use super::app::LevelsApp;
+use super::app::ZoneSniperApp;
 
-impl LevelsApp {
+impl ZoneSniperApp {
     pub(super) fn render_side_panel(&mut self, ctx: &egui::Context) {
         let side_panel_frame = egui::Frame::new().fill(UI_CONFIG.colors.side_panel);
         egui::SidePanel::left("left_panel")

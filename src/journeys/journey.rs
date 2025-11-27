@@ -3,7 +3,8 @@
 //! Provides core data structures for Historical Price Journey Analysis (HPJA)
 //! as outlined in @docs/spec/spec.md.
 
-use std::time::{Duration, Instant};
+use crate::utils::app_time::now;
+use std::time::Duration;
 
 use crate::config::debug;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -583,7 +584,7 @@ impl<'a> JourneyAnalyzer<'a> {
             compute_kelly: request.compute_kelly,
         };
 
-        let start_time = Instant::now();
+        let start_time = now();
         let analysis = self.analyze(&params)?;
         let elapsed = start_time.elapsed();
 

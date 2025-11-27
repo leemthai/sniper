@@ -4,6 +4,7 @@
         <meta charset="utf-8" />
         <title>Egui Wasm App</title>
         <!-- This line tells Trunk to link your Rust application's code -->
+        <!-- To run debug version, use: data-wasm-path="target/wasm-32-unknown-unknown/debug/zone-sniper.wasm" -->
         <link
             data-trunk
             rel="rust"
@@ -11,6 +12,32 @@
             data-bin="zone-sniper"
         />
     </head>
+    <style>
+        html {
+            /* Force the browser window to be the hard limit */
+            height: 100%;
+            width: 100%;
+        }
+
+        body {
+            /* Remove default margins that cause scrollbars */
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            /* CRITICAL: This stops the "growing" loop */
+            overflow: hidden;
+            background-color: #000; /* Optional: matches dark mode */
+        }
+
+        #the_canvas_id {
+            /* Force canvas to strictly match the viewport */
+            height: 100%;
+            width: 100%;
+            display: block; /* Removes subtle scrollbars from inline elements */
+        }
+    </style>
+
     <body>
         <!-- The canvas where egui will render -->
         <canvas id="the_canvas_id"></canvas>

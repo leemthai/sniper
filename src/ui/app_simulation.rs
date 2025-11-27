@@ -1,4 +1,4 @@
-use super::LevelsApp;
+use super::ZoneSniperApp;
 #[cfg(debug_assertions)]
 use crate::config::debug::PRINT_SIMULATION_EVENTS;
 use crate::models::TradingModel;
@@ -55,7 +55,7 @@ impl std::fmt::Display for SimStepSize {
     }
 }
 
-impl LevelsApp {
+impl ZoneSniperApp {
     pub(super) fn get_display_price(&mut self, pair: &str) -> Option<f64> {
         if self.is_simulation_mode {
             if let Some(live_price) = self

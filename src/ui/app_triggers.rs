@@ -1,18 +1,19 @@
-use std::time::{Duration, Instant};
+use crate::utils::app_time::AppInstant;
+use std::time::Duration;
 
 #[cfg(debug_assertions)]
 use crate::config::debug::PRINT_JOURNEY_SUMMARY;
 #[cfg(debug_assertions)]
 use crate::config::debug::PRINT_TRIGGER_UPDATES;
 use crate::config::{CVA_MIN_SECONDS_BETWEEN_RECALCS, CVA_PRICE_RECALC_THRESHOLD_PCT};
-use crate::ui::app::{DataParams, LevelsApp};
+use crate::ui::app::{DataParams, ZoneSniperApp};
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct PairTriggerState {
     pub(super) anchor_price: Option<f64>,
     pub(super) pending_price: Option<f64>,
     pub(super) active_price: Option<f64>,
-    pub(super) last_run_at: Option<Instant>,
+    pub(super) last_run_at: Option<AppInstant>,
     pub(super) is_stale: bool,
     pub(super) in_progress: bool,
     pub(super) stale_reason: Option<String>,
@@ -23,7 +24,7 @@ pub(super) struct PairTriggerState {
 pub(super) struct JourneyTriggerState {
     pub(super) is_stale: bool,
     pub(super) in_progress: bool,
-    pub(super) last_run_at: Option<Instant>,
+    pub(super) last_run_at: Option<AppInstant>,
     pub(super) stale_reason: Option<String>,
 }
 
@@ -51,7 +52,7 @@ impl JourneyTriggerState {
 
     pub(super) fn on_run_finished(&mut self) {
         self.in_progress = false;
-        self.last_run_at = Some(Instant::now());
+        self.last_run_at = Some(AppInstant::now());
         self.stale_reason = None;
     }
 }
@@ -117,7 +118,7 @@ impl PairTriggerState {
         self.active_price = None;
         self.pending_price = None;
         self.in_progress = false;
-        self.last_run_at = Some(Instant::now());
+        self.last_run_at = Some(AppInstant::now());
         self.stale_reason = None;
         follow_up
     }
@@ -127,7 +128,7 @@ impl PairTriggerState {
         self.is_stale = false;
         self.active_price = None;
         self.pending_price = None;
-        self.last_run_at = Some(Instant::now());
+        self.last_run_at = Some(AppInstant::now());
         self.stale_reason = Some(reason.into());
     }
 
@@ -138,7 +139,7 @@ impl PairTriggerState {
     }
 }
 
-impl LevelsApp {
+impl ZoneSniperApp {
     pub(super) fn sync_pair_triggers(&mut self) -> Vec<String> {
         let available_pairs = self.data_state.timeseries_collection.unique_pair_names();
 
@@ -407,7 +408,7 @@ impl LevelsApp {
 
         #[cfg(debug_assertions)]
         let started_at = if PRINT_JOURNEY_SUMMARY {
-            Some(Instant::now())
+            Some(AppInstant::now())
         } else {
             None
         };
@@ -485,7 +486,7 @@ mod tests {
         trigger.on_job_scheduled(204.0);
         trigger.on_job_success();
 
-        trigger.last_run_at = Some(Instant::now());
+        trigger.last_run_at = Some(AppInstant::now());
         trigger.mark_stale("within debounce", Some(204.0));
 
         assert!(trigger.ready_to_schedule());

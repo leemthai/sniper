@@ -29,7 +29,8 @@ pub use analysis::ZoneGenerator;
 pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
 pub use domain::{Candle, PairInterval};
 pub use models::{CVACore, TimeSeriesSlice, TradingModel, Zone};
-pub use ui::LevelsApp;
+pub use ui::ZoneSniperApp;
+pub use utils::app_time;
 
 // Re-export constants (matching main.rs)
 pub use utils::time_utils::{MS_IN_15_MIN, MS_IN_H};
@@ -63,6 +64,6 @@ pub fn run_app(
     cc: &eframe::CreationContext,
     timeseries_data: TimeSeriesCollection,
 ) -> Box<dyn eframe::App> {
-    let app = ui::LevelsApp::new(cc, timeseries_data);
+    let app = ui::ZoneSniperApp::new(cc, timeseries_data);
     Box::new(app)
 }

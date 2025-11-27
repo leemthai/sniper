@@ -1,15 +1,15 @@
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-
+use crate::utils::app_time::now;
 use eframe::egui;
 use poll_promise::Promise;
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::analysis::pair_analysis::ZoneGenerator;
 #[cfg(debug_assertions)]
 use crate::config::debug::{PRINT_MONITOR_PROGRESS, PRINT_TRIGGER_UPDATES};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::{CVACore, PairContext, TradingModel};
-use crate::ui::app::{AppError, DataParams, LevelsApp};
+use crate::ui::app::{AppError, DataParams, ZoneSniperApp};
 
 pub(super) struct AsyncCalcResult {
     pub(super) result: Result<Arc<CVACore>, AppError>,
@@ -23,7 +23,7 @@ impl AsyncCalcResult {
     }
 }
 
-impl LevelsApp {
+impl ZoneSniperApp {
     pub(super) fn start_async_calculation(&mut self, params: DataParams) {
         if self.calculation_promise.is_some() {
             return;
@@ -214,7 +214,7 @@ fn run_cva_calculation(
     timeseries: TimeSeriesCollection,
     params_clone: DataParams,
 ) -> AsyncCalcResult {
-    let calc_start = Instant::now();
+    let calc_start = now();
 
     let result = match params_clone.pair() {
         Ok(pair) => {

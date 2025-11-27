@@ -20,9 +20,37 @@ impl CreateTimeSeriesData for WasmDemoData {
         let cache: CacheFile = bincode::deserialize(DEMO_CACHE_BYTES)
             .context("Failed to deserialize embedded demo cache")?;
 
+        // Log based on cache.data *before* we move it out
+        #[cfg(debug_assertions)]
+        {
+            let series_count = cache.data.series_data.len();
+            log::info!(
+                "WASM demo cache deserialized: interval_ms={} version={} series_count={}",
+                cache.interval_ms,
+                cache.version,
+                series_count
+            );
+            let names: Vec<String> = cache
+                .data
+                .series_data
+                .iter()
+                .map(|ts| ts.pair_interval.name().to_string())
+                .collect();
+            log::info!("WASM demo cache pairs: {:?}", names);
+        }
+
+        // Now move the data out
         let mut data = cache.data;
         if data.series_data.len() > WASM_MAX_PAIRS {
+            #[cfg(debug_assertions)]
+            let original_len = data.series_data.len();
             data.series_data.truncate(WASM_MAX_PAIRS);
+            #[cfg(debug_assertions)]
+            log::info!(
+                "WASM demo build limited to {} pairs (from {}).",
+                WASM_MAX_PAIRS,
+                original_len
+            );
         }
         Ok(data)
     }

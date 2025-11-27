@@ -1,9 +1,10 @@
-use std::time::{Duration, Instant};
+use crate::utils::app_time::now;
+use std::time::Duration;
 
 use crate::journeys::{JourneyAnalyzer, JourneyExecution, ZoneTarget};
 use crate::models::PairContext;
 
-use super::app::{JourneySummaryUpdate, LevelsApp};
+use super::app::{JourneySummaryUpdate, ZoneSniperApp};
 use crate::config::debug::PRINT_TRIGGER_UPDATES;
 use crate::ui::config::UI_TEXT;
 
@@ -11,7 +12,7 @@ struct JourneyContextResult {
     summary: JourneySummaryUpdate,
 }
 
-impl LevelsApp {
+impl ZoneSniperApp {
     fn log_journey_execution(execution: &JourneyExecution) {
         let stats = &execution.analysis.stats;
 
@@ -118,7 +119,7 @@ impl LevelsApp {
             };
         };
 
-        let pair_start = Instant::now();
+        let pair_start = now();
 
         let interval_ms = crate::config::INTERVAL_WIDTH_TO_ANALYSE_MS;
         let tolerance_pct = crate::config::JOURNEY_START_PRICE_TOLERANCE_PCT;

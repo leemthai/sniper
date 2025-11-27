@@ -40,9 +40,17 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
     // B. Setup for Web
     let web_options = eframe::WebOptions::default();
 
-    // C. Create Empty Data (WASM can't block to fetch it yet)
-    // You will need to trigger a fetch inside your app after it loads
-    let timeseries_data = TimeSeriesCollection::default();
+    // C. Load demo timeseries data for WASM using the bundled cache
+    //    This calls into fetch_pair_data(), which under wasm uses WasmDemoData.
+    let args = Cli { prefer_api: false };
+    let (timeseries_data, timeseries_signature) =
+        fetch_pair_data(KLINE_ACCEPTABLE_AGE_SECONDS, &args).await;
+
+    log::info!(
+        "WASM startup loaded timeseries via provider: {} (series_count={})",
+        timeseries_signature,
+        timeseries_data.series_data.len()
+    );
 
     // 1. Get the browser window and document
     let window = web_sys::window().expect("no global `window` exists");

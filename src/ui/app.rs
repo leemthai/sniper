@@ -18,13 +18,14 @@ use crate::models::{CVACore, PairContext, TradingModel};
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::ui_plot_view::PlotView;
 use crate::ui::utils::setup_custom_visuals;
+use crate::utils::app_time::{AppInstant, now};
 use eframe::{Frame, egui};
 use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Error types for application operations
 #[derive(Debug, Clone)]
@@ -78,7 +79,7 @@ pub(super) struct JourneySummary {
     pub timeouts: usize,
     pub stopped_out: usize,
     pub elapsed: Duration,
-    pub completed_at: Instant,
+    pub completed_at: AppInstant,
     pub status: JourneySummaryStatus,
     pub note: Option<String>,
     pub median_ttt_days: Option<f64>,
@@ -116,7 +117,7 @@ impl JourneySummary {
             timeouts,
             stopped_out,
             elapsed,
-            completed_at: Instant::now(),
+            completed_at: now(),
             status: JourneySummaryStatus::Completed,
             note: None,
             median_ttt_days,
@@ -133,7 +134,7 @@ impl JourneySummary {
             timeouts: 0,
             stopped_out: 0,
             elapsed: Duration::default(),
-            completed_at: Instant::now(),
+            completed_at: now(),
             status: JourneySummaryStatus::NoData,
             note: Some(note.into()),
             median_ttt_days: None,
@@ -150,7 +151,7 @@ impl JourneySummary {
             timeouts: 0,
             stopped_out: 0,
             elapsed: Duration::default(),
-            completed_at: Instant::now(),
+            completed_at: now(),
             status: JourneySummaryStatus::Failed,
             note: Some(note.into()),
             median_ttt_days: None,
@@ -268,7 +269,7 @@ impl DataState {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct LevelsApp {
+pub struct ZoneSniperApp {
     // UI state
     #[serde(default = "default_selected_pair")]
     pub(super) selected_pair: Option<String>,
@@ -378,7 +379,7 @@ fn default_time_horizon_days() -> u64 {
     TIME_HORIZON_DEFAULT_DAYS
 }
 
-impl LevelsApp {
+impl ZoneSniperApp {
     pub(super) fn record_journey_summary_success(
         &mut self,
         pair: &str,
@@ -492,7 +493,7 @@ impl LevelsApp {
         let mut timeouts = 0usize;
         let mut stopped_out = 0usize;
         let mut elapsed = Duration::default();
-        let mut latest_completion: Option<Instant> = None;
+        let mut latest_completion: Option<AppInstant> = None;
         let mut success_days: Vec<f64> = Vec::new();
 
         for summary in self.journey_summaries.values() {
@@ -522,8 +523,7 @@ impl LevelsApp {
             }
         }
 
-        let last_run_ago =
-            latest_completion.and_then(|inst| Instant::now().checked_duration_since(inst));
+        let last_run_ago = latest_completion.and_then(|inst| now().checked_duration_since(inst));
 
         let (median_ttt_days, p90_ttt_days) = if success_days.is_empty() {
             (None, None)
@@ -905,7 +905,7 @@ impl LevelsApp {
         cc: &eframe::CreationContext<'_>,
         timeseries_collection: TimeSeriesCollection,
     ) -> Self {
-        let mut levels_app: LevelsApp;
+        let mut levels_app: ZoneSniperApp;
 
         // Attempt to load the persisted state
         if let Some(storage) = cc.storage {
@@ -916,10 +916,10 @@ impl LevelsApp {
             } else {
                 #[cfg(debug_assertions)]
                 log::info!("Failed to get levels_app from storage. Creating a new one.");
-                levels_app = LevelsApp::new_with_initial_state();
+                levels_app = ZoneSniperApp::new_with_initial_state();
             }
         } else {
-            levels_app = LevelsApp::new_with_initial_state();
+            levels_app = ZoneSniperApp::new_with_initial_state();
         }
 
         // Initialize the data state with fresh timeseries and generator
@@ -943,7 +943,7 @@ impl LevelsApp {
         if available_pairs.is_empty() {
             levels_app.data_state.last_error = Some(AppError::DataNotAvailable);
             #[cfg(debug_assertions)]
-            log::error!("Warning: No trading pairs available in timeseries collection");
+            log::error!("No trading pairs available in timeseries collection");
             return levels_app;
         }
 
@@ -1123,7 +1123,7 @@ impl LevelsApp {
     }
 }
 
-impl eframe::App for LevelsApp {
+impl eframe::App for ZoneSniperApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         // Cancel and clean up any ongoing async calculation
         if let Some(promise) = self.calculation_promise.take() {

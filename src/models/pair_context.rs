@@ -1,5 +1,7 @@
 use crate::models::trading_view::{TradingModel, ZoneType};
-use std::time::Instant;
+// #[cfg(not(target_arch = "wasm32"))]
+// use std::time::Instant;
+use crate::utils::app_time::{AppInstant, now};
 
 /// Context and state for a single trading pair
 /// Tracks current price, superzone position, and trading signals
@@ -9,7 +11,8 @@ pub struct PairContext {
     pub current_price: f64,
     pub current_zones: Vec<(usize, ZoneType)>,
     pub trading_model: TradingModel,
-    pub last_updated: Instant,
+    // #[cfg(not(target_arch = "wasm32"))]
+    pub last_updated: AppInstant,
     pub signals: Vec<TradingSignal>,
 }
 
@@ -23,7 +26,8 @@ impl PairContext {
             current_price: initial_price,
             current_zones,
             trading_model,
-            last_updated: Instant::now(),
+            // #[cfg(not(target_arch = "wasm32"))]
+            last_updated: now(),
             signals: Vec::new(),
         }
     }
@@ -48,7 +52,10 @@ impl PairContext {
         self.current_price = new_price;
         let new_zones = self.trading_model.find_superzones_at_price(new_price);
         self.current_zones = new_zones.clone(); // Clone for passing; could move if not needed elsewhere
-        self.last_updated = Instant::now();
+        // #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.last_updated = now();
+        }
         // Clear old signals
         self.signals.clear();
         // Generate current state signals (for all zones the price is now in)

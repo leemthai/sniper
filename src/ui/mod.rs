@@ -13,5 +13,5 @@ pub mod ui_text;
 pub mod utils;
 
 // Re-export main app
-pub use app::LevelsApp;
+pub use app::ZoneSniperApp;
 pub use config::UI_CONFIG;
