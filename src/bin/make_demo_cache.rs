@@ -1,15 +1,15 @@
 use anyhow::{Context, Result, anyhow};
-use klines::config::{
-    INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_PATH, WASM_DEMO_PAIRS, WASM_MAX_PAIRS, kline_cache_filename,
-};
-use klines::data::price_stream::PriceStreamManager;
-use klines::data::timeseries::TimeSeriesCollection;
-use klines::data::timeseries::cache_file::CacheFile;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
+use zone_sniper::config::{
+    INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_PATH, WASM_DEMO_PAIRS, WASM_MAX_PAIRS, kline_cache_filename,
+};
+use zone_sniper::data::price_stream::PriceStreamManager;
+use zone_sniper::data::timeseries::TimeSeriesCollection;
+use zone_sniper::data::timeseries::cache_file::CacheFile;
 
 fn main() -> Result<()> {
     build_demo_cache()
@@ -68,7 +68,9 @@ fn filter_pairs(data: TimeSeriesCollection, whitelist: &HashSet<String>) -> Time
     filtered
 }
 
-fn fetch_current_prices_for_demo_pairs(demo_pairs: &HashSet<String>) -> Result<HashMap<String, f64>> {
+fn fetch_current_prices_for_demo_pairs(
+    demo_pairs: &HashSet<String>,
+) -> Result<HashMap<String, f64>> {
     let stream = PriceStreamManager::new();
 
     let symbols: Vec<String> = demo_pairs.iter().cloned().collect();
@@ -114,7 +116,10 @@ fn write_demo_prices_json(prices: &HashMap<String, f64>) -> Result<()> {
 
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent).with_context(|| {
-            format!("Failed to create directory for demo prices: {}", parent.display())
+            format!(
+                "Failed to create directory for demo prices: {}",
+                parent.display()
+            )
         })?;
     }
 
@@ -127,10 +132,17 @@ fn write_demo_prices_json(prices: &HashMap<String, f64>) -> Result<()> {
         .context("Failed to serialize demo prices to JSON")?;
 
     std::fs::write(&output_path, json).with_context(|| {
-        format!("Failed to write demo prices JSON to {}", output_path.display())
+        format!(
+            "Failed to write demo prices JSON to {}",
+            output_path.display()
+        )
     })?;
 
-    println!("✅ Demo prices written to {:?} ({} pairs).", output_path, prices.len());
+    println!(
+        "✅ Demo prices written to {:?} ({} pairs).",
+        output_path,
+        prices.len()
+    );
 
     Ok(())
 }

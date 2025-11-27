@@ -230,16 +230,19 @@ async fn handle_rate_limits(
                     bn_weight_limit_minute.saturating_sub(concurrent_kline_call_weight);
                 #[cfg(debug_assertions)]
                 if loop_count.is_multiple_of(DEBUG_PRINT_INTERVAL) {
-                    println!(
+                    log::info!(
                         "Binance min-weight: {} (headroom: {})",
-                        current_weight, required_headroom
+                        current_weight,
+                        required_headroom
                     );
                 }
                 if current_weight > required_headroom {
                     #[cfg(debug_assertions)]
-                    println!(
+                    log::info!(
                         "{} Current weight ({}) > required headroom ({}) — sleeping until start of next minute",
-                        _pair_interval, current_weight, required_headroom,
+                        _pair_interval,
+                        current_weight,
+                        required_headroom,
                     );
 
                     // Compute time until start of next minute
@@ -255,13 +258,14 @@ async fn handle_rate_limits(
                     };
 
                     #[cfg(debug_assertions)]
-                    println!(
+                    log::info!(
                         "{} Sleeping for {:?} to reach start of next minute",
-                        _pair_interval, sleep_duration
+                        _pair_interval,
+                        sleep_duration
                     );
                     sleep(sleep_duration).await;
                     #[cfg(debug_assertions)]
-                    println!("Awake at start of a new minute");
+                    log::info!("Awake at start of a new minute");
                 }
             }
         }
@@ -311,7 +315,7 @@ fn process_new_klines(
     if bn_klines.is_empty() {
         // Rare case: the batch had a single item prior to duplicate removal.
         #[cfg(debug_assertions)]
-        println!(
+        log::info!(
             "Rare case where new klines was single item before duplicate removal for {}.",
             pair_interval
         );
@@ -346,46 +350,53 @@ async fn fetch_binance_klines_with_limits(
             if let Some(conn_err) = e.downcast_ref::<errors::ConnectorError>() {
                 match conn_err {
                     connection_error::ConnectorClientError(msg) => {
-                        eprintln!(
+                        log::error!(
                             "{} Client error: Check your request parameters. {}",
-                            pair_interval, msg
+                            pair_interval,
+                            msg
                         );
                     }
                     connection_error::TooManyRequestsError(msg) => {
-                        eprintln!(
+                        log::error!(
                             "{} Rate limit exceeded. Please wait and try again. {}",
-                            pair_interval, msg
+                            pair_interval,
+                            msg
                         );
                     }
                     connection_error::RateLimitBanError(msg) => {
-                        eprintln!(
+                        log::error!(
                             "{} IP address banned due to excessive rate limits. {}",
-                            pair_interval, msg
+                            pair_interval,
+                            msg
                         );
                     }
                     errors::ConnectorError::ServerError { msg, status_code } => {
-                        eprintln!(
+                        log::error!(
                             "{} Server error: {} (status code: {:?})",
-                            pair_interval, msg, status_code
+                            pair_interval,
+                            msg,
+                            status_code
                         );
                     }
                     errors::ConnectorError::NetworkError(msg) => {
-                        eprintln!(
+                        log::error!(
                             "{} Network error: Check your internet connection. {}",
-                            pair_interval, msg
+                            pair_interval,
+                            msg
                         );
                     }
                     errors::ConnectorError::NotFoundError(msg) => {
-                        eprintln!("Resource not found. {}", msg);
+                        log::error!("Resource not found. {}", msg);
                     }
                     connection_error::BadRequestError(msg) => {
-                        eprintln!(
+                        log::error!(
                             "{} Bad request: Verify your input parameters. {}",
-                            pair_interval, msg
+                            pair_interval,
+                            msg
                         );
                     }
                     other => {
-                        eprintln!("Unexpected ConnectionError variant: {:?}", other);
+                        log::error!("Unexpected ConnectionError variant: {:?}", other);
                     }
                 }
                 Err(
@@ -393,9 +404,10 @@ async fn fetch_binance_klines_with_limits(
                         .context(format!("Binance API call failed for {}", pair_interval)),
                 )
             } else {
-                eprintln!(
+                log::error!(
                     "An unexpected error occurred for {}: {:#}",
-                    pair_interval, e
+                    pair_interval,
+                    e
                 );
                 Err(
                     anyhow::Error::new(BNKlineError::ConnectionFailed(e.to_string())).context(

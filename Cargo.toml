@@ -8,10 +8,11 @@ autobins = false # Disable automatic binary discovery (so need list bins explici
 # Set default bin name
 default-run = "zone-sniper"
 
-# Library target for tests and benchmarks
+# 1. CRITICAL: Allow the library to be used by WASM *and* your Binary
 [lib]
-name = "klines"
+name = "zone_sniper"   # Changed from "klines" to match your code
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"] # REQUIRED: 'cdylib' for WASM, 'rlib' for main.rs
 
 [[bin]]
 name="zone-sniper"
@@ -50,9 +51,11 @@ getrandom02 = { package = "getrandom", version = "0.2.16", features = ["js"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.105"  # Must match my CLI version of wasm-bindgen
+wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1" # <--- ADD THIS
 console_log = "1"                # <--- ADD THIS
-log = "0.4"                      # <--- ADD THIS
+# UPDATE web-sys with these specific features:
+web-sys = { version = "0.3", features = ["console", "Window", "Document", "HtmlCanvasElement", "Element"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }

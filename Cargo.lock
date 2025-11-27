@@ -6362,6 +6362,8 @@ dependencies = [
  "tokio-tungstenite 0.28.0",
  "tracing",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

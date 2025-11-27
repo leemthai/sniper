@@ -16,8 +16,8 @@ pub fn check_local_data_validity(
 
     #[cfg(debug_assertions)]
     {
-        println!("Checking validity of local cache at {:?}...", full_path);
-        println!("Fetching data from local disk...");
+        log::info!("Checking validity of local cache at {:?}...", full_path);
+        log::info!("Fetching data from local disk...");
     }
     let cache = CacheFile::load_from_path(&full_path)?;
 
@@ -50,9 +50,12 @@ pub fn check_local_data_validity(
     }
 
     #[cfg(debug_assertions)]
-    println!(
+    log::info!(
         "✅ Cache valid: v{}, {}s old (limit {}s), interval {}ms",
-        cache.version, seconds_ago, recency_required_secs, cache.interval_ms
+        cache.version,
+        seconds_ago,
+        recency_required_secs,
+        cache.interval_ms
     );
 
     Ok(())
@@ -67,7 +70,7 @@ pub fn write_timeseries_data_locally(
 ) -> Result<()> {
     if timeseries_signature != "Binance API" {
         #[cfg(debug_assertions)]
-        println!("Skipping cache write (data not from Binance API)");
+        log::info!("Skipping cache write (data not from Binance API)");
         return Ok(());
     }
 
@@ -75,7 +78,7 @@ pub fn write_timeseries_data_locally(
     let dir_path = PathBuf::from(KLINE_PATH);
     let full_path = dir_path.join(&filename);
 
-    println!("Writing cache to disk: {:?}...", full_path);
+    log::info!("Writing cache to disk: {:?}...", full_path);
     let start_time = std::time::Instant::now();
 
     let cache = CacheFile::new(
@@ -87,7 +90,7 @@ pub fn write_timeseries_data_locally(
 
     let elapsed = start_time.elapsed();
     let file_size = std::fs::metadata(&full_path)?.len();
-    println!(
+    log::info!(
         "✅ Cache written: {} ({:.1} MB in {:.2}s = {:.1} MB/s)",
         filename,
         file_size as f64 / 1_048_576.0,
@@ -131,7 +134,7 @@ impl CreateTimeSeriesData for SerdeVersion {
 
         // Read file content
         #[cfg(debug_assertions)]
-        println!("Reading cache from: {:?}...", full_path);
+        log::info!("Reading cache from: {:?}...", full_path);
 
         let cache = tokio::task::spawn_blocking(move || CacheFile::load_from_path(&full_path))
             .await
@@ -141,7 +144,7 @@ impl CreateTimeSeriesData for SerdeVersion {
         #[cfg(debug_assertions)]
         {
             let elapsed = start_time.elapsed();
-            println!(
+            log::info!(
                 "✅ Cache loaded: {} pairs in {:.2}s",
                 cache.data.series_data.len(),
                 elapsed.as_secs_f64()
