@@ -6,9 +6,9 @@ use crate::ui::app_triggers::PairTriggerState;
 use crate::analysis::MultiPairMonitor;
 use crate::analysis::pair_analysis::ZoneGenerator;
 #[cfg(debug_assertions)]
-use crate::config::debug::PRINT_MONITOR_PROGRESS;
-#[cfg(debug_assertions)]
-use crate::config::debug::PRINT_UI_INTERACTIONS;
+use crate::config::debug::{
+    PRINT_MONITOR_PROGRESS, PRINT_SHUTDOWN, PRINT_STATE_SERDE, PRINT_UI_INTERACTIONS,
+};
 use crate::config::plot::MAX_JOURNEY_ZONE_LINES;
 use crate::config::{DEFAULT_PRICE_ZONE_COUNT, TIME_HORIZON_DEFAULT_DAYS};
 use crate::data::price_stream::PriceStreamManager;
@@ -905,82 +905,86 @@ impl ZoneSniperApp {
         cc: &eframe::CreationContext<'_>,
         timeseries_collection: TimeSeriesCollection,
     ) -> Self {
-        let mut levels_app: ZoneSniperApp;
+        let mut zone_sniper_app: ZoneSniperApp;
 
         // Attempt to load the persisted state
         if let Some(storage) = cc.storage {
             if let Some(value) = eframe::get_value(storage, eframe::APP_KEY) {
                 #[cfg(debug_assertions)]
-                log::info!("Successfully loaded persisted state");
-                levels_app = value;
+                if PRINT_STATE_SERDE {
+                    log::info!("Successfully loaded persisted state");
+                }
+                zone_sniper_app = value;
             } else {
                 #[cfg(debug_assertions)]
-                log::info!("Failed to get levels_app from storage. Creating a new one.");
-                levels_app = ZoneSniperApp::new_with_initial_state();
+                if PRINT_STATE_SERDE {
+                    log::info!("Failed to get Zone Sniper App state from storage. Creating anew.");
+                }
+                zone_sniper_app = ZoneSniperApp::new_with_initial_state();
             }
         } else {
-            levels_app = ZoneSniperApp::new_with_initial_state();
+            zone_sniper_app = ZoneSniperApp::new_with_initial_state();
         }
 
         // Initialize the data state with fresh timeseries and generator
         let generator = ZoneGenerator::default();
-        levels_app.data_state = DataState::new(timeseries_collection, generator);
+        zone_sniper_app.data_state = DataState::new(timeseries_collection, generator);
 
         // Explicitly reinitialize plot_view (it's skipped during serialization)
-        levels_app.plot_view = PlotView::new();
+        zone_sniper_app.plot_view = PlotView::new();
 
         // Initialize trigger maps with all available pairs
-        levels_app.pair_triggers = HashMap::new();
-        levels_app.journey_triggers = HashMap::new();
-        levels_app.last_calculated_params_by_pair = HashMap::new();
-        levels_app.cva_results_by_pair = HashMap::new();
-        levels_app.journey_summaries = HashMap::new();
-        levels_app.journey_aggregate = None;
+        zone_sniper_app.pair_triggers = HashMap::new();
+        zone_sniper_app.journey_triggers = HashMap::new();
+        zone_sniper_app.last_calculated_params_by_pair = HashMap::new();
+        zone_sniper_app.cva_results_by_pair = HashMap::new();
+        zone_sniper_app.journey_summaries = HashMap::new();
+        zone_sniper_app.journey_aggregate = None;
 
         // Validate that we have available pairs and sync trigger maps
-        let available_pairs = levels_app.sync_pair_triggers();
-        levels_app.sync_journey_triggers();
+        let available_pairs = zone_sniper_app.sync_pair_triggers();
+        zone_sniper_app.sync_journey_triggers();
         if available_pairs.is_empty() {
-            levels_app.data_state.last_error = Some(AppError::DataNotAvailable);
+            zone_sniper_app.data_state.last_error = Some(AppError::DataNotAvailable);
             #[cfg(debug_assertions)]
             log::error!("No trading pairs available in timeseries collection");
-            return levels_app;
+            return zone_sniper_app;
         }
 
         // Validate that the selected pair exists in current data, or pick the first one
-        if let Some(selected_pair) = &levels_app.selected_pair {
+        if let Some(selected_pair) = &zone_sniper_app.selected_pair {
             if !available_pairs.contains(selected_pair) {
                 #[cfg(debug_assertions)]
                 log::info!(
                     "Selected pair '{}' not found, defaulting to first available pair",
                     selected_pair
                 );
-                levels_app.selected_pair = available_pairs.first().cloned();
+                zone_sniper_app.selected_pair = available_pairs.first().cloned();
             }
         } else {
             // No pair selected, pick the first one
-            levels_app.selected_pair = available_pairs.first().cloned();
+            zone_sniper_app.selected_pair = available_pairs.first().cloned();
         }
 
         // Ensure initial trigger state is marked for recalculation
-        levels_app.mark_selected_pair_stale("initial load");
+        zone_sniper_app.mark_selected_pair_stale("initial load");
 
         // Validate zone count
-        if levels_app.zone_count == 0 {
+        if zone_sniper_app.zone_count == 0 {
             #[cfg(debug_assertions)]
             if PRINT_UI_INTERACTIONS {
                 log::info!("Warning: Zone count is 0, setting to default");
             }
-            levels_app.zone_count = default_zone_count();
+            zone_sniper_app.zone_count = default_zone_count();
         }
 
         // Generate initial data
-        levels_app.generate_data_based_on_start_ui(cc);
+        zone_sniper_app.generate_data_based_on_start_ui(cc);
 
         // Note: We'll initialize the multi-pair monitor after we have prices from WebSocket
         // This happens in the update() loop when prices first arrive
 
-        levels_app
+        zone_sniper_app
     }
 
     pub fn new_with_initial_state() -> Self {
@@ -1134,7 +1138,9 @@ impl eframe::App for ZoneSniperApp {
         self.calculation_promise = None;
 
         #[cfg(debug_assertions)]
-        log::info!("Application shutdown complete.");
+        if PRINT_SHUTDOWN {
+            log::info!("Application shutdown complete.");
+        }
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

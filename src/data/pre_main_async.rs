@@ -3,6 +3,8 @@
 use crate::Cli;
 #[cfg(target_arch = "wasm32")]
 use crate::config::WASM_MAX_PAIRS;
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_SERDE;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_VERSION};
 #[cfg(not(target_arch = "wasm32"))]
@@ -20,8 +22,6 @@ pub async fn fetch_pair_data(
     klines_acceptable_age_secs: i64,
     args: &Cli,
 ) -> (TimeSeriesCollection, &'static str) {
-    #[cfg(debug_assertions)]
-    log::info!("Fetching data asynchronously (whether from local disk or BN API)...");
     // Klines loading logic: If `check_local_data_validity` fails, then only choice is to read from API.
     // else if `check_local_data_validity` succeeds, both methods become available so we prioritize whatever the user wants (set to prioritize_local_disk_read via cli)
 
@@ -55,8 +55,8 @@ pub async fn fetch_pair_data(
                 }),
             ], // API first
             (_, Err(e)) => {
-                log::error!("⚠️  Local cache validation failed: {:#}", e);
-                log::error!("   Falling back to Binance API...");
+                log::warn!("⚠️  Local cache validation failed: {:#}", e);
+                log::warn!("⚠️  Falling back to Binance API...");
                 vec![Box::new(BNAPIVersion)] // API only
             }
         }
@@ -85,11 +85,12 @@ pub async fn fetch_pair_data(
     }
 
     #[cfg(debug_assertions)]
-    log::info!(
-        "Successfully retrieved time series data using: {}.",
-        timeseries_signature
-    );
-    #[cfg(debug_assertions)]
-    log::info!("Data fetch complete.");
+    if PRINT_SERDE {
+        log::info!(
+            "Successfully retrieved time series data using: {}.",
+            timeseries_signature
+        );
+        log::info!("Data fetch complete.");
+    }
     (timeseries_data, timeseries_signature)
 }

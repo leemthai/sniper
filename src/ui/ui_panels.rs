@@ -1,3 +1,5 @@
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_UI_INTERACTIONS;
 use crate::config::{TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS};
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::ScoreType;
@@ -164,7 +166,10 @@ impl<'a> DataGenerationPanel<'a> {
         // Defensive check: catch changes even if .clicked() didn't fire
         if self.selected_pair != previously_selected_pair {
             changed = self.selected_pair.clone();
-            log::info!("A new pair was selected: {:?}", self.selected_pair);
+            #[cfg(debug_assertions)]
+            if PRINT_UI_INTERACTIONS {
+                log::info!("A new pair was selected: {:?}", self.selected_pair);
+            }
         }
 
         changed

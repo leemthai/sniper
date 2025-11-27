@@ -2,9 +2,7 @@ use crate::utils::app_time::AppInstant;
 use std::time::Duration;
 
 #[cfg(debug_assertions)]
-use crate::config::debug::PRINT_JOURNEY_SUMMARY;
-#[cfg(debug_assertions)]
-use crate::config::debug::PRINT_TRIGGER_UPDATES;
+use crate::config::debug::{PRINT_JOURNEY_SUMMARY, PRINT_TRIGGER_UPDATES};
 use crate::config::{CVA_MIN_SECONDS_BETWEEN_RECALCS, CVA_PRICE_RECALC_THRESHOLD_PCT};
 use crate::ui::app::{DataParams, ZoneSniperApp};
 

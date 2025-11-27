@@ -1,7 +1,6 @@
 use crate::analysis::selection_criteria::{FilterChain, ZoneSelectionCriteria};
-use crate::config::debug::PRINT_CVA_CACHE_EVENTS;
 #[cfg(debug_assertions)]
-use crate::config::debug::PRINT_PLOT_CACHE_STATS;
+use crate::config::debug::{PRINT_CVA_CACHE_EVENTS, PRINT_PLOT_CACHE_STATS};
 use crate::config::{
     BACKGROUND_BAR_INTENSITY, CURRENT_PRICE_COLOR, CURRENT_PRICE_LINE_WIDTH,
     CURRENT_PRICE_OUTER_COLOR, CURRENT_PRICE_OUTER_WIDTH, DEFAULT_BAR_COLOR, HIGH_WICKS_ZONE_COLOR,
@@ -192,6 +191,7 @@ impl PlotView {
             && cache.time_decay_factor.to_bits() == time_decay_factor.to_bits()
         {
             self.cache_hits += 1;
+            #[cfg(debug_assertions)]
             if PRINT_CVA_CACHE_EVENTS {
                 log::info!(
                     "[plot cache] HIT: {} zones for {} (cache key {:?})",

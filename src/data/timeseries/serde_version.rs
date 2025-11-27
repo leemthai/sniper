@@ -1,3 +1,5 @@
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_SERDE;
 use crate::config::{KLINE_PATH, kline_cache_filename};
 use crate::utils::time_utils::how_many_seconds_ago;
 use anyhow::{Context, Result, bail};
@@ -15,7 +17,7 @@ pub fn check_local_data_validity(
     let full_path = PathBuf::from(KLINE_PATH).join(&filename);
 
     #[cfg(debug_assertions)]
-    {
+    if PRINT_SERDE {
         log::info!("Checking validity of local cache at {:?}...", full_path);
         log::info!("Fetching data from local disk...");
     }
@@ -50,13 +52,15 @@ pub fn check_local_data_validity(
     }
 
     #[cfg(debug_assertions)]
-    log::info!(
-        "✅ Cache valid: v{}, {}s old (limit {}s), interval {}ms",
-        cache.version,
-        seconds_ago,
-        recency_required_secs,
-        cache.interval_ms
-    );
+    if PRINT_SERDE {
+        log::info!(
+            "✅ Cache valid: v{}, {}s old (limit {}s), interval {}ms",
+            cache.version,
+            seconds_ago,
+            recency_required_secs,
+            cache.interval_ms
+        );
+    }
 
     Ok(())
 }
@@ -70,7 +74,9 @@ pub fn write_timeseries_data_locally(
 ) -> Result<()> {
     if timeseries_signature != "Binance API" {
         #[cfg(debug_assertions)]
-        log::info!("Skipping cache write (data not from Binance API)");
+        if PRINT_SERDE {
+            log::info!("Skipping cache write (data not from Binance API)");
+        }
         return Ok(());
     }
 
@@ -78,8 +84,11 @@ pub fn write_timeseries_data_locally(
     let dir_path = PathBuf::from(KLINE_PATH);
     let full_path = dir_path.join(&filename);
 
-    log::info!("Writing cache to disk: {:?}...", full_path);
-    let start_time = std::time::Instant::now();
+    #[cfg(debug_assertions)]
+    let start_time = PRINT_SERDE.then(|| {
+        log::info!("Writing cache to disk: {:?}...", full_path);
+        std::time::Instant::now()
+    });
 
     let cache = CacheFile::new(
         interval_ms,
@@ -88,15 +97,18 @@ pub fn write_timeseries_data_locally(
     );
     cache.save_to_path(&full_path)?;
 
-    let elapsed = start_time.elapsed();
-    let file_size = std::fs::metadata(&full_path)?.len();
-    log::info!(
-        "✅ Cache written: {} ({:.1} MB in {:.2}s = {:.1} MB/s)",
-        filename,
-        file_size as f64 / 1_048_576.0,
-        elapsed.as_secs_f64(),
-        (file_size as f64 / 1_048_576.0) / elapsed.as_secs_f64()
-    );
+    #[cfg(debug_assertions)]
+    if let Some(start) = start_time {
+        let elapsed = start.elapsed();
+        let file_size = std::fs::metadata(&full_path)?.len();
+        log::info!(
+            "✅ Cache written: {} ({:.1} MB in {:.2}s = {:.1} MB/s)",
+            filename,
+            file_size as f64 / 1_048_576.0,
+            elapsed.as_secs_f64(),
+            (file_size as f64 / 1_048_576.0) / elapsed.as_secs_f64()
+        );
+    }
 
     Ok(())
 }
@@ -129,21 +141,25 @@ impl CreateTimeSeriesData for SerdeVersion {
         let filename = kline_cache_filename(self.interval_ms);
         let full_path = PathBuf::from(KLINE_PATH).join(&filename);
 
+        // 1. Declare the timer as an Option BEFORE the task
+        // We use .then() which runs the closure only if PRINT_SERDE is true
         #[cfg(debug_assertions)]
-        let start_time = std::time::Instant::now();
+        let start_time = PRINT_SERDE.then(|| {
+            log::info!("Reading cache from: {:?}...", full_path);
+            std::time::Instant::now()
+        });
 
+        // 2. Perform the task (Variable scope is unaffected here)
         // Read file content
-        #[cfg(debug_assertions)]
-        log::info!("Reading cache from: {:?}...", full_path);
-
         let cache = tokio::task::spawn_blocking(move || CacheFile::load_from_path(&full_path))
             .await
             .context("Deserialization task panicked")?
             .context("Failed to load cache file")?;
 
+        // 3. Check if we have a start_time and log the result
         #[cfg(debug_assertions)]
-        {
-            let elapsed = start_time.elapsed();
+        if let Some(start) = start_time {
+            let elapsed = start.elapsed();
             log::info!(
                 "✅ Cache loaded: {} pairs in {:.2}s",
                 cache.data.series_data.len(),

@@ -17,7 +17,7 @@ pub const PRINT_ZONE_SCORING_FOR_PAIR: &str = "";
 pub const PRINT_JOURNEY_SUMMARY: bool = false;
 
 /// Emit UI interaction logs (e.g., pair switching, manual actions).
-pub const PRINT_UI_INTERACTIONS: bool = false;
+pub const PRINT_UI_INTERACTIONS: bool = true;
 
 /// Emit verbose logging for live price stream connections and ticks.
 pub const PRINT_PRICE_STREAM_UPDATES: bool = false;
@@ -48,11 +48,20 @@ pub const PRINT_STICKY_DWELL_SUMMARY: bool = false;
 /// - `DEBUG_JOURNEY_ATTEMPT_INDEX` selects which attempt (0-based) to trace.
 ///
 /// Set `DEBUG_JOURNEY_ATTEMPT_INDEX` to -1 to disable.
-pub const DEBUG_JOURNEY_ATTEMPT_INDEX: i32 = 0;
+pub const DEBUG_JOURNEY_ATTEMPT_INDEX: i32 = -1;
 
 /// Emit journey/trigger status updates (e.g., marking journeys stale, queued follow-ups).
 pub const PRINT_TRIGGER_UPDATES: bool = true;
 
 /// If non-empty, emit detailed journey analysis output only for this pair.
 /// Example: "PAXGUSDT". Use "" to disable.
-pub const PRINT_JOURNEY_FOR_PAIR: &str = "BTCUSDT";
+pub const PRINT_JOURNEY_FOR_PAIR: &str = "";
+
+/// Emit detailed serialization/deserialization logs.
+pub const PRINT_SERDE: bool = false;
+
+/// Emit details of UI state serialization/deserialization logs.
+pub const PRINT_STATE_SERDE: bool = false;
+
+/// Emit shutdown app messages.
+pub const PRINT_SHUTDOWN: bool = false;

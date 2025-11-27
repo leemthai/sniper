@@ -29,11 +29,42 @@ pub fn _keep_alive() {}
 fn main() {}
 
 #[cfg(target_arch = "wasm32")]
+pub fn init_log() {
+    // 1. Determine levels:
+    //    Debug build: I want Info, 3rd party needs to pipe down (Warn).
+    //    Release build: Only Errors.
+    let (global_level, my_code_level) = if cfg!(debug_assertions) {
+        (log::LevelFilter::Warn, log::LevelFilter::Info)
+    } else {
+        (log::LevelFilter::Error, log::LevelFilter::Error)
+    };
+
+    // 2. Configure Fern
+    let _ = fern::Dispatch::new()
+        // a. Set the "Global" noise floor (e.g., silence binance-sdk INFO logs)
+        .level(global_level)
+        // b. Override for YOUR specific crate (replace 'my_crate_name')
+        .level_for(env!("CARGO_CRATE_NAME"), my_code_level)
+        // c. Output to Browser Console
+        .chain(fern::Output::call(|record| {
+            let msg = record.args().to_string();
+            // Map Rust log levels to browser console methods
+            match record.level() {
+                log::Level::Error => web_sys::console::error_1(&msg.into()),
+                log::Level::Warn => web_sys::console::warn_1(&msg.into()),
+                log::Level::Info => web_sys::console::info_1(&msg.into()),
+                log::Level::Debug | log::Level::Trace => web_sys::console::log_1(&msg.into()),
+            }
+        }))
+        .apply();
+}
+
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
     // A. Init Logging
     console_error_panic_hook::set_once();
-    let _ = console_log::init_with_level(log::Level::Debug);
+    init_log();
 
     log::info!("🚀 Zone Sniper starting in WASM mode...");
 
@@ -78,6 +109,9 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
 #[cfg(not(target_arch = "wasm32"))]
 // Define this locally if not in lib.rs, or import it if it is in config
 const APP_STATE_PATH: &str = "app_state.json";
+// Emit CLI messages.
+pub const PRINT_CLI: bool = false;
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     use clap::Parser;
@@ -85,20 +119,32 @@ fn main() -> eframe::Result {
     use std::path::PathBuf;
     use tokio::runtime::Runtime;
     use zone_sniper::data::write_timeseries_data_async;
-
     // A. Init Logging
     std::panic::set_hook(Box::new(|panic_info| {
         eprintln!("Application panicked: {:?}", panic_info);
     }));
+    // Determine base levels based on Debug vs Release
+    let (global_level, my_code_level) = if cfg!(debug_assertions) {
+        // Debug: Others = Warn, Me = Info
+        (log::LevelFilter::Warn, log::LevelFilter::Info)
+    } else {
+        // Release: Everyone = Error
+        (log::LevelFilter::Error, log::LevelFilter::Error)
+    };
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
+        // Set the baseline for "all other crates" (binance, tokio, etc.)
+        .filter_level(global_level)
+        // Override the setting specifically for YOUR crate
+        .filter(Some("zone_sniper"), my_code_level)
         .init();
 
     // B. Parse Args
     let args = Cli::parse();
-    #[cfg(debug_assertions)]
-    log::info!("Parsed arguments: {:?}", args);
 
+    #[cfg(debug_assertions)]
+    if PRINT_CLI {
+        log::info!("Parsed arguments: {:?}", args);
+    }
     // C. Data Loading (Blocking)
     let rt = Runtime::new().expect("Failed to create Tokio runtime");
     let (timeseries_data, timeseries_signature) =

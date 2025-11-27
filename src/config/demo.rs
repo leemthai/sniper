@@ -10,6 +10,7 @@ pub const WASM_MAX_PAIRS: usize = 10;
 
 /// When `true` the WASM demo must rely exclusively on embedded /
 /// cached data sources and skip any network requests.
+/// And this must always be `true` in the WASM demo.
 pub const WASM_DISABLE_NETWORKING: bool = true;
 
 /// Directory (relative to the workspace root) that should be packaged
@@ -21,4 +22,4 @@ pub const WASM_DEMO_CACHE_FILE: &str = "demo_kline_30m_v4.bin";
 
 /// Curated list of pairs that should appear in the WASM demo cache.
 /// Update this when regenerating `demo_pairs.bin`.
-pub const WASM_DEMO_PAIRS: &[&str] = &["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
+pub const WASM_DEMO_PAIRS: &[&str] = &["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "PAXGUSDT"];
