@@ -117,7 +117,7 @@ impl LevelsApp {
         if self.apply_cached_results_for_pair(&new_pair) {
             #[cfg(debug_assertions)]
             if PRINT_UI_INTERACTIONS {
-                println!("[pair] Switched to {new_pair} using cached CVA results");
+                log::info!("[pair] Switched to {new_pair} using cached CVA results");
             }
             return;
         }

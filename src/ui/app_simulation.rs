@@ -4,16 +4,11 @@ use crate::config::debug::PRINT_SIMULATION_EVENTS;
 use crate::models::TradingModel;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum SimDirection {
+    #[default]
     Up,
     Down,
-}
-
-impl Default for SimDirection {
-    fn default() -> Self {
-        Self::Up
-    }
 }
 
 impl std::fmt::Display for SimDirection {
@@ -25,18 +20,13 @@ impl std::fmt::Display for SimDirection {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub(super) enum SimStepSize {
     Point1, // 0.1%
-    One,    // 1%
+    #[default]
+    One, // 1%
     Five,   // 5%
     Ten,    // 10%
-}
-
-impl Default for SimStepSize {
-    fn default() -> Self {
-        Self::One
-    }
 }
 
 impl SimStepSize {
@@ -77,9 +67,10 @@ impl LevelsApp {
                 self.simulated_prices.insert(pair.to_string(), live_price);
                 #[cfg(debug_assertions)]
                 if PRINT_SIMULATION_EVENTS {
-                    println!(
+                    log::info!(
                         "🎮 Initialized simulation price for {}: ${:.2}",
-                        pair, live_price
+                        pair,
+                        live_price
                     );
                 }
             }
@@ -104,18 +95,20 @@ impl LevelsApp {
                             self.simulated_prices.insert(pair.clone(), live_price);
                             #[cfg(debug_assertions)]
                             if PRINT_SIMULATION_EVENTS {
-                                println!(
+                                log::info!(
                                     "🎮 Entered SIMULATION MODE for {} at ${:.2}",
-                                    pair, live_price
+                                    pair,
+                                    live_price
                                 );
                             }
                         }
                     } else if let Some(_sim_price) = self.simulated_prices.get(pair) {
                         #[cfg(debug_assertions)]
                         if PRINT_SIMULATION_EVENTS {
-                            println!(
+                            log::info!(
                                 "🎮 Entered SIMULATION MODE for {} at ${:.2} (restored)",
-                                pair, _sim_price
+                                pair,
+                                _sim_price
                             );
                         }
                     }
@@ -125,7 +118,7 @@ impl LevelsApp {
             stream.resume();
             #[cfg(debug_assertions)]
             if PRINT_SIMULATION_EVENTS {
-                println!("📡 Exited to LIVE MODE (simulated prices preserved)");
+                log::info!("📡 Exited to LIVE MODE (simulated prices preserved)");
             }
         }
     }
@@ -146,9 +139,12 @@ impl LevelsApp {
 
             #[cfg(debug_assertions)]
             if PRINT_SIMULATION_EVENTS {
-                println!(
+                log::info!(
                     "💰 {} price: ${:.2} → ${:.2} ({:+.1}%)",
-                    pair, current_price, new_price, percent
+                    pair,
+                    current_price,
+                    new_price,
+                    percent
                 );
             }
 

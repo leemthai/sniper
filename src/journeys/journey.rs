@@ -271,7 +271,7 @@ impl<'a> JourneyAnalyzer<'a> {
                 && attempt_index == debug::DEBUG_JOURNEY_ATTEMPT_INDEX as usize;
 
             if debug_this_attempt {
-                println!(
+                log::info!(
                     "\n=== Debug journey attempt #{:03} for pair {} ===\nstart_timestamp_ms: {}\nstart_price: {:.4}\ntarget_price: {:.4} (target_is_above = {})\nstop_loss_pct: {:.2}%\nmax_journey_time: {:?}\nmax_steps: {}\n",
                     attempt_index,
                     params.pair,
@@ -299,9 +299,13 @@ impl<'a> JourneyAnalyzer<'a> {
                 if debug_this_attempt {
                     let elapsed_ms = (step as u64 * interval_ms) as f64;
                     let elapsed_days_debug = (elapsed_ms / MILLIS_PER_DAY).max(1.0);
-                    println!(
+                    log::info!(
                         "step {:04} | idx {} | elapsed_days ~ {:.2} | high {:.4} | low {:.4}",
-                        step, idx, elapsed_days_debug, high, low,
+                        step,
+                        idx,
+                        elapsed_days_debug,
+                        high,
+                        low,
                     );
                 }
 
@@ -319,9 +323,10 @@ impl<'a> JourneyAnalyzer<'a> {
                         final_price = stop_price;
 
                         if debug_this_attempt {
-                            println!(
+                            log::info!(
                                 "  -> STOPPED OUT at price {:.4} after {:.2} days (bull journey)",
-                                stop_price, elapsed_days
+                                stop_price,
+                                elapsed_days
                             );
                         }
                         break;
@@ -339,9 +344,10 @@ impl<'a> JourneyAnalyzer<'a> {
                         final_price = params.end_price;
 
                         if debug_this_attempt {
-                            println!(
+                            log::info!(
                                 "  -> SUCCESS: target {:.4} reached after {:.2} days (bull journey)",
-                                params.end_price, elapsed_days
+                                params.end_price,
+                                elapsed_days
                             );
                         }
                         break;
@@ -360,9 +366,10 @@ impl<'a> JourneyAnalyzer<'a> {
                         final_price = stop_price;
 
                         if debug_this_attempt {
-                            println!(
+                            log::info!(
                                 "  -> STOPPED OUT at price {:.4} after {:.2} days (bear journey)",
-                                stop_price, elapsed_days
+                                stop_price,
+                                elapsed_days
                             );
                         }
                         break;
@@ -380,9 +387,10 @@ impl<'a> JourneyAnalyzer<'a> {
                         final_price = params.end_price;
 
                         if debug_this_attempt {
-                            println!(
+                            log::info!(
                                 "  -> SUCCESS: target {:.4} reached after {:.2} days (bear journey)",
-                                params.end_price, elapsed_days
+                                params.end_price,
+                                elapsed_days
                             );
                         }
                         break;
@@ -417,9 +425,13 @@ impl<'a> JourneyAnalyzer<'a> {
             };
 
             if debug_this_attempt {
-                println!(
+                log::info!(
                     "--- Attempt summary ---\nsteps_taken: {}\nelapsed_days: {:.2}\nmax_drawdown_pct: {:.2}%\nfinal_price: {:.4}\noutcome: {:?}\n========================\n",
-                    steps_taken, elapsed_days, max_drawdown_pct, final_price, outcome,
+                    steps_taken,
+                    elapsed_days,
+                    max_drawdown_pct,
+                    final_price,
+                    outcome,
                 );
             }
 

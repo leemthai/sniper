@@ -29,7 +29,7 @@ impl MultiPairMonitor {
             // Check if update is needed (zone transition)
             if context.needs_update(new_price) {
                 // #[cfg(debug_assertions)]
-                // println!(
+                // log::info!(
                 //     "🔄 {}: Zone transition detected at price {:.2}",
                 //     pair, new_price
                 // );

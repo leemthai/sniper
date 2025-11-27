@@ -64,7 +64,7 @@ fn log_cache_miss_reason(cache: &HashMap<CacheKey, Arc<CVACore>>, requested: &Ca
 
     if let Some(existing) = same_pair_zone_decay {
         if existing.slice_ranges == requested.slice_ranges {
-            println!("   ↪ reason: identical key should have hit (possible hash collision)");
+            log::info!("   ↪ reason: identical key should have hit (possible hash collision)");
             return;
         }
 
@@ -93,24 +93,28 @@ fn log_cache_miss_reason(cache: &HashMap<CacheKey, Arc<CVACore>>, requested: &Ca
             "slice ranges differ (unable to locate first mismatch)".to_string()
         };
 
-        println!(
+        log::info!(
             "   ↪ reason: slice ranges changed (old {}, new {}) — {}",
-            len_old, len_new, diff_summary
+            len_old,
+            len_new,
+            diff_summary
         );
     } else if let Some(existing) = same_pair_zone {
-        println!(
+        log::info!(
             "   ↪ reason: time_decay_factor changed {:.6} → {:.6}",
-            existing.time_decay_factor, requested.time_decay_factor
+            existing.time_decay_factor,
+            requested.time_decay_factor
         );
     } else if let Some(existing) = same_pair {
-        println!(
+        log::info!(
             "   ↪ reason: zone_count changed {} → {}",
-            existing.zone_count, requested.zone_count
+            existing.zone_count,
+            requested.zone_count
         );
     } else if cache.is_empty() {
-        println!("   ↪ reason: cache is empty (first analysis run)");
+        log::info!("   ↪ reason: cache is empty (first analysis run)");
     } else {
-        println!(
+        log::info!(
             "   ↪ reason: no prior cached entries for pair {} (likely first run in this session)",
             requested.pair
         );
@@ -188,7 +192,7 @@ impl ZoneGenerator {
                 if PRINT_CVA_CACHE_EVENTS {
                     let total_candles: usize = slice_ranges.iter().map(|(s, e)| e - s).sum();
                     if let Some(start) = method_start_time.as_ref() {
-                        println!(
+                        log::info!(
                             "CVA Results Cache HIT for {} with {} ranges ({} total candles) and {} zones. Time: {:?}",
                             selected_pair,
                             slice_ranges.len(),
@@ -214,7 +218,7 @@ impl ZoneGenerator {
         #[cfg(debug_assertions)]
         if PRINT_CVA_CACHE_EVENTS {
             let total_candles: usize = slice_ranges.iter().map(|(s, e)| e - s).sum();
-            println!(
+            log::info!(
                 "Cache MISS - Calculating CVA results for {} with {} ranges ({} total candles) and {} zones...",
                 selected_pair,
                 slice_ranges.len(),
@@ -239,7 +243,7 @@ impl ZoneGenerator {
         #[cfg(debug_assertions)]
         if PRINT_CVA_CACHE_EVENTS {
             if let Some(start) = computation_start_time.as_ref() {
-                println!(
+                log::info!(
                     "Computation for {} took: {:?}",
                     selected_pair,
                     start.elapsed()

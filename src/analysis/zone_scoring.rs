@@ -56,7 +56,7 @@ impl CombinationStrategy {
 
             CombinationStrategy::WeightedSum(weights) => {
                 if weights.len() != scores.len() {
-                    eprintln!(
+                    log::error!(
                         "Warning: WeightedSum has {} weights but {} scores. Using average instead.",
                         weights.len(),
                         scores.len()
@@ -306,9 +306,10 @@ pub fn find_consolidation_zones_from_peaks(
             #[cfg(debug_assertions)]
             if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
             {
-                println!(
+                log::info!(
                     "{}: Adding left boundary peak at index 0 with prominence {}",
-                    _pair_name, prominence
+                    _pair_name,
+                    prominence
                 );
             }
             candidate_peaks.push((0, prominence));
@@ -326,7 +327,7 @@ pub fn find_consolidation_zones_from_peaks(
             #[cfg(debug_assertions)]
             if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
             {
-                println!(
+                log::info!(
                     "{}: Adding right boundary peak at index {} with prominence {}",
                     _pair_name,
                     n - 1,
@@ -346,7 +347,7 @@ pub fn find_consolidation_zones_from_peaks(
     // After dedup and sort:
     #[cfg(debug_assertions)]
     if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name {
-        println!(
+        log::info!(
             "DEBUG: Candidate peaks after boundary check: {:?}",
             candidate_peaks
         );
@@ -392,9 +393,11 @@ pub fn find_consolidation_zones_from_peaks(
             };
             if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
             {
-                println!(
+                log::info!(
                     "DEBUG: Peak at {} (prominence {:.6}): {}",
-                    pos, height, reason
+                    pos,
+                    height,
+                    reason
                 );
             }
         }
@@ -438,7 +441,7 @@ pub fn find_consolidation_zones_from_peaks(
         let _after_expansion_count = included_zones.len();
         #[cfg(debug_assertions)]
         if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name {
-            println!(
+            log::info!(
                 "DEBUG: Peak at {} expanded zones: {} (pre-peak) -> {} (added {})",
                 peak_idx,
                 _before_expansion_count,
@@ -465,7 +468,7 @@ pub fn find_consolidation_zones_from_peaks(
                 if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty()
                     && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
                 {
-                    println!(
+                    log::info!(
                         "{}: Filling gap at {} (score {:.3}) between peaks at {} ({:.3}) and {} ({:.3})",
                         _pair_name,
                         gap_idx,

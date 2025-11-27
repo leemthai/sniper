@@ -34,14 +34,14 @@ impl CreateTimeSeriesData for BNAPIVersion {
 
         let series_data = timeseries_data_load(&supply_interval_asset).await?;
         #[cfg(debug_assertions)]
-        println!(
+        log::info!(
             "\n...After loading all we have complete timeseries data for {} valid BN pairs. ",
             series_data.len(),
         );
         #[cfg(debug_assertions)]
         {
             for ts in &series_data {
-                println!(
+                log::info!(
                     "{} (started on {}, ended on {}) with {} klines and {:.2}% gaps",
                     ts.pair_interval,
                     time_utils::epoch_ms_to_utc(ts.first_kline_timestamp_ms),
@@ -53,7 +53,7 @@ impl CreateTimeSeriesData for BNAPIVersion {
         }
 
         let elapsed_time = start_time.elapsed(); // Calculate the elapsed time
-        println!("Main function executed in: {:?}", elapsed_time);
+        log::info!("Main function executed in: {:?}", elapsed_time);
 
         Ok(TimeSeriesCollection {
             name: "Binance TimeSeries Collection".to_string(),
@@ -96,11 +96,11 @@ pub async fn timeseries_data_load(
         let batch_size: u32 = batch_vec.len() as u32;
 
         // Process the current batch (i.e., make API calls)
-        println!("--- Processing batch of size {} ---", batch_vec.len());
+        log::info!("--- Processing batch of size {} ---", batch_vec.len());
         let start_tasks_time = Instant::now(); // Record the start time
         let mut handles: Vec<JoinHandle<Result<AllValidKlines4Pair>>> = Vec::new();
         for pair_interval in batch_vec {
-            println!(
+            log::info!(
                 "Processing: ({}, {},)",
                 pair_interval.name(),
                 // pair_interval.quote_asset,
@@ -112,8 +112,8 @@ pub async fn timeseries_data_load(
         }
         let results: Vec<Result<Result<AllValidKlines4Pair>, JoinError>> = join_all(handles).await;
         let duration = start_tasks_time.elapsed(); // Calculate the elapsed time
-        println!("\n...Time to complete all async tasks: {:?}", duration);
-        println!(
+        log::info!("\n...Time to complete all async tasks: {:?}", duration);
+        log::info!(
             "Number of results (successful + failed) returned is {}",
             results.len(),
         );
@@ -132,12 +132,12 @@ pub async fn timeseries_data_load(
             let pair_kline = match pair_kline {
                 Ok(data) => data,
                 Err(e) => {
-                    println!("Binance API error for pair: {:?}", e);
+                    log::info!("Binance API error for pair: {:?}", e);
                     continue;
                 }
             };
 
-            println!(
+            log::info!(
                 "{} Number of klines in Binance data is: {}",
                 pair_kline.pair_interval,
                 pair_kline.klines.len()
@@ -164,7 +164,7 @@ pub async fn timeseries_data_load(
             Ok(ohlcv) => Some(ohlcv),
             // For Err results, log the error and then return None to filter it out
             Err(e) => {
-                eprintln!("Error converting item: {}", e);
+                log::error!("Error converting item: {}", e);
                 None
             }
         })

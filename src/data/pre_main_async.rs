@@ -21,7 +21,7 @@ pub async fn fetch_pair_data(
     args: &Cli,
 ) -> (TimeSeriesCollection, &'static str) {
     #[cfg(debug_assertions)]
-    println!("Fetching data asynchronously (whether from local disk or BN API)...");
+    log::info!("Fetching data asynchronously (whether from local disk or BN API)...");
     // Klines loading logic: If `check_local_data_validity` fails, then only choice is to read from API.
     // else if `check_local_data_validity` succeeds, both methods become available so we prioritize whatever the user wants (set to prioritize_local_disk_read via cli)
 
@@ -55,8 +55,8 @@ pub async fn fetch_pair_data(
                 }),
             ], // API first
             (_, Err(e)) => {
-                eprintln!("⚠️  Local cache validation failed: {:#}", e);
-                eprintln!("   Falling back to Binance API...");
+                log::error!("⚠️  Local cache validation failed: {:#}", e);
+                log::error!("   Falling back to Binance API...");
                 vec![Box::new(BNAPIVersion)] // API only
             }
         }
@@ -76,19 +76,20 @@ pub async fn fetch_pair_data(
         if original_len > WASM_MAX_PAIRS {
             timeseries_data.series_data.truncate(WASM_MAX_PAIRS);
             #[cfg(debug_assertions)]
-            println!(
+            log::info!(
                 "WASM demo build limited to {} pairs (from {}).",
-                WASM_MAX_PAIRS, original_len
+                WASM_MAX_PAIRS,
+                original_len
             );
         }
     }
 
     #[cfg(debug_assertions)]
-    println!(
+    log::info!(
         "Successfully retrieved time series data using: {}.",
         timeseries_signature
     );
     #[cfg(debug_assertions)]
-    println!("Data fetch complete.");
+    log::info!("Data fetch complete.");
     (timeseries_data, timeseries_signature)
 }

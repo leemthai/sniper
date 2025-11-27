@@ -79,9 +79,11 @@ pub fn calibrate_time_decay(
             Ok(cva) => cva,
             Err(err) => {
                 if cfg!(debug_assertions) && PRINT_DECAY_CALIBRATION {
-                    eprintln!(
+                    log::error!(
                         "Time-decay sweep: failed to compute CVA for {} @ decay {:.3}: {}",
-                        pair, decay, err
+                        pair,
+                        decay,
+                        err
                     );
                 }
                 continue;
@@ -145,8 +147,8 @@ pub fn calibrate_time_decay(
     if let Some((best_eval, best_cva)) = best_candidate {
         let print_decay_calibration = cfg!(debug_assertions) && PRINT_DECAY_CALIBRATION;
         if print_decay_calibration {
-            println!("--- Time-decay calibration for {} ---", pair);
-            println!(
+            log::info!("--- Time-decay calibration for {} ---", pair);
+            log::info!(
                 "Best decay: {:.3} (score {:.3}) | median {:.1}c | p90 {:.1}c | cadence {:.2}/1k | time∆ {:.1}%",
                 best_eval.decay,
                 best_eval.score.total_score,
@@ -168,7 +170,7 @@ pub fn calibrate_time_decay(
                 best_eval.stats.time_in_zones_pct - best_eval.stats.price_occupancy_pct
             );
             for candidate in &evaluations {
-                println!(
+                log::info!(
                     "  decay {:.3} -> score {:.3} | median {:.1}c | p90 {:.1}c | cadence {:.2}/1k | stale {:.3} | flicker {:.3}",
                     candidate.decay,
                     candidate.score.total_score,
@@ -191,7 +193,7 @@ pub fn calibrate_time_decay(
                     candidate.score.flicker_penalty
                 );
             }
-            println!("-------------------------------------------");
+            log::info!("-------------------------------------------");
         }
 
         return Ok(Some(DecayCalibrationResult {

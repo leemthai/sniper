@@ -110,11 +110,11 @@ impl TryFrom<AllValidKlines4Pair> for OhlcvTimeSeriesTemp {
         // Detect whether the gap total in price data is "too big"
         // If it is, run code that cuts off *all* gaps up until the last gap
         let open_price_none_pct = vec_utils::count_pct_none_elements(&time_series.open_prices);
-        // println!("% of open price is {}", open_price_none_pct);
+        // log::info!("% of open price is {}", open_price_none_pct);
         time_series.pct_gaps = Some(open_price_none_pct);
         if open_price_none_pct > MAX_PCT_MISSING_KLINES_ALLOWED {
             #[cfg(debug_assertions)]
-            println!(
+            log::info!(
                 "{} has {:.2}% gaps, which is above our limit ({:.2}%), so serious surgery required. ",
                 time_series.pair_interval,
                 vec_utils::count_pct_none_elements(&time_series.open_prices),
@@ -122,15 +122,15 @@ impl TryFrom<AllValidKlines4Pair> for OhlcvTimeSeriesTemp {
             );
             // Find last None index, we will cut from this + 1
             let last_none_index = vec_utils::find_last_none_index(&time_series.open_prices);
-            println!("We have found last none index at {}", last_none_index);
-            println!(
+            log::info!("We have found last none index at {}", last_none_index);
+            log::info!(
                 "Before draining, open_prices was of size: {}",
                 time_series.open_prices.len()
             );
             // Drain all vectors so they cut off up to this index
             let removed_count = time_series.open_prices.drain(..last_none_index).count();
             #[cfg(debug_assertions)]
-            println!(
+            log::info!(
                 "After draining, open_prices is of size: {} and we removed {} items",
                 time_series.open_prices.len(),
                 removed_count
@@ -192,7 +192,7 @@ impl TryFrom<AllValidKlines4Pair> for OhlcvTimeSeriesTemp {
         // Warn if kline gaps are uneven between different kline members
         if !vec_utils::are_all_elements_same(&kline_gaps) {
             #[cfg(debug_assertions)]
-            eprintln!(
+            log::error!(
                 "For some reason the kline gaps are not all equal. This suggests not just gaps in data, but the cases where BN has data for one or more elements of the kline but not others e.g. has high_price but not low_price, for some kline(s). Here is actual data: {:?}",
                 kline_gaps
             );

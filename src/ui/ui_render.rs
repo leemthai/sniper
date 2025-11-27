@@ -588,13 +588,13 @@ impl LevelsApp {
                         SimDirection::Down => SimDirection::Up,
                     };
                     #[cfg(debug_assertions)]
-                    println!("🔄 Direction: {}", self.sim_direction);
+                    log::info!("🔄 Direction: {}", self.sim_direction);
                 }
 
                 if i.key_pressed(egui::Key::X) {
                     self.sim_step_size.cycle();
                     #[cfg(debug_assertions)]
-                    println!("📏 Step size: {}", self.sim_step_size);
+                    log::info!("📏 Step size: {}", self.sim_step_size);
                 }
 
                 if i.key_pressed(egui::Key::A) {

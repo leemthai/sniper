@@ -214,12 +214,12 @@ impl LevelsApp {
             self.enqueue_recalc_for_pair(pair);
         } else if cfg!(debug_assertions) {
             if let Some(price) = self.current_pair_price {
-                println!(
+                log::info!(
                     "[trigger] Marked {pair} stale ({reason}), waiting on debounce/availability @ {:.4}",
                     price
                 );
             } else {
-                println!("[trigger] Marked {pair} stale ({reason}), awaiting first price")
+                log::info!("[trigger] Marked {pair} stale ({reason}), awaiting first price")
             }
         }
     }
@@ -239,7 +239,7 @@ impl LevelsApp {
 
         if ranges.is_empty() {
             #[cfg(debug_assertions)]
-            println!("[trigger] No slice ranges for {pair}");
+            log::info!("[trigger] No slice ranges for {pair}");
             return;
         }
 
@@ -259,7 +259,7 @@ impl LevelsApp {
             if last_failed == &params {
                 #[cfg(debug_assertions)]
                 if PRINT_TRIGGER_UPDATES {
-                    println!(
+                    log::info!(
                         "[trigger] skipping {} – params match last failed attempt",
                         pair
                     );
@@ -323,7 +323,7 @@ impl LevelsApp {
 
             #[cfg(debug_assertions)]
             if PRINT_JOURNEY_SUMMARY {
-                println!(
+                log::info!(
                     "[journey] queued {pair} as stale ({reason}); queue_len={}",
                     self.journey_queue.len()
                 );
@@ -366,7 +366,7 @@ impl LevelsApp {
 
         #[cfg(debug_assertions)]
         if PRINT_JOURNEY_SUMMARY {
-            println!("[journey] global change -> cleared queue; awaiting fresh CVA ({reason})");
+            log::info!("[journey] global change -> cleared queue; awaiting fresh CVA ({reason})");
         }
     }
 
@@ -377,7 +377,7 @@ impl LevelsApp {
         if self.is_calculating() {
             #[cfg(debug_assertions)]
             if PRINT_JOURNEY_SUMMARY && !self.journey_queue.is_empty() {
-                println!(
+                log::info!(
                     "[journey] CVA in progress; deferring {} queued journey(s)",
                     self.journey_queue.len()
                 );
@@ -397,7 +397,7 @@ impl LevelsApp {
             if !trigger.ready_to_run() {
                 #[cfg(debug_assertions)]
                 if PRINT_JOURNEY_SUMMARY {
-                    println!("[journey] skipped {pair} – not ready_to_run");
+                    log::info!("[journey] skipped {pair} – not ready_to_run");
                 }
                 return;
             }
@@ -422,12 +422,12 @@ impl LevelsApp {
         if PRINT_JOURNEY_SUMMARY {
             if let Some(ts) = started_at {
                 let elapsed = ts.elapsed();
-                println!(
+                log::info!(
                     "[journey] completed {pair} in {:.3}s",
                     elapsed.as_secs_f32()
                 );
             } else {
-                println!("[journey] completed {pair}");
+                log::info!("[journey] completed {pair}");
             }
         }
     }

@@ -31,7 +31,7 @@ pub async fn get_timeseries_data_async(
                 return Ok((data, signature));
             }
             Err(e) => {
-                println!("Error with an async implementation: {}", e);
+                log::info!("Error with an async implementation: {}", e);
                 // Continue to the next implementation
             }
         }

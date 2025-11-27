@@ -274,10 +274,10 @@ fn build_transition_summaries(
     if PRINT_ZONE_TRANSITION_SUMMARY {
         #[cfg(debug_assertions)]
         {
-            println!("--- Sticky Zone Transition Summary ---");
+            log::info!("--- Sticky Zone Transition Summary ---");
             for summary in &summaries {
                 match summary.to_zone_id {
-                    Some(to_id) => println!(
+                    Some(to_id) => log::info!(
                         "Zone {:#04} ➜ Zone {:#04} :: count={} median_gap={:.1}c p90_gap={:.1}c",
                         summary.from_zone_id,
                         to_id,
@@ -285,7 +285,7 @@ fn build_transition_summaries(
                         summary.median_gap_candles,
                         summary.p90_gap_candles
                     ),
-                    None => println!(
+                    None => log::info!(
                         "Zone {:#04} ➜ (no subsequent zone) :: count={} median_gap={:.1}c p90_gap={:.1}c",
                         summary.from_zone_id,
                         summary.count,
@@ -294,7 +294,7 @@ fn build_transition_summaries(
                     ),
                 }
             }
-            println!("---------------------------------------");
+            log::info!("---------------------------------------");
         }
     }
 

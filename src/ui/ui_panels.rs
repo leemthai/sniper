@@ -164,8 +164,6 @@ impl<'a> DataGenerationPanel<'a> {
         // Defensive check: catch changes even if .clicked() didn't fire
         if self.selected_pair != previously_selected_pair {
             changed = self.selected_pair.clone();
-            // TEMP this used to be a println!
-            // Qwen3:14b AI suggested we try a log instead. but because we don't have a logger backend yet, so this just turns into a 'noop'
             log::info!("A new pair was selected: {:?}", self.selected_pair);
         }
 

@@ -17,7 +17,7 @@ impl LevelsApp {
 
         if stats.total_attempts == 0 {
             if PRINT_TRIGGER_UPDATES {
-                println!(
+                log::info!(
                     "  Zone #{:03} [{:.4} - {:.4}] target {:.4}: no historical samples (elapsed {:.2?})",
                     execution.zone_index,
                     execution.zone_bottom,
@@ -37,7 +37,7 @@ impl LevelsApp {
             .unwrap_or_else(|| "n/a".to_string());
 
         if PRINT_TRIGGER_UPDATES {
-            println!(
+            log::info!(
                 "  Zone #{:03} [{:.4} - {:.4}] target {:.4}\n    attempts: {} | successes: {} ({:.1}% | CI {:.1}% - {:.1}%)\n    expected annualized return: {:.2}% | avg ROI {:.2}% / {:.2}% (success/failure)\n    kelly: {} | compute time {:.2?}",
                 execution.zone_index,
                 execution.zone_bottom,
@@ -61,7 +61,7 @@ impl LevelsApp {
         let sticky_superzones = &context.trading_model.zones.sticky_superzones;
         if sticky_superzones.is_empty() {
             if should_log && PRINT_TRIGGER_UPDATES {
-                println!(
+                log::info!(
                     "Journey analysis skipped for {}: no sticky zones available.",
                     context.pair_name
                 );
@@ -80,7 +80,7 @@ impl LevelsApp {
 
         if zone_targets.is_empty() {
             if should_log && PRINT_TRIGGER_UPDATES {
-                println!(
+                log::info!(
                     "Journey analysis skipped for {}: no zone targets constructed.",
                     context.pair_name
                 );
@@ -93,9 +93,10 @@ impl LevelsApp {
 
     fn log_no_journey_executions(pair_name: &str, elapsed: Duration) {
         if PRINT_TRIGGER_UPDATES {
-            println!(
+            log::info!(
                 "Journeys for {} skipped: no executions produced (elapsed {:.2?})",
-                pair_name, elapsed
+                pair_name,
+                elapsed
             );
         }
     }
@@ -138,7 +139,7 @@ impl LevelsApp {
                 let pair_elapsed = pair_start.elapsed();
 
                 if should_log_pair && PRINT_TRIGGER_UPDATES {
-                    println!(
+                    log::info!(
                         "\n=== Journeys for {} (price {:.2}) — {} zones analysed in {:.2?}",
                         context.pair_name,
                         context.current_price,
@@ -174,9 +175,10 @@ impl LevelsApp {
             }
             Err(err) => {
                 if should_log_pair {
-                    println!(
+                    log::info!(
                         "⚠️ Journey analysis failed for {}: {}",
-                        context.pair_name, err
+                        context.pair_name,
+                        err
                     );
                 }
 
@@ -198,7 +200,7 @@ impl LevelsApp {
                 && crate::config::debug::PRINT_JOURNEY_FOR_PAIR == pair_name
                 && PRINT_TRIGGER_UPDATES
             {
-                println!(
+                log::info!(
                     "Journey analysis skipped for {}: no pair context available.",
                     pair_name
                 );

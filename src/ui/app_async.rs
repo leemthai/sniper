@@ -112,7 +112,7 @@ impl LevelsApp {
 
                             #[cfg(debug_assertions)]
                             if PRINT_MONITOR_PROGRESS {
-                                println!("✨ Updated {} in multi-pair monitor", pair_name);
+                                log::info!("✨ Updated {} in multi-pair monitor", pair_name);
                             }
                         }
                     }
@@ -125,7 +125,7 @@ impl LevelsApp {
                         if let Some(pair_name) = completed_pair.as_deref() {
                             #[cfg(debug_assertions)]
                             if PRINT_TRIGGER_UPDATES {
-                                println!(
+                                log::info!(
                                     "⚙️  Marking journeys stale after CVA completion for {} (params changed)",
                                     pair_name
                                 );
@@ -146,9 +146,10 @@ impl LevelsApp {
 
                             #[cfg(debug_assertions)]
                             if PRINT_TRIGGER_UPDATES {
-                                println!(
+                                log::info!(
                                     "[trigger] queued follow-up for {} @ {:.4}",
-                                    pair_name, next_price
+                                    pair_name,
+                                    next_price
                                 );
                             }
                         }
@@ -156,7 +157,7 @@ impl LevelsApp {
 
                     if elapsed.as_millis() > 100 {
                         #[cfg(debug_assertions)]
-                        println!(
+                        log::info!(
                             "✅ Async calculation completed in {:.2}s",
                             elapsed.as_secs_f32()
                         );
@@ -184,15 +185,16 @@ impl LevelsApp {
 
                         #[cfg(debug_assertions)]
                         if PRINT_TRIGGER_UPDATES {
-                            println!(
+                            log::info!(
                                 "[trigger] {} marked stale due to failure: {}",
-                                pair_name, msg
+                                pair_name,
+                                msg
                             );
                         }
                     }
 
                     #[cfg(debug_assertions)]
-                    eprintln!("❌ Async calculation failed: {}", error);
+                    log::error!("❌ Async calculation failed: {}", error);
                 }
             }
 

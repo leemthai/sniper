@@ -124,7 +124,7 @@ impl PlotView {
                 };
 
                 // #[cfg(debug_assertions)]
-                // println!("Plot y_min: {}", cache.y_min);
+                // log::info!("Plot y_min: {}", cache.y_min);
 
                 plot_ui.set_plot_bounds_y(y_min_adjusted..=y_max_adjusted);
                 plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
@@ -193,7 +193,7 @@ impl PlotView {
         {
             self.cache_hits += 1;
             if PRINT_CVA_CACHE_EVENTS {
-                println!(
+                log::info!(
                     "[plot cache] HIT: {} zones for {} (cache key {:?})",
                     cache.zone_scores.len(),
                     cache.score_type,
@@ -205,9 +205,10 @@ impl PlotView {
         // Cache miss
         #[cfg(debug_assertions)]
         if PRINT_PLOT_CACHE_STATS {
-            println!(
+            log::info!(
                 "Bar Plot Cache MISS for {} with {} zones.",
-                score_type, zone_count
+                score_type,
+                zone_count
             );
         }
         self.cache_misses += 1;

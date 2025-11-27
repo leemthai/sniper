@@ -95,6 +95,7 @@ pub(super) enum JourneySummaryUpdate {
     },
 }
 
+#[allow(clippy::too_many_arguments)]
 impl JourneySummary {
     pub fn completed(
         pair: String,
@@ -910,11 +911,11 @@ impl LevelsApp {
         if let Some(storage) = cc.storage {
             if let Some(value) = eframe::get_value(storage, eframe::APP_KEY) {
                 #[cfg(debug_assertions)]
-                println!("Successfully loaded persisted state");
+                log::info!("Successfully loaded persisted state");
                 levels_app = value;
             } else {
                 #[cfg(debug_assertions)]
-                println!("Failed to get levels_app from storage. Creating a new one.");
+                log::info!("Failed to get levels_app from storage. Creating a new one.");
                 levels_app = LevelsApp::new_with_initial_state();
             }
         } else {
@@ -942,7 +943,7 @@ impl LevelsApp {
         if available_pairs.is_empty() {
             levels_app.data_state.last_error = Some(AppError::DataNotAvailable);
             #[cfg(debug_assertions)]
-            eprintln!("Warning: No trading pairs available in timeseries collection");
+            log::error!("Warning: No trading pairs available in timeseries collection");
             return levels_app;
         }
 
@@ -950,7 +951,7 @@ impl LevelsApp {
         if let Some(selected_pair) = &levels_app.selected_pair {
             if !available_pairs.contains(selected_pair) {
                 #[cfg(debug_assertions)]
-                println!(
+                log::info!(
                     "Selected pair '{}' not found, defaulting to first available pair",
                     selected_pair
                 );
@@ -968,7 +969,7 @@ impl LevelsApp {
         if levels_app.zone_count == 0 {
             #[cfg(debug_assertions)]
             if PRINT_UI_INTERACTIONS {
-                println!("Warning: Zone count is 0, setting to default");
+                log::info!("Warning: Zone count is 0, setting to default");
             }
             levels_app.zone_count = default_zone_count();
         }
@@ -1070,7 +1071,11 @@ impl LevelsApp {
 
                             #[cfg(debug_assertions)]
                             if PRINT_MONITOR_PROGRESS {
-                                println!("✨ Added {} to monitor (price: {:.2})", pair_name, price);
+                                log::info!(
+                                    "✨ Added {} to monitor (price: {:.2})",
+                                    pair_name,
+                                    price
+                                );
                             }
                         }
                     }
@@ -1082,7 +1087,7 @@ impl LevelsApp {
         if final_count > initial_count {
             #[cfg(debug_assertions)]
             if PRINT_MONITOR_PROGRESS {
-                println!(
+                log::info!(
                     "📊 Monitor now tracking {}/{} pairs",
                     final_count,
                     all_pairs.len()
@@ -1096,7 +1101,7 @@ impl LevelsApp {
             self.monitor_initialized = true;
             #[cfg(debug_assertions)]
             if PRINT_MONITOR_PROGRESS {
-                println!(
+                log::info!(
                     "✅ Monitor initialization complete: {}/{} pairs tracked\n",
                     final_count,
                     all_pairs.len()
@@ -1129,7 +1134,7 @@ impl eframe::App for LevelsApp {
         self.calculation_promise = None;
 
         #[cfg(debug_assertions)]
-        println!("Application shutdown complete.");
+        log::info!("Application shutdown complete.");
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
