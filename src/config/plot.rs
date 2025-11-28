@@ -70,6 +70,9 @@ pub const ZONE_GRADIENT_COLORS: &[&str] = &[
 /// Plot aspect ratio (width:height)
 pub const PLOT_ASPECT_RATIO: f32 = 2.0;
 
+/// Plot x axis divisions
+pub const PLOT_X_AXIS_DIVISIONS: u32 = 20;
+
 /// Transparency/opacity for support and resistance zone rectangles (0.0 = invisible, 1.0 = fully opaque)
 /// Lower values = more transparent, less visual clutter
 pub const ZONE_FILL_OPACITY: f32 = 0.25; // 25% opacity

@@ -1,7 +1,8 @@
 use eframe::egui::{ComboBox, ScrollArea, Ui};
 use strum::IntoEnumIterator;
 
-use crate::config::{STICKY_ZONE_COLOR, TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS};
+use crate::config::plot::STICKY_ZONE_COLOR;
+use crate::config::{TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS};
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::ScoreType;
 use crate::models::{PairContext, ZoneType};
