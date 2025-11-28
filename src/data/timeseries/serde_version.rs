@@ -8,7 +8,7 @@ use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_
 use crate::utils::time_utils::how_many_seconds_ago;
 
 #[cfg(debug_assertions)]
-use crate::config::debug::PRINT_SERDE;
+use crate::config::debug::DEBUG_FLAGS;
 
 pub fn check_local_data_validity(
     recency_required_secs: i64,
@@ -19,7 +19,7 @@ pub fn check_local_data_validity(
     let full_path = PathBuf::from(KLINE_PATH).join(&filename);
 
     #[cfg(debug_assertions)]
-    if PRINT_SERDE {
+    if DEBUG_FLAGS.print_serde {
         log::info!("Checking validity of local cache at {:?}...", full_path);
         log::info!("Fetching data from local disk...");
     }
@@ -54,7 +54,7 @@ pub fn check_local_data_validity(
     }
 
     #[cfg(debug_assertions)]
-    if PRINT_SERDE {
+    if DEBUG_FLAGS.print_serde {
         log::info!(
             "✅ Cache valid: v{}, {}s old (limit {}s), interval {}ms",
             cache.version,
@@ -76,7 +76,7 @@ pub fn write_timeseries_data_locally(
 ) -> Result<()> {
     if timeseries_signature != "Binance API" {
         #[cfg(debug_assertions)]
-        if PRINT_SERDE {
+        if DEBUG_FLAGS.print_serde {
             log::info!("Skipping cache write (data not from Binance API)");
         }
         return Ok(());
@@ -87,7 +87,7 @@ pub fn write_timeseries_data_locally(
     let full_path = dir_path.join(&filename);
 
     #[cfg(debug_assertions)]
-    let start_time = PRINT_SERDE.then(|| {
+    let start_time = DEBUG_FLAGS.print_serde.then(|| {
         log::info!("Writing cache to disk: {:?}...", full_path);
         std::time::Instant::now()
     });
@@ -146,7 +146,7 @@ impl CreateTimeSeriesData for SerdeVersion {
         // 1. Declare the timer as an Option BEFORE the task
         // We use .then() which runs the closure only if PRINT_SERDE is true
         #[cfg(debug_assertions)]
-        let start_time = PRINT_SERDE.then(|| {
+        let start_time = DEBUG_FLAGS.print_serde.then(|| {
             log::info!("Reading cache from: {:?}...", full_path);
             std::time::Instant::now()
         });

@@ -1,7 +1,7 @@
 use eframe::egui::{ComboBox, ScrollArea, Ui};
 use strum::IntoEnumIterator;
 
-use crate::config::plot::STICKY_ZONE_COLOR;
+use crate::config::plot::PLOT_CONFIG;
 use crate::config::{TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS};
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::ScoreType;
@@ -10,7 +10,7 @@ use crate::ui::config::UI_TEXT;
 use crate::ui::utils::{colored_subsection_heading, section_heading, spaced_separator};
 
 #[cfg(debug_assertions)]
-use crate::config::debug::PRINT_UI_INTERACTIONS;
+use crate::config::debug::DEBUG_FLAGS;
 
 /// Trait for UI panels that can be rendered
 pub trait Panel {
@@ -168,7 +168,7 @@ impl<'a> DataGenerationPanel<'a> {
         if self.selected_pair != previously_selected_pair {
             changed = self.selected_pair.clone();
             #[cfg(debug_assertions)]
-            if PRINT_UI_INTERACTIONS {
+            if DEBUG_FLAGS.print_ui_interactions {
                 log::info!("A new pair was selected: {:?}", self.selected_pair);
             }
         }
@@ -309,7 +309,7 @@ impl<'a> Panel for SignalsPanel<'a> {
                         let zone_label = match zone_type {
                             ZoneType::Sticky => Some((
                                 format!("🔑 Sticky superzone {}", zone_index),
-                                STICKY_ZONE_COLOR,
+                                PLOT_CONFIG.sticky_zone_color,
                             )),
                             _ => None,
                         };

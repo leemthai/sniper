@@ -1,14 +1,16 @@
-#[cfg(debug_assertions)]
-use crate::config::debug::PRINT_CVA_CACHE_EVENTS;
-use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, MIN_CANDLES_FOR_ANALYSIS};
-use crate::data::timeseries::TimeSeriesCollection;
-use crate::models::{CVACore, TimeSeriesSlice, find_matching_ohlcv};
-use anyhow::{Result, bail};
-
 use std::cmp::Eq;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
+
+use anyhow::{Result, bail};
+
+use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, MIN_CANDLES_FOR_ANALYSIS};
+use crate::data::timeseries::TimeSeriesCollection;
+use crate::models::{CVACore, TimeSeriesSlice, find_matching_ohlcv};
+
+#[allow(unused_imports)]
+use crate::config::debug::DEBUG_FLAGS;
 
 // --- The cache key struct ---
 #[derive(Clone, Debug)]
@@ -36,7 +38,7 @@ impl Hash for CacheKey {
 
 #[cfg(debug_assertions)]
 fn log_cache_miss_reason(cache: &HashMap<CacheKey, Arc<CVACore>>, requested: &CacheKey) {
-    if !PRINT_CVA_CACHE_EVENTS {
+    if !DEBUG_FLAGS.print_cva_cache_events {
         return;
     }
     use std::cmp::min;
@@ -167,7 +169,7 @@ impl ZoneGenerator {
         price_range: (f64, f64),
     ) -> Result<Arc<CVACore>> {
         #[cfg(debug_assertions)]
-        let method_start_time = if PRINT_CVA_CACHE_EVENTS {
+        let method_start_time = if DEBUG_FLAGS.print_cva_cache_events {
             Some(std::time::Instant::now())
         } else {
             None
@@ -189,7 +191,7 @@ impl ZoneGenerator {
                 && let Some(cached_result) = cache.get(&key_for_lookup)
             {
                 #[cfg(debug_assertions)]
-                if PRINT_CVA_CACHE_EVENTS {
+                if DEBUG_FLAGS.print_cva_cache_events {
                     let total_candles: usize = slice_ranges.iter().map(|(s, e)| e - s).sum();
                     if let Some(start) = method_start_time.as_ref() {
                         log::info!(
@@ -210,13 +212,13 @@ impl ZoneGenerator {
         let key_for_insertion = key_for_lookup.clone();
 
         #[cfg(debug_assertions)]
-        let computation_start_time = if PRINT_CVA_CACHE_EVENTS {
+        let computation_start_time = if DEBUG_FLAGS.print_cva_cache_events {
             Some(std::time::Instant::now())
         } else {
             None
         }; // Time just the computation
         #[cfg(debug_assertions)]
-        if PRINT_CVA_CACHE_EVENTS {
+        if DEBUG_FLAGS.print_cva_cache_events {
             let total_candles: usize = slice_ranges.iter().map(|(s, e)| e - s).sum();
             log::info!(
                 "Cache MISS - Calculating CVA results for {} with {} ranges ({} total candles) and {} zones...",
@@ -241,7 +243,7 @@ impl ZoneGenerator {
         )?;
 
         #[cfg(debug_assertions)]
-        if PRINT_CVA_CACHE_EVENTS {
+        if DEBUG_FLAGS.print_cva_cache_events {
             if let Some(start) = computation_start_time.as_ref() {
                 log::info!(
                     "Computation for {} took: {:?}",

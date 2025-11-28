@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::config::debug::PRINT_TRIGGER_UPDATES;
+use crate::config::debug::DEBUG_FLAGS;
 use crate::journeys::{JourneyAnalyzer, JourneyExecution, ZoneTarget};
 use crate::models::PairContext;
 use crate::ui::config::UI_TEXT;
@@ -17,7 +17,7 @@ impl ZoneSniperApp {
         let stats = &execution.analysis.stats;
 
         if stats.total_attempts == 0 {
-            if PRINT_TRIGGER_UPDATES {
+            if DEBUG_FLAGS.print_trigger_updates {
                 log::info!(
                     "  Zone #{:03} [{:.4} - {:.4}] target {:.4}: no historical samples (elapsed {:.2?})",
                     execution.zone_index,
@@ -37,7 +37,7 @@ impl ZoneSniperApp {
             .map(|k| format!("{:.2}%", k * 100.0))
             .unwrap_or_else(|| "n/a".to_string());
 
-        if PRINT_TRIGGER_UPDATES {
+        if DEBUG_FLAGS.print_trigger_updates {
             log::info!(
                 "  Zone #{:03} [{:.4} - {:.4}] target {:.4}\n    attempts: {} | successes: {} ({:.1}% | CI {:.1}% - {:.1}%)\n    expected annualized return: {:.2}% | avg ROI {:.2}% / {:.2}% (success/failure)\n    kelly: {} | compute time {:.2?}",
                 execution.zone_index,
@@ -61,7 +61,7 @@ impl ZoneSniperApp {
     fn collect_zone_targets(context: &PairContext, should_log: bool) -> Option<Vec<ZoneTarget>> {
         let sticky_superzones = &context.trading_model.zones.sticky_superzones;
         if sticky_superzones.is_empty() {
-            if should_log && PRINT_TRIGGER_UPDATES {
+            if should_log && DEBUG_FLAGS.print_trigger_updates {
                 log::info!(
                     "Journey analysis skipped for {}: no sticky zones available.",
                     context.pair_name
@@ -80,7 +80,7 @@ impl ZoneSniperApp {
             .collect();
 
         if zone_targets.is_empty() {
-            if should_log && PRINT_TRIGGER_UPDATES {
+            if should_log && DEBUG_FLAGS.print_trigger_updates {
                 log::info!(
                     "Journey analysis skipped for {}: no zone targets constructed.",
                     context.pair_name
@@ -93,7 +93,7 @@ impl ZoneSniperApp {
     }
 
     fn log_no_journey_executions(pair_name: &str, elapsed: Duration) {
-        if PRINT_TRIGGER_UPDATES {
+        if DEBUG_FLAGS.print_trigger_updates {
             log::info!(
                 "Journeys for {} skipped: no executions produced (elapsed {:.2?})",
                 pair_name,
@@ -139,7 +139,7 @@ impl ZoneSniperApp {
             Ok(executions) => {
                 let pair_elapsed = pair_start.elapsed();
 
-                if should_log_pair && PRINT_TRIGGER_UPDATES {
+                if should_log_pair && DEBUG_FLAGS.print_trigger_updates {
                     log::info!(
                         "\n=== Journeys for {} (price {:.2}) — {} zones analysed in {:.2?}",
                         context.pair_name,
@@ -150,7 +150,7 @@ impl ZoneSniperApp {
                 }
 
                 if executions.is_empty() {
-                    if should_log_pair && PRINT_TRIGGER_UPDATES {
+                    if should_log_pair && DEBUG_FLAGS.print_trigger_updates {
                         Self::log_no_journey_executions(&context.pair_name, pair_elapsed);
                     }
 
@@ -197,9 +197,9 @@ impl ZoneSniperApp {
         self.initialize_multi_pair_monitor();
 
         let Some(context) = self.multi_pair_monitor.get_context(pair_name) else {
-            if !crate::config::debug::PRINT_JOURNEY_FOR_PAIR.is_empty()
-                && crate::config::debug::PRINT_JOURNEY_FOR_PAIR == pair_name
-                && PRINT_TRIGGER_UPDATES
+            if !DEBUG_FLAGS.print_journey_for_pair.is_empty()
+                && DEBUG_FLAGS.print_journey_for_pair == pair_name
+                && DEBUG_FLAGS.print_trigger_updates
             {
                 log::info!(
                     "Journey analysis skipped for {}: no pair context available.",
@@ -209,8 +209,8 @@ impl ZoneSniperApp {
             return;
         };
 
-        let should_log_pair = !crate::config::debug::PRINT_JOURNEY_FOR_PAIR.is_empty()
-            && crate::config::debug::PRINT_JOURNEY_FOR_PAIR == context.pair_name;
+        let should_log_pair = !DEBUG_FLAGS.print_journey_for_pair.is_empty()
+            && DEBUG_FLAGS.print_journey_for_pair == context.pair_name;
 
         let analyzer = JourneyAnalyzer::new(&self.data_state.timeseries_collection);
 

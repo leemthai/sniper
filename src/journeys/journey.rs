@@ -260,11 +260,11 @@ impl<'a> JourneyAnalyzer<'a> {
             };
 
             let debug_this_attempt = cfg!(debug_assertions)
-                && !debug::PRINT_JOURNEY_FOR_PAIR.is_empty()
-                && debug::PRINT_JOURNEY_FOR_PAIR == params.pair
-                && debug::PRINT_TRIGGER_UPDATES
-                && debug::DEBUG_JOURNEY_ATTEMPT_INDEX >= 0
-                && attempt_index == debug::DEBUG_JOURNEY_ATTEMPT_INDEX as usize;
+                && !debug::DEBUG_FLAGS.print_journey_for_pair.is_empty()
+                && debug::DEBUG_FLAGS.print_journey_for_pair == params.pair
+                && debug::DEBUG_FLAGS.print_trigger_updates
+                && debug::DEBUG_FLAGS.debug_journey_attempt_index >= 0
+                && attempt_index == debug::DEBUG_FLAGS.debug_journey_attempt_index as usize;
 
             if debug_this_attempt {
                 log::info!(

@@ -6,22 +6,14 @@ use egui_plot::{
 use std::sync::Arc;
 
 use crate::analysis::selection_criteria::{FilterChain, ZoneSelectionCriteria};
-use crate::config::plot::{
-    BACKGROUND_BAR_INTENSITY, CURRENT_PRICE_COLOR, CURRENT_PRICE_LINE_WIDTH,
-    CURRENT_PRICE_OUTER_COLOR, CURRENT_PRICE_OUTER_WIDTH, DEFAULT_BAR_COLOR, HIGH_WICKS_ZONE_COLOR,
-    LOW_WICKS_ZONE_COLOR, PLOT_ASPECT_RATIO, PLOT_X_AXIS_DIVISIONS, RESISTANCE_ZONE_COLOR,
-    SHOW_HIGH_WICKS_ZONES_DEFAULT, SHOW_LOW_WICKS_ZONES_DEFAULT, SHOW_RESISTANCE_ZONES_DEFAULT,
-    SHOW_SLIPPY_ZONES_DEFAULT, SHOW_STICKY_ZONES_DEFAULT, SHOW_SUPPORT_ZONES_DEFAULT,
-    SLIPPY_ZONE_COLOR, STICKY_ZONE_COLOR, SUPPORT_ZONE_COLOR, ZONE_FILL_OPACITY,
-    ZONE_GRADIENT_COLORS,
-};
+use crate::config::plot::PLOT_CONFIG;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::{SuperZone, TradingModel};
 use crate::ui::ui_text::UI_TEXT;
 use crate::utils::maths_utils;
 
 #[cfg(debug_assertions)]
-use crate::config::debug::{PRINT_CVA_CACHE_EVENTS, PRINT_PLOT_CACHE_STATS};
+use crate::config::debug::DEBUG_FLAGS;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlotCache {
@@ -112,12 +104,12 @@ impl PlotView {
 
         // Show the plot within the CentralPanel
         Plot::new("cva")
-            .view_aspect(PLOT_ASPECT_RATIO)
+            .view_aspect(PLOT_CONFIG.plot_aspect_ratio)
             // .legend(_legend)
             .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_y_axes(vec![create_y_axis(pair_name)])
             .x_grid_spacer(move |_input| {
-                let step_count = PLOT_X_AXIS_DIVISIONS;
+                let step_count = PLOT_CONFIG.plot_axis_divisions;
                 (0..=step_count)
                     .map(|i| {
                         let fraction = i as f64 / step_count as f64;
@@ -194,7 +186,7 @@ impl PlotView {
         {
             self.cache_hits += 1;
             #[cfg(debug_assertions)]
-            if PRINT_CVA_CACHE_EVENTS {
+            if DEBUG_FLAGS.print_cva_cache_events {
                 log::info!(
                     "[plot cache] HIT: {} zones for {} (cache key {:?})",
                     cache.zone_scores.len(),
@@ -206,7 +198,7 @@ impl PlotView {
         }
         // Cache miss
         #[cfg(debug_assertions)]
-        if PRINT_PLOT_CACHE_STATS {
+        if DEBUG_FLAGS.print_plot_cache_stats {
             log::info!(
                 "Bar Plot Cache MISS for {} with {} zones.",
                 score_type,
@@ -240,7 +232,7 @@ impl PlotView {
 
         // Create color gradient from config
         let grad = colorgrad::GradientBuilder::new()
-            .html_colors(ZONE_GRADIENT_COLORS)
+            .html_colors(PLOT_CONFIG.zone_gradient_colors)
             .build::<colorgrad::CatmullRomGradient>()
             .expect("Failed to create color gradient");
 
@@ -251,7 +243,7 @@ impl PlotView {
             .map(|&original_index| {
                 let zone_score = data_for_display[original_index];
                 let color = get_zone_color_from_zone_value(zone_score, &grad);
-                let dimmed_color = color.linear_multiply(BACKGROUND_BAR_INTENSITY);
+                let dimmed_color = color.linear_multiply(PLOT_CONFIG.background_bar_intensity_pct);
                 let y_position = y_min + (original_index as f64) * bar_thickness;
                 let x_position = x_min + zone_score * zone_score_scalar;
                 Bar::new(y_position, x_position)
@@ -324,7 +316,7 @@ fn draw_background_plot(
     let x_min = cache.x_min;
     let total_width = cache.total_width;
     let chart = BarChart::new(title, cache.bars.clone())
-        .color(DEFAULT_BAR_COLOR) // Legend color only
+        .color(PLOT_CONFIG.default_bar_color) // Legend color only
         .width(cache.bar_thickness)
         .horizontal()
         .element_formatter(Box::new(move |bar, _chart| {
@@ -344,14 +336,14 @@ fn draw_current_price(plot_ui: &mut egui_plot::PlotUi, current_pair_price: Optio
     if let Some(price) = current_pair_price {
         // Draw contrasting outer border first
         let outer_line = HLine::new("Current Price", price)
-            .color(CURRENT_PRICE_OUTER_COLOR)
-            .width(CURRENT_PRICE_OUTER_WIDTH)
+            .color(PLOT_CONFIG.current_price_outer_color)
+            .width(PLOT_CONFIG.current_price_outer_width)
             .style(egui_plot::LineStyle::dashed_loose());
         plot_ui.hline(outer_line);
         // Draw inner colored line on top
         let inner_line = HLine::new("Current Price", price)
-            .color(CURRENT_PRICE_COLOR)
-            .width(CURRENT_PRICE_LINE_WIDTH)
+            .color(PLOT_CONFIG.current_price_color)
+            .width(PLOT_CONFIG.current_price_line_width)
             .style(egui_plot::LineStyle::dashed_loose());
         plot_ui.hline(inner_line);
     }
@@ -365,7 +357,7 @@ fn draw_classified_zones(
     x_max: f64,
 ) {
     // Draw sticky superzones (aggregated consolidation areas) - only if enabled
-    if SHOW_STICKY_ZONES_DEFAULT {
+    if PLOT_CONFIG.show_sticky_zones {
         for superzone in &model.zones.sticky_superzones {
             draw_superzone(
                 plot_ui,
@@ -373,13 +365,13 @@ fn draw_classified_zones(
                 x_min,
                 x_max,
                 "Sticky",
-                STICKY_ZONE_COLOR,
+                PLOT_CONFIG.sticky_zone_color,
             );
         }
     }
 
     // Draw slippy superzones (aggregated low activity areas) - only if enabled
-    if SHOW_SLIPPY_ZONES_DEFAULT {
+    if PLOT_CONFIG.show_slippy_zones {
         for superzone in &model.zones.slippy_superzones {
             draw_superzone(
                 plot_ui,
@@ -387,13 +379,13 @@ fn draw_classified_zones(
                 x_min,
                 x_max,
                 "Slippy",
-                SLIPPY_ZONE_COLOR,
+                PLOT_CONFIG.slippy_zone_color,
             );
         }
     }
 
     // Draw low wick (reversal) superzones (aggregated rejection areas) - only if enabled
-    if SHOW_LOW_WICKS_ZONES_DEFAULT {
+    if PLOT_CONFIG.show_low_wicks_zones {
         for superzone in &model.zones.low_wicks_superzones {
             draw_superzone(
                 plot_ui,
@@ -401,13 +393,13 @@ fn draw_classified_zones(
                 x_min,
                 x_max,
                 "Low Wick(Reversal)",
-                LOW_WICKS_ZONE_COLOR,
+                PLOT_CONFIG.low_wicks_zone_color,
             );
         }
     }
 
     // Draw high wick (reversal) superzones (aggregated rejection areas) - only if enabled
-    if SHOW_HIGH_WICKS_ZONES_DEFAULT {
+    if PLOT_CONFIG.show_high_wicks_zones {
         for superzone in &model.zones.high_wicks_superzones {
             draw_superzone(
                 plot_ui,
@@ -415,13 +407,13 @@ fn draw_classified_zones(
                 x_min,
                 x_max,
                 "High Wick(Reversal)",
-                HIGH_WICKS_ZONE_COLOR,
+                PLOT_CONFIG.high_wicks_zone_color,
             );
         }
     }
 
     // Draw support/resistance superzones LAST (on top of sticky zones for visibility)
-    if SHOW_SUPPORT_ZONES_DEFAULT {
+    if PLOT_CONFIG.show_support_zones {
         for superzone in &model.zones.support_superzones {
             draw_superzone(
                 plot_ui,
@@ -429,12 +421,12 @@ fn draw_classified_zones(
                 x_min,
                 x_max,
                 "SR: Support",
-                SUPPORT_ZONE_COLOR,
+                PLOT_CONFIG.support_zone_color,
             );
         }
     }
 
-    if SHOW_RESISTANCE_ZONES_DEFAULT {
+    if PLOT_CONFIG.show_resistance_zones {
         for superzone in &model.zones.resistance_superzones {
             draw_superzone(
                 plot_ui,
@@ -442,7 +434,7 @@ fn draw_classified_zones(
                 x_min,
                 x_max,
                 "SR: Resistance",
-                RESISTANCE_ZONE_COLOR,
+                PLOT_CONFIG.resistance_zone_color,
             );
         }
     }
@@ -471,7 +463,7 @@ fn draw_superzone(
     // Draw semi-transparent filled polygon with matching stroke
     // Each superzone gets a unique identifier and a unique legend entry
     let polygon = Polygon::new(format!("{} #{}", label, superzone.id), points)
-        .fill_color(color.linear_multiply(ZONE_FILL_OPACITY))
+        .fill_color(color.linear_multiply(PLOT_CONFIG.zone_fill_opacity_pct))
         .stroke(Stroke::new(1.0, color))
         .name(format!("{} #{}", label, superzone.id)) // Unique legend entry per superzone
         .highlight(false)

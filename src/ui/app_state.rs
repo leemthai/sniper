@@ -4,7 +4,7 @@ use crate::journeys::compute_zone_efficacy;
 use crate::models::{TradingModel, find_matching_ohlcv};
 
 #[cfg(debug_assertions)]
-use crate::config::debug::PRINT_UI_INTERACTIONS;
+use crate::config::debug::DEBUG_FLAGS;
 
 use super::app::ZoneSniperApp;
 
@@ -117,7 +117,7 @@ impl ZoneSniperApp {
 
         if self.apply_cached_results_for_pair(&new_pair) {
             #[cfg(debug_assertions)]
-            if PRINT_UI_INTERACTIONS {
+            if DEBUG_FLAGS.print_ui_interactions {
                 log::info!("[pair] Switched to {new_pair} using cached CVA results");
             }
             return;

@@ -1,7 +1,6 @@
-#[cfg(not(target_arch = "wasm32"))]
-use crate::config::debug::PRINT_PRICE_STREAM_UPDATES;
-#[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
-use crate::config::debug::PRINT_SIMULATION_EVENTS;
+#[allow(unused_imports)]
+use crate::config::debug::DEBUG_FLAGS;
+
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::{
     BINANCE_WS_COMBINED_BASE, INITIAL_RECONNECT_DELAY_SECS, MAX_RECONNECT_DELAY_SECS,
@@ -87,7 +86,7 @@ impl PriceStreamManager {
     pub fn suspend(&self) {
         *self.suspended.lock().unwrap() = true;
         #[cfg(debug_assertions)]
-        if PRINT_SIMULATION_EVENTS {
+        if DEBUG_FLAGS.print_simulation_events {
             log::info!("🔇 WebSocket price updates suspended");
         }
     }
@@ -96,7 +95,7 @@ impl PriceStreamManager {
     pub fn resume(&self) {
         *self.suspended.lock().unwrap() = false;
         #[cfg(debug_assertions)]
-        if PRINT_SIMULATION_EVENTS {
+        if DEBUG_FLAGS.print_simulation_events {
             log::info!("🔊 WebSocket price updates resumed");
         }
     }
@@ -136,7 +135,7 @@ impl PriceStreamManager {
         *self.subscribed_symbols.lock().unwrap() = symbols_lower.clone();
 
         #[cfg(debug_assertions)]
-        if PRINT_PRICE_STREAM_UPDATES {
+        if DEBUG_FLAGS.print_price_stream_updates {
             log::info!(
                 "Subscribing to {} price streams with auto-reconnect",
                 symbols_lower.len()
@@ -257,7 +256,7 @@ async fn run_combined_price_stream_with_reconnect(
             Ok(_) => {
                 // Connection closed normally (24-hour timeout or server close)
                 #[cfg(debug_assertions)]
-                if PRINT_PRICE_STREAM_UPDATES {
+                if DEBUG_FLAGS.print_price_stream_updates {
                     log::info!("Connection closed for combined stream, reconnecting...");
                 }
 
@@ -277,7 +276,7 @@ async fn run_combined_price_stream_with_reconnect(
                 }
 
                 // Exponential backoff
-                if PRINT_PRICE_STREAM_UPDATES {
+                if DEBUG_FLAGS.print_price_stream_updates {
                     log::info!(
                         "Reconnecting combined price stream in {} seconds...",
                         reconnect_delay
@@ -304,7 +303,7 @@ async fn run_combined_price_stream(
     suspended_arc: Arc<Mutex<bool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(debug_assertions)]
-    if PRINT_PRICE_STREAM_UPDATES {
+    if DEBUG_FLAGS.print_price_stream_updates {
         log::info!("Connecting to Binance combined WebSocket: {}", url);
     }
 
@@ -319,7 +318,7 @@ async fn run_combined_price_stream(
     }
 
     #[cfg(debug_assertions)]
-    if PRINT_PRICE_STREAM_UPDATES {
+    if DEBUG_FLAGS.print_price_stream_updates {
         log::info!(
             "✓ Connected to combined price stream for {} symbols",
             symbols.len()
@@ -344,7 +343,7 @@ async fn run_combined_price_stream(
                                         .insert(symbol_lower.clone(), price);
 
                                     #[cfg(debug_assertions)]
-                                    if PRINT_PRICE_STREAM_UPDATES {
+                                    if DEBUG_FLAGS.print_price_stream_updates {
                                         log::info!(
                                             "[price-stream] {} -> {:.6}",
                                             wrapper.data.symbol,
@@ -362,13 +361,13 @@ async fn run_combined_price_stream(
                                 parse_err
                             );
                             #[cfg(debug_assertions)]
-                            if PRINT_PRICE_STREAM_UPDATES {
+                            if DEBUG_FLAGS.print_price_stream_updates {
                                 log::info!("[price-stream] raw payload: {}", text);
                             }
                         }
                     }
                 } else {
-                    if PRINT_PRICE_STREAM_UPDATES {
+                    if DEBUG_FLAGS.print_price_stream_updates {
                         log::error!("⚠️ Unexpected combined stream payload: {}", text);
                     }
                 }
@@ -378,7 +377,7 @@ async fn run_combined_price_stream(
             }
             Ok(Message::Close(_)) => {
                 #[cfg(debug_assertions)]
-                if PRINT_PRICE_STREAM_UPDATES {
+                if DEBUG_FLAGS.print_price_stream_updates {
                     log::info!("Combined WebSocket closed (likely 24hr timeout)");
                 }
                 break;

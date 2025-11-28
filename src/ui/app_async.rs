@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::analysis::pair_analysis::ZoneGenerator;
 #[cfg(debug_assertions)]
-use crate::config::debug::{PRINT_MONITOR_PROGRESS, PRINT_TRIGGER_UPDATES};
+use crate::config::debug::DEBUG_FLAGS;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::{CVACore, PairContext, TradingModel};
 use crate::ui::app::{AppError, DataParams, ZoneSniperApp};
@@ -111,7 +111,7 @@ impl ZoneSniperApp {
                             self.multi_pair_monitor.add_pair(context);
 
                             #[cfg(debug_assertions)]
-                            if PRINT_MONITOR_PROGRESS {
+                            if DEBUG_FLAGS.print_monitor_progress {
                                 log::info!("✨ Updated {} in multi-pair monitor", pair_name);
                             }
                         }
@@ -124,7 +124,7 @@ impl ZoneSniperApp {
                     if params_changed {
                         if let Some(pair_name) = completed_pair.as_deref() {
                             #[cfg(debug_assertions)]
-                            if PRINT_TRIGGER_UPDATES {
+                            if DEBUG_FLAGS.print_trigger_updates {
                                 log::info!(
                                     "⚙️  Marking journeys stale after CVA completion for {} (params changed)",
                                     pair_name
@@ -145,7 +145,7 @@ impl ZoneSniperApp {
                             self.mark_pair_trigger_stale(&pair_name, reason, Some(next_price));
 
                             #[cfg(debug_assertions)]
-                            if PRINT_TRIGGER_UPDATES {
+                            if DEBUG_FLAGS.print_trigger_updates {
                                 log::info!(
                                     "[trigger] queued follow-up for {} @ {:.4}",
                                     pair_name,
@@ -184,7 +184,7 @@ impl ZoneSniperApp {
                         }
 
                         #[cfg(debug_assertions)]
-                        if PRINT_TRIGGER_UPDATES {
+                        if DEBUG_FLAGS.print_trigger_updates {
                             log::info!(
                                 "[trigger] {} marked stale due to failure: {}",
                                 pair_name,

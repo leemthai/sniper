@@ -1,70 +1,95 @@
 //! Debugging feature flags.
-//!
-//! Toggle individual diagnostics here; keep them `false` by default so release
-//! builds remain quiet even when compiled with `--features debug_assertions`.
 
-/// Emit zone transition summaries after computing zone efficacy metrics.
-pub const PRINT_ZONE_TRANSITION_SUMMARY: bool = false;
+pub struct DebugFlags {
+    /// Emit zone transition summaries after computing zone efficacy metrics.
+    pub print_zone_transition_summary: bool,
 
-/// Emit per-candidate time-decay calibration details during CVA recomputation.
-pub const PRINT_DECAY_CALIBRATION: bool = false;
+    /// Emit detailed zone-scoring debug output for all pairs.
+    pub print_zone_scoring_for_all_pairs: &'static str,
 
-/// If non-empty, emit detailed zone-scoring debug output only for this pair.
-/// Example: "PAXGUSDT". Use "" to disable.
-pub const PRINT_ZONE_SCORING_FOR_PAIR: &str = "";
+    /// Emit zone transition summaries after computing zone efficacy metrics.
+    /// Emit per-candidate time-decay calibration details during CVA recomputation.
+    pub print_decay_calibration: bool,
 
-/// Emit high-level journey scheduling and completion summaries.
-pub const PRINT_JOURNEY_SUMMARY: bool = false;
+    /// If non-empty, emit detailed zone-scoring debug output only for this pair.
+    /// Example: "PAXGUSDT". Use "" to disable.
+    pub print_zone_scoring_for_pair: &'static str,
 
-/// Emit UI interaction logs (e.g., pair switching, manual actions).
-pub const PRINT_UI_INTERACTIONS: bool = true;
+    /// Emit high-level journey scheduling and completion summaries.
+    pub print_journey_summary: bool,
 
-/// Emit verbose logging for live price stream connections and ticks.
-pub const PRINT_PRICE_STREAM_UPDATES: bool = false;
+    /// Emit UI interaction logs (e.g., pair switching, manual actions).
+    pub print_ui_interactions: bool,
 
-/// Emit bar-plot cache hit/miss diagnostics while rendering the main chart.
-pub const PRINT_PLOT_CACHE_STATS: bool = false;
+    /// Emit verbose logging for live price stream connections and ticks.
+    pub print_price_stream_updates: bool,
 
-/// Emit detailed CVA cache hit/miss diagnostics (cache miss reasons, timings, etc.).
-pub const PRINT_CVA_CACHE_EVENTS: bool = false;
+    /// Emit bar-plot cache hit/miss diagnostics while rendering the main chart.
+    pub print_plot_cache_stats: bool,
 
-/// Emit progress logs when pairs are added to the monitor and summary counts change.
-pub const PRINT_MONITOR_PROGRESS: bool = false;
+    /// Emit detailed CVA cache hit/miss diagnostics (cache miss reasons, timings, etc.).
+    pub print_cva_cache_events: bool,
 
-/// Emit simulation-mode state changes (enter/exit, price adjustments, etc.).
-pub const PRINT_SIMULATION_EVENTS: bool = false;
+    /// Emit progress logs when pairs are added to the monitor and summary counts change.
+    pub print_monitor_progress: bool,
 
-/// Show sticky-zone dwell summary (Runs / median / p90 / max in candles) in the
-/// status bar. This is intended for developers only and is further gated by
-/// `cfg(debug_assertions)` in the UI layer.
-pub const PRINT_STICKY_DWELL_SUMMARY: bool = false;
+    /// Emit simulation-mode state changes (enter/exit, price adjustments, etc.).
+    pub print_simulation_events: bool,
 
-/// When debugging journeys, emit a detailed, step-by-step walkthrough for a
-/// single historical attempt. This is intended for developers only and is
-/// further gated inside the journey engine by `cfg(debug_assertions)`.
-///
-/// - `PRINT_JOURNEY_FOR_PAIR` must match the pair under analysis.
-/// - `PRINT_TRIGGER_UPDATES` should be enabled to see the logs.
-/// - `DEBUG_JOURNEY_ATTEMPT_INDEX` selects which attempt (0-based) to trace.
-///
-/// Set `DEBUG_JOURNEY_ATTEMPT_INDEX` to -1 to disable.
-pub const DEBUG_JOURNEY_ATTEMPT_INDEX: i32 = -1;
+    /// Show sticky-zone dwell summary (Runs / median / p90 / max in candles) in the
+    /// status bar. This is intended for developers only and is further gated by
+    /// `cfg(debug_assertions)` in the UI layer.
+    pub print_sticky_dwell_summary: bool,
 
-/// Emit journey/trigger status updates (e.g., marking journeys stale, queued follow-ups).
-pub const PRINT_TRIGGER_UPDATES: bool = false;
+    /// When debugging journeys, emit a detailed, step-by-step walkthrough for a
+    /// single historical attempt. This is intended for developers only and is
+    /// further gated inside the journey engine by `cfg(debug_assertions)`.
+    ///
+    /// - `print_journey_for_pair` must match the pair under analysis.
+    /// - `print_trigger_updates` should be enabled to see the logs.
+    /// - `debug_journey_attempt_index` selects which attempt (0-based) to trace.
+    ///
+    /// Set `debug_journey_attempt_index` to -1 to disable.
+    pub debug_journey_attempt_index: i32,
+    /// Emit journey/trigger status updates (e.g., marking journeys stale, queued follow-ups).
+    pub print_trigger_updates: bool,
+    /// If non-empty, emit detailed journey analysis output only for this pair.
+    /// Example: "PAXGUSDT". Use "" to disable.
+    pub print_journey_for_pair: &'static str,
 
-/// If non-empty, emit detailed journey analysis output only for this pair.
-/// Example: "PAXGUSDT". Use "" to disable.
-pub const PRINT_JOURNEY_FOR_PAIR: &str = "";
+    /// Emit detailed serialization/deserialization logs.
+    pub print_serde: bool,
 
-/// Emit detailed serialization/deserialization logs.
-pub const PRINT_SERDE: bool = false;
+    /// Emit details of UI state serialization/deserialization logs.
+    pub print_state_serde: bool,
 
-/// Emit details of UI state serialization/deserialization logs.
-pub const PRINT_STATE_SERDE: bool = false;
+    /// Emit shutdown app messages.
+    pub print_shutdown: bool,
 
-/// Emit shutdown app messages.
-pub const PRINT_SHUTDOWN: bool = false;
+    /// Emit detailed journey status lines (UI flag not logging flag)
+    pub display_journey_status_lines: bool,
+}
 
-/// Emit detailed journey status lines (UI flag not logging flag)
-pub const DISPLAY_JOURNEY_STATUS_LINES: bool = false;
+pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
+    print_zone_transition_summary: false,
+    print_zone_scoring_for_all_pairs: "",
+    print_decay_calibration: false,
+    print_zone_scoring_for_pair: "",
+    print_journey_summary: false,
+    print_ui_interactions: false,
+    print_price_stream_updates: false,
+    print_plot_cache_stats: false,
+    print_cva_cache_events: false,
+    print_monitor_progress: false,
+    print_simulation_events: false,
+    print_sticky_dwell_summary: false,
+
+    debug_journey_attempt_index: -1, // -1 to disable, 0 to enable journey 0, 1 for 1 etc.
+    print_trigger_updates: false,    // must be enabled to see journey logs
+    print_journey_for_pair: "",      // pair to track journey of
+
+    print_serde: false,
+    print_state_serde: false,
+    print_shutdown: false,
+    display_journey_status_lines: false,
+};

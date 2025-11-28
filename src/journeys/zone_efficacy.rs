@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::config::PRINT_ZONE_TRANSITION_SUMMARY;
+use crate::config::debug::DEBUG_FLAGS;
 use crate::models::{OhlcvTimeSeries, SuperZone};
 
 /// Summary statistics describing how historical price action interacts with sticky zones.
@@ -271,7 +271,7 @@ fn build_transition_summaries(
 
     summaries.sort_by_key(|summary| (summary.from_zone_id, summary.to_zone_id));
 
-    if PRINT_ZONE_TRANSITION_SUMMARY {
+    if DEBUG_FLAGS.print_zone_transition_summary {
         #[cfg(debug_assertions)]
         {
             log::info!("--- Sticky Zone Transition Summary ---");

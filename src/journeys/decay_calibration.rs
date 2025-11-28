@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use crate::TimeSeriesCollection;
 use crate::analysis::pair_analysis::ZoneGenerator;
-use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, PRINT_DECAY_CALIBRATION};
+use crate::config::INTERVAL_WIDTH_TO_ANALYSE_MS;
+use crate::config::debug::DEBUG_FLAGS;
 use crate::journeys::zone_efficacy::{ZoneEfficacyStats, compute_zone_efficacy};
 use crate::models::{CVACore, TradingModel, find_matching_ohlcv};
 
@@ -79,7 +80,7 @@ pub fn calibrate_time_decay(
         ) {
             Ok(cva) => cva,
             Err(err) => {
-                if cfg!(debug_assertions) && PRINT_DECAY_CALIBRATION {
+                if cfg!(debug_assertions) && DEBUG_FLAGS.print_decay_calibration {
                     log::error!(
                         "Time-decay sweep: failed to compute CVA for {} @ decay {:.3}: {}",
                         pair,
@@ -146,7 +147,7 @@ pub fn calibrate_time_decay(
     });
 
     if let Some((best_eval, best_cva)) = best_candidate {
-        let print_decay_calibration = cfg!(debug_assertions) && PRINT_DECAY_CALIBRATION;
+        let print_decay_calibration = cfg!(debug_assertions) && DEBUG_FLAGS.print_decay_calibration;
         if print_decay_calibration {
             log::info!("--- Time-decay calibration for {} ---", pair);
             log::info!(

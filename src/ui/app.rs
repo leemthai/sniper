@@ -22,11 +22,7 @@ use crate::ui::utils::setup_custom_visuals;
 use crate::utils::app_time::{AppInstant, now};
 
 #[cfg(debug_assertions)]
-use crate::config::debug::{
-    PRINT_MONITOR_PROGRESS, PRINT_SHUTDOWN, PRINT_STATE_SERDE, PRINT_UI_INTERACTIONS,
-};
-#[cfg(debug_assertions)]
-use crate::config::plot::MAX_JOURNEY_ZONE_LINES;
+use crate::config::debug::DEBUG_FLAGS;
 #[cfg(debug_assertions)]
 use crate::ui::config::UI_CONFIG;
 
@@ -740,7 +736,7 @@ impl ZoneSniperApp {
 
             lines.push((color, line));
 
-            if lines.len() >= MAX_JOURNEY_ZONE_LINES {
+            if lines.len() >= UI_CONFIG.max_journey_zone_lines {
                 break;
             }
         }
@@ -925,13 +921,13 @@ impl ZoneSniperApp {
         if let Some(storage) = cc.storage {
             if let Some(value) = eframe::get_value(storage, eframe::APP_KEY) {
                 #[cfg(debug_assertions)]
-                if PRINT_STATE_SERDE {
+                if DEBUG_FLAGS.print_state_serde {
                     log::info!("Successfully loaded persisted state");
                 }
                 zone_sniper_app = value;
             } else {
                 #[cfg(debug_assertions)]
-                if PRINT_STATE_SERDE {
+                if DEBUG_FLAGS.print_state_serde {
                     log::info!("Failed to get Zone Sniper App state from storage. Creating anew.");
                 }
                 zone_sniper_app = ZoneSniperApp::new_with_initial_state();
@@ -986,7 +982,7 @@ impl ZoneSniperApp {
         // Validate zone count
         if zone_sniper_app.zone_count == 0 {
             #[cfg(debug_assertions)]
-            if PRINT_UI_INTERACTIONS {
+            if DEBUG_FLAGS.print_ui_interactions {
                 log::info!("Warning: Zone count is 0, setting to default");
             }
             zone_sniper_app.zone_count = default_zone_count();
@@ -1088,7 +1084,7 @@ impl ZoneSniperApp {
                             self.multi_pair_monitor.add_pair(context);
 
                             #[cfg(debug_assertions)]
-                            if PRINT_MONITOR_PROGRESS {
+                            if DEBUG_FLAGS.print_monitor_progress {
                                 log::info!(
                                     "✨ Added {} to monitor (price: {:.2})",
                                     pair_name,
@@ -1104,7 +1100,7 @@ impl ZoneSniperApp {
         let final_count = self.multi_pair_monitor.pair_count();
         if final_count > initial_count {
             #[cfg(debug_assertions)]
-            if PRINT_MONITOR_PROGRESS {
+            if DEBUG_FLAGS.print_monitor_progress {
                 log::info!(
                     "📊 Monitor now tracking {}/{} pairs",
                     final_count,
@@ -1118,7 +1114,7 @@ impl ZoneSniperApp {
             let was_initialized = self.monitor_initialized;
             self.monitor_initialized = true;
             #[cfg(debug_assertions)]
-            if PRINT_MONITOR_PROGRESS {
+            if DEBUG_FLAGS.print_monitor_progress {
                 log::info!(
                     "✅ Monitor initialization complete: {}/{} pairs tracked\n",
                     final_count,
@@ -1152,7 +1148,7 @@ impl eframe::App for ZoneSniperApp {
         self.calculation_promise = None;
 
         #[cfg(debug_assertions)]
-        if PRINT_SHUTDOWN {
+        if DEBUG_FLAGS.print_shutdown {
             log::info!("Application shutdown complete.");
         }
     }

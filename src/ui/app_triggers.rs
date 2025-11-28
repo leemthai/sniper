@@ -6,7 +6,7 @@ use crate::config::{CVA_MIN_SECONDS_BETWEEN_RECALCS, CVA_PRICE_RECALC_THRESHOLD_
 use crate::ui::app::{DataParams, ZoneSniperApp};
 
 #[cfg(debug_assertions)]
-use crate::config::debug::{PRINT_JOURNEY_SUMMARY, PRINT_TRIGGER_UPDATES};
+use crate::config::debug::DEBUG_FLAGS;
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct PairTriggerState {
@@ -259,7 +259,7 @@ impl ZoneSniperApp {
         if let Some(last_failed) = self.last_failed_params_by_pair.get(&pair) {
             if last_failed == &params {
                 #[cfg(debug_assertions)]
-                if PRINT_TRIGGER_UPDATES {
+                if DEBUG_FLAGS.print_trigger_updates {
                     log::info!(
                         "[trigger] skipping {} – params match last failed attempt",
                         pair
@@ -323,7 +323,7 @@ impl ZoneSniperApp {
             self.journey_queue.push_back(pair.to_string());
 
             #[cfg(debug_assertions)]
-            if PRINT_JOURNEY_SUMMARY {
+            if DEBUG_FLAGS.print_journey_summary {
                 log::info!(
                     "[journey] queued {pair} as stale ({reason}); queue_len={}",
                     self.journey_queue.len()
@@ -366,7 +366,7 @@ impl ZoneSniperApp {
         }
 
         #[cfg(debug_assertions)]
-        if PRINT_JOURNEY_SUMMARY {
+        if DEBUG_FLAGS.print_journey_summary {
             log::info!("[journey] global change -> cleared queue; awaiting fresh CVA ({reason})");
         }
     }
@@ -377,7 +377,7 @@ impl ZoneSniperApp {
     pub(super) fn drain_journey_queue(&mut self) {
         if self.is_calculating() {
             #[cfg(debug_assertions)]
-            if PRINT_JOURNEY_SUMMARY && !self.journey_queue.is_empty() {
+            if DEBUG_FLAGS.print_journey_summary && !self.journey_queue.is_empty() {
                 log::info!(
                     "[journey] CVA in progress; deferring {} queued journey(s)",
                     self.journey_queue.len()
@@ -397,7 +397,7 @@ impl ZoneSniperApp {
 
             if !trigger.ready_to_run() {
                 #[cfg(debug_assertions)]
-                if PRINT_JOURNEY_SUMMARY {
+                if DEBUG_FLAGS.print_journey_summary {
                     log::info!("[journey] skipped {pair} – not ready_to_run");
                 }
                 return;
@@ -407,7 +407,7 @@ impl ZoneSniperApp {
         }
 
         #[cfg(debug_assertions)]
-        let started_at = if PRINT_JOURNEY_SUMMARY {
+        let started_at = if DEBUG_FLAGS.print_journey_summary {
             Some(AppInstant::now())
         } else {
             None
@@ -420,7 +420,7 @@ impl ZoneSniperApp {
         }
 
         #[cfg(debug_assertions)]
-        if PRINT_JOURNEY_SUMMARY {
+        if DEBUG_FLAGS.print_journey_summary {
             if let Some(ts) = started_at {
                 let elapsed = ts.elapsed();
                 log::info!(

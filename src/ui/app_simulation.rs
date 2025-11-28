@@ -4,7 +4,7 @@ use super::ZoneSniperApp;
 use crate::models::TradingModel;
 
 #[cfg(debug_assertions)]
-use crate::config::debug::PRINT_SIMULATION_EVENTS;
+use crate::config::debug::DEBUG_FLAGS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum SimDirection {
@@ -68,7 +68,7 @@ impl ZoneSniperApp {
             {
                 self.simulated_prices.insert(pair.to_string(), live_price);
                 #[cfg(debug_assertions)]
-                if PRINT_SIMULATION_EVENTS {
+                if DEBUG_FLAGS.print_simulation_events {
                     log::info!(
                         "🎮 Initialized simulation price for {}: ${:.2}",
                         pair,
@@ -96,7 +96,7 @@ impl ZoneSniperApp {
                         if let Some(live_price) = stream.get_price(pair) {
                             self.simulated_prices.insert(pair.clone(), live_price);
                             #[cfg(debug_assertions)]
-                            if PRINT_SIMULATION_EVENTS {
+                            if DEBUG_FLAGS.print_simulation_events {
                                 log::info!(
                                     "🎮 Entered SIMULATION MODE for {} at ${:.2}",
                                     pair,
@@ -106,7 +106,7 @@ impl ZoneSniperApp {
                         }
                     } else if let Some(_sim_price) = self.simulated_prices.get(pair) {
                         #[cfg(debug_assertions)]
-                        if PRINT_SIMULATION_EVENTS {
+                        if DEBUG_FLAGS.print_simulation_events {
                             log::info!(
                                 "🎮 Entered SIMULATION MODE for {} at ${:.2} (restored)",
                                 pair,
@@ -119,7 +119,7 @@ impl ZoneSniperApp {
         } else if let Some(ref stream) = self.price_stream {
             stream.resume();
             #[cfg(debug_assertions)]
-            if PRINT_SIMULATION_EVENTS {
+            if DEBUG_FLAGS.print_simulation_events {
                 log::info!("📡 Exited to LIVE MODE (simulated prices preserved)");
             }
         }
@@ -140,7 +140,7 @@ impl ZoneSniperApp {
             self.simulated_prices.insert(pair.clone(), new_price);
 
             #[cfg(debug_assertions)]
-            if PRINT_SIMULATION_EVENTS {
+            if DEBUG_FLAGS.print_simulation_events {
                 log::info!(
                     "💰 {} price: ${:.2} → ${:.2} ({:+.1}%)",
                     pair,

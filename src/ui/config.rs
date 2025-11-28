@@ -17,7 +17,8 @@ pub struct UiColors {
 /// Main UI configuration struct that holds all UI-related settings
 #[derive(Default, Clone, Copy)]
 pub struct UiConfig {
-    pub colors: UiColors, // Change
+    pub colors: UiColors,
+    pub max_journey_zone_lines: usize,
 }
 
 /// Global UI configuration instance
@@ -31,4 +32,5 @@ pub static UI_CONFIG: UiConfig = UiConfig {
         journey_bull: Color32::from_rgb(130, 200, 140),
         journey_bear: Color32::from_rgb(180, 160, 230),
     },
+    max_journey_zone_lines: 10,
 };

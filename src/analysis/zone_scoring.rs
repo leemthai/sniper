@@ -1,6 +1,6 @@
 // Zone scoring and combination strategies for identifying key price levels
 #[cfg(debug_assertions)]
-use crate::config::PRINT_ZONE_SCORING_FOR_PAIR;
+use crate::config::debug::DEBUG_FLAGS;
 use crate::models::cva::{CVACore, ScoreType};
 use std::collections::HashSet;
 
@@ -304,7 +304,8 @@ pub fn find_consolidation_zones_from_peaks(
             // Calculate prominence for boundary peak
             let prominence = left_val - right_val;
             #[cfg(debug_assertions)]
-            if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
+            if !DEBUG_FLAGS.print_zone_scoring_for_pair.is_empty()
+                && DEBUG_FLAGS.print_zone_scoring_for_pair == _pair_name
             {
                 log::info!(
                     "{}: Adding left boundary peak at index 0 with prominence {}",
@@ -325,7 +326,8 @@ pub fn find_consolidation_zones_from_peaks(
             // Calculate prominence for boundary peak
             let prominence = right_val - left_val;
             #[cfg(debug_assertions)]
-            if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
+            if !DEBUG_FLAGS.print_zone_scoring_for_pair.is_empty()
+                && DEBUG_FLAGS.print_zone_scoring_for_pair == _pair_name
             {
                 log::info!(
                     "{}: Adding right boundary peak at index {} with prominence {}",
@@ -346,7 +348,9 @@ pub fn find_consolidation_zones_from_peaks(
 
     // After dedup and sort:
     #[cfg(debug_assertions)]
-    if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name {
+    if !DEBUG_FLAGS.print_zone_scoring_for_pair.is_empty()
+        && DEBUG_FLAGS.print_zone_scoring_for_pair == _pair_name
+    {
         log::info!(
             "DEBUG: Candidate peaks after boundary check: {:?}",
             candidate_peaks
@@ -391,7 +395,8 @@ pub fn find_consolidation_zones_from_peaks(
                     }
                 }
             };
-            if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
+            if !DEBUG_FLAGS.print_zone_scoring_for_pair.is_empty()
+                && DEBUG_FLAGS.print_zone_scoring_for_pair == _pair_name
             {
                 log::info!(
                     "DEBUG: Peak at {} (prominence {:.6}): {}",
@@ -440,7 +445,9 @@ pub fn find_consolidation_zones_from_peaks(
         included_zones.insert(peak_idx); // Add the peak itself now
         let _after_expansion_count = included_zones.len();
         #[cfg(debug_assertions)]
-        if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty() && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name {
+        if !DEBUG_FLAGS.print_zone_scoring_for_pair.is_empty()
+            && DEBUG_FLAGS.print_zone_scoring_for_pair == _pair_name
+        {
             log::info!(
                 "DEBUG: Peak at {} expanded zones: {} (pre-peak) -> {} (added {})",
                 peak_idx,
@@ -465,8 +472,8 @@ pub fn find_consolidation_zones_from_peaks(
             if zone_scores[gap_idx] >= min_single_zone_gap_fill_pct * avg_peaks {
                 // Threshold: 80% of average
                 #[cfg(debug_assertions)]
-                if !PRINT_ZONE_SCORING_FOR_PAIR.is_empty()
-                    && PRINT_ZONE_SCORING_FOR_PAIR == _pair_name
+                if !DEBUG_FLAGS.print_zone_scoring_for_pair.is_empty()
+                    && DEBUG_FLAGS.print_zone_scoring_for_pair == _pair_name
                 {
                     log::info!(
                         "{}: Filling gap at {} (score {:.3}) between peaks at {} ({:.3}) and {} ({:.3})",

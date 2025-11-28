@@ -12,7 +12,7 @@ use super::app::ZoneSniperApp;
 #[cfg(debug_assertions)]
 use crate::INTERVAL_WIDTH_TO_ANALYSE_MS;
 #[cfg(debug_assertions)]
-use crate::config::debug::DISPLAY_JOURNEY_STATUS_LINES;
+use crate::config::debug::DEBUG_FLAGS;
 #[cfg(debug_assertions)]
 use crate::ui::config::UI_TEXT;
 
@@ -294,7 +294,7 @@ impl ZoneSniperApp {
                             }
 
                             #[cfg(debug_assertions)]
-                            if crate::config::debug::PRINT_STICKY_DWELL_SUMMARY {
+                            if DEBUG_FLAGS.print_sticky_dwell_summary {
                                 ui.separator();
                                 let text = if let (Some(selected_pair), Some((pair_name, stats))) =
                                     (&self.selected_pair, &self.data_state.zone_efficacy)
@@ -426,7 +426,7 @@ impl ZoneSniperApp {
     #[cfg(debug_assertions)]
     fn render_journey_debug_info(&self, ui: &mut egui::Ui) {
         // Only run if DISPLAY_JOURNEY_STATUS_LINES flag is enabled
-        if !DISPLAY_JOURNEY_STATUS_LINES {
+        if !DEBUG_FLAGS.display_journey_status_lines {
             return;
         }
 
