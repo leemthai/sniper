@@ -1,7 +1,8 @@
-use crate::config::WASM_MAX_PAIRS;
-use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_file::CacheFile};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+
+use crate::config::WASM_MAX_PAIRS;
+use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_file::CacheFile};
 
 const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),

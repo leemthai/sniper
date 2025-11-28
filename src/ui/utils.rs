@@ -1,5 +1,6 @@
-use crate::ui::config::UI_CONFIG;
 use eframe::egui::{Context, RichText, Ui, Visuals};
+
+use crate::ui::config::UI_CONFIG;
 
 /// Creates a colored heading with uppercase text and monospace font
 pub fn colored_heading(text: impl Into<String>) -> RichText {
@@ -14,11 +15,6 @@ pub fn colored_heading(text: impl Into<String>) -> RichText {
 pub fn colored_subsection_heading(text: impl Into<String>) -> RichText {
     RichText::new(text.into()).color(UI_CONFIG.colors.subsection_heading)
 }
-
-// /// Creates a colored label using the configured label color
-// pub fn colored_label(text: impl Into<String>) -> RichText {
-//     RichText::new(text.into()).color(UI_CONFIG.colors.label)
-// }
 
 /// Sets up custom visuals for the entire application
 pub fn setup_custom_visuals(ctx: &Context) {
@@ -44,19 +40,6 @@ pub fn section_heading(ui: &mut Ui, text: impl Into<String>) {
     ui.heading(colored_heading(text));
     ui.add_space(5.0);
 }
-
-// /// Creates a sub-section heading with standard spacing
-// pub fn subsection_heading(ui: &mut Ui, text: impl Into<String>) {
-//     ui.add_space(5.0);
-//     ui.label(colored_heading(text));
-//     ui.add_space(3.0);
-// }
-
-// /// Adds consistent vertical spacing between sections
-// #[allow(dead_code)]
-// pub fn section_spacing(ui: &mut Ui) {
-//     ui.add_space(50.0);
-// }
 
 /// Creates a separator with standard spacing
 pub fn spaced_separator(ui: &mut Ui) {

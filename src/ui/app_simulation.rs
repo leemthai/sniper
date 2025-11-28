@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use super::ZoneSniperApp;
+use crate::models::TradingModel;
+
 #[cfg(debug_assertions)]
 use crate::config::debug::PRINT_SIMULATION_EVENTS;
-use crate::models::TradingModel;
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum SimDirection {

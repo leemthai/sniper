@@ -1,6 +1,11 @@
+use colorgrad::{CatmullRomGradient, Color, Gradient};
+use eframe::egui::{self, Color32, Stroke};
+use egui_plot::{
+    AxisHints, Bar, BarChart, Corner, HLine, HPlacement, Legend, Plot, PlotPoints, Polygon,
+};
+use std::sync::Arc;
+
 use crate::analysis::selection_criteria::{FilterChain, ZoneSelectionCriteria};
-#[cfg(debug_assertions)]
-use crate::config::debug::{PRINT_CVA_CACHE_EVENTS, PRINT_PLOT_CACHE_STATS};
 use crate::config::{
     BACKGROUND_BAR_INTENSITY, CURRENT_PRICE_COLOR, CURRENT_PRICE_LINE_WIDTH,
     CURRENT_PRICE_OUTER_COLOR, CURRENT_PRICE_OUTER_WIDTH, DEFAULT_BAR_COLOR, HIGH_WICKS_ZONE_COLOR,
@@ -12,12 +17,9 @@ use crate::config::{
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::{SuperZone, TradingModel, Zone};
 use crate::utils::{maths_utils, time_utils};
-use colorgrad::{CatmullRomGradient, Color, Gradient};
-use eframe::egui::{self, Color32, Stroke};
-use egui_plot::{
-    AxisHints, Bar, BarChart, Corner, HLine, HPlacement, Legend, Plot, PlotPoints, Polygon,
-};
-use std::sync::Arc;
+
+#[cfg(debug_assertions)]
+use crate::config::debug::{PRINT_CVA_CACHE_EVENTS, PRINT_PLOT_CACHE_STATS};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlotCache {

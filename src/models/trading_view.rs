@@ -1,12 +1,11 @@
+use std::sync::Arc;
+
 use crate::analysis::zone_scoring::{
     find_consolidation_zones_from_peaks, find_high_activity_zones,
     find_high_activity_zones_low_gradient, find_low_activity_zones_low_gradient,
 };
-
-// use crate::models::PairContext;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::utils::maths_utils;
-use std::sync::Arc;
 
 /// A single price zone with its properties
 #[derive(Debug, Clone)]

@@ -1,5 +1,3 @@
-#![allow(clippy::collapsible_if)]
-
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::debug::PRINT_PRICE_STREAM_UPDATES;
 #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
@@ -107,17 +105,6 @@ impl PriceStreamManager {
     pub fn is_suspended(&self) -> bool {
         *self.suspended.lock().unwrap()
     }
-
-    // /// Get connection status for a symbol
-    // pub fn get_status(&self, symbol: &str) -> ConnectionStatus {
-    //     let symbol_lower = symbol.to_lowercase();
-    //     self.connection_status
-    //         .lock()
-    //         .unwrap()
-    //         .get(&symbol_lower)
-    //         .copied()
-    //         .unwrap_or(ConnectionStatus::Disconnected)
-    // }
 
     /// Get overall connection health (percentage of connected streams)
     pub fn connection_health(&self) -> f64 {
@@ -365,9 +352,6 @@ async fn run_combined_price_stream(
                                         );
                                     }
                                 }
-
-                                // #[cfg(debug_assertions)]
-                                // log::info!("Updated price for {}: ${:.2}", ticker.symbol, price);
                             }
                         }
                         Err(parse_err) => {

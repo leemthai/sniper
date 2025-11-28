@@ -1,12 +1,6 @@
-//! Automatic duration selection based on price relevancy
-//!
-//! This module implements intelligent duration selection by analyzing which candles
-//! have price action within a specified percentage range of the current price.
-//! Unlike simple time-based lookback, this finds ALL candles within the price range,
-//! potentially creating discontinuous slices that skip periods of high volatility.
+use serde::{Deserialize, Serialize};
 
 use crate::models::OhlcvTimeSeries;
-use serde::{Deserialize, Serialize};
 
 /// Default relevancy threshold: data within ±15% of current price is considered relevant
 pub const DEFAULT_RELEVANCY_THRESHOLD: f64 = 0.15;

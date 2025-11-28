@@ -4,6 +4,7 @@ use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt;
 use std::time::SystemTime;
+
 // External crates
 use anyhow::{Result, bail};
 use binance_sdk::common::models::Interval as binance_interval;
@@ -15,15 +16,14 @@ use binance_sdk::spot::{
 };
 use binance_sdk::{errors, errors::ConnectorError as connection_error};
 use tokio::time::{Duration, sleep};
+
 // Local crates
+use crate::config::DEFAULT_KLINES_LIMIT;
+use crate::config::binance::{BinanceApiConfig, KLINE_CALL_WEIGHT, WEIGHT_LIMIT_MINUTE};
 use crate::data::timeseries::intervals::interval_ms_to_string;
 use crate::domain::pair_interval::PairInterval;
 use crate::utils::time_utils::*; // Bring everything into scope
 
-use crate::config::DEFAULT_KLINES_LIMIT;
-use crate::config::binance::{BinanceApiConfig, KLINE_CALL_WEIGHT, WEIGHT_LIMIT_MINUTE};
-
-// When you need DEBUG_PRINT_INTERVAL, use it conditionally:
 #[cfg(debug_assertions)]
 use crate::config::binance::debug::DEBUG_PRINT_INTERVAL;
 

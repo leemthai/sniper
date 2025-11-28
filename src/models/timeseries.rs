@@ -1,10 +1,12 @@
-#[cfg(not(target_arch = "wasm32"))]
-use crate::data::timeseries::bnapi_version::OhlcvTimeSeriesTemp;
+use anyhow::{Result, anyhow};
+use chrono::{DateTime, Duration, Utc};
+
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::{CVACore, ScoreType};
-use anyhow::{Result, anyhow};
-use chrono::{DateTime, Duration, Utc};
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::data::timeseries::bnapi_version::OhlcvTimeSeriesTemp;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};

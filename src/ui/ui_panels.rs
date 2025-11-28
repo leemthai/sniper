@@ -1,15 +1,15 @@
-#[cfg(debug_assertions)]
-use crate::config::debug::PRINT_UI_INTERACTIONS;
-use crate::config::{TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS};
+use eframe::egui::{ComboBox, ScrollArea, Ui};
+use strum::IntoEnumIterator;
+
+use crate::config::{STICKY_ZONE_COLOR, TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS};
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::ScoreType;
 use crate::models::{PairContext, ZoneType};
 use crate::ui::config::UI_TEXT;
 use crate::ui::utils::{colored_subsection_heading, section_heading, spaced_separator};
-use eframe::egui::{ComboBox, ScrollArea, Ui};
-use strum::IntoEnumIterator;
 
-use crate::config::STICKY_ZONE_COLOR;
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_UI_INTERACTIONS;
 
 /// Trait for UI panels that can be rendered
 pub trait Panel {

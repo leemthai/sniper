@@ -3,9 +3,10 @@ use std::sync::Arc;
 use crate::journeys::compute_zone_efficacy;
 use crate::models::{TradingModel, find_matching_ohlcv};
 
-use super::app::ZoneSniperApp;
 #[cfg(debug_assertions)]
 use crate::config::debug::PRINT_UI_INTERACTIONS;
+
+use super::app::ZoneSniperApp;
 
 impl ZoneSniperApp {
     pub(super) fn compute_slice_selection(

@@ -1,12 +1,14 @@
-#[cfg(debug_assertions)]
-use crate::config::debug::PRINT_SERDE;
-use crate::config::{KLINE_PATH, kline_cache_filename};
-use crate::utils::time_utils::how_many_seconds_ago;
-use anyhow::{Context, Result, bail};
-use async_trait::async_trait;
 use std::path::PathBuf;
 
+use anyhow::{Context, Result, bail};
+use async_trait::async_trait;
+
+use crate::config::{KLINE_PATH, kline_cache_filename};
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_file::CacheFile};
+use crate::utils::time_utils::how_many_seconds_ago;
+
+#[cfg(debug_assertions)]
+use crate::config::debug::PRINT_SERDE;
 
 pub fn check_local_data_validity(
     recency_required_secs: i64,

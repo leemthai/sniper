@@ -1,7 +1,8 @@
-use crate::data::timeseries::bnapi_version::{AllValidKlines4Pair, PairInterval};
-use crate::utils::{maths_utils, vec_utils};
 use anyhow::Result;
 use std::fmt;
+
+use crate::data::timeseries::bnapi_version::{AllValidKlines4Pair, PairInterval};
+use crate::utils::{maths_utils, vec_utils};
 
 // MAX_PCT_MISSING_KLINES_ALLOWED is a delimiter. If BN klines data has < % of missing klines than this, we simply forward-fill the missing data.
 // But if the BN Klines data has > % of missing klines than this, we instead cut-off ALL missing klines, and then just deal with the `pure` data afterwards. So then guaranteed not to be filling in any values but end up much less data (but 100% pure.)

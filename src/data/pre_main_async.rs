@@ -1,8 +1,15 @@
 // Async code to run in main before egui starts up
 
 use crate::Cli;
+use crate::data::timeseries::{
+    CreateTimeSeriesData, TimeSeriesCollection, get_timeseries_data_async,
+};
+
 #[cfg(target_arch = "wasm32")]
 use crate::config::WASM_MAX_PAIRS;
+#[cfg(target_arch = "wasm32")]
+use crate::data::timeseries::wasm_demo::WasmDemoData;
+
 #[cfg(debug_assertions)]
 use crate::config::debug::PRINT_SERDE;
 #[cfg(not(target_arch = "wasm32"))]
@@ -11,11 +18,6 @@ use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_VERSION};
 use crate::data::timeseries::bnapi_version::BNAPIVersion;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::timeseries::serde_version::{SerdeVersion, check_local_data_validity};
-#[cfg(target_arch = "wasm32")]
-use crate::data::timeseries::wasm_demo::WasmDemoData;
-use crate::data::timeseries::{
-    CreateTimeSeriesData, TimeSeriesCollection, get_timeseries_data_async,
-};
 
 // The async function to load  to run before the GUI starts at all (so can't rely on gui app state)
 pub async fn fetch_pair_data(

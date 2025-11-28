@@ -1,6 +1,7 @@
-use crate::utils::maths_utils::RangeF64;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+
+use crate::utils::maths_utils::RangeF64;
 
 /// Lean CVA results containing only actively used metrics
 /// Memory footprint: ~3.2KB per 100 zones vs 14.4KB with full CVAResults

@@ -18,7 +18,7 @@ pub const DEFAULT_PRICE_ZONE_COUNT: usize = 100;
 
 /// Time Horizon slider configuration (in days)
 pub const TIME_HORIZON_MIN_DAYS: u64 = 1;
-pub const TIME_HORIZON_MAX_DAYS: u64 = 1365; // 90;
+pub const TIME_HORIZON_MAX_DAYS: u64 = 100; // 1365; // 90;
 pub const TIME_HORIZON_DEFAULT_DAYS: u64 = 7;
 
 /// Price change threshold (percentage) to trigger journey recomputation

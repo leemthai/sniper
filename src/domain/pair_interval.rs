@@ -1,5 +1,6 @@
-use crate::data::timeseries::intervals::interval_ms_to_string;
 use serde::{Deserialize, Serialize};
+
+use crate::data::timeseries::intervals::interval_ms_to_string;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct PairInterval {

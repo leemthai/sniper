@@ -1,6 +1,14 @@
 pub mod bn_kline;
 pub mod raw_ohlcv;
 
+use anyhow::{Result, anyhow, bail};
+use async_trait::async_trait;
+use bn_kline::AllValidKlines4Pair;
+use futures::future::join_all;
+use itertools::iproduct;
+use rayon::prelude::*;
+use tokio::{fs, task::JoinError, task::JoinHandle, time::Instant};
+
 use crate::config::{
     INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_VERSION, MAX_BN_KLINES_LOOKUPS_TOTAL, MAX_PAIRS,
     SIMULTANEOUS_KLINE_CALLS_CEILING,
@@ -8,16 +16,10 @@ use crate::config::{
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection};
 use crate::domain::pair_interval::PairInterval;
 use crate::models::OhlcvTimeSeries;
-#[allow(unused_imports)]
-use crate::utils::time_utils;
-use anyhow::{Result, anyhow, bail};
-use async_trait::async_trait;
-use bn_kline::AllValidKlines4Pair;
-use futures::future::join_all;
-use itertools::iproduct;
 pub use raw_ohlcv::OhlcvTimeSeriesTemp;
-use rayon::prelude::*;
-use tokio::{fs, task::JoinError, task::JoinHandle, time::Instant};
+
+#[cfg(debug_assertions)]
+use crate::utils::time_utils;
 
 pub struct BNAPIVersion;
 #[async_trait]
