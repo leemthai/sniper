@@ -15,8 +15,9 @@ use crate::config::{
     SUPPORT_ZONE_COLOR, ZONE_FILL_OPACITY, ZONE_GRADIENT_COLORS,
 };
 use crate::models::cva::{CVACore, ScoreType};
-use crate::models::{SuperZone, TradingModel, Zone};
-use crate::utils::{maths_utils, time_utils};
+use crate::models::{SuperZone, TradingModel};
+use crate::ui::ui_text::UI_TEXT;
+use crate::utils::maths_utils;
 
 #[cfg(debug_assertions)]
 use crate::config::debug::{PRINT_CVA_CACHE_EVENTS, PRINT_PLOT_CACHE_STATS};
@@ -29,7 +30,7 @@ pub struct PlotCache {
     y_min: f64,
     y_max: f64,
     bar_thickness: f64,
-    time_length_sec: f64,
+    total_width: f64,
     zone_count: usize,
     score_type: ScoreType,
     cva_hash: u64,
@@ -102,6 +103,9 @@ impl PlotView {
         let background_score_type = ScoreType::CandleBodyVW;
         let cache = self.calculate_plot_data(cva_results, background_score_type);
 
+        let x_min = cache.x_min;
+        let total_width = cache.total_width;
+
         // Legend setup
         let _legend = Legend::default().position(Corner::RightTop);
 
@@ -109,9 +113,29 @@ impl PlotView {
         Plot::new("cva")
             .view_aspect(PLOT_ASPECT_RATIO)
             // .legend(_legend)
-            .custom_x_axes(vec![create_x_axis()])
+            .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_y_axes(vec![create_y_axis(pair_name)])
-            .label_formatter(|_name, value| format_plot_background_label(value.x, value.y))
+            .x_grid_spacer(move |_input| {
+                let step_count = 20;
+                (0..=step_count)
+                    .map(|i| {
+                        let fraction = i as f64 / step_count as f64;
+                        let value = x_min + (total_width * fraction);
+
+                        egui_plot::GridMark {
+                            value,
+                            step_size: total_width / step_count as f64,
+                        }
+                    })
+                    .collect()
+            })
+            .label_formatter(move |_name, value| {
+                let pct = ((value.x - x_min) / total_width) * 100.;
+                format!(
+                    "{:.2}% {}\n${:.4}",
+                    pct, UI_TEXT.plot_strongest_zone, value.y
+                )
+            })
             .allow_scroll(false)
             .allow_zoom(false)
             .allow_drag(false)
@@ -124,9 +148,6 @@ impl PlotView {
                     (cache.y_min, cache.y_max)
                 };
 
-                // #[cfg(debug_assertions)]
-                // log::info!("Plot y_min: {}", cache.y_min);
-
                 plot_ui.set_plot_bounds_y(y_min_adjusted..=y_max_adjusted);
                 plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
 
@@ -138,29 +159,7 @@ impl PlotView {
 
                 // Draw current price line LAST for max. visibility
                 draw_current_price(plot_ui, current_pair_price);
-
-                // #[cfg(debug_assertions)]
-                // // Confirm the y_min_adjusted, y_max_adjusted are always at top and bottom of visible plot
-                // Self::draw_y_limits(plot_ui, y_min_adjusted, y_max_adjusted);
             });
-    }
-
-    /// Draw the current price line with outer border for visibility
-    #[cfg(debug_assertions)]
-    #[allow(dead_code)]
-    fn draw_y_limits(plot_ui: &mut egui_plot::PlotUi, y_min: f64, y_max: f64) {
-        // Draw contrasting outer border first
-        let min_line = HLine::new("Lower Price Limit", y_min)
-            .color(Color32::MAGENTA)
-            .width(CURRENT_PRICE_OUTER_WIDTH)
-            .style(egui_plot::LineStyle::Solid);
-        plot_ui.hline(min_line);
-        // Draw inner colored line on top
-        let max_line = HLine::new("Upper Price Limit", y_max)
-            .color(Color32::RED)
-            .width(CURRENT_PRICE_LINE_WIDTH)
-            .style(egui_plot::LineStyle::Solid);
-        plot_ui.hline(max_line);
     }
 
     fn calculate_plot_data(&mut self, cva_results: &CVACore, score_type: ScoreType) -> PlotCache {
@@ -220,8 +219,8 @@ impl PlotView {
 
         let x_min: f64 = (cva_results.start_timestamp_ms as f64) / 1000.0;
         let x_max: f64 = (cva_results.end_timestamp_ms as f64) / 1000.0;
-        let time_length_sec = x_max - x_min;
-        let zone_score_scalar = time_length_sec;
+        let total_width = x_max - x_min;
+        let zone_score_scalar = total_width;
         let bar_width_scalar = y_max - y_min;
         let bar_thickness = bar_width_scalar / (zone_count as f64);
 
@@ -268,7 +267,7 @@ impl PlotView {
             y_min,
             y_max,
             bar_thickness,
-            time_length_sec,
+            total_width,
             zone_count,
             score_type,
             cva_hash,
@@ -282,15 +281,21 @@ impl PlotView {
     }
 }
 
-fn create_x_axis() -> AxisHints<'static> {
+fn create_x_axis(plot_cache: &PlotCache) -> AxisHints<'static> {
+    let x_min = plot_cache.x_min;
+    let total_width = plot_cache.total_width;
+
     AxisHints::new_x()
-        .label("Time")
-        .formatter(|grid_mark, _range| time_utils::epoch_sec_to_utc(grid_mark.value as i64))
+        .label(UI_TEXT.plot_x_axis)
+        .formatter(move |grid_mark, _range| {
+            let pct = ((grid_mark.value - x_min) / total_width) * 100.0;
+            format!("{:.0}%", pct)
+        })
 }
 
 fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
     AxisHints::new_y()
-        .label(format!("{}  Price", pair_name))
+        .label(format!("{}  {}", pair_name, UI_TEXT.plot_y_axis)) // 2 spaces deliberate here
         .formatter(|grid_mark, _range| format!("${:.2}", grid_mark.value))
         .placement(HPlacement::Left)
 }
@@ -308,27 +313,6 @@ fn to_egui_color(colorgrad_color: Color) -> Color32 {
     Color32::from_rgba_unmultiplied(rgba8[0], rgba8[1], rgba8[2], rgba8[3])
 }
 
-fn format_plot_background_label(x_axis_value: f64, y_axis: f64) -> String {
-    format!(
-        "{}\n${:.4}",
-        time_utils::epoch_sec_to_utc(x_axis_value as i64),
-        y_axis
-    )
-}
-
-fn format_plot_tooltip_element(
-    x_axis_value: f64,
-    x_axis_width: f64,
-    y_axis: f64,
-    x_axis_min: f64,
-) -> String {
-    format!(
-        "{:.2}% (of max)\n${:.4}",
-        ((x_axis_value - x_axis_min) / x_axis_width) * 100.,
-        y_axis
-    )
-}
-
 /// Draw background plot with bars representing score type
 fn draw_background_plot(
     plot_ui: &mut egui_plot::PlotUi,
@@ -336,14 +320,20 @@ fn draw_background_plot(
     background_score_type: ScoreType,
 ) {
     let title = format!("{}", background_score_type);
-    let time_length_sec = cache.time_length_sec;
     let x_min = cache.x_min;
+    let total_width = cache.total_width;
     let chart = BarChart::new(title, cache.bars.clone())
         .color(DEFAULT_BAR_COLOR) // Legend color only
         .width(cache.bar_thickness)
         .horizontal()
         .element_formatter(Box::new(move |bar, _chart| {
-            format_plot_tooltip_element(bar.value, time_length_sec, bar.argument, x_min)
+            format!(
+                "{} {:.2}% {}\n${:.4}",
+                UI_TEXT.plot_this_zone_is,
+                ((bar.value - x_min) / total_width) * 100.,
+                UI_TEXT.plot_strongest_zone,
+                bar.argument
+            )
         }));
     plot_ui.bar_chart(chart);
 }
@@ -457,40 +447,6 @@ fn draw_classified_zones(
     }
 }
 
-/// Draw a Zone from TradingModel as a semi-transparent filled rectangle
-// Now never used because we only have superzones.... interesting.
-#[allow(dead_code)]
-fn draw_zone(
-    plot_ui: &mut egui_plot::PlotUi,
-    zone: &Zone,
-    x_min: f64,
-    x_max: f64,
-    label: &str,
-    color: Color32,
-) {
-    let zone_bottom = zone.price_bottom;
-    let zone_top = zone.price_top;
-
-    // Create rectangle vertices (spanning full X-axis)
-    let points = PlotPoints::new(vec![
-        [x_min, zone_bottom],
-        [x_max, zone_bottom],
-        [x_max, zone_top],
-        [x_min, zone_top],
-    ]);
-
-    // Draw semi-transparent filled polygon with matching stroke
-    // Name must be unique per zone to allow independent legend toggling
-    let polygon = Polygon::new(format!("{} #{}", label, zone.index), points)
-        .fill_color(color.linear_multiply(ZONE_FILL_OPACITY))
-        .stroke(Stroke::new(1.0, color))
-        .name(format!("{} #{}", label, zone.index)) // Unique legend entry per zone
-        .highlight(false) // Don't highlight on hover to avoid clutter
-        .allow_hover(false); // Don't show individual zone tooltips
-
-    plot_ui.polygon(polygon);
-}
-
 /// Draw a SuperZone from TradingModel as a semi-transparent filled rectangle
 fn draw_superzone(
     plot_ui: &mut egui_plot::PlotUi,
@@ -521,9 +477,4 @@ fn draw_superzone(
         .allow_hover(false);
 
     plot_ui.polygon(polygon);
-}
-
-#[cfg(test)]
-mod tests {
-    // use super::*;
 }

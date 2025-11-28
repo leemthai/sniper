@@ -45,6 +45,10 @@ pub struct UiText {
     pub sticky_dwell_label_p90: &'static str,
     pub sticky_dwell_label_max: &'static str,
     pub sticky_dwell_unit_candles_short: &'static str,
+    pub plot_x_axis: &'static str,
+    pub plot_y_axis: &'static str,
+    pub plot_strongest_zone: &'static str,
+    pub plot_this_zone_is: &'static str,
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -94,4 +98,8 @@ pub const UI_TEXT: UiText = UiText {
     sticky_dwell_label_p90: "p90",
     sticky_dwell_label_max: "max",
     sticky_dwell_unit_candles_short: "candles",
+    plot_y_axis: "Price",
+    plot_x_axis: "Key Zone Strength (0 % of the strongest zone)",
+    plot_strongest_zone: "of strongest zone",
+    plot_this_zone_is: "This zone is",
 };
