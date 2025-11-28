@@ -1,24 +1,3 @@
-use crate::ui::app_async::AsyncCalcResult;
-use crate::ui::app_simulation::{SimDirection, SimStepSize};
-use crate::ui::app_triggers::PairTriggerState;
-
-// An application state that holds the result of our async task, plus all gui stats
-use crate::analysis::MultiPairMonitor;
-use crate::analysis::pair_analysis::ZoneGenerator;
-#[cfg(debug_assertions)]
-use crate::config::debug::{
-    PRINT_MONITOR_PROGRESS, PRINT_SHUTDOWN, PRINT_STATE_SERDE, PRINT_UI_INTERACTIONS,
-};
-use crate::config::plot::MAX_JOURNEY_ZONE_LINES;
-use crate::config::{DEFAULT_PRICE_ZONE_COUNT, TIME_HORIZON_DEFAULT_DAYS};
-use crate::data::price_stream::PriceStreamManager;
-use crate::data::timeseries::TimeSeriesCollection;
-use crate::journeys::{JourneyExecution, Outcome, ZoneEfficacyStats};
-use crate::models::{CVACore, PairContext, TradingModel};
-use crate::ui::config::{UI_CONFIG, UI_TEXT};
-use crate::ui::ui_plot_view::PlotView;
-use crate::ui::utils::setup_custom_visuals;
-use crate::utils::app_time::{AppInstant, now};
 use eframe::{Frame, egui};
 use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
@@ -26,6 +5,30 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
+
+use crate::analysis::MultiPairMonitor;
+use crate::analysis::pair_analysis::ZoneGenerator;
+use crate::config::{DEFAULT_PRICE_ZONE_COUNT, TIME_HORIZON_DEFAULT_DAYS};
+use crate::data::price_stream::PriceStreamManager;
+use crate::data::timeseries::TimeSeriesCollection;
+use crate::journeys::{JourneyExecution, Outcome, ZoneEfficacyStats};
+use crate::models::{CVACore, PairContext, TradingModel};
+use crate::ui::app_async::AsyncCalcResult;
+use crate::ui::app_simulation::{SimDirection, SimStepSize};
+use crate::ui::app_triggers::PairTriggerState;
+use crate::ui::config::UI_TEXT;
+use crate::ui::ui_plot_view::PlotView;
+use crate::ui::utils::setup_custom_visuals;
+use crate::utils::app_time::{AppInstant, now};
+
+#[cfg(debug_assertions)]
+use crate::config::debug::{
+    PRINT_MONITOR_PROGRESS, PRINT_SHUTDOWN, PRINT_STATE_SERDE, PRINT_UI_INTERACTIONS,
+};
+#[cfg(debug_assertions)]
+use crate::config::plot::MAX_JOURNEY_ZONE_LINES;
+#[cfg(debug_assertions)]
+use crate::ui::config::UI_CONFIG;
 
 /// Error types for application operations
 #[derive(Debug, Clone)]
@@ -64,6 +67,7 @@ pub struct DataState {
 }
 
 #[derive(Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(super) enum JourneySummaryStatus {
     Completed,
     NoData,
@@ -71,6 +75,7 @@ pub(super) enum JourneySummaryStatus {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub(super) struct JourneySummary {
     pub pair: String,
     pub zones_analyzed: usize,
@@ -161,6 +166,7 @@ impl JourneySummary {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub(super) struct JourneyAggregateSummary {
     pub pair_count: usize,
     pub completed_pairs: usize,
@@ -552,6 +558,7 @@ impl ZoneSniperApp {
         });
     }
 
+    #[cfg(debug_assertions)]
     pub(super) fn journey_status_line(&self) -> (egui::Color32, String) {
         if let Some(pair) = &self.selected_pair {
             if let Some(summary) = self.journey_summaries.get(pair) {
@@ -589,6 +596,7 @@ impl ZoneSniperApp {
         )
     }
 
+    #[cfg(debug_assertions)]
     pub(super) fn journey_aggregate_line(&self) -> (egui::Color32, String) {
         if let Some(aggregate) = &self.journey_aggregate {
             if let Some(line) = Self::format_aggregate_journey_line(aggregate) {
@@ -605,6 +613,7 @@ impl ZoneSniperApp {
         )
     }
 
+    #[cfg(debug_assertions)]
     fn format_current_journey_line(summary: &JourneySummary) -> String {
         let mut parts = vec![format!(
             "{} {}",
@@ -642,8 +651,9 @@ impl ZoneSniperApp {
         )
     }
 
+    #[cfg(debug_assertions)]
     pub(super) fn current_journey_zone_lines(&self) -> Vec<(egui::Color32, String)> {
-        let mut lines = Vec::new();
+        let mut lines = Vec::new(); // yes
 
         let pair = match &self.selected_pair {
             Some(p) => p,
@@ -738,6 +748,7 @@ impl ZoneSniperApp {
         lines
     }
 
+    #[cfg(debug_assertions)]
     pub(super) fn model_status_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
 
@@ -805,6 +816,7 @@ impl ZoneSniperApp {
         ))
     }
 
+    #[cfg(debug_assertions)]
     fn format_journey_note_line(summary: &JourneySummary) -> String {
         let note = summary
             .note
@@ -817,6 +829,7 @@ impl ZoneSniperApp {
         )
     }
 
+    #[cfg(debug_assertions)]
     fn format_aggregate_journey_line(aggregate: &JourneyAggregateSummary) -> Option<String> {
         if aggregate.total_attempts == 0 {
             return None;
@@ -879,6 +892,7 @@ impl ZoneSniperApp {
         ))
     }
 
+    #[cfg(debug_assertions)]
     fn format_duration_short(duration: Duration) -> String {
         if duration.is_zero() {
             return "0s".to_string();

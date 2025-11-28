@@ -1,16 +1,20 @@
+use eframe::egui::{self, ScrollArea};
 use std::time::Duration;
 
-use eframe::egui::{self, ScrollArea};
-
-#[cfg(debug_assertions)]
-use crate::INTERVAL_WIDTH_TO_ANALYSE_MS;
 use crate::config::{TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS};
 use crate::data::price_stream::PriceStreamManager;
 use crate::ui::app_simulation::SimDirection;
-use crate::ui::config::{UI_CONFIG, UI_TEXT};
+use crate::ui::config::UI_CONFIG;
 use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
 
 use super::app::ZoneSniperApp;
+
+#[cfg(debug_assertions)]
+use crate::INTERVAL_WIDTH_TO_ANALYSE_MS;
+#[cfg(debug_assertions)]
+use crate::config::debug::DISPLAY_JOURNEY_STATUS_LINES;
+#[cfg(debug_assertions)]
+use crate::ui::config::UI_TEXT;
 
 impl ZoneSniperApp {
     pub(super) fn render_side_panel(&mut self, ctx: &egui::Context) {
@@ -410,52 +414,66 @@ impl ZoneSniperApp {
                             );
                         }
                     });
-                    ui.add_space(6.0);
-                    let status_lines = self.model_status_lines();
-                    let (current_color, current_line) = self.journey_status_line();
-                    let zone_lines = self.current_journey_zone_lines();
-                    let (aggregate_color, aggregate_line) = self.journey_aggregate_line();
 
-                    ui.vertical(|ui| {
-                        ui.label(
-                            egui::RichText::new(UI_TEXT.journey_status_heading)
-                                .small()
-                                .strong()
-                                .color(egui::Color32::from_rgb(220, 220, 200)),
-                        );
-
-                        for line in status_lines {
-                            ui.label(
-                                egui::RichText::new(line)
-                                    .small()
-                                    .italics()
-                                    .color(egui::Color32::from_rgb(180, 180, 200)),
-                            );
-                        }
-
-                        ui.separator();
-                        ui.label(
-                            egui::RichText::new(current_line)
-                                .small()
-                                .color(current_color),
-                        );
-
-                        for (color, line) in zone_lines {
-                            ui.horizontal(|ui| {
-                                ui.add_space(12.0);
-                                ui.label(egui::RichText::new(line).small().color(color));
-                            });
-                        }
-
-                        ui.separator();
-                        ui.label(
-                            egui::RichText::new(aggregate_line)
-                                .small()
-                                .color(aggregate_color),
-                        );
-                    });
+                    #[cfg(debug_assertions)]
+                    {
+                        self.render_journey_debug_info(ui);
+                    }
                 });
             });
+    }
+
+    #[cfg(debug_assertions)]
+    fn render_journey_debug_info(&self, ui: &mut egui::Ui) {
+        // Only run if DISPLAY_JOURNEY_STATUS_LINES flag is enabled
+        if !DISPLAY_JOURNEY_STATUS_LINES {
+            return;
+        }
+
+        ui.add_space(6.0);
+        let status_lines = self.model_status_lines();
+        let (current_color, current_line) = self.journey_status_line();
+        let zone_lines = self.current_journey_zone_lines();
+        let (aggregate_color, aggregate_line) = self.journey_aggregate_line();
+
+        ui.vertical(|ui| {
+            ui.label(
+                egui::RichText::new(UI_TEXT.journey_status_heading)
+                    .small()
+                    .strong()
+                    .color(egui::Color32::from_rgb(220, 220, 200)),
+            );
+
+            for line in status_lines {
+                ui.label(
+                    egui::RichText::new(line)
+                        .small()
+                        .italics()
+                        .color(egui::Color32::from_rgb(180, 180, 200)),
+                );
+            }
+
+            ui.separator();
+            ui.label(
+                egui::RichText::new(current_line)
+                    .small()
+                    .color(current_color),
+            );
+
+            for (color, line) in zone_lines {
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new(line).small().color(color));
+                });
+            }
+
+            ui.separator();
+            ui.label(
+                egui::RichText::new(aggregate_line)
+                    .small()
+                    .color(aggregate_color),
+            );
+        });
     }
 
     fn render_shortcut_rows(ui: &mut egui::Ui, rows: &[(&str, &str)]) {
@@ -526,8 +544,9 @@ impl ZoneSniperApp {
                     ui.heading("Debug Shortcuts");
                     ui.add_space(5.0);
 
+                    // Note: any keys added here have to be hand-inserted in handle_global_shortcuts, too
                     let debug_shortcuts =
-                        [("B", "Run one-off time-decay sweep for the selected pair")];
+                        [("B", "Insert future debug only key-trigger operation here")];
 
                     egui::Grid::new("debug_shortcuts_grid")
                         .num_columns(2)
@@ -541,11 +560,6 @@ impl ZoneSniperApp {
                 ui.add_space(10.0);
                 ui.separator();
                 ui.add_space(5.0);
-
-                ui.horizontal(|ui| {
-                    ui.label("💡");
-                    ui.label("All output goes to the console/terminal");
-                });
             });
     }
 
@@ -575,6 +589,11 @@ impl ZoneSniperApp {
 
             if i.key_pressed(egui::Key::Escape) && self.show_debug_help {
                 self.show_debug_help = false;
+            }
+
+            #[cfg(debug_assertions)]
+            if i.key_pressed(egui::Key::B) {
+                log::info!("✅ Debug key `B` pressed - but does nothing yet TBA!");
             }
 
             if i.key_pressed(egui::Key::S) {

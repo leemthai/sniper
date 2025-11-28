@@ -1,12 +1,12 @@
-use crate::utils::app_time::now;
 use std::time::Duration;
 
+use crate::config::debug::PRINT_TRIGGER_UPDATES;
 use crate::journeys::{JourneyAnalyzer, JourneyExecution, ZoneTarget};
 use crate::models::PairContext;
+use crate::ui::config::UI_TEXT;
+use crate::utils::app_time::now;
 
 use super::app::{JourneySummaryUpdate, ZoneSniperApp};
-use crate::config::debug::PRINT_TRIGGER_UPDATES;
-use crate::ui::config::UI_TEXT;
 
 struct JourneyContextResult {
     summary: JourneySummaryUpdate,

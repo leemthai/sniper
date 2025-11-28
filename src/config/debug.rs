@@ -51,7 +51,7 @@ pub const PRINT_STICKY_DWELL_SUMMARY: bool = false;
 pub const DEBUG_JOURNEY_ATTEMPT_INDEX: i32 = -1;
 
 /// Emit journey/trigger status updates (e.g., marking journeys stale, queued follow-ups).
-pub const PRINT_TRIGGER_UPDATES: bool = true;
+pub const PRINT_TRIGGER_UPDATES: bool = false;
 
 /// If non-empty, emit detailed journey analysis output only for this pair.
 /// Example: "PAXGUSDT". Use "" to disable.
@@ -65,3 +65,6 @@ pub const PRINT_STATE_SERDE: bool = false;
 
 /// Emit shutdown app messages.
 pub const PRINT_SHUTDOWN: bool = false;
+
+/// Emit detailed journey status lines (UI flag not logging flag)
+pub const DISPLAY_JOURNEY_STATUS_LINES: bool = false;
