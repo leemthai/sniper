@@ -1,14 +1,3 @@
-//! Klines - Trading zone analysis library
-//!
-//! Organized into clear modules:
-//! - `models`: Core domain models (CVA, timeseries, trading view)
-//! - `analysis`: Zone analysis and scoring algorithms
-//! - `ui`: GUI components and visualization
-//! - `data`: Data loading, caching, streaming
-//! - `domain`: Small domain types (candle, pair, duration)
-//! - `config`: Application configuration
-//! - `utils`: Utility functions
-
 #![allow(clippy::const_is_empty)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
@@ -24,7 +13,7 @@ pub mod models;
 pub mod ui;
 pub mod utils;
 
-// Re-export commonly used types for convenience
+// Re-export commonly used types
 pub use analysis::ZoneGenerator;
 pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
 pub use domain::{Candle, PairInterval};
@@ -32,20 +21,7 @@ pub use models::{CVACore, TimeSeriesSlice, TradingModel, Zone};
 pub use ui::ZoneSniperApp;
 pub use utils::app_time;
 
-// Re-export constants (matching main.rs)
-pub use utils::time_utils::{MS_IN_15_MIN, MS_IN_H};
-
-// Klines saving and loading
-pub const KLINE_PATH: &str = "kline_data";
-pub const KLINE_FILENAME_WITHOUT_EXT: &str = "kline";
-pub const KLINE_VERSION: f64 = 3.0;
-
-pub const MAX_PAIRS: usize = 20;
-
-// Re-export config constants for tests and benchmarks
 pub use config::{DEFAULT_PRICE_ZONE_COUNT, INTERVAL_WIDTH_TO_ANALYSE_MS};
-
-pub const KLINE_ACCEPTABLE_AGE_SECONDS: i64 = 60 * 60 * 24;
 
 // CLI argument parsing
 use clap::Parser;

@@ -1,8 +1,8 @@
-// Zone scoring and combination strategies for identifying key price levels
-#[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
 use crate::models::cva::{CVACore, ScoreType};
 use std::collections::HashSet;
+
+#[cfg(debug_assertions)]
+use crate::config::DEBUG_FLAGS;
 
 /// Strategy for combining multiple normalized data sources into a single zone score
 #[derive(Debug, Clone, PartialEq)]

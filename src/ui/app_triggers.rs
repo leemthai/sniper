@@ -6,7 +6,7 @@ use crate::config::{CVA_MIN_SECONDS_BETWEEN_RECALCS, CVA_PRICE_RECALC_THRESHOLD_
 use crate::ui::app::{DataParams, ZoneSniperApp};
 
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct PairTriggerState {

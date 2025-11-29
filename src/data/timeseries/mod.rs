@@ -1,7 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod bnapi_version;
 pub mod cache_file;
-pub mod intervals;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod serde_version;
 #[cfg(target_arch = "wasm32")]

@@ -8,7 +8,7 @@ use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_
 use crate::utils::time_utils::how_many_seconds_ago;
 
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 
 pub fn check_local_data_validity(
     recency_required_secs: i64,

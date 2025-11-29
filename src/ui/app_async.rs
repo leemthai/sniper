@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::analysis::pair_analysis::ZoneGenerator;
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::{CVACore, PairContext, TradingModel};
 use crate::ui::app::{AppError, DataParams, ZoneSniperApp};

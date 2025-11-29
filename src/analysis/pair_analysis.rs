@@ -10,7 +10,7 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::{CVACore, TimeSeriesSlice, find_matching_ohlcv};
 
 #[allow(unused_imports)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 
 // --- The cache key struct ---
 #[derive(Clone, Debug)]

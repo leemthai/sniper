@@ -10,10 +10,12 @@ pub const KLINE_FILENAME_WITHOUT_EXT: &str = "kline";
 /// Bumped to 4.0 for bincode format switch
 pub const KLINE_VERSION: f64 = 4.0;
 
+use crate::utils::TimeUtils;
+
 /// Generate interval-specific cache filename
 /// Example: "kline_v4.0_1h.bin" or "kline_v4.0_15m.bin"
 pub fn kline_cache_filename(interval_ms: i64) -> String {
-    let interval_str = crate::data::timeseries::intervals::interval_ms_to_string(interval_ms);
+    let interval_str = TimeUtils::interval_ms_to_string(interval_ms);
     format!(
         "{}_{}_v{}.bin",
         KLINE_FILENAME_WITHOUT_EXT, interval_str, KLINE_VERSION

@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::TimeSeriesCollection;
 use crate::analysis::pair_analysis::ZoneGenerator;
+use crate::config::DEBUG_FLAGS;
 use crate::config::INTERVAL_WIDTH_TO_ANALYSE_MS;
-use crate::config::debug::DEBUG_FLAGS;
 use crate::journeys::zone_efficacy::{ZoneEfficacyStats, compute_zone_efficacy};
 use crate::models::{CVACore, TradingModel, find_matching_ohlcv};
 

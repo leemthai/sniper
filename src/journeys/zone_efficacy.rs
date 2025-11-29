@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 use crate::models::{OhlcvTimeSeries, SuperZone};
 
 /// Summary statistics describing how historical price action interacts with sticky zones.

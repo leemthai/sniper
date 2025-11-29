@@ -1,17 +1,10 @@
 //! Analysis and computation configuration
 
-#[allow(unused_imports)]
-use crate::utils::time_utils::MS_IN_4_H;
-#[allow(unused_imports)]
-use crate::utils::time_utils::MS_IN_15_MIN;
-#[allow(unused_imports)]
-use crate::utils::time_utils::MS_IN_30_MIN;
-#[allow(unused_imports)]
-use crate::utils::time_utils::MS_IN_H;
+use crate::utils::TimeUtils;
 
 /// Time interval width to analyze (in milliseconds)
 /// This defines the candle interval for all analysis (1h, 5m, 15m, etc.)
-pub const INTERVAL_WIDTH_TO_ANALYSE_MS: i64 = MS_IN_30_MIN;
+pub const INTERVAL_WIDTH_TO_ANALYSE_MS: i64 = TimeUtils::MS_IN_30_MIN;
 
 /// Default number of price zones for analysis
 pub const DEFAULT_PRICE_ZONE_COUNT: usize = 100;

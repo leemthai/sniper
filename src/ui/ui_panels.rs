@@ -10,7 +10,7 @@ use crate::ui::config::UI_TEXT;
 use crate::ui::utils::{colored_subsection_heading, section_heading, spaced_separator};
 
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 
 /// Trait for UI panels that can be rendered
 pub trait Panel {

@@ -1,11 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-// Adjust "zone_sniper" if your package name in Cargo.toml is different
+// Imports come from zone_sniper not crate, because main generates a  `bin`, so sees library as external dependency, just like serde or tokio.
+use zone_sniper::config::binance::BINANCE;
 #[allow(unused_imports)]
 use zone_sniper::{
     Cli, // The struct from lib.rs
     INTERVAL_WIDTH_TO_ANALYSE_MS,
-    KLINE_ACCEPTABLE_AGE_SECONDS,
     TimeSeriesCollection,
     fetch_pair_data, // The re-export from lib.rs
     run_app,         // The function from lib.rs
@@ -75,7 +75,7 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
     //    This calls into fetch_pair_data(), which under wasm uses WasmDemoData.
     let args = Cli { prefer_api: false };
     let (timeseries_data, timeseries_signature) =
-        fetch_pair_data(KLINE_ACCEPTABLE_AGE_SECONDS, &args).await;
+        fetch_pair_data(BINANCE.limits.kline_acceptable_age_sec, &args).await;
 
     log::info!(
         "WASM startup loaded timeseries via provider: {} (series_count={})",
@@ -147,8 +147,10 @@ fn main() -> eframe::Result {
     }
     // C. Data Loading (Blocking)
     let rt = Runtime::new().expect("Failed to create Tokio runtime");
-    let (timeseries_data, timeseries_signature) =
-        rt.block_on(fetch_pair_data(KLINE_ACCEPTABLE_AGE_SECONDS, &args));
+    let (timeseries_data, timeseries_signature) = rt.block_on(fetch_pair_data(
+        BINANCE.limits.kline_acceptable_age_sec,
+        &args,
+    ));
 
     // D. Background Cache Write
     let cache_data = timeseries_data.clone();

@@ -11,7 +11,7 @@ use crate::config::WASM_MAX_PAIRS;
 use crate::data::timeseries::wasm_demo::WasmDemoData;
 
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_VERSION};
 #[cfg(not(target_arch = "wasm32"))]

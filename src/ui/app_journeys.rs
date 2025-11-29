@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 use crate::journeys::{JourneyAnalyzer, JourneyExecution, ZoneTarget};
 use crate::models::PairContext;
 use crate::ui::config::UI_TEXT;

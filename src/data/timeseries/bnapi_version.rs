@@ -9,10 +9,9 @@ use itertools::iproduct;
 use rayon::prelude::*;
 use tokio::{fs, task::JoinError, task::JoinHandle, time::Instant};
 
-use crate::config::{
-    INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_VERSION, MAX_BN_KLINES_LOOKUPS_TOTAL, MAX_PAIRS,
-    SIMULTANEOUS_KLINE_CALLS_CEILING,
-};
+use crate::config::analysis::INTERVAL_WIDTH_TO_ANALYSE_MS;
+use crate::config::binance::BINANCE;
+use crate::config::persistence::KLINE_VERSION;
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection};
 use crate::domain::pair_interval::PairInterval;
 use crate::models::OhlcvTimeSeries;
@@ -79,11 +78,11 @@ pub async fn timeseries_data_load(
         .lines()
         .map(|s| s.trim().to_uppercase()) // Trim whitespace and make uppercase
         .filter(|s| !s.is_empty()) // Filter out empty lines
-        .take(MAX_PAIRS)
+        .take(BINANCE.max_pairs)
         .collect();
 
     let all_permutations = iproduct!(supply_pairs, supply_interval_asset)
-        .take(MAX_BN_KLINES_LOOKUPS_TOTAL)
+        .take(BINANCE.limits.max_lookups_total)
         .map(|(pair_name, interval_ms)| PairInterval {
             name: pair_name,
             interval_ms: *interval_ms,
@@ -91,7 +90,7 @@ pub async fn timeseries_data_load(
 
     // Collect all_permutations into an owned collection so data can be safely sent to other threads
     let all_permutations_vec: Vec<_> = all_permutations.collect();
-    for batch in all_permutations_vec.chunks(SIMULTANEOUS_KLINE_CALLS_CEILING) {
+    for batch in all_permutations_vec.chunks(BINANCE.limits.simultaneous_calls_ceiling) {
         // `batch` is a new iterator for each chunk.
         // `batch.iter().collect()` turns it into a vector.
         let batch_vec: Vec<_> = batch.iter().collect();

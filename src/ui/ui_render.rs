@@ -10,9 +10,9 @@ use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Pane
 use super::app::ZoneSniperApp;
 
 #[cfg(debug_assertions)]
-use crate::INTERVAL_WIDTH_TO_ANALYSE_MS;
+use crate::config::DEBUG_FLAGS;
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::analysis::INTERVAL_WIDTH_TO_ANALYSE_MS;
 #[cfg(debug_assertions)]
 use crate::ui::config::UI_TEXT;
 

@@ -4,7 +4,7 @@ use super::ZoneSniperApp;
 use crate::models::TradingModel;
 
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum SimDirection {

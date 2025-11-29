@@ -1,7 +1,8 @@
 use anyhow::{Result, anyhow};
 use std::time::Duration;
 
-use crate::config::debug;
+use crate::config::DEBUG_FLAGS;
+
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::timeseries::{OhlcvTimeSeries, find_matching_ohlcv};
 use crate::utils::app_time::now;
@@ -260,11 +261,11 @@ impl<'a> JourneyAnalyzer<'a> {
             };
 
             let debug_this_attempt = cfg!(debug_assertions)
-                && !debug::DEBUG_FLAGS.print_journey_for_pair.is_empty()
-                && debug::DEBUG_FLAGS.print_journey_for_pair == params.pair
-                && debug::DEBUG_FLAGS.print_trigger_updates
-                && debug::DEBUG_FLAGS.debug_journey_attempt_index >= 0
-                && attempt_index == debug::DEBUG_FLAGS.debug_journey_attempt_index as usize;
+                && !DEBUG_FLAGS.print_journey_for_pair.is_empty()
+                && DEBUG_FLAGS.print_journey_for_pair == params.pair
+                && DEBUG_FLAGS.print_trigger_updates
+                && DEBUG_FLAGS.debug_journey_attempt_index >= 0
+                && attempt_index == DEBUG_FLAGS.debug_journey_attempt_index as usize;
 
             if debug_this_attempt {
                 log::info!(

@@ -22,7 +22,7 @@ use crate::ui::utils::setup_custom_visuals;
 use crate::utils::app_time::{AppInstant, now};
 
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 #[cfg(debug_assertions)]
 use crate::ui::config::UI_CONFIG;
 

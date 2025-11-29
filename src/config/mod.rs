@@ -2,8 +2,10 @@
 
 pub mod analysis;
 pub mod binance;
-pub mod constants;
-pub mod debug;
+
+mod debug; // Can be private now because we have a public re-export. Forces files to use crate::config::DEBUG_FLAGS not crate::config::debug::DEBUG_FLAGS
+pub use debug::DEBUG_FLAGS;
+
 pub mod demo;
 pub mod persistence;
 pub mod plot;
@@ -15,13 +17,7 @@ pub use analysis::{
     JOURNEY_START_PRICE_TOLERANCE_PCT, JOURNEY_STOP_LOSS_PCT, MIN_CANDLES_FOR_ANALYSIS,
     TIME_HORIZON_DEFAULT_DAYS, TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS,
 };
-pub use binance::{
-    BINANCE_WS_BASE, BINANCE_WS_COMBINED_BASE, BinanceApiConfig, INITIAL_RECONNECT_DELAY_SECS,
-    KLINE_ACCEPTABLE_AGE_SECONDS, KLINE_CALL_WEIGHT, MAX_BN_KLINES_LOOKUPS_TOTAL,
-    MAX_RECONNECT_DELAY_SECS, SIMULTANEOUS_KLINE_CALLS_CEILING, WEIGHT_LIMIT_MINUTE,
-};
-pub use constants::{DEFAULT_KLINES_LIMIT, MAX_PAIRS};
-pub use debug::DEBUG_FLAGS;
+pub use binance::BINANCE;
 pub use demo::{
     WASM_DEMO_CACHE_FILE, WASM_DEMO_PAIRS, WASM_DISABLE_NETWORKING, WASM_KLINE_BUNDLE_DIR,
     WASM_MAX_PAIRS,

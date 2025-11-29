@@ -4,7 +4,7 @@ use crate::journeys::compute_zone_efficacy;
 use crate::models::{TradingModel, find_matching_ohlcv};
 
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 
 use super::app::ZoneSniperApp;
 

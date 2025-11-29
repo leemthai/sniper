@@ -13,7 +13,7 @@ use crate::ui::ui_text::UI_TEXT;
 use crate::utils::maths_utils;
 
 #[cfg(debug_assertions)]
-use crate::config::debug::DEBUG_FLAGS;
+use crate::config::DEBUG_FLAGS;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlotCache {

@@ -1,10 +1,7 @@
-#[allow(unused_imports)]
-use crate::config::debug::DEBUG_FLAGS;
-
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))] // Not needed for WASM
+use crate::config::DEBUG_FLAGS;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::config::{
-    BINANCE_WS_COMBINED_BASE, INITIAL_RECONNECT_DELAY_SECS, MAX_RECONNECT_DELAY_SECS,
-};
+use crate::config::binance::BINANCE;
 #[cfg(not(target_arch = "wasm32"))]
 use futures::StreamExt;
 #[cfg(not(target_arch = "wasm32"))]
@@ -230,7 +227,7 @@ async fn run_combined_price_stream_with_reconnect(
     status_arc: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     suspended_arc: Arc<Mutex<bool>>,
 ) {
-    let mut reconnect_delay = INITIAL_RECONNECT_DELAY_SECS;
+    let mut reconnect_delay = BINANCE.ws.initial_reconnect_delay_sec;
 
     loop {
         // Update status to connecting for every tracked symbol
@@ -261,7 +258,7 @@ async fn run_combined_price_stream_with_reconnect(
                 }
 
                 // Reset delay on successful connection that later closes
-                reconnect_delay = INITIAL_RECONNECT_DELAY_SECS;
+                reconnect_delay = BINANCE.ws.initial_reconnect_delay_sec;
             }
             Err(e) => {
                 // Connection failed
@@ -276,6 +273,7 @@ async fn run_combined_price_stream_with_reconnect(
                 }
 
                 // Exponential backoff
+                #[cfg(debug_assertions)]
                 if DEBUG_FLAGS.print_price_stream_updates {
                     log::info!(
                         "Reconnecting combined price stream in {} seconds...",
@@ -285,7 +283,7 @@ async fn run_combined_price_stream_with_reconnect(
                 tokio::time::sleep(Duration::from_secs(reconnect_delay)).await;
 
                 // Increase delay for next attempt (capped at max)
-                reconnect_delay = (reconnect_delay * 2).min(MAX_RECONNECT_DELAY_SECS);
+                reconnect_delay = (reconnect_delay * 2).min(BINANCE.ws.max_reconnect_delay_sec);
             }
         }
 
@@ -367,6 +365,7 @@ async fn run_combined_price_stream(
                         }
                     }
                 } else {
+                    #[cfg(debug_assertions)]
                     if DEBUG_FLAGS.print_price_stream_updates {
                         log::error!("⚠️ Unexpected combined stream payload: {}", text);
                     }
@@ -409,5 +408,5 @@ fn build_combined_stream_url(symbols: &[String]) -> String {
         .collect::<Vec<_>>()
         .join("/");
 
-    format!("{}{}", BINANCE_WS_COMBINED_BASE, stream_descriptor)
+    format!("{}{}", BINANCE.ws.combined_base_url, stream_descriptor)
 }

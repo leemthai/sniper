@@ -18,14 +18,61 @@ use binance_sdk::{errors, errors::ConnectorError as connection_error};
 use tokio::time::{Duration, sleep};
 
 // Local crates
-use crate::config::DEFAULT_KLINES_LIMIT;
-use crate::config::binance::{BinanceApiConfig, KLINE_CALL_WEIGHT, WEIGHT_LIMIT_MINUTE};
-use crate::data::timeseries::intervals::interval_ms_to_string;
+use crate::config::binance::{BINANCE, BinanceApiConfig};
 use crate::domain::pair_interval::PairInterval;
-use crate::utils::time_utils::*; // Bring everything into scope
+use crate::utils::TimeUtils;
 
-#[cfg(debug_assertions)]
-use crate::config::binance::debug::DEBUG_PRINT_INTERVAL;
+pub trait IntervalToMs {
+    fn to_ms(&self) -> i64;
+}
+
+// 2. Implement it for the external type
+impl IntervalToMs for KlinesIntervalEnum {
+    fn to_ms(&self) -> i64 {
+        match self {
+            KlinesIntervalEnum::Interval1s => TimeUtils::MS_IN_S,
+            KlinesIntervalEnum::Interval1m => TimeUtils::MS_IN_MIN,
+            KlinesIntervalEnum::Interval3m => TimeUtils::MS_IN_3_MIN,
+            KlinesIntervalEnum::Interval5m => TimeUtils::MS_IN_5_MIN,
+            KlinesIntervalEnum::Interval15m => TimeUtils::MS_IN_15_MIN,
+            KlinesIntervalEnum::Interval30m => TimeUtils::MS_IN_30_MIN,
+            KlinesIntervalEnum::Interval1h => TimeUtils::MS_IN_H,
+            KlinesIntervalEnum::Interval2h => TimeUtils::MS_IN_2_H,
+            KlinesIntervalEnum::Interval4h => TimeUtils::MS_IN_4_H,
+            KlinesIntervalEnum::Interval6h => TimeUtils::MS_IN_6_H,
+            KlinesIntervalEnum::Interval8h => TimeUtils::MS_IN_8_H,
+            KlinesIntervalEnum::Interval12h => TimeUtils::MS_IN_12_H,
+            KlinesIntervalEnum::Interval1d => TimeUtils::MS_IN_D,
+            KlinesIntervalEnum::Interval3d => TimeUtils::MS_IN_3_D,
+            KlinesIntervalEnum::Interval1w => TimeUtils::MS_IN_W,
+            KlinesIntervalEnum::Interval1M => TimeUtils::MS_IN_1_M,
+        }
+    }
+}
+
+// 3. For "MS -> Enum", a static helper is still best,
+//    but we return Result instead of panicking.
+pub fn try_interval_from_ms(ms: i64) -> Result<KlinesIntervalEnum, String> {
+    match ms {
+        TimeUtils::MS_IN_S => Ok(KlinesIntervalEnum::Interval1s),
+        TimeUtils::MS_IN_MIN => Ok(KlinesIntervalEnum::Interval1m),
+        TimeUtils::MS_IN_3_MIN => Ok(KlinesIntervalEnum::Interval3m),
+        TimeUtils::MS_IN_5_MIN => Ok(KlinesIntervalEnum::Interval5m),
+        TimeUtils::MS_IN_15_MIN => Ok(KlinesIntervalEnum::Interval15m),
+        TimeUtils::MS_IN_30_MIN => Ok(KlinesIntervalEnum::Interval30m),
+        TimeUtils::MS_IN_H => Ok(KlinesIntervalEnum::Interval1h),
+        TimeUtils::MS_IN_2_H => Ok(KlinesIntervalEnum::Interval2h),
+        TimeUtils::MS_IN_4_H => Ok(KlinesIntervalEnum::Interval4h),
+        TimeUtils::MS_IN_6_H => Ok(KlinesIntervalEnum::Interval6h),
+        TimeUtils::MS_IN_8_H => Ok(KlinesIntervalEnum::Interval8h),
+        TimeUtils::MS_IN_12_H => Ok(KlinesIntervalEnum::Interval12h),
+        TimeUtils::MS_IN_D => Ok(KlinesIntervalEnum::Interval1d),
+        TimeUtils::MS_IN_3_D => Ok(KlinesIntervalEnum::Interval3d),
+        TimeUtils::MS_IN_W => Ok(KlinesIntervalEnum::Interval1w),
+        TimeUtils::MS_IN_1_M => Ok(KlinesIntervalEnum::Interval1M),
+        _ => Err(format!("Unsupported interval: {}ms", ms)),
+    }
+}
 
 #[derive(Debug)]
 pub struct AllValidKlines4Pair {
@@ -52,55 +99,6 @@ impl AllValidKlines4Pair {
     }
 }
 
-#[allow(non_snake_case)]
-pub fn convert_binance_interval_ms_to_enum(interval_ms: i64) -> KlinesIntervalEnum {
-    match interval_ms {
-        MS_IN_S => KlinesIntervalEnum::Interval1s,
-        MS_IN_MIN => KlinesIntervalEnum::Interval1m,
-        MS_IN_3_MIN => KlinesIntervalEnum::Interval3m,
-        MS_IN_5_MIN => KlinesIntervalEnum::Interval5m,
-        MS_IN_15_MIN => KlinesIntervalEnum::Interval15m,
-        MS_IN_30_MIN => KlinesIntervalEnum::Interval30m,
-        MS_IN_H => KlinesIntervalEnum::Interval1h,
-        MS_IN_2_H => KlinesIntervalEnum::Interval2h,
-        MS_IN_4_H => KlinesIntervalEnum::Interval4h,
-        MS_IN_6_H => KlinesIntervalEnum::Interval6h,
-        MS_IN_8_H => KlinesIntervalEnum::Interval8h,
-        MS_IN_12_H => KlinesIntervalEnum::Interval12h,
-        MS_IN_D => KlinesIntervalEnum::Interval1d,
-        MS_IN_3_D => KlinesIntervalEnum::Interval3d,
-        MS_IN_W => KlinesIntervalEnum::Interval1w,
-        MS_IN_1_M => KlinesIntervalEnum::Interval1M,
-        _ => panic!("Error: unknown interval"),
-    }
-}
-#[allow(dead_code)]
-pub fn convert_binance_interval_enum_to_ms(interval: KlinesIntervalEnum) -> i64 {
-    match interval {
-        KlinesIntervalEnum::Interval1s => MS_IN_S,
-        KlinesIntervalEnum::Interval1m => MS_IN_MIN,
-        KlinesIntervalEnum::Interval3m => MS_IN_3_MIN,
-        KlinesIntervalEnum::Interval5m => MS_IN_5_MIN,
-        KlinesIntervalEnum::Interval15m => MS_IN_15_MIN,
-        KlinesIntervalEnum::Interval30m => MS_IN_30_MIN,
-        KlinesIntervalEnum::Interval1h => MS_IN_H,
-        KlinesIntervalEnum::Interval2h => MS_IN_2_H,
-        KlinesIntervalEnum::Interval4h => MS_IN_4_H,
-        KlinesIntervalEnum::Interval6h => MS_IN_6_H,
-        KlinesIntervalEnum::Interval8h => MS_IN_8_H,
-        KlinesIntervalEnum::Interval12h => MS_IN_12_H,
-        KlinesIntervalEnum::Interval1d => MS_IN_D,
-        KlinesIntervalEnum::Interval3d => MS_IN_3_D,
-        KlinesIntervalEnum::Interval1w => MS_IN_W,
-        KlinesIntervalEnum::Interval1M => MS_IN_1_M,
-    }
-}
-
-#[allow(clippy::match_overlapping_arm)]
-pub fn convert_binance_interval_ms_to_string(interval_ms: i64) -> String {
-    interval_ms_to_string(interval_ms).to_string()
-}
-
 #[derive(Debug)]
 #[allow(dead_code)]
 #[derive(PartialOrd, PartialEq)]
@@ -111,12 +109,7 @@ pub struct BNKline {
     pub low_price: Option<f64>,
     pub close_price: Option<f64>,
     pub base_asset_volume: Option<f64>,
-    // pub close_time: i64,
     pub quote_asset_volume: Option<f64>,
-    // pub number_of_trades: i64,
-    // pub taker_buy_base_asset_volume: String,
-    // pub taker_buy_quote_asset_volume: String,
-    // pub unused_field: String,
 }
 
 // Custom error type for BNKline for better error messages.
@@ -229,7 +222,7 @@ async fn handle_rate_limits(
                 let required_headroom =
                     bn_weight_limit_minute.saturating_sub(concurrent_kline_call_weight);
                 #[cfg(debug_assertions)]
-                if loop_count.is_multiple_of(DEBUG_PRINT_INTERVAL) {
+                if loop_count.is_multiple_of(BINANCE.debug_print_interval) {
                     log::info!(
                         "Binance min-weight: {} (headroom: {})",
                         current_weight,
@@ -429,7 +422,8 @@ pub async fn load_klines(
     let limit_klines_returned: i32 = 1000; // This can be anywhere from 1 to 1000. My setting though, should be a config.
     let mut end_time: Option<i64> = None;
     const START_TIME: Option<i64> = None;
-    let concurrent_kline_call_weight: u32 = KLINE_CALL_WEIGHT * max_simultaneous_kline_calls;
+    let concurrent_kline_call_weight: u32 =
+        BINANCE.limits.kline_call_weight * max_simultaneous_kline_calls;
     let mut all_klines: Vec<BNKline> = Vec::new();
     #[cfg(debug_assertions)]
     let mut loop_count = 0;
@@ -437,9 +431,12 @@ pub async fn load_klines(
     loop {
         let params = KlinesParams::builder(
             pair_interval.bn_name().to_string(),
-            convert_binance_interval_ms_to_enum(pair_interval.interval_ms),
+            // We use .expect() here to replicate the old behavior
+            // (crashing if the interval is invalid), but now it's explicit.
+            try_interval_from_ms(pair_interval.interval_ms)
+                .expect("Invalid Binance interval configuration"),
         )
-        .limit(DEFAULT_KLINES_LIMIT) // If not passed in, 500 is used as `limit`
+        .limit(BINANCE.limits.klines_limit) // If not passed in, 500 is used as `limit`
         .end_time(end_time)
         .start_time(START_TIME)
         .build()?;
@@ -455,7 +452,7 @@ pub async fn load_klines(
             concurrent_kline_call_weight,
             #[cfg(debug_assertions)]
             loop_count,
-            WEIGHT_LIMIT_MINUTE,
+            BINANCE.limits.weight_limit_minute,
         )
         .await?;
 
