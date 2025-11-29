@@ -1,7 +1,7 @@
 use eframe::egui::{self, ScrollArea};
 use std::time::Duration;
 
-use crate::config::{TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS};
+use crate::config::ANALYSIS;
 use crate::data::price_stream::PriceStreamManager;
 use crate::ui::app_simulation::SimDirection;
 use crate::ui::config::UI_CONFIG;
@@ -11,8 +11,6 @@ use super::app::ZoneSniperApp;
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
-#[cfg(debug_assertions)]
-use crate::config::analysis::INTERVAL_WIDTH_TO_ANALYSE_MS;
 #[cfg(debug_assertions)]
 use crate::ui::config::UI_TEXT;
 
@@ -62,8 +60,10 @@ impl ZoneSniperApp {
                         }
                         DataGenerationEventChanged::TimeHorizonDays(days) => {
                             if self.time_horizon_days != days {
-                                self.time_horizon_days =
-                                    days.clamp(TIME_HORIZON_MIN_DAYS, TIME_HORIZON_MAX_DAYS);
+                                self.time_horizon_days = days.clamp(
+                                    ANALYSIS.time_horizon.min_days,
+                                    ANALYSIS.time_horizon.max_days,
+                                );
                                 self.mark_all_journeys_stale("Time Horizon changed");
                             }
                         }
@@ -367,7 +367,7 @@ impl ZoneSniperApp {
                             {
                                 let total_candles: usize = ranges.iter().map(|(s, e)| e - s).sum();
                                 let total_ms =
-                                    total_candles as f64 * INTERVAL_WIDTH_TO_ANALYSE_MS as f64;
+                                    total_candles as f64 * ANALYSIS.interval_width_ms as f64;
                                 let days = total_ms / (1000.0 * 60.0 * 60.0 * 24.0);
                                 format!(
                                     "🕒 {}: {} candles ({:.1}d)",

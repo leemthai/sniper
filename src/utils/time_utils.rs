@@ -23,7 +23,7 @@ impl TimeUtils {
     // const STANDARD_TIME_FORMAT: &str = "%d/%m/%Y";
 
     /// Convert interval in milliseconds to a Binance-style shorthand (e.g. `30m`, `1h`).
-    pub fn interval_ms_to_string(interval_ms: i64) -> &'static str {
+    pub fn interval_to_string(interval_ms: i64) -> &'static str {
         match interval_ms {
             Self::MS_IN_S => "1s",
             Self::MS_IN_MIN => "1m",

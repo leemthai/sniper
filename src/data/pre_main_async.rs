@@ -6,14 +6,16 @@ use crate::data::timeseries::{
 };
 
 #[cfg(target_arch = "wasm32")]
-use crate::config::WASM_MAX_PAIRS;
+use crate::config::DEMO;
 #[cfg(target_arch = "wasm32")]
 use crate::data::timeseries::wasm_demo::WasmDemoData;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::ANALYSIS;
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_VERSION};
+use crate::config::PERSISTENCE;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::timeseries::bnapi_version::BNAPIVersion;
 #[cfg(not(target_arch = "wasm32"))]
@@ -40,20 +42,20 @@ pub async fn fetch_pair_data(
             api_first,
             check_local_data_validity(
                 klines_acceptable_age_secs,
-                KLINE_VERSION,
-                INTERVAL_WIDTH_TO_ANALYSE_MS,
+                PERSISTENCE.kline.version,
+                ANALYSIS.interval_width_ms,
             ),
         ) {
             (false, Ok(_)) => vec![
                 Box::new(SerdeVersion {
-                    interval_ms: INTERVAL_WIDTH_TO_ANALYSE_MS,
+                    interval_ms: ANALYSIS.interval_width_ms,
                 }),
                 Box::new(BNAPIVersion),
             ], // local first
             (true, Ok(_)) => vec![
                 Box::new(BNAPIVersion),
                 Box::new(SerdeVersion {
-                    interval_ms: INTERVAL_WIDTH_TO_ANALYSE_MS,
+                    interval_ms: ANALYSIS.interval_width_ms,
                 }),
             ], // API first
             (_, Err(e)) => {
@@ -75,12 +77,12 @@ pub async fn fetch_pair_data(
     #[cfg(target_arch = "wasm32")]
     {
         let original_len = timeseries_data.series_data.len();
-        if original_len > WASM_MAX_PAIRS {
-            timeseries_data.series_data.truncate(WASM_MAX_PAIRS);
+        if original_len > DEMO.max_pairs {
+            timeseries_data.series_data.truncate(DEMO.max_pairs);
             #[cfg(debug_assertions)]
             log::info!(
                 "WASM demo build limited to {} pairs (from {}).",
-                WASM_MAX_PAIRS,
+                DEMO.max_pairs,
                 original_len
             );
         }

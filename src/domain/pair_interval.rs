@@ -70,7 +70,7 @@ impl std::fmt::Display for PairInterval {
             quote,
             self.name(),
             self.interval_ms,
-            TimeUtils::interval_ms_to_string(self.interval_ms)
+            TimeUtils::interval_to_string(self.interval_ms)
         )
     }
 }

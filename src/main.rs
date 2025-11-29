@@ -1,14 +1,26 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 // Imports come from zone_sniper not crate, because main generates a  `bin`, so sees library as external dependency, just like serde or tokio.
-use zone_sniper::config::binance::BINANCE;
+#[cfg(not(target_arch = "wasm32"))]
+use clap::Parser;
+#[cfg(not(target_arch = "wasm32"))]
+use eframe::NativeOptions;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::runtime::Runtime;
+#[cfg(not(target_arch = "wasm32"))]
+use zone_sniper::config::ANALYSIS;
+use zone_sniper::config::BINANCE;
+#[cfg(not(target_arch = "wasm32"))]
+use zone_sniper::{config::PERSISTENCE, data::write_timeseries_data_async};
+
 #[allow(unused_imports)]
 use zone_sniper::{
-    Cli, // The struct from lib.rs
-    INTERVAL_WIDTH_TO_ANALYSE_MS,
-    TimeSeriesCollection,
-    fetch_pair_data, // The re-export from lib.rs
-    run_app,         // The function from lib.rs
+    Cli,                  // re-export lib.rs
+    TimeSeriesCollection, // re-export from lib.rs
+    fetch_pair_data,      // The re-export from lib.rs
+    run_app,              // The function from lib.rs
 };
 
 // --- 2. WASM SPECIFIC CODE ---
@@ -106,19 +118,11 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
 }
 
 // --- 3. NATIVE SPECIFIC CODE ---
-#[cfg(not(target_arch = "wasm32"))]
-// Define this locally if not in lib.rs, or import it if it is in config
-const APP_STATE_PATH: &str = "app_state.json";
 // Emit CLI messages.
 pub const PRINT_CLI: bool = false;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
-    use clap::Parser;
-    use eframe::NativeOptions;
-    use std::path::PathBuf;
-    use tokio::runtime::Runtime;
-    use zone_sniper::data::write_timeseries_data_async;
     // A. Init Logging
     std::panic::set_hook(Box::new(|panic_info| {
         eprintln!("Application panicked: {:?}", panic_info);
@@ -158,7 +162,7 @@ fn main() -> eframe::Result {
         if let Err(e) = write_timeseries_data_async(
             timeseries_signature,
             cache_data,
-            INTERVAL_WIDTH_TO_ANALYSE_MS,
+            ANALYSIS.interval_width_ms,
         )
         .await
         {
@@ -168,7 +172,7 @@ fn main() -> eframe::Result {
 
     // E. Run Native App
     let options = NativeOptions {
-        persistence_path: Some(PathBuf::from(APP_STATE_PATH)),
+        persistence_path: Some(PathBuf::from(PERSISTENCE.app.state_path)),
         ..Default::default()
     };
 

@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::TimeSeriesCollection;
 use crate::analysis::pair_analysis::ZoneGenerator;
+use crate::config::ANALYSIS;
 use crate::config::DEBUG_FLAGS;
-use crate::config::INTERVAL_WIDTH_TO_ANALYSE_MS;
 use crate::journeys::zone_efficacy::{ZoneEfficacyStats, compute_zone_efficacy};
 use crate::models::{CVACore, TradingModel, find_matching_ohlcv};
 
@@ -60,7 +60,7 @@ pub fn calibrate_time_decay(
     let ohlcv = match find_matching_ohlcv(
         &timeseries_collection.series_data,
         pair,
-        INTERVAL_WIDTH_TO_ANALYSE_MS,
+        ANALYSIS.interval_width_ms,
     ) {
         Ok(ts) => ts,
         Err(_) => return Ok(None),

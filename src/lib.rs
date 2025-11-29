@@ -21,8 +21,6 @@ pub use models::{CVACore, TimeSeriesSlice, TradingModel, Zone};
 pub use ui::ZoneSniperApp;
 pub use utils::app_time;
 
-pub use config::{DEFAULT_PRICE_ZONE_COUNT, INTERVAL_WIDTH_TO_ANALYSE_MS};
-
 // CLI argument parsing
 use clap::Parser;
 

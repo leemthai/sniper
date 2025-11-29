@@ -1,9 +1,10 @@
 use eframe::egui::{ComboBox, ScrollArea, Ui};
 use strum::IntoEnumIterator;
 
+use crate::config::ANALYSIS;
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{TIME_HORIZON_MAX_DAYS, TIME_HORIZON_MIN_DAYS};
 use crate::domain::pair_interval::PairInterval;
+
 use crate::models::cva::ScoreType;
 use crate::models::{PairContext, ZoneType};
 use crate::ui::config::UI_TEXT;
@@ -44,39 +45,6 @@ impl<'a> DataGenerationPanel<'a> {
             time_horizon_days,
         }
     }
-
-    // fn render_zone_count_selector(&mut self, ui: &mut Ui) -> Option<usize> {
-    //     let mut changed = None;
-    //     let previous_value = self.zone_count;
-
-    //     ui.label(colored_subsection_heading("Zone Count"));
-
-    //     // Convert to f64 for slider, then back to usize
-    //     let mut zone_count_f64 = self.zone_count as f64;
-
-    //     let response = ui.add(
-    //         eframe::egui::Slider::new(
-    //             &mut zone_count_f64,
-    //             crate::config::MIN_ZONE_COUNT as f64..=crate::config::MAX_ZONE_COUNT as f64,
-    //         )
-    //         .step_by(crate::config::ZONE_COUNT_STEP as f64)
-    //         .text("Zones"),
-    //     );
-
-    //     // Round to nearest step and convert back to usize
-    //     self.zone_count = zone_count_f64.round() as usize;
-
-    //     if response.changed() {
-    //         changed = Some(self.zone_count);
-    //     }
-
-    //     // Defensive check
-    //     if self.zone_count != previous_value {
-    //         changed = Some(self.zone_count);
-    //     }
-
-    //     changed
-    // }
 
     fn render_auto_duration_display(&mut self, ui: &mut Ui) -> Option<f64> {
         let mut changed = None;
@@ -120,7 +88,7 @@ impl<'a> DataGenerationPanel<'a> {
         let response = ui.add(
             eframe::egui::Slider::new(
                 &mut horizon_days,
-                TIME_HORIZON_MIN_DAYS as f64..=TIME_HORIZON_MAX_DAYS as f64,
+                ANALYSIS.time_horizon.min_days as f64..=ANALYSIS.time_horizon.max_days as f64,
             )
             .integer()
             .suffix(" days"),

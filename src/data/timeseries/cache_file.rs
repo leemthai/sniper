@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{KLINE_PATH, kline_cache_filename};
+use crate::config::{PERSISTENCE, kline_cache_filename};
 use crate::data::timeseries::TimeSeriesCollection;
 
 /// Serialized cache wrapper used for both native and WASM demo builds.
@@ -49,6 +49,6 @@ impl CacheFile {
     }
 
     pub fn default_cache_path(interval_ms: i64) -> PathBuf {
-        PathBuf::from(KLINE_PATH).join(kline_cache_filename(interval_ms))
+        PathBuf::from(PERSISTENCE.kline.directory).join(kline_cache_filename(interval_ms))
     }
 }

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::config::ANALYSIS;
 use crate::config::DEBUG_FLAGS;
 use crate::journeys::{JourneyAnalyzer, JourneyExecution, ZoneTarget};
 use crate::models::PairContext;
@@ -121,10 +122,10 @@ impl ZoneSniperApp {
 
         let pair_start = now();
 
-        let interval_ms = crate::config::INTERVAL_WIDTH_TO_ANALYSE_MS;
-        let tolerance_pct = crate::config::JOURNEY_START_PRICE_TOLERANCE_PCT;
+        let interval_ms = ANALYSIS.interval_width_ms;
+        let tolerance_pct = ANALYSIS.journey.start_price_tolerance_pct;
         let time_horizon = Duration::from_secs(self.current_time_horizon_seconds());
-        let stop_loss_pct = crate::config::JOURNEY_STOP_LOSS_PCT;
+        let stop_loss_pct = ANALYSIS.journey.stop_loss_pct;
 
         match analyzer.analyze_zones(
             &context.pair_name,

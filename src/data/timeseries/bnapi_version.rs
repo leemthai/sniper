@@ -9,9 +9,9 @@ use itertools::iproduct;
 use rayon::prelude::*;
 use tokio::{fs, task::JoinError, task::JoinHandle, time::Instant};
 
-use crate::config::analysis::INTERVAL_WIDTH_TO_ANALYSE_MS;
-use crate::config::binance::BINANCE;
-use crate::config::persistence::KLINE_VERSION;
+use crate::config::ANALYSIS;
+use crate::config::BINANCE;
+use crate::config::PERSISTENCE;
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection};
 use crate::domain::pair_interval::PairInterval;
 use crate::models::OhlcvTimeSeries;
@@ -30,7 +30,7 @@ impl CreateTimeSeriesData for BNAPIVersion {
     async fn create_timeseries_data(&self) -> Result<TimeSeriesCollection> {
         // Load timeseries (klines) data from a pair list stored in text file
         // Interval is configured via INTERVAL_WIDTH_TO_ANALYSE_MS constant
-        let supply_interval_asset = vec![INTERVAL_WIDTH_TO_ANALYSE_MS];
+        let supply_interval_asset = vec![ANALYSIS.interval_width_ms];
         let start_time = Instant::now();
 
         let series_data = timeseries_data_load(&supply_interval_asset).await?;
@@ -58,7 +58,7 @@ impl CreateTimeSeriesData for BNAPIVersion {
 
         Ok(TimeSeriesCollection {
             name: "Binance TimeSeries Collection".to_string(),
-            version: KLINE_VERSION,
+            version: PERSISTENCE.kline.version,
             series_data,
         })
     }

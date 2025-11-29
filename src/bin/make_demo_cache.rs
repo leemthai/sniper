@@ -4,9 +4,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
-use zone_sniper::config::{
-    INTERVAL_WIDTH_TO_ANALYSE_MS, KLINE_PATH, WASM_DEMO_PAIRS, WASM_MAX_PAIRS, kline_cache_filename,
-};
+use zone_sniper::config::ANALYSIS;
+use zone_sniper::config::DEMO;
+use zone_sniper::config::{PERSISTENCE, kline_cache_filename};
 use zone_sniper::data::price_stream::PriceStreamManager;
 use zone_sniper::data::timeseries::TimeSeriesCollection;
 use zone_sniper::data::timeseries::cache_file::CacheFile;
@@ -16,8 +16,8 @@ fn main() -> Result<()> {
 }
 
 fn build_demo_cache() -> Result<()> {
-    let source_filename = kline_cache_filename(INTERVAL_WIDTH_TO_ANALYSE_MS);
-    let source_path = PathBuf::from(KLINE_PATH).join(&source_filename);
+    let source_filename = kline_cache_filename(ANALYSIS.interval_width_ms);
+    let source_path = PathBuf::from(PERSISTENCE.kline.directory).join(&source_filename);
     let cache = CacheFile::load_from_path(&source_path)
         .with_context(|| format!("Failed to load source cache {:?}", source_path))?;
 
@@ -27,23 +27,28 @@ fn build_demo_cache() -> Result<()> {
         source_path
     );
 
-    let demo_pairs: HashSet<String> = WASM_DEMO_PAIRS.iter().map(|p| p.to_uppercase()).collect();
+    let demo_pairs: HashSet<String> = DEMO
+        .resources
+        .pairs
+        .iter()
+        .map(|p| p.to_uppercase())
+        .collect();
 
     let filtered = filter_pairs(cache.data.clone(), &demo_pairs);
     let mut filtered_collection = filtered;
 
-    if filtered_collection.series_data.len() > WASM_MAX_PAIRS {
-        filtered_collection.series_data.truncate(WASM_MAX_PAIRS);
+    if filtered_collection.series_data.len() > DEMO.max_pairs {
+        filtered_collection.series_data.truncate(DEMO.max_pairs);
     }
 
     let output_cache = CacheFile::new(
-        INTERVAL_WIDTH_TO_ANALYSE_MS,
+        ANALYSIS.interval_width_ms,
         filtered_collection,
         cache.version,
     );
 
     let demo_filename = format!("demo_{}", source_filename);
-    let output_path = PathBuf::from(KLINE_PATH).join(&demo_filename);
+    let output_path = PathBuf::from(PERSISTENCE.kline.directory).join(&demo_filename);
     output_cache.save_to_path(&output_path)?;
 
     println!(
@@ -112,7 +117,7 @@ fn fetch_current_prices_for_demo_pairs(
 }
 
 fn write_demo_prices_json(prices: &HashMap<String, f64>) -> Result<()> {
-    let output_path = PathBuf::from(KLINE_PATH).join("demo_prices.json");
+    let output_path = PathBuf::from(PERSISTENCE.kline.directory).join("demo_prices.json");
 
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent).with_context(|| {

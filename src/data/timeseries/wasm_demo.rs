@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 
-use crate::config::WASM_MAX_PAIRS;
+use crate::config::DEMO;
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_file::CacheFile};
 
 const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(
@@ -42,14 +42,14 @@ impl CreateTimeSeriesData for WasmDemoData {
 
         // Now move the data out
         let mut data = cache.data;
-        if data.series_data.len() > WASM_MAX_PAIRS {
+        if data.series_data.len() > DEMO.max_pairs {
             #[cfg(debug_assertions)]
             let original_len = data.series_data.len();
-            data.series_data.truncate(WASM_MAX_PAIRS);
+            data.series_data.truncate(DEMO.max_pairs);
             #[cfg(debug_assertions)]
             log::info!(
                 "WASM demo build limited to {} pairs (from {}).",
-                WASM_MAX_PAIRS,
+                DEMO.max_pairs,
                 original_len
             );
         }

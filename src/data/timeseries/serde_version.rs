@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 
-use crate::config::{KLINE_PATH, kline_cache_filename};
+use crate::config::{PERSISTENCE, kline_cache_filename};
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_file::CacheFile};
 use crate::utils::time_utils::how_many_seconds_ago;
 
@@ -16,7 +16,7 @@ pub fn check_local_data_validity(
     interval_ms: i64,
 ) -> Result<()> {
     let filename = kline_cache_filename(interval_ms);
-    let full_path = PathBuf::from(KLINE_PATH).join(&filename);
+    let full_path = PathBuf::from(PERSISTENCE.kline.directory).join(&filename);
 
     #[cfg(debug_assertions)]
     if DEBUG_FLAGS.print_serde {
@@ -83,7 +83,7 @@ pub fn write_timeseries_data_locally(
     }
 
     let filename = kline_cache_filename(interval_ms);
-    let dir_path = PathBuf::from(KLINE_PATH);
+    let dir_path = PathBuf::from(PERSISTENCE.kline.directory);
     let full_path = dir_path.join(&filename);
 
     #[cfg(debug_assertions)]
@@ -95,7 +95,7 @@ pub fn write_timeseries_data_locally(
     let cache = CacheFile::new(
         interval_ms,
         timeseries_collection.clone(),
-        crate::config::KLINE_VERSION,
+        PERSISTENCE.kline.version,
     );
     cache.save_to_path(&full_path)?;
 
@@ -141,7 +141,7 @@ impl CreateTimeSeriesData for SerdeVersion {
 
     async fn create_timeseries_data(&self) -> Result<TimeSeriesCollection> {
         let filename = kline_cache_filename(self.interval_ms);
-        let full_path = PathBuf::from(KLINE_PATH).join(&filename);
+        let full_path = PathBuf::from(PERSISTENCE.kline.directory).join(&filename);
 
         // 1. Declare the timer as an Option BEFORE the task
         // We use .then() which runs the closure only if PRINT_SERDE is true

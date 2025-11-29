@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Result, bail};
 
-use crate::config::{INTERVAL_WIDTH_TO_ANALYSE_MS, MIN_CANDLES_FOR_ANALYSIS};
+use crate::config::ANALYSIS;
+
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::{CVACore, TimeSeriesSlice, find_matching_ohlcv};
 
@@ -276,18 +277,18 @@ fn pair_analysis(
     let ohlcv_time_series = find_matching_ohlcv(
         &timeseries_data.series_data,
         &selected_pair,
-        INTERVAL_WIDTH_TO_ANALYSE_MS,
+        ANALYSIS.interval_width_ms,
     )
     .unwrap_or_else(|_| {
         panic!(
             "No OHLCV data found for pair '{}' with interval {} ms",
-            selected_pair, INTERVAL_WIDTH_TO_ANALYSE_MS
+            selected_pair, ANALYSIS.interval_width_ms,
         )
     });
 
     // Validate minimum candle count for reliable analysis
     let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();
-    if total_candle_count < MIN_CANDLES_FOR_ANALYSIS {
+    if total_candle_count < ANALYSIS.cva.min_candles_for_analysis {
         bail!(
             "Insufficient data: {} has only {} candles across {} ranges (minimum: {}). \
              This pair is not currently analyzable - likely due to rapid price discovery \
@@ -295,7 +296,7 @@ fn pair_analysis(
             selected_pair,
             total_candle_count,
             slice_ranges.len(),
-            MIN_CANDLES_FOR_ANALYSIS
+            ANALYSIS.cva.min_candles_for_analysis
         );
     }
 
@@ -318,9 +319,9 @@ fn pair_analysis(
         (slice_ranges.first(), slice_ranges.last())
     {
         cva_results.start_timestamp_ms =
-            first_kline_timestamp + (*first_start as i64 * INTERVAL_WIDTH_TO_ANALYSE_MS);
+            first_kline_timestamp + (*first_start as i64 * ANALYSIS.interval_width_ms);
         cva_results.end_timestamp_ms =
-            first_kline_timestamp + (*last_end as i64 * INTERVAL_WIDTH_TO_ANALYSE_MS);
+            first_kline_timestamp + (*last_end as i64 * ANALYSIS.interval_width_ms);
     }
 
     Ok(cva_results)

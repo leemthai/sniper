@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::analysis::MultiPairMonitor;
 use crate::analysis::pair_analysis::ZoneGenerator;
-use crate::config::{DEFAULT_PRICE_ZONE_COUNT, TIME_HORIZON_DEFAULT_DAYS};
+use crate::config::analysis::ANALYSIS;
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::journeys::{JourneyExecution, Outcome, ZoneEfficacyStats};
@@ -365,7 +365,7 @@ pub struct ZoneSniperApp {
 
 /// Default value for zone count - used by serde and initialization
 fn default_zone_count() -> usize {
-    DEFAULT_PRICE_ZONE_COUNT
+    ANALYSIS.default_zone_count
 }
 
 /// Default value for selected pair - used by serde and initialization
@@ -378,7 +378,7 @@ fn default_time_decay_factor() -> f64 {
 }
 
 fn default_time_horizon_days() -> u64 {
-    TIME_HORIZON_DEFAULT_DAYS
+    ANALYSIS.time_horizon.default_days
 }
 
 impl ZoneSniperApp {
@@ -1060,7 +1060,7 @@ impl ZoneSniperApp {
                     if let Ok(timeseries) = crate::models::timeseries::find_matching_ohlcv(
                         &self.data_state.timeseries_collection.series_data,
                         pair_name,
-                        crate::config::INTERVAL_WIDTH_TO_ANALYSE_MS,
+                        ANALYSIS.interval_width_ms,
                     ) {
                         let (ranges, price_range) =
                             crate::domain::auto_duration::auto_select_ranges(

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::config::ANALYSIS;
 use crate::journeys::compute_zone_efficacy;
 use crate::models::{TradingModel, find_matching_ohlcv};
 
@@ -17,7 +18,7 @@ impl ZoneSniperApp {
         let timeseries = find_matching_ohlcv(
             &self.data_state.timeseries_collection.series_data,
             pair_name,
-            crate::config::INTERVAL_WIDTH_TO_ANALYSE_MS,
+            ANALYSIS.interval_width_ms,
         )
         .ok()?;
 
@@ -67,7 +68,7 @@ impl ZoneSniperApp {
         let timeseries = match find_matching_ohlcv(
             &self.data_state.timeseries_collection.series_data,
             &selected_pair,
-            crate::config::INTERVAL_WIDTH_TO_ANALYSE_MS,
+            ANALYSIS.interval_width_ms,
         ) {
             Ok(ts) => ts,
             Err(_) => return,

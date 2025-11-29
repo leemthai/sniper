@@ -1,9 +1,8 @@
 use std::time::Duration;
 
-use crate::utils::app_time::AppInstant;
-
-use crate::config::{CVA_MIN_SECONDS_BETWEEN_RECALCS, CVA_PRICE_RECALC_THRESHOLD_PCT};
+use crate::config::ANALYSIS;
 use crate::ui::app::{DataParams, ZoneSniperApp};
+use crate::utils::app_time::AppInstant;
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
@@ -70,7 +69,7 @@ impl PairTriggerState {
         if self.in_progress {
             if let Some(anchor) = self.active_price.or(self.anchor_price) {
                 let pct = (new_price - anchor).abs() / anchor.max(f64::EPSILON);
-                if pct >= CVA_PRICE_RECALC_THRESHOLD_PCT {
+                if pct >= ANALYSIS.cva.price_recalc_threshold_pct {
                     self.pending_price = Some(new_price);
                 }
             } else {
@@ -81,7 +80,7 @@ impl PairTriggerState {
 
         if let Some(anchor) = self.anchor_price {
             let pct = (new_price - anchor).abs() / anchor.max(f64::EPSILON);
-            if pct >= CVA_PRICE_RECALC_THRESHOLD_PCT {
+            if pct >= ANALYSIS.cva.price_recalc_threshold_pct {
                 let msg = format!(
                     "price move {:.2}% (anchor {:.4} → {:.4})",
                     pct * 100.0,
@@ -134,7 +133,7 @@ impl PairTriggerState {
 
     pub(super) fn recent_run(&self) -> bool {
         self.last_run_at
-            .map(|ts| ts.elapsed() < Duration::from_secs(CVA_MIN_SECONDS_BETWEEN_RECALCS))
+            .map(|ts| ts.elapsed() < Duration::from_secs(ANALYSIS.cva.min_seconds_between_recalcs))
             .unwrap_or(false)
     }
 }
