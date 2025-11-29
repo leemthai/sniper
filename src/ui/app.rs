@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::analysis::MultiPairMonitor;
 use crate::analysis::pair_analysis::ZoneGenerator;
-use crate::config::analysis::ANALYSIS;
+use crate::config::ANALYSIS;
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::journeys::{JourneyExecution, Outcome, ZoneEfficacyStats};

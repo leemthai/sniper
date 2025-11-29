@@ -18,7 +18,7 @@ use binance_sdk::{errors, errors::ConnectorError as connection_error};
 use tokio::time::{Duration, sleep};
 
 // Local crates
-use crate::config::binance::{BINANCE, BinanceApiConfig};
+use crate::config::{BINANCE, BinanceApiConfig};
 use crate::domain::pair_interval::PairInterval;
 use crate::utils::TimeUtils;
 
@@ -350,7 +350,7 @@ async fn fetch_binance_klines_with_limits(
                         );
                     }
                     connection_error::TooManyRequestsError(msg) => {
-                        log::error!(
+                        log::warn!(
                             "{} Rate limit exceeded. Please wait and try again. {}",
                             pair_interval,
                             msg
@@ -382,7 +382,7 @@ async fn fetch_binance_klines_with_limits(
                         log::error!("Resource not found. {}", msg);
                     }
                     connection_error::BadRequestError(msg) => {
-                        log::error!(
+                        log::warn!(
                             "{} Bad request: Verify your input parameters. {}",
                             pair_interval,
                             msg

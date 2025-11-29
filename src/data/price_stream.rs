@@ -1,7 +1,7 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::BINANCE;
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))] // Not needed for WASM
 use crate::config::DEBUG_FLAGS;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::config::binance::BINANCE;
 #[cfg(not(target_arch = "wasm32"))]
 use futures::StreamExt;
 #[cfg(not(target_arch = "wasm32"))]

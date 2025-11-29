@@ -1,18 +1,20 @@
 //! Configuration module for the klines application.
 
-pub mod analysis;
-pub mod binance;
+// Can all be private now because we have a public re-export. Forces using file to just use crate::config, rather than crate::config::debug or crate::config::binance
+mod analysis;
+mod binance;
+mod debug;
+mod demo;
+mod persistence;
 
-mod debug; // Can be private now because we have a public re-export. Forces files to use crate::config::DEBUG_FLAGS not crate::config::debug::DEBUG_FLAGS
-pub use debug::DEBUG_FLAGS;
-
-pub mod demo;
-pub mod persistence;
+// Can't be private because we don't re-export it
 pub mod plot;
 
 // Re-export commonly used items
 pub use analysis::ANALYSIS;
 pub use binance::BINANCE;
+pub use binance::BinanceApiConfig;
+pub use debug::DEBUG_FLAGS;
 pub use persistence::PERSISTENCE;
 
 pub use demo::DEMO;
