@@ -2,4 +2,4 @@
 /docs/
 /.idea/
 /dist/
-*.json
+.states.json
