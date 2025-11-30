@@ -15,7 +15,6 @@ pub use analysis::ANALYSIS;
 pub use binance::BINANCE;
 pub use binance::BinanceApiConfig;
 pub use debug::DEBUG_FLAGS;
-pub use persistence::PERSISTENCE;
-
 pub use demo::DEMO;
+pub use persistence::PERSISTENCE;
 pub use persistence::kline_cache_filename;
