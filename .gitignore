@@ -4,3 +4,6 @@
 /dist/
 .states.json
 repomix*.*
+/.continue/
+zone_sniper.code-workspace
+
