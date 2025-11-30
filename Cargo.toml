@@ -67,6 +67,6 @@ tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
 [profile.release]
 panic = "unwind"
 # Enable LTO `thin` (least gain, but compiles quickest) for release builds
-lto = "thin"
-# lto = "off" # Disables LTO completely
+# lto = "thin" # Turned off coz too slow for dev work
+lto = "off" # Disables LTO completely
 # lto = false # Performs “thin local LTO” which performs “thin” LTO on the local crate only across its codegen units.
