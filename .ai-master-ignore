@@ -1,0 +1,15 @@
+# Explicitly block the AI from indexing or reading these folders
+_private/
+kline_data/
+target/
+
+# Block specific sensitive files
+*.env
+secret_sauce.md
+
+# Block all the ignore files
+ai-master-ignore
+.continueignore
+.geminiignore
+.cursorignore
+.copilotignore
