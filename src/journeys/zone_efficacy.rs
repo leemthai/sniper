@@ -297,6 +297,6 @@ fn build_transition_summaries(
             log::info!("---------------------------------------");
         }
     }
-
     summaries
 }
+
