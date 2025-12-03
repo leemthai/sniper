@@ -1,4 +1,4 @@
-# Root Specification Document for Zone Sniper Project
+# Root Specification Document for `Zone Sniper Project`
 
 ## A full glossary of terms
 See `docs/glossary.md`

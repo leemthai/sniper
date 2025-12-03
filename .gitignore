@@ -5,6 +5,5 @@
 repomix*.*
 zone_sniper.code-workspace
 /.continue/
-# Ignore the private docs folder
 _private/
 
