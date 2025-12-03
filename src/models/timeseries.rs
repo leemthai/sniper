@@ -212,7 +212,24 @@ impl TimeSeriesSlice<'_> {
                 } else {
                     time_decay_factor
                 };
-                let temporal_weight = decay_base.powf(1.0 - progress);
+
+                // If decay_base is 2.0, Newest data gets 2.0 weight, Oldest gets 1.0.
+                // If decay_base is 1.0, all data gets same weight
+                let temporal_weight = decay_base.powf(progress);
+                // It is recommended to start with 1.0 ("Equal Weighting"). Justifications:
+                // Since we use Base Asset Volume (e.g., counting physical BTC traded), we are already normalized for price inflation.
+                // Support is memory: A massive consolidation zone from 2021 is often still a massive support level today
+                // The Strategy: IF charts get clustered with "ghost zones", the bump the factor to 1.5 or 2.0 to prioritize
+                // recent structure. But "Pure Volume" (1.) is the industry standard for identifying Key Zones.
+                // let temporal_weight = decay_base.powf(progress);
+                // #[cfg(debug_assertions)]
+                // log::warn!(
+                //     "{}",
+                //     format!(
+                //         "Current temporal weight is {} from time_decay_factor of {}",
+                //         temporal_weight, time_decay_factor
+                //     )
+                // );
                 self.process_candle_scores(&mut cva_core, &candle, temporal_weight);
                 position += 1;
             }
@@ -220,7 +237,6 @@ impl TimeSeriesSlice<'_> {
 
         cva_core
     }
-
 
     fn process_candle_scores(&self, cva_core: &mut CVACore, candle: &Candle, temporal_weight: f64) {
         let (price_min, price_max) = cva_core.price_range.min_max();
@@ -239,10 +255,10 @@ impl TimeSeriesSlice<'_> {
         let weight = candle.base_volume * temporal_weight;
 
         cva_core.increase_score_multi_zones_spread(
-            ScoreType::FullCandleTVW, 
-            candle_low, 
-            candle_high, 
-            weight
+            ScoreType::FullCandleTVW,
+            candle_low,
+            candle_high,
+            weight,
         );
 
         // 2. Low wick volume-weighted (Reversal Zones - for later)
@@ -254,7 +270,7 @@ impl TimeSeriesSlice<'_> {
             ScoreType::LowWickVW,
             low_wick_start,
             low_wick_end,
-            candle.base_volume * temporal_weight // Consistency: apply weighting here too?
+            candle.base_volume * temporal_weight, // Consistency: apply weighting here too?
         );
 
         // 3. High wick volume-weighted (Reversal Zones - for later)
@@ -264,7 +280,7 @@ impl TimeSeriesSlice<'_> {
             ScoreType::HighWickVW,
             high_wick_start,
             high_wick_end,
-            candle.base_volume * temporal_weight // Consistency: apply weighting here too?
+            candle.base_volume * temporal_weight, // Consistency: apply weighting here too?
         );
 
         // 4. Quote volume spread (Optional - keep if you use it for borders, otherwise remove)
@@ -275,12 +291,11 @@ impl TimeSeriesSlice<'_> {
             ScoreType::QuoteVolume,
             candle_start,
             candle_end,
-            candle.quote_volume // No temporal weight? (Keep as is for now)
+            candle.quote_volume, // No temporal weight? (Keep as is for now)
         );
     }
 }
 
-    
 //     fn process_candle_scores_old(&self, cva_core: &mut CVACore, candle: &Candle, temporal_weight: f64) {
 //         let (price_min, price_max) = cva_core.price_range.min_max();
 

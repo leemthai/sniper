@@ -6,7 +6,6 @@ pub struct PlotConfig {
     pub support_zone_color: Color32,
     pub resistance_zone_color: Color32,
     pub sticky_zone_color: Color32,
-    pub slippy_zone_color: Color32,
     pub current_price_color: Color32,
     pub current_price_outer_color: Color32,
     pub low_wicks_zone_color: Color32,
@@ -21,7 +20,6 @@ pub struct PlotConfig {
     pub show_sticky_zones: bool,
     pub show_support_zones: bool,
     pub show_resistance_zones: bool,
-    pub show_slippy_zones: bool,
     pub show_low_wicks_zones: bool,
     pub show_high_wicks_zones: bool,
     /// Width of zone boundary lines
@@ -46,7 +44,6 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     support_zone_color: Color32::from_rgb(0, 200, 0), // Green
     resistance_zone_color: Color32::from_rgb(200, 0, 0), // Red
     sticky_zone_color: Color32::from_rgb(0, 191, 255), // Deep sky blue
-    slippy_zone_color: Color32::from_rgb(150, 150, 150), // Gray
     current_price_color: Color32::from_rgb(255, 215, 0), // Gold
     current_price_outer_color: Color32::from_rgb(255, 0, 0), // Red border
     low_wicks_zone_color: Color32::from_rgb(0, 255, 255), // Cyan
@@ -65,7 +62,6 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     show_sticky_zones: true,
     show_support_zones: false,
     show_resistance_zones: false,
-    show_slippy_zones: false,
     show_low_wicks_zones: false,
     show_high_wicks_zones: false,
     zone_boundary_line_width: 2.0,

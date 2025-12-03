@@ -174,7 +174,6 @@ impl ZoneSniperApp {
 
         let superzones = match zone_type {
             "sticky" => Some(&trading_model.zones.sticky_superzones),
-            "slippy" => Some(&trading_model.zones.slippy_superzones),
             "low-wick" => Some(&trading_model.zones.low_wicks_superzones),
             "high-wick" => Some(&trading_model.zones.high_wicks_superzones),
             _ => None,

@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crate::analysis::zone_scoring::{
-    find_consolidation_zones_from_peaks, find_high_activity_zones,
-    find_high_activity_zones_low_gradient, find_low_activity_zones_low_gradient,
-};
+use crate::analysis::zone_scoring::find_high_activity_zones;
+use crate::analysis::zone_scoring::find_target_zones;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::utils::maths_utils;
 
@@ -139,11 +137,9 @@ pub struct ClassifiedZones {
     pub low_wicks: Vec<Zone>,
     pub high_wicks: Vec<Zone>,
     pub sticky: Vec<Zone>,
-    pub slippy: Vec<Zone>,
 
     // SuperZones (aggregated contiguous zones)
     pub sticky_superzones: Vec<SuperZone>,
-    pub slippy_superzones: Vec<SuperZone>,
     pub high_wicks_superzones: Vec<SuperZone>,
     pub low_wicks_superzones: Vec<SuperZone>,
     // Note: support/resistance superzones are dynamically calculated from sticky superzones
@@ -180,48 +176,42 @@ impl TradingModel {
         let (price_min, price_max) = cva.price_range.min_max();
         let zone_count = cva.zone_count;
 
-        // Normalize data for classification
-        let sticky_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::FullCandleTVW));
         let high_wicks_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::HighWickVW));
         let low_wicks_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::LowWickVW));
 
-        // Find zone indices for each classification
-        // Sticky zones must be in top X% PLUS the zones next to them must not be a huge gradent.
-        let _sticky_indices = find_high_activity_zones_low_gradient(
-            &sticky_data,
-            0.70, // Increasing this reduces number of zones.
-            0.85, //  <- Gradients of before and after zones must be in <= this percentile range (increase this number to increase number of sticky zones we find. Reduce this number to decrease number of sticky zones we find)
-        );
+        // 1. Get Normalized Data (0.0 to 1.0)
+        let raw_sticky = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::FullCandleTVW));
 
-        let sticky_indices = find_consolidation_zones_from_peaks(
-            &sticky_data,
-            0.30, // min_peak_height. decrease this to include more zones.
-            0.01, // min_prominence
-            0.08, // min_distance_fraction: 8% of zones.
-            0.07, // expansion_threshold. increase this to include more neighbors.
-            0.04, // max_expansion_fraction: 4% of zones. Increase this to encourage connecting nearby peaks into broader consolidated zones.
-            0.9,  // strength_tolerance
-            cva.pair_name.clone(),
-            0.8, // min_single_zone_gap_fill_pct: 80%.decrease this to fill more single-zone gaps
-        );
+        // 2. Apply Contrast (Sharpening)
+        // This pushes "mushy" valleys down, creating separation for the island logic.
+        let sharpened_sticky: Vec<f64> = raw_sticky.iter().map(|&s| s * s).collect();
 
-        // Slippy zones must be in bottom X% PLUS the zones next to them must not be a huge gradent.
-        let slippy_indices = find_low_activity_zones_low_gradient(
-            &sticky_data,
-            0.20, // Bottom 20% of scores
-            0.80, // <- Gradients of before and after zones must be in <= this percentile range (increase this number to increase number of slippy zones we find)
-        );
+        // 3. Define Dynamic Gap (Scale Independent) - the bigger the gap, the wider the bridget.
+        // 2% of the map width. (100 zones -> gap 2. 1000 zones -> gap 20).
+        // This answers your concern about scale independence.
+        let gap_percent = 0.015; // # A value 0.01 to 0.02 seems reasonable here. Not tried yet with a bigger zone count.
+        let calculated_gap = (zone_count as f64 * gap_percent).ceil() as usize;
+
+        // 4. Find Targets
+        // Use a LOWER threshold on squared data.
+        // 0.1 squared threshold ~= 0.31 original threshold.
+        // BUT, a valley of 0.4 (original) -> 0.16 (squared), which is still above 0.1.
+        // You might want to try 0.15 or 0.20 here to really break up the super-islands.
+        let sticky_targets = find_target_zones(&sharpened_sticky, 0.16, calculated_gap);
+
+        // 5. Explode back to indices for the rest of your app
+        let mut sticky_indices = Vec::new();
+        for target in sticky_targets {
+            for i in target.start_idx..=target.end_idx {
+                sticky_indices.push(i);
+            }
+        }
 
         let high_wicks_indices = find_high_activity_zones(&high_wicks_data, 0.75);
         let low_wicks_indices = find_high_activity_zones(&low_wicks_data, 0.75);
 
         // Convert indices to Zone objects
         let sticky_zones: Vec<Zone> = sticky_indices
-            .iter()
-            .map(|&idx| Zone::new(idx, price_min, price_max, zone_count))
-            .collect();
-
-        let slippy_zones: Vec<Zone> = slippy_indices
             .iter()
             .map(|&idx| Zone::new(idx, price_min, price_max, zone_count))
             .collect();
@@ -238,7 +228,6 @@ impl TradingModel {
 
         // Aggregate contiguous zones into SuperZones
         let sticky_superzones = aggregate_zones(&sticky_zones);
-        let slippy_superzones = aggregate_zones(&slippy_zones);
         let high_wicks_superzones = aggregate_zones(&high_wicks_zones);
         let low_wicks_superzones = aggregate_zones(&low_wicks_zones);
 
@@ -250,12 +239,10 @@ impl TradingModel {
         };
 
         ClassifiedZones {
-            sticky: sticky_zones, // Also known as `key zones` to run journeys from
-            slippy: slippy_zones,
+            sticky: sticky_zones,
             low_wicks: low_wicks_zones,
             high_wicks: high_wicks_zones,
             sticky_superzones,
-            slippy_superzones,
             support_superzones,
             resistance_superzones,
             low_wicks_superzones,
@@ -324,7 +311,6 @@ impl TradingModel {
 
     /// Find all superzones containing the given price
     /// Returns a vec of (superzone_id, zone_type) tuples for all matching zones
-    /// This replaces the silly 'find_superzones_at_price' function which stupidly returned a single tuple instead of a vector
     pub fn find_superzones_at_price(&self, price: f64) -> Vec<(usize, ZoneType)> {
         let mut zones = Vec::new();
 
@@ -346,12 +332,6 @@ impl TradingModel {
                 zones.push((sz.id, ZoneType::Sticky));
             }
         }
-        // Check slippy superzones
-        for sz in &self.zones.slippy_superzones {
-            if sz.contains(price) {
-                zones.push((sz.id, ZoneType::Slippy));
-            }
-        }
         // Check low wick superzones
         for sz in &self.zones.low_wicks_superzones {
             if sz.contains(price) {
@@ -368,55 +348,12 @@ impl TradingModel {
         zones
     }
 
-    /// Find which superzone contains the given price
-    /// Returns (superzone_id, zone_type) tuple
-    /// Checks superzones in priority order: Support > Resistance > Sticky > Slippy > Low Wick > High Wick
-    pub fn find_superzone_at_price(&self, price: f64) -> Option<(usize, ZoneType)> {
-        // Check support superzones first (highest priority)
-        for sz in &self.zones.support_superzones {
-            if sz.contains(price) {
-                return Some((sz.id, ZoneType::Support));
-            }
-        }
-        // Check resistance superzones
-        for sz in &self.zones.resistance_superzones {
-            if sz.contains(price) {
-                return Some((sz.id, ZoneType::Resistance));
-            }
-        }
-        // Check sticky superzones
-        for sz in &self.zones.sticky_superzones {
-            if sz.contains(price) {
-                return Some((sz.id, ZoneType::Sticky));
-            }
-        }
-        // Check slippy superzones
-        for sz in &self.zones.slippy_superzones {
-            if sz.contains(price) {
-                return Some((sz.id, ZoneType::Slippy));
-            }
-        }
-        // Check low wick superzones
-        for sz in &self.zones.low_wicks_superzones {
-            if sz.contains(price) {
-                return Some((sz.id, ZoneType::LowWicks));
-            }
-        }
-        // Check low wick superzones
-        for sz in &self.zones.high_wicks_superzones {
-            if sz.contains(price) {
-                return Some((sz.id, ZoneType::HighWicks));
-            }
-        }
-        None
-    }
 }
 
 /// Zone classification types for a given price level
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZoneType {
     Sticky,     // High consolidation, price tends to stick here
-    Slippy,     // Low consolidation, price moves through quickly
     Support,    // Nearest sticky zone below current price
     Resistance, // Nearest sticky zone above current price
     LowWicks,   // High rejection activity below current price

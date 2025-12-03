@@ -105,7 +105,7 @@ impl PlotView {
         // Show the plot within the CentralPanel
         Plot::new("cva")
             .view_aspect(PLOT_CONFIG.plot_aspect_ratio)
-            // .legend(_legend)
+            .legend(_legend)
             .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_y_axes(vec![create_y_axis(pair_name)])
             .x_grid_spacer(move |_input| {
@@ -366,20 +366,6 @@ fn draw_classified_zones(
                 x_max,
                 "Sticky",
                 PLOT_CONFIG.sticky_zone_color,
-            );
-        }
-    }
-
-    // Draw slippy superzones (aggregated low activity areas) - only if enabled
-    if PLOT_CONFIG.show_slippy_zones {
-        for superzone in &model.zones.slippy_superzones {
-            draw_superzone(
-                plot_ui,
-                superzone,
-                x_min,
-                x_max,
-                "Slippy",
-                PLOT_CONFIG.slippy_zone_color,
             );
         }
     }
