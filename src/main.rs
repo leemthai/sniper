@@ -166,7 +166,7 @@ fn main() -> eframe::Result {
         )
         .await
         {
-            log::error!("⚠️  Failed to write cache: {}", e);
+            log::warn!("⚠️  Failed to write cache: {}", e);
         }
     });
 

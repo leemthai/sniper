@@ -1,10 +1,11 @@
 
-# Summary of what we need to work on regarding `target zones` (previously known as `key zones`):
-
+# Summary of what we need to work on regarding `target zones` :
 
 ## Rename `key zones` to `target zones`
     Currently, we use the term `key zones` in docs + probably code as well.
+    (previously known as `key zones` conceptually at least, maybe not in app yet.)
     I want to rename `key zones` to `target zones` (`key zones` is imprecise term)
+    Need update spec.md as bare minimum.
 
 ## Incorporate `qualifying reversal zones` (`QRZ`) into `target zones` list
 - Currently, the only zones that qualify as `target zones` are `qualifying sticky zones` (`QST`) (using very imperfect algos in `docs/zones/zone_scoring.md`)
@@ -12,379 +13,33 @@
 - Q: What happens during `merge` of `QRZ` and `QSV`? There are possbilities of overlaps etc. I guess we keep them as separate sub-lists. as we need to know whether the target zone is a reversal zone or sticky zone.
 
 
-## Specify how `sticky zones` + `reversal zones` are calculated exactly
-    - (I believe) current sticky zone algo is volume weighted body candles that intersect our price range, right?
-    - What is justification for this?
-    - Is there a better algo to generate sticky zones.
-    - Why use body candles?
-    - Discuss whether this is the right data for finding where price action spends the most time. How to know?
-    - What is reversal zone calc? Is that volume weighted as well?
-
-
-### Body candle vs high low.which to use?
-Maybe more reasonable to use L to H rather than current O to C body candle? Yes. Coz Body is just about start and finish. Not about what happened in the day. Also, crypto stuff doesn't really have start of day and end of day. Yes. So kinda usless to just use body candle.
-### Conclusion
-if we do Time based then we have exact measure of time a pair has spent in price range
-To increase accuracy we keep reducing the interval size from 1h to 30m to 5m etc
-Then only question is volume weight or not? What value to assign a day where 1M shares were traded in a zone vs 1 share?
-Definitely more valuable right!
-Units would then change from minutes to minutes x trades ie TradeVolumeMinutes
-Have weighting at this level as well, though. TemporalWeighting
-Plus VolumeWeighting......
-So we alreay scale by both QuoteVolume and TemporalWeighting ....... so do we do the 0 to 1 thing for the interval. What % of interval was spent in this zone.
-I want to use full candle not body candle when calculating sticky zones. 
-
-
-## AI Question 1
-`src/journeys/decay_calibration.rs`
-`src/journeys/zone_efficacy.rs`
-Please explain, in a couple of paragraphs, what these two files are about, and do we currently utilize their results in the app at all?
-## AI Answer 1:
-Here is the breakdown of those two files and their current utilization:
-
-**What they are about:**
-*   **`src/journeys/zone_efficacy.rs`** calculates quality metrics for your "Sticky Zones." It analyzes historical price action to determine how "effective" the current zones are by computing statistics like **Dwell Duration** (how long price sits inside a zone before leaving) and **Occupancy** (what percentage of price action happens inside zones vs. outside). It essentially answers the question: "Are these zones actually sticky?"
-*   **`src/journeys/decay_calibration.rs`** is an optimization engine designed to "tune" the CVA algorithm. It is meant to run multiple CVA simulations with different `time_decay_factor` settings, score them using the metrics from `zone_efficacy.rs`, and automatically pick the decay factor that produces the "stickiest" zones.
-
-**Do we utilize them?**
-*   **Zone Efficacy:** **Partially.** The function `compute_zone_efficacy` is actively called in `app_state.rs` whenever CVA results are updated. However, the results are stored in `self.data_state.zone_efficacy` and are **only displayed** in the UI status bar if the developer flag `print_sticky_dwell_summary` is enabled. For a standard user, this calculation runs but is invisible.
-*   **Decay Calibration:** **No.** This appears to be dormant/dead code. The main application loop (`app_async.rs`) uses the specific `time_decay_factor` from your settings and never calls `calibrate_time_decay`. The system currently relies on manual configuration rather than this auto-tuning logic.
-
-# AI Question 2
-Sticky zones are currently calculated by this process:
-    timeseries.rs -> process_candle_scores() -> increase_score_multi_zones_spread()
-What I want to achieve is just measure the zones where price action spends the most time. And then *possibly* weigh that by (a) temporal weighting (to increase import of recent data) and (b) Volume weighting (to increase the import of heavily traded time periods) 
-Don't forget the app has the intention of using sticky zones as *price targets*. The idea being, once the price reacjes this sticky zone, it is an opportune time to end the trade, because historically trading has consolidated at this particular price level.
-1. Can we learn any lessons from the basically unused zone_efficacy.rs code and incorporate it into the sticky zone calculation?
-2. Why don't we use the full candle not just the body candle? Crypto is traded 24/7 everywhere. I don't see that open/close for a candle is important at all really. The full candle is providing us more information than just the body candle I believe? So currently we use this code I believe:
-        let sticky_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::CandleBodyVW));
-I believe we should instead use the full candle, not just the body for that calculation. (The full candle is not a ScoreType yet I believe, but we could certainly add it...)
-3. I really don't know how to go about using both the temporal weighting and volume weighting. I mean, we could do the sticky zone calculations as bare-bones *no weighting*, then would it be purely be just "the price levels where the price action has spent the most time"?
-4. Soon (after finalizing these sticky zone questions) I want to add 'reversal zones' to the system, because obviously, reversal zones, not just sticky zones, are natural price targets as well. These are calculated using LowWick (if price target is down) + HighWick (if price target is up) data. So please bear this upcoming expansion in mind, as I'm sure many of the same questions will apply to reversal zones.
-In summary: I just want "sticky zones to be reliably sticky" lol. So the user and system trusts them as good price targets.. so how to improve the current sticky zone calculations so they function well as predictive sticky zones. Plus, I want to dump the *separate* code in these files:
-`src/journeys/decay_calibration.rs`
-`src/journeys/zone_efficacy.rs`
-and incorporate any good ideas from them into the actual sticky zone calculation code.
-# AI Answer 2
-Here is a breakdown of how to restructure your Sticky Zone logic to be robust, simpler, and aligned with your goal of using them as price targets.
-
-### 1. Lessons from `zone_efficacy.rs` (The "Density" Lesson)
-The core value of `zone_efficacy.rs` was that it tried to measure "Dwell" (how long price stays in a zone).
-**The Lesson:** You don't need a separate complex file to measure this *after* the fact. You can bake "Dwell" directly into the scoring mathematics.
-
-If a candle represents 1 hour of time:
-*   **Big Candle (High Volatility):** Price moved through many zones. It spent very little time in any specific zone. (Low Dwell Density).
-*   **Small Candle (Consolidation):** Price stayed within a narrow range. It spent the entire hour in just one or two zones. (High Dwell Density).
-
-**The Solution:** Instead of adding complex post-processing, we simply change the math in `timeseries.rs`. When we apply a score to a set of zones, we **divide the score by the height of the candle**. This naturally makes short candles (consolidation) build massive scores in specific zones, while tall candles (sprints) dilute their score across many zones.
-
-### 2. Full Candle vs. Body Candle
-**You are 100% correct.** In 24/7 crypto markets, Open and Close are arbitrary snapshots.
-*   **Current Logic:** Uses `Open` to `Close`. If a candle wick goes to a specific level and trades 1,000 BTC there, but closes back down, your current logic ignores that volume completely.
-*   **New Logic:** Use `Low` to `High`. This represents the entire **Price Opportunity** range where trading actually occurred.
-
-### 3. How to combine Temporal and Volume Weighting
-You are overthinking the complexity here—it fits into a single elegant formula. You essentially want to create a **Volume-Time Density** map.
-
-Here is the "Golden Formula" for your `increase_score_multi_zones_spread` call:
-
-$$ \text{Total Weight} = \text{Volume} \times \text{TemporalDecay} $$
-
-Then, you spread this weight across the zones covered by the candle (`High` to `Low`).
-*   **If Volume is high:** The zone gets a higher score (Strong agreement on price).
-*   **If Candle is recent:** The zone gets a higher score (Relevant agreement).
-*   **If Candle is short (Consolidation):** The weight is concentrated into 1 or 2 zones, creating a "Peak" (Sticky Zone).
-*   **If Candle is tall (Expansion):** The weight is spread thin over 20 zones, creating a flat area (Slippy Zone).
-
-### 4. Implementation Plan
-
-You can safely delete `src/journeys/decay_calibration.rs` and `src/journeys/zone_efficacy.rs`. Their logic is being moved "upstream" into the generation phase.
-
-Here is exactly how to modify your code to achieve this.
-
-**A. Update `src/models/cva.rs`**
-Add a new ScoreType (or rename the old one) to reflect that this is now Full Candle analysis.
-
-```rust
-pub enum ScoreType {
-    // Rename CandleBodyVW to this:
-    FullCandleTVW, // Time-Volume-Weighted Full Candle
-    // ... keep wicks for your future Reversal Zone work
-}
-```
-
-**B. Update `src/models/timeseries.rs`**
-Modify `process_candle_scores` to implementation the Density Logic.
-
-```rust
-fn process_candle_scores(&self, cva_core: &mut CVACore, candle: &Candle, temporal_weight: f64) {
-    let (price_min, price_max) = cva_core.price_range.min_max();
-    
-    // Helper to clamp to analysis range
-    let clamp = |price: f64| price.max(price_min).min(price_max);
-
-    // 1. FULL CANDLE ANALYSIS (The new Sticky Logic)
-    // We use Low/High instead of Open/Close
-    let candle_low = clamp(candle.low_price);
-    let candle_high = clamp(candle.high_price);
-    
-    // We use Base Asset Volume (amount of crypto traded) 
-    // multiplied by your temporal decay.
-    // NOTE: You could add 1.0 to volume if you want a minimum "Time" score 
-    // even on 0 volume candles, but volume usually suffices.
-    let weight = candle.base_asset_volume * temporal_weight;
-
-    // This function inside CVA needs to automatically divide 
-    // the weight by the number of zones covered. 
-    // If your `increase_score_multi_zones_spread` already does that 
-    // (divides weight by n_chunks), you are good. 
-    // If it adds the full weight to every zone, you need to divide it here.
-    cva_core.increase_score_multi_zones_spread(
-        ScoreType::FullCandleTVW,
-        candle_low,
-        candle_high,
-        weight 
-    );
-
-    // ... Keep your wick logic for step 4 (Reversal Zones) ...
-}
-```
-
-### Summary
-By switching to **Full Candle** and ensuring the weight is **distributed** (divided by the height of the candle in zones), you mathematically guarantee that:
-1.  Areas where price chopped sideways for days (short candles, high volume) become massive peaks (**Sticky**).
-2.  Areas where price flew through in minutes (tall candles) become low valleys (**Slippy**).
-3.  Reversal zones (Step 4) will naturally complement this because they will look for the *edges* (Wicks) of these ranges, whereas this logic finds the *center of gravity*.
-
-# AI Question 3
-just a quick question: in cva.rs increase_score_multiz_zones_spread() we already have this line:
-        let quantity_per_zone = score_to_spread / (num_chunks as f64);
-Isn't that supposed to do what you mentioned i.e. "When we apply ascore to a set of zones, we divide the score by the height of the candle"?
-
-# AI Answer 3
-**Yes, exactly.**
-
-That specific line of code (`score_to_spread / num_chunks`) is the "magic sauce" that creates the density map I described.
-
-Because that line exists, the logic is already doing the heavy lifting for you:
-1.  **Short Candle (Consolidation):** `num_chunks` is small (e.g., 1 or 2). The volume is divided by a small number, resulting in a **High Score** added to those specific zones.
-2.  **Long Candle (Volatility):** `num_chunks` is large (e.g., 20). The same volume is divided by 20, resulting in a **Low Score** added to many zones (diluting the impact).
-
-### What this means for your implementation:
-You **do not** need to write complex new math. The engine is ready. You simply need to feed it the correct data in `src/models/timeseries.rs`.
-
-**The only change you need to make to achieve your goal:**
-Stop feeding it `Body` (Open/Close) and start feeding it `Full Candle` (Low/High).
-
-In `src/models/timeseries.rs`, inside `process_candle_scores`:
-
-```rust
-// OLD WAY (Body Only):
-// let body_start = clamp(candle.open_price.min(candle.close_price));
-// let body_end = clamp(candle.open_price.max(candle.close_price));
-
-// NEW WAY (Full Candle - capturing all price action):
-let candle_low = clamp(candle.low_price);
-let candle_high = clamp(candle.high_price);
-
-// Calculate the Total Weight (Volume * Time Decay)
-// We rely on 'increase_score_multi_zones_spread' to divide this by the height (density).
-let total_weight = candle.base_asset_volume * temporal_weight; 
-
-cva_core.increase_score_multi_zones_spread(
-    ScoreType::FullCandleTVW, // Rename CandleBodyVW to this
-    candle_low,
-    candle_high,
-    total_weight
-);
-```
-
-This simple change leverages the existing math to automatically highlight areas where price consolidated (short candles) with high volume, effectively replacing the need for the external logic in `zone_efficacy.rs`.
-
-# AI Question 4
-just a quick question: in cva.rs increase_score_multiz_zones_spread() we already have this line:
-        let quantity_per_zone = score_to_spread / (num_chunks as f64);
-Isn't that supposed to do what you mentioned i.e. "When we apply ascore to a set of zones, we divide the score by the height of the candle"?
-
-# AI Question 5 (Need to implement)
-Here is your implementation plan.
-
-### 1. Deleting `decay_calibration.rs` and `zone_efficacy.rs`
-
-You can delete the files `src/journeys/decay_calibration.rs` and `src/journeys/zone_efficacy.rs`.
-
-Because the code in `app_state.rs` was calling these, you must clean up the calls.
-
-**A. `src/journeys/mod.rs`**
-Remove these lines:
-```rust
-pub mod decay_calibration; // Remove
-pub mod zone_efficacy;     // Remove
-```
-
-**B. `src/ui/app_state.rs`**
-Remove the import `use crate::journeys::compute_zone_efficacy;`.
-Remove the entire function `update_zone_efficacy`.
-Inside `handle_pair_selection`, remove the call `self.data_state.clear_zone_efficacy();`.
-Inside `apply_cached_results_for_pair`, remove the call `self.update_zone_efficacy();`.
-Inside `poll_async_calculation` (in `app_async.rs`), remove the call `self.update_zone_efficacy();`.
-
-**C. `src/ui/app.rs`**
-In the `DataState` struct, remove the field:
-```rust
-pub zone_efficacy: Option<(String, crate::journeys::zone_efficacy::ZoneEfficacyStats)>, // Remove this
-```
-In `DataState::new` and `DataState::clear_zone_efficacy`, remove references to this field.
-
-**D. `src/ui/ui_render.rs`**
-In `render_status_panel`, remove the code block that formats and displays the dwell stats (lines starting with `format!("{}: (no dwell data)", UI_TEXT.sticky_dwell_prefix)`).
-
-**E. `src/config/debug.rs`**
-You can remove `print_zone_transition_summary`, `print_decay_calibration`, and `print_sticky_dwell_summary`.
-
----
-
-### 2. Base vs. Quote Volume
-
-**Recommendation: Use `base_asset_volume`.**
-
-*   **Base Volume (e.g., BTC):** Measures the physical amount of the asset traded. 10 BTC is 10 BTC, whether price is $10k or $100k. This is better for finding long-term structural supply/demand zones because it isn't skewed by the massive price inflation of the asset over time.
-*   **Quote Volume (e.g., USDT):** Measures dollar value. This biases the heatmap heavily toward the most recent data (or All-Time-Highs) simply because the coin costs more now, even if trading activity is lower.
-
-Since we are looking for "Sticky Zones" (structure), Base Volume is the cleaner metric.
-
----
-
-### 3. Update `process_candle_scores`
-
-Here is the updated function for `src/models/timeseries.rs`.
-
-```rust
-fn process_candle_scores(&self, cva_core: &mut CVACore, candle: &Candle, temporal_weight: f64) {
-    let (price_min, price_max) = cva_core.price_range.min_max();
-
-    // Helper to clamp to analysis range
-    let clamp = |price: f64| price.max(price_min).min(price_max);
-
-    // 1. FULL CANDLE ANALYSIS (The new Sticky Logic)
-    // We now use Low to High to capture the full range of price exploration
-    let candle_low = clamp(candle.low_price);
-    let candle_high = clamp(candle.high_price);
-
-    // We use Base Asset Volume weighted by Time Decay.
-    // The CVA function `increase_score_multi_zones_spread` handles the "Density" logic
-    // by automatically dividing this weight by the number of zones covered.
-    let weight = candle.base_asset_volume * temporal_weight;
-
-    cva_core.increase_score_multi_zones_spread(
-        ScoreType::FullCandleTVW, 
-        candle_low, 
-        candle_high, 
-        weight
-    );
-
-    // 2. Low wick volume-weighted (Reversal Zones - for later)
-    let low_wick_start = clamp(candle.low_wick_low());
-    let low_wick_end = clamp(candle.low_wick_high());
-    // Note: You might want to apply the same base_volume * temporal_weight logic here too
-    // but we can leave wicks as-is for now until you tackle Reversal Zones specifically.
-    cva_core.increase_score_multi_zones_spread(
-        ScoreType::LowWickVW,
-        low_wick_start,
-        low_wick_end,
-        candle.base_asset_volume * temporal_weight // Consistency: apply weighting here too?
-    );
-
-    // 3. High wick volume-weighted (Reversal Zones - for later)
-    let high_wick_start = clamp(candle.high_wick_low());
-    let high_wick_end = clamp(candle.high_wick_high());
-    cva_core.increase_score_multi_zones_spread(
-        ScoreType::HighWickVW,
-        high_wick_start,
-        high_wick_end,
-        candle.base_asset_volume * temporal_weight
-    );
-
-    // 4. Quote volume spread (Optional - keep if you use it for borders, otherwise remove)
-    // If you keep it, use quote volume here as it's specifically for "QuoteVolume" score type
-    let candle_start = clamp(candle.low_price);
-    let candle_end = clamp(candle.high_price);
-    cva_core.increase_score_multi_zones_spread(
-        ScoreType::QuoteVolume,
-        candle_start,
-        candle_end,
-        candle.quote_asset_volume // No temporal weight? (Keep as is for now)
-    );
-}
-```
-
----
-
-### 4. What does the "T" stand for?
-
-**"Temporal".**
-
-`FullCandleTVW` = **Full Candle Temporal-Volume-Weighted**.
-It means the score is derived from the **Full Candle** (Low to High), weighted by **Volume** (Base Asset), and **Temporal** decay (Recency).
-
----
-
-### 5. Is that the *total* needed changes?
-
-Not quite. Because you renamed the Enum variant, the compiler will yell at you in a few other places. You need to update these references:
-
-1.  **`src/models/cva.rs`**: Rename `CandleBodyVW` to `FullCandleTVW` in the Enum definition and inside the `fmt` function (update the display string too).
-2.  **`src/models/trading_view.rs`**: In `classify_zones`, update:
-    ```rust
-    // Was ScoreType::CandleBodyVW
-    let sticky_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::FullCandleTVW));
-    ```
-3.  **`src/ui/ui_plot_view.rs`**: In `calculate_plot_data`, the background bars likely used `CandleBodyVW`. Update this to `FullCandleTVW` so your background bars show the new sticky score.
-4.  **`src/ui/ui_panels.rs`**: In the View Options panel, checking for `CandleBodyVW` will need to be updated to `FullCandleTVW`.
-
-Once those compile errors are fixed, the transition is complete.
-
-
-
-
-
-
-# Lee's questions in new version:
-Why is debug version doing full info print now..... ??? release is fine.
-That just occured when we ran the binance API stuff. Maybe that is turned on?
-Plus delete all commented out code. coz that is tokens, baby.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Next
+Go over new results. How does it feel? How are distributions of new sticky zones?
+Temporaral weight is, I believe. 1.0. So effectively null. So the old question reamins - what value SHOULD it be?
+    - how can we tell?
+    - does it matter whether the temporal range we are dealing with is small (hours) vs days or weeks or months??????
+Get on with QRZ
+Find out API stats..... maybe updated once an hour or less... dunno, but I must have used some resources from somewhere today. I did about 20 requests I think. Count them..
+    - 95,000 tokens in total.  Cost estimate: $0.25
+    - Is that token limit per Month ? Oh shit...... nope. Tokens Per Minute
+    - looks like 11 questions I asked. That's pretty efficient coding.
+
+AI said:
+Summary (of `restructure your Sticky Zone logic to be robust, simpler, and aligned with your goal of using them as price targets.`)
+By switching to Full Candle and ensuring the weight is distributed (divided by the height of the candle in zones), you mathematically guarantee that:
+- Areas where price chopped sideways for days (short candles, high volume) become massive peaks (Sticky).
+- Areas where price flew through in minutes (tall candles) become low valleys (Slippy).
+Reversal zones (Step 4) will naturally complement this because they will look for the edges (Wicks) of these ranges, whereas this logic finds the center of gravity.
+
+My question for later: 
+"whereas this logic finds the center of gravity." - how does this play into superzone formation etc?
+
+Q: do we display logging errors in release version? great question.
+A: Dunno. But maybe we should?
+But also make sure we have error vs warn sorted as well
+log::error!
+log::warn!
+I guess log doesn't load at all in release version... so no, it's debug-only systm.
 
 
 ## Analyze distribution/normalization of source zone data

@@ -155,7 +155,7 @@ pub fn auto_select_ranges(
     // Edge case: no data
     if timeseries.open_prices.is_empty() {
         #[cfg(debug_assertions)]
-        log::error!("Auto-slice: No data available, returning empty ranges");
+        log::warn!("Auto-slice: No data available, returning empty ranges");
         return (Vec::new(), (0.0, 0.0));
     }
 

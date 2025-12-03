@@ -116,7 +116,7 @@ pub fn normalize_max(vec: &[f64]) -> Vec<f64> {
         if max_value <= 0.0 {
             // In a real application, you might panic here or log an error
             // depending on your specific requirements.
-            log::error!("Warning: max_value is <= 0.0. Returning original data.");
+            log::warn!("Warning: max_value is <= 0.0. Returning original data.");
             return vec.to_vec();
         }
     }

@@ -60,6 +60,9 @@ pub struct DebugFlags {
 
     /// Emit detailed journey status lines (UI flag not logging flag)
     pub display_journey_status_lines: bool,
+
+    /// Emit binance-related logs
+    pub print_binance: bool,
 }
 
 pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
@@ -80,6 +83,10 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
 
     print_serde: false,
     print_state_serde: false,
+    
     print_shutdown: false,
+
     display_journey_status_lines: false,
+
+    print_binance: false,
 };

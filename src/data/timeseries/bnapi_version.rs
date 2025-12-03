@@ -7,11 +7,14 @@ use bn_kline::AllValidKlines4Pair;
 use futures::future::join_all;
 use itertools::iproduct;
 use rayon::prelude::*;
-use tokio::{fs, task::JoinError, task::JoinHandle, time::Instant};
 
-use crate::config::ANALYSIS;
-use crate::config::BINANCE;
-use crate::config::PERSISTENCE;
+use tokio::{fs, task::JoinError, task::JoinHandle,};
+#[cfg(debug_assertions)]
+use tokio::{time::Instant};
+
+#[cfg(debug_assertions)]
+use crate::config::DEBUG_FLAGS;
+use crate::config::{ANALYSIS, BINANCE, PERSISTENCE};
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection};
 use crate::domain::pair_interval::PairInterval;
 use crate::models::OhlcvTimeSeries;
@@ -31,30 +34,41 @@ impl CreateTimeSeriesData for BNAPIVersion {
         // Load timeseries (klines) data from a pair list stored in text file
         // Interval is configured via INTERVAL_WIDTH_TO_ANALYSE_MS constant
         let supply_interval_asset = vec![ANALYSIS.interval_width_ms];
+
+        #[cfg(debug_assertions)]
         let start_time = Instant::now();
 
         let series_data = timeseries_data_load(&supply_interval_asset).await?;
+
         #[cfg(debug_assertions)]
-        log::info!(
-            "\n...After loading all we have complete timeseries data for {} valid BN pairs. ",
-            series_data.len(),
-        );
+        if DEBUG_FLAGS.print_binance {
+            log::info!(
+                "\n...After loading all we have complete timeseries data for {} valid BN pairs. ",
+                series_data.len(),
+            );
+        }
         #[cfg(debug_assertions)]
         {
             for ts in &series_data {
-                log::info!(
-                    "{} (started on {}, ended on {}) with {} klines and {:.2}% gaps",
-                    ts.pair_interval,
-                    time_utils::epoch_ms_to_utc(ts.first_kline_timestamp_ms),
-                    time_utils::epoch_ms_to_utc(ts.last_kline_timestamp_ms()),
-                    ts.klines(),
-                    ts.pct_gaps,
-                );
+                #[cfg(debug_assertions)]
+                if DEBUG_FLAGS.print_binance {
+                    log::info!(
+                        "{} (started on {}, ended on {}) with {} klines and {:.2}% gaps",
+                        ts.pair_interval,
+                        time_utils::epoch_ms_to_utc(ts.first_kline_timestamp_ms),
+                        time_utils::epoch_ms_to_utc(ts.last_kline_timestamp_ms()),
+                        ts.klines(),
+                        ts.pct_gaps,
+                    );
+                }
             }
         }
 
-        let elapsed_time = start_time.elapsed(); // Calculate the elapsed time
-        log::info!("Main function executed in: {:?}", elapsed_time);
+        #[cfg(debug_assertions)]
+        if DEBUG_FLAGS.print_binance {
+            let elapsed_time = start_time.elapsed(); // Calculate the elapsed time
+            log::info!("Main function executed in: {:?}", elapsed_time);
+        }
 
         Ok(TimeSeriesCollection {
             name: "Binance TimeSeries Collection".to_string(),
@@ -92,32 +106,44 @@ pub async fn timeseries_data_load(
     let all_permutations_vec: Vec<_> = all_permutations.collect();
     for batch in all_permutations_vec.chunks(BINANCE.limits.simultaneous_calls_ceiling) {
         // `batch` is a new iterator for each chunk.
-        // `batch.iter().collect()` turns it into a vector.
         let batch_vec: Vec<_> = batch.iter().collect();
         let batch_size: u32 = batch_vec.len() as u32;
 
         // Process the current batch (i.e., make API calls)
-        log::info!("--- Processing batch of size {} ---", batch_vec.len());
+        #[cfg(debug_assertions)]
+        if DEBUG_FLAGS.print_binance {
+            log::info!("--- Processing batch of size {} ---", batch_vec.len());
+        }
+        #[cfg(debug_assertions)]
         let start_tasks_time = Instant::now(); // Record the start time
+
         let mut handles: Vec<JoinHandle<Result<AllValidKlines4Pair>>> = Vec::new();
         for pair_interval in batch_vec {
-            log::info!(
-                "Processing: ({}, {},)",
-                pair_interval.name(),
-                // pair_interval.quote_asset,
-                pair_interval.interval_ms
-            );
+            #[cfg(debug_assertions)]
+            if DEBUG_FLAGS.print_binance {
+                log::info!(
+                    "Processing: ({}, {},)",
+                    pair_interval.name(),
+                    pair_interval.interval_ms
+                );
+            }
             // Here you can make your API call for each item in the batch
             let handle = tokio::spawn(bn_kline::load_klines(pair_interval.clone(), batch_size));
             handles.push(handle);
         }
+
         let results: Vec<Result<Result<AllValidKlines4Pair>, JoinError>> = join_all(handles).await;
-        let duration = start_tasks_time.elapsed(); // Calculate the elapsed time
-        log::info!("\n...Time to complete all async tasks: {:?}", duration);
-        log::info!(
-            "Number of results (successful + failed) returned is {}",
-            results.len(),
-        );
+        #[cfg(debug_assertions)]
+        {
+            let duration = start_tasks_time.elapsed(); // Calculate the elapsed time
+            if DEBUG_FLAGS.print_binance {
+                log::info!("\n...Time to complete all async tasks: {:?}", duration);
+                log::info!(
+                    "Number of results (successful + failed) returned is {}",
+                    results.len(),
+                );
+            }
+        }
 
         let mut errors = Vec::new();
 
@@ -133,16 +159,19 @@ pub async fn timeseries_data_load(
             let pair_kline = match pair_kline {
                 Ok(data) => data,
                 Err(e) => {
-                    log::info!("Binance API error for pair: {:?}", e);
+                    log::error!("Binance API error for pair: {:?}", e);
                     continue;
                 }
             };
 
-            log::info!(
-                "{} Number of klines in Binance data is: {}",
-                pair_kline.pair_interval,
-                pair_kline.klines.len()
-            );
+            #[cfg(debug_assertions)]
+            if DEBUG_FLAGS.print_binance {
+                log::info!(
+                    "{} Number of klines in Binance data is: {}",
+                    pair_kline.pair_interval,
+                    pair_kline.klines.len()
+                );
+            }
             all_valid_klines_4_pairs.push(pair_kline);
         }
 

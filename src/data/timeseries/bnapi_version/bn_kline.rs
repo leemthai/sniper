@@ -19,6 +19,10 @@ use tokio::time::{Duration, sleep};
 
 // Local crates
 use crate::config::{BINANCE, BinanceApiConfig};
+
+#[cfg(debug_assertions)]
+use crate::config::DEBUG_FLAGS;
+
 use crate::domain::pair_interval::PairInterval;
 use crate::utils::TimeUtils;
 
@@ -222,21 +226,25 @@ async fn handle_rate_limits(
                 let required_headroom =
                     bn_weight_limit_minute.saturating_sub(concurrent_kline_call_weight);
                 #[cfg(debug_assertions)]
-                if loop_count.is_multiple_of(BINANCE.debug_print_interval) {
-                    log::info!(
-                        "Binance min-weight: {} (headroom: {})",
-                        current_weight,
-                        required_headroom
-                    );
+                if DEBUG_FLAGS.print_binance {
+                    if loop_count.is_multiple_of(BINANCE.debug_print_interval) {
+                        log::info!(
+                            "Binance min-weight: {} (headroom: {})",
+                            current_weight,
+                            required_headroom
+                        );
+                    }
                 }
                 if current_weight > required_headroom {
                     #[cfg(debug_assertions)]
-                    log::info!(
-                        "{} Current weight ({}) > required headroom ({}) — sleeping until start of next minute",
-                        _pair_interval,
-                        current_weight,
-                        required_headroom,
-                    );
+                    if DEBUG_FLAGS.print_binance {
+                        log::info!(
+                            "{} Current weight ({}) > required headroom ({}) — sleeping until start of next minute",
+                            _pair_interval,
+                            current_weight,
+                            required_headroom,
+                        );
+                    }
 
                     // Compute time until start of next minute
                     let time_now = SystemTime::now();
@@ -251,14 +259,18 @@ async fn handle_rate_limits(
                     };
 
                     #[cfg(debug_assertions)]
-                    log::info!(
-                        "{} Sleeping for {:?} to reach start of next minute",
-                        _pair_interval,
-                        sleep_duration
-                    );
+                    if DEBUG_FLAGS.print_binance {
+                        log::info!(
+                            "{} Sleeping for {:?} to reach start of next minute",
+                            _pair_interval,
+                            sleep_duration
+                        );
+                    }
                     sleep(sleep_duration).await;
                     #[cfg(debug_assertions)]
-                    log::info!("Awake at start of a new minute");
+                    if DEBUG_FLAGS.print_binance {
+                        log::info!("Awake at start of a new minute");
+                    }
                 }
             }
         }
@@ -308,10 +320,12 @@ fn process_new_klines(
     if bn_klines.is_empty() {
         // Rare case: the batch had a single item prior to duplicate removal.
         #[cfg(debug_assertions)]
-        log::info!(
-            "Rare case where new klines was single item before duplicate removal for {}.",
-            pair_interval
-        );
+        if DEBUG_FLAGS.print_binance {
+            log::info!(
+                "Rare case where new klines was single item before duplicate removal for {}.",
+                pair_interval
+            );
+        }
         // We return true to indicate "batch caused immediate completion"
         all_klines.splice(0..0, Vec::<BNKline>::new());
         return Ok((end_time, true));

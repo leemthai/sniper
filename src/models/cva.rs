@@ -87,7 +87,7 @@ impl CVACore {
         let num_chunks = range_copy.count_intersecting_chunks(start_range, end_range);
 
         if num_chunks == 0 {
-            log::error!(
+            log::warn!(
                 "Warning: num_chunks is 0 for range [{}, {}]. Skipping.",
                 start_range,
                 end_range

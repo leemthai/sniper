@@ -193,7 +193,7 @@ impl TryFrom<AllValidKlines4Pair> for OhlcvTimeSeriesTemp {
         // Warn if kline gaps are uneven between different kline members
         if !vec_utils::are_all_elements_same(&kline_gaps) {
             #[cfg(debug_assertions)]
-            log::error!(
+            log::warn!(
                 "For some reason the kline gaps are not all equal. This suggests not just gaps in data, but the cases where BN has data for one or more elements of the kline but not others e.g. has high_price but not low_price, for some kline(s). Here is actual data: {:?}",
                 kline_gaps
             );

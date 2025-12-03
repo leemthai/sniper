@@ -56,7 +56,7 @@ impl CombinationStrategy {
 
             CombinationStrategy::WeightedSum(weights) => {
                 if weights.len() != scores.len() {
-                    log::error!(
+                    log::warn!(
                         "Warning: WeightedSum has {} weights but {} scores. Using average instead.",
                         weights.len(),
                         scores.len()
