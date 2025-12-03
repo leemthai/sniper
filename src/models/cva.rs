@@ -28,7 +28,7 @@ pub struct CVACore {
 )]
 pub enum ScoreType {
     #[default]
-    CandleBodyVW, // Volume-weighted
+    FullCandleTVW, // Volume-weighted
     LowWickVW,
     HighWickVW,
     QuoteVolume,
@@ -37,7 +37,7 @@ pub enum ScoreType {
 impl fmt::Display for ScoreType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ScoreType::CandleBodyVW => write!(f, "Candle Bodies Volume Weighted"),
+            ScoreType::FullCandleTVW => write!(f, "Full Candle Temporal-Volume Weighted"),
             ScoreType::LowWickVW => write!(f, "Low Wick Volume Weighted (reject @ low)"),
             ScoreType::HighWickVW => write!(f, "High Wick Volume Weighted (reject @ high)"),
             ScoreType::QuoteVolume => write!(f, "Quote Volume (transitions)"),
@@ -48,7 +48,7 @@ impl fmt::Display for ScoreType {
 impl CVACore {
     pub fn get_scores_ref(&self, st: ScoreType) -> &Vec<f64> {
         match st {
-            ScoreType::CandleBodyVW => &self.candle_bodies_vw,
+            ScoreType::FullCandleTVW => &self.candle_bodies_vw,
             ScoreType::LowWickVW => &self.low_wicks_vw,
             ScoreType::HighWickVW => &self.high_wicks_vw,
             ScoreType::QuoteVolume => &self.quote_volumes,
@@ -57,7 +57,7 @@ impl CVACore {
 
     fn get_scores_mut_ref(&mut self, st: ScoreType) -> &mut Vec<f64> {
         match st {
-            ScoreType::CandleBodyVW => &mut self.candle_bodies_vw,
+            ScoreType::FullCandleTVW => &mut self.candle_bodies_vw,
             ScoreType::LowWickVW => &mut self.low_wicks_vw,
             ScoreType::HighWickVW => &mut self.high_wicks_vw,
             ScoreType::QuoteVolume => &mut self.quote_volumes,

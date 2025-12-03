@@ -93,7 +93,7 @@ impl PlotView {
             TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);
 
         // Background bars can be any member of ScoreType
-        let background_score_type = ScoreType::CandleBodyVW;
+        let background_score_type = ScoreType::FullCandleTVW;
         let cache = self.calculate_plot_data(cva_results, background_score_type);
 
         let x_min = cache.x_min;
@@ -217,7 +217,7 @@ impl PlotView {
         let bar_width_scalar = y_max - y_min;
         let bar_thickness = bar_width_scalar / (zone_count as f64);
 
-        // Use CandleBodyVW for background bars (consolidated volume)
+        // Use FullCandleTVW for background bars (consolidated volume)
         let data_for_display = maths_utils::normalize_max(cva_results.get_scores_ref(score_type));
 
         // Apply filter chain to select all zones

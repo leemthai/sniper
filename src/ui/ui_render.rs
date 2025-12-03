@@ -42,7 +42,6 @@ impl ZoneSniperApp {
                     match event {
                         DataGenerationEventChanged::ZoneCount(new_count) => {
                             self.zone_count = new_count;
-                            self.data_state.clear_zone_efficacy();
                             self.schedule_selected_pair_recalc("zone count changed");
                         }
                         DataGenerationEventChanged::Pair(new_pair) => {
@@ -52,7 +51,6 @@ impl ZoneSniperApp {
                             let prev = self.auto_duration_config.relevancy_threshold;
                             if (prev - new_threshold).abs() > f64::EPSILON {
                                 self.auto_duration_config.relevancy_threshold = new_threshold;
-                                self.data_state.clear_zone_efficacy();
                                 self.invalidate_all_pairs_for_global_change(
                                     "auto-duration threshold changed",
                                 );
@@ -274,67 +272,6 @@ impl ZoneSniperApp {
                                     .small()
                                     .color(egui::Color32::GRAY),
                             );
-
-                            if let (Some(selected_pair), Some((pair_name, stats))) =
-                                (&self.selected_pair, &self.data_state.zone_efficacy)
-                            {
-                                if pair_name == selected_pair {
-                                    ui.separator();
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "📈 {} Sticky Zones: price {:.1}% | time {:.1}%",
-                                            pair_name,
-                                            stats.price_occupancy_pct,
-                                            stats.time_in_zones_pct
-                                        ))
-                                        .small()
-                                        .color(egui::Color32::from_rgb(180, 200, 255)),
-                                    );
-                                }
-                            }
-
-                            #[cfg(debug_assertions)]
-                            if DEBUG_FLAGS.print_sticky_dwell_summary {
-                                ui.separator();
-                                let text = if let (Some(selected_pair), Some((pair_name, stats))) =
-                                    (&self.selected_pair, &self.data_state.zone_efficacy)
-                                {
-                                    if pair_name == selected_pair {
-                                        if let Some(dwell) = stats.dwell_durations {
-                                            format!(
-                                                "{}: {} {} | {} {:.1}{} | {} {:.1}{} | {} {}{}",
-                                                UI_TEXT.sticky_dwell_prefix,
-                                                UI_TEXT.sticky_dwell_label_runs,
-                                                dwell.total_runs,
-                                                UI_TEXT.sticky_dwell_label_median,
-                                                dwell.median_candles,
-                                                UI_TEXT.sticky_dwell_unit_candles_short,
-                                                UI_TEXT.sticky_dwell_label_p90,
-                                                dwell.p90_candles,
-                                                UI_TEXT.sticky_dwell_unit_candles_short,
-                                                UI_TEXT.sticky_dwell_label_max,
-                                                dwell.max_candles,
-                                                UI_TEXT.sticky_dwell_unit_candles_short,
-                                            )
-                                        } else {
-                                            format!(
-                                                "{}: (no dwell data)",
-                                                UI_TEXT.sticky_dwell_prefix
-                                            )
-                                        }
-                                    } else {
-                                        format!("{}: (no dwell data)", UI_TEXT.sticky_dwell_prefix)
-                                    }
-                                } else {
-                                    format!("{}: (no dwell data)", UI_TEXT.sticky_dwell_prefix)
-                                };
-
-                                ui.label(
-                                    egui::RichText::new(text)
-                                        .small()
-                                        .color(egui::Color32::from_rgb(200, 220, 180)),
-                                );
-                            }
 
                             ui.separator();
                         }

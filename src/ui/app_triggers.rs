@@ -243,9 +243,7 @@ impl ZoneSniperApp {
             return;
         }
 
-        if self.update_slices_if_changed(ranges.clone(), price_range) {
-            self.data_state.clear_zone_efficacy();
-        }
+        self.update_slices_if_changed(ranges.clone(), price_range); 
 
         let params = DataParams::from_app(
             &Some(pair.clone()),

@@ -206,7 +206,168 @@ just a quick question: in cva.rs increase_score_multiz_zones_spread() we already
         let quantity_per_zone = score_to_spread / (num_chunks as f64);
 Isn't that supposed to do what you mentioned i.e. "When we apply ascore to a set of zones, we divide the score by the height of the candle"?
 
-# AI Question 5
+# AI Question 5 (Need to implement)
+Here is your implementation plan.
+
+### 1. Deleting `decay_calibration.rs` and `zone_efficacy.rs`
+
+You can delete the files `src/journeys/decay_calibration.rs` and `src/journeys/zone_efficacy.rs`.
+
+Because the code in `app_state.rs` was calling these, you must clean up the calls.
+
+**A. `src/journeys/mod.rs`**
+Remove these lines:
+```rust
+pub mod decay_calibration; // Remove
+pub mod zone_efficacy;     // Remove
+```
+
+**B. `src/ui/app_state.rs`**
+Remove the import `use crate::journeys::compute_zone_efficacy;`.
+Remove the entire function `update_zone_efficacy`.
+Inside `handle_pair_selection`, remove the call `self.data_state.clear_zone_efficacy();`.
+Inside `apply_cached_results_for_pair`, remove the call `self.update_zone_efficacy();`.
+Inside `poll_async_calculation` (in `app_async.rs`), remove the call `self.update_zone_efficacy();`.
+
+**C. `src/ui/app.rs`**
+In the `DataState` struct, remove the field:
+```rust
+pub zone_efficacy: Option<(String, crate::journeys::zone_efficacy::ZoneEfficacyStats)>, // Remove this
+```
+In `DataState::new` and `DataState::clear_zone_efficacy`, remove references to this field.
+
+**D. `src/ui/ui_render.rs`**
+In `render_status_panel`, remove the code block that formats and displays the dwell stats (lines starting with `format!("{}: (no dwell data)", UI_TEXT.sticky_dwell_prefix)`).
+
+**E. `src/config/debug.rs`**
+You can remove `print_zone_transition_summary`, `print_decay_calibration`, and `print_sticky_dwell_summary`.
+
+---
+
+### 2. Base vs. Quote Volume
+
+**Recommendation: Use `base_asset_volume`.**
+
+*   **Base Volume (e.g., BTC):** Measures the physical amount of the asset traded. 10 BTC is 10 BTC, whether price is $10k or $100k. This is better for finding long-term structural supply/demand zones because it isn't skewed by the massive price inflation of the asset over time.
+*   **Quote Volume (e.g., USDT):** Measures dollar value. This biases the heatmap heavily toward the most recent data (or All-Time-Highs) simply because the coin costs more now, even if trading activity is lower.
+
+Since we are looking for "Sticky Zones" (structure), Base Volume is the cleaner metric.
+
+---
+
+### 3. Update `process_candle_scores`
+
+Here is the updated function for `src/models/timeseries.rs`.
+
+```rust
+fn process_candle_scores(&self, cva_core: &mut CVACore, candle: &Candle, temporal_weight: f64) {
+    let (price_min, price_max) = cva_core.price_range.min_max();
+
+    // Helper to clamp to analysis range
+    let clamp = |price: f64| price.max(price_min).min(price_max);
+
+    // 1. FULL CANDLE ANALYSIS (The new Sticky Logic)
+    // We now use Low to High to capture the full range of price exploration
+    let candle_low = clamp(candle.low_price);
+    let candle_high = clamp(candle.high_price);
+
+    // We use Base Asset Volume weighted by Time Decay.
+    // The CVA function `increase_score_multi_zones_spread` handles the "Density" logic
+    // by automatically dividing this weight by the number of zones covered.
+    let weight = candle.base_asset_volume * temporal_weight;
+
+    cva_core.increase_score_multi_zones_spread(
+        ScoreType::FullCandleTVW, 
+        candle_low, 
+        candle_high, 
+        weight
+    );
+
+    // 2. Low wick volume-weighted (Reversal Zones - for later)
+    let low_wick_start = clamp(candle.low_wick_low());
+    let low_wick_end = clamp(candle.low_wick_high());
+    // Note: You might want to apply the same base_volume * temporal_weight logic here too
+    // but we can leave wicks as-is for now until you tackle Reversal Zones specifically.
+    cva_core.increase_score_multi_zones_spread(
+        ScoreType::LowWickVW,
+        low_wick_start,
+        low_wick_end,
+        candle.base_asset_volume * temporal_weight // Consistency: apply weighting here too?
+    );
+
+    // 3. High wick volume-weighted (Reversal Zones - for later)
+    let high_wick_start = clamp(candle.high_wick_low());
+    let high_wick_end = clamp(candle.high_wick_high());
+    cva_core.increase_score_multi_zones_spread(
+        ScoreType::HighWickVW,
+        high_wick_start,
+        high_wick_end,
+        candle.base_asset_volume * temporal_weight
+    );
+
+    // 4. Quote volume spread (Optional - keep if you use it for borders, otherwise remove)
+    // If you keep it, use quote volume here as it's specifically for "QuoteVolume" score type
+    let candle_start = clamp(candle.low_price);
+    let candle_end = clamp(candle.high_price);
+    cva_core.increase_score_multi_zones_spread(
+        ScoreType::QuoteVolume,
+        candle_start,
+        candle_end,
+        candle.quote_asset_volume // No temporal weight? (Keep as is for now)
+    );
+}
+```
+
+---
+
+### 4. What does the "T" stand for?
+
+**"Temporal".**
+
+`FullCandleTVW` = **Full Candle Temporal-Volume-Weighted**.
+It means the score is derived from the **Full Candle** (Low to High), weighted by **Volume** (Base Asset), and **Temporal** decay (Recency).
+
+---
+
+### 5. Is that the *total* needed changes?
+
+Not quite. Because you renamed the Enum variant, the compiler will yell at you in a few other places. You need to update these references:
+
+1.  **`src/models/cva.rs`**: Rename `CandleBodyVW` to `FullCandleTVW` in the Enum definition and inside the `fmt` function (update the display string too).
+2.  **`src/models/trading_view.rs`**: In `classify_zones`, update:
+    ```rust
+    // Was ScoreType::CandleBodyVW
+    let sticky_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::FullCandleTVW));
+    ```
+3.  **`src/ui/ui_plot_view.rs`**: In `calculate_plot_data`, the background bars likely used `CandleBodyVW`. Update this to `FullCandleTVW` so your background bars show the new sticky score.
+4.  **`src/ui/ui_panels.rs`**: In the View Options panel, checking for `CandleBodyVW` will need to be updated to `FullCandleTVW`.
+
+Once those compile errors are fixed, the transition is complete.
+
+
+
+
+
+
+# Lee's questions in new version:
+Why is debug version doing full info print now..... ??? release is fine.
+That just occured when we ran the binance API stuff. Maybe that is turned on?
+Plus delete all commented out code. coz that is tokens, baby.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

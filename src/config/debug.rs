@@ -7,9 +7,6 @@ pub struct DebugFlags {
     /// Emit detailed zone-scoring debug output for all pairs.
     pub print_zone_scoring_for_all_pairs: &'static str,
 
-    /// Emit zone transition summaries after computing zone efficacy metrics.
-    /// Emit per-candidate time-decay calibration details during CVA recomputation.
-    pub print_decay_calibration: bool,
 
     /// If non-empty, emit detailed zone-scoring debug output only for this pair.
     /// Example: "PAXGUSDT". Use "" to disable.
@@ -35,11 +32,6 @@ pub struct DebugFlags {
 
     /// Emit simulation-mode state changes (enter/exit, price adjustments, etc.).
     pub print_simulation_events: bool,
-
-    /// Show sticky-zone dwell summary (Runs / median / p90 / max in candles) in the
-    /// status bar. This is intended for developers only and is further gated by
-    /// `cfg(debug_assertions)` in the UI layer.
-    pub print_sticky_dwell_summary: bool,
 
     /// When debugging journeys, emit a detailed, step-by-step walkthrough for a
     /// single historical attempt. This is intended for developers only and is
@@ -73,7 +65,6 @@ pub struct DebugFlags {
 pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
     print_zone_transition_summary: false,
     print_zone_scoring_for_all_pairs: "",
-    print_decay_calibration: false,
     print_zone_scoring_for_pair: "",
     print_journey_summary: false,
     print_ui_interactions: false,
@@ -82,7 +73,6 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
     print_cva_cache_events: false,
     print_monitor_progress: false,
     print_simulation_events: false,
-    print_sticky_dwell_summary: false,
 
     debug_journey_attempt_index: -1, // -1 to disable, 0 to enable journey 0, 1 for 1 etc.
     print_trigger_updates: false,    // must be enabled to see journey logs

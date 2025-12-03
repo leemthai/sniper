@@ -181,7 +181,7 @@ impl TradingModel {
         let zone_count = cva.zone_count;
 
         // Normalize data for classification
-        let sticky_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::CandleBodyVW));
+        let sticky_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::FullCandleTVW));
         let high_wicks_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::HighWickVW));
         let low_wicks_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::LowWickVW));
 

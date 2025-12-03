@@ -100,7 +100,6 @@ impl ZoneSniperApp {
                         self.last_calculated_params = Some(params.clone());
                         self.data_state.cva_results = Some(Arc::clone(&cva_results));
                         self.data_state.last_error = None;
-                        self.update_zone_efficacy();
                     }
 
                     if let Some(pair_name) = completed_pair.as_deref() {

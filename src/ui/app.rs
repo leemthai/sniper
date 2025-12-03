@@ -11,7 +11,7 @@ use crate::analysis::pair_analysis::ZoneGenerator;
 use crate::config::ANALYSIS;
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
-use crate::journeys::{JourneyExecution, Outcome, ZoneEfficacyStats};
+use crate::journeys::{JourneyExecution, Outcome};
 use crate::models::{CVACore, PairContext, TradingModel};
 use crate::ui::app_async::AsyncCalcResult;
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
@@ -59,7 +59,6 @@ pub struct DataState {
     pub cva_results: Option<Arc<CVACore>>,
     pub generator: ZoneGenerator,
     pub last_error: Option<AppError>,
-    pub zone_efficacy: Option<(String, ZoneEfficacyStats)>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -261,12 +260,7 @@ impl DataState {
             cva_results: None,
             generator,
             last_error: None,
-            zone_efficacy: None,
         }
-    }
-
-    pub fn clear_zone_efficacy(&mut self) {
-        self.zone_efficacy = None;
     }
 }
 

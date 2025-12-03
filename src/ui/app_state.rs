@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use crate::config::ANALYSIS;
-use crate::journeys::compute_zone_efficacy;
-use crate::models::{TradingModel, find_matching_ohlcv};
+use crate::models::{find_matching_ohlcv};
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
@@ -56,41 +55,6 @@ impl ZoneSniperApp {
         true
     }
 
-    pub(super) fn update_zone_efficacy(&mut self) {
-        let Some(selected_pair) = self.selected_pair.clone() else {
-            return;
-        };
-
-        let Some(cva_results) = self.data_state.cva_results.as_ref() else {
-            return;
-        };
-
-        let timeseries = match find_matching_ohlcv(
-            &self.data_state.timeseries_collection.series_data,
-            &selected_pair,
-            ANALYSIS.interval_width_ms,
-        ) {
-            Ok(ts) => ts,
-            Err(_) => return,
-        };
-
-        let (price_min, price_max) = cva_results.price_range.min_max();
-        if !price_min.is_finite() || !price_max.is_finite() || price_max <= price_min {
-            return;
-        }
-
-        let trading_model =
-            TradingModel::from_cva(Arc::clone(cva_results), self.current_pair_price);
-        if let Some(stats) = compute_zone_efficacy(
-            timeseries,
-            &trading_model.zones.sticky_superzones,
-            self.computed_slice_indices.as_deref().unwrap_or(&[]),
-            (price_min, price_max),
-        ) {
-            self.data_state.zone_efficacy = Some((selected_pair, stats));
-        }
-    }
-
     pub(super) fn apply_cached_results_for_pair(&mut self, pair: &str) -> bool {
         let Some(cva) = self.cva_results_by_pair.get(pair) else {
             return false;
@@ -104,7 +68,6 @@ impl ZoneSniperApp {
             self.last_calculated_params = Some(params.clone());
         }
 
-        self.update_zone_efficacy();
         true
     }
 
@@ -114,7 +77,6 @@ impl ZoneSniperApp {
         }
 
         self.selected_pair = Some(new_pair.clone());
-        self.data_state.clear_zone_efficacy();
 
         if self.apply_cached_results_for_pair(&new_pair) {
             #[cfg(debug_assertions)]
