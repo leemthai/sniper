@@ -94,7 +94,6 @@ impl PlotView {
             TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);
 
         // Background bars can be any member of ScoreType
-        // let background_score_type = ScoreType::FullCandleTVW;
         let cache = self.calculate_plot_data(cva_results, background_score_type);
 
         let x_min = cache.x_min;

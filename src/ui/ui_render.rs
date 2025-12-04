@@ -289,8 +289,8 @@ impl ZoneSniperApp {
                         );
                         let mode_text = match self.debug_background_mode {
                             ScoreType::FullCandleTVW => "Sticky",
-                            ScoreType::LowWickVW => "Low Wicks",
-                            ScoreType::HighWickVW => "High Wicks",
+                            ScoreType::LowWickVW => UI_TEXT.label_reversal_support,
+                            ScoreType::HighWickVW => UI_TEXT.label_reversal_resistance,
                             _ => "Unknown",
                         };
 

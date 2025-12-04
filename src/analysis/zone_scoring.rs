@@ -1,6 +1,3 @@
-// use crate::models::cva::{CVACore, ScoreType};
-
-
 /// Represents a clustered "Island" of activity.
 #[derive(Debug, Clone)]
 pub struct TargetZone {
@@ -94,15 +91,3 @@ pub fn find_target_zones(scores: &[f64], threshold: f64, max_gap: usize) -> Vec<
 
     targets
 }
-
-// Returns vector of size scores.len() - 1
-// pub fn calculate_zone_gradient(zone_scores: &[f64]) -> Vec<f64> {
-//     if zone_scores.len() < 2 {
-//         return Vec::new();
-//     }
-
-//     zone_scores
-//         .windows(2)
-//         .map(|window| (window[1] - window[0]).abs())
-//         .collect()
-// }

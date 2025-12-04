@@ -22,47 +22,28 @@ Find out API stats..... maybe updated once an hour or less... dunno, but I must 
 
 ## Sticky zone price target
 Shoud price target be center rather than nearest edge of sticky zone ?
+That's journey stuff I think, though, don't want let Gemimi loose on that yet, though, lol
 
 # 💡 Testing tip
 Always be scaling price_horizon up and down. Very good way to get many different views of what this new algo does.
 Do we end up with more and more output zones as we scale up the number of input zones?
     If so, it's not scale-independent is it.
 
-# Low wicks and High wicks vs Reversal Zones
-How are low wicks different from reversal zones? How to transform current low wick calcs into full reversal zones?
-I could turn their graphs on now to see where they are of course
-## Implement zone reversals `QRZ`
-    - Hopefully be much simpler than `QSZ` algo because `QRZ` are naturally gonna be narrower zones right? maybe just a group of single zones? Let's see how it goes..... ask AI, lol
-    - Validation: any way to confirm what we decide are `QRZ`, really are high probability reversal zones.
 
-
-# Reversal ZOnes Notes;
+# Reversal Zones Notes
 Huge SOLUSDT reversal zone between $124 and $165 ish. Maybe this is just very revealing
 The size of reversal zones does actually vary between small sharp zones, and conglomerated zones. This might be ok. actually.
-Is he sure a ctx.request_repaint() is what we need after changing the background plot type? It's never worked before afai can remember.
-            // Update the 'B' key handler
-            if i.key_pressed(egui::Key::B) {
-                // Cycle: Sticky -> LowWick -> HighWick -> Sticky
-                self.debug_background_mode = match self.debug_background_mode {
-                    ScoreType::FullCandleTVW => ScoreType::LowWickVW,
-                    ScoreType::LowWickVW => ScoreType::HighWickVW,
-                    _ => ScoreType::FullCandleTVW,
-                };
-                ctx.request_repaint(); // TEMP Really not sure if this does anything useful. Let's see
-            }
+Review this in the morning
+"B" key currently to toggel round background plot type. See if reverals anything, partgicularly with reversal zones.
+(STILL TO DO), How accurate are reversal zones? Find some examples of real reversal zones in local data at least. I feel they are more useful for local changes.. maybe? e.g where does PAXGUSDT actually reverse?
+ or for SOLUSDT as well. Good to ivnestigate to get invested in the actual output.
+Change this to be something more neutral:
+                            ScoreType::FullCandleTVW => "Sticky",
 
 
-            
-
-# Plot Presentation: How to visualize the combination of `QSZ` and `QRZ` for the user
-in a way that is useful to them and easy to understand.
-What to show on plot?
-What should background bars be? And are they just debug? No, they feel integral
-Can the use view both reversal ones and sticky zones at same time? Yes!
-But if we do thst how do we choose which of the to the background bars are ?
-Currently we can display both all sticky zones, plus the two (max) SR zones. So confusing already ? No, they should just be one thing though. Not separable.
 ## Legend
 Can legend group bars of same type?
+That would be great.
 
 
 ## WASM version (via trunk serve locally or web version): why stuck on 100 zones?
