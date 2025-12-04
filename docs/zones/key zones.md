@@ -20,22 +20,10 @@ Find out API stats..... maybe updated once an hour or less... dunno, but I must 
 - I would like to add `qualifying reversal zones` as `target zones` as well (see 2.4 of "System outline" section)
 - Q: What happens during `merge` of `QRZ` and `QSV`? There are possbilities of overlaps etc. I guess we keep them as separate sub-lists. as we need to know whether the target zone is a reversal zone or sticky zone.
 
-# Sticky zones
-Try tweaking values more:
-    - zone_count
-        - I tried 500 and seem to get lots of very very thin zones?
-        - So maybe not scale-independent?
-        - 200 is good `real` number to optimize other params like `threshold` and `calculated_gap` around.
-    - threshold
-    - bridge gap x%
 ## Sticky zone price target
 Shoud price target be center rather than nearest edge of sticky zone ?
 
-
-
-
-
-# Testing tip
+# 💡 Testing tip
 Always be scaling price_horizon up and down. Very good way to get many different views of what this new algo does.
 Do we end up with more and more output zones as we scale up the number of input zones?
     If so, it's not scale-independent is it.
@@ -46,6 +34,9 @@ I could turn their graphs on now to see where they are of course
 ## Implement zone reversals `QRZ`
     - Hopefully be much simpler than `QSZ` algo because `QRZ` are naturally gonna be narrower zones right? maybe just a group of single zones? Let's see how it goes..... ask AI, lol
     - Validation: any way to confirm what we decide are `QRZ`, really are high probability reversal zones.
+
+
+
 
 
 # Support / Resistance Zones

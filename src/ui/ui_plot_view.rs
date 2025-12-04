@@ -352,27 +352,45 @@ fn draw_current_price(plot_ui: &mut egui_plot::PlotUi, current_pair_price: Optio
 /// Draw all classified zones from a TradingModel
 fn draw_classified_zones(
     plot_ui: &mut egui_plot::PlotUi,
-    model: &TradingModel,
+    trading_model: &TradingModel,
     x_min: f64,
     x_max: f64,
 ) {
-    // Draw sticky superzones (aggregated consolidation areas) - only if enabled
+    // 1. Identify IDs of the dynamic S/R zones
+    let support_id = trading_model.nearest_support_superzone().map(|z| z.id);
+    let resistance_id = trading_model.nearest_resistance_superzone().map(|z| z.id);
+
+    // 2. Get current price to check "Inside" status
+    let current_price = trading_model.current_price;
+
+    // 3. Draw Sticky Zones (consolidated logic)
     if PLOT_CONFIG.show_sticky_zones {
-        for superzone in &model.zones.sticky_superzones {
-            draw_superzone(
-                plot_ui,
-                superzone,
-                x_min,
-                x_max,
-                "Sticky",
-                PLOT_CONFIG.sticky_zone_color,
-            );
+        for superzone in &trading_model.zones.sticky_superzones {
+            
+            // Check if price is strictly inside this zone
+            let is_inside = current_price
+                .map(|p| superzone.contains(p))
+                .unwrap_or(false);
+
+            // Determine Label and Color with priority:
+            // 1. Inside (Active) -> 2. Support/Resistance -> 3. Standard Sticky
+            let (label, color) = if is_inside {
+                ("Active", PLOT_CONFIG.price_within_sticky_zone_color)
+            } else if Some(superzone.id) == support_id {
+                ("Support", PLOT_CONFIG.support_zone_color)
+            } else if Some(superzone.id) == resistance_id {
+                ("Resistance", PLOT_CONFIG.resistance_zone_color)
+            } else {
+                ("Sticky", PLOT_CONFIG.sticky_zone_color)
+            };
+
+            draw_superzone(plot_ui, superzone, x_min, x_max, label, color);
         }
     }
 
     // Draw low wick (reversal) superzones (aggregated rejection areas) - only if enabled
     if PLOT_CONFIG.show_low_wicks_zones {
-        for superzone in &model.zones.low_wicks_superzones {
+        for superzone in &trading_model.zones.low_wicks_superzones {
             draw_superzone(
                 plot_ui,
                 superzone,
@@ -386,7 +404,7 @@ fn draw_classified_zones(
 
     // Draw high wick (reversal) superzones (aggregated rejection areas) - only if enabled
     if PLOT_CONFIG.show_high_wicks_zones {
-        for superzone in &model.zones.high_wicks_superzones {
+        for superzone in &trading_model.zones.high_wicks_superzones {
             draw_superzone(
                 plot_ui,
                 superzone,
@@ -394,33 +412,6 @@ fn draw_classified_zones(
                 x_max,
                 "High Wick(Reversal)",
                 PLOT_CONFIG.high_wicks_zone_color,
-            );
-        }
-    }
-
-    // Draw support/resistance superzones LAST (on top of sticky zones for visibility)
-    if PLOT_CONFIG.show_support_zones {
-        for superzone in &model.zones.support_superzones {
-            draw_superzone(
-                plot_ui,
-                superzone,
-                x_min,
-                x_max,
-                "SR: Support",
-                PLOT_CONFIG.support_zone_color,
-            );
-        }
-    }
-
-    if PLOT_CONFIG.show_resistance_zones {
-        for superzone in &model.zones.resistance_superzones {
-            draw_superzone(
-                plot_ui,
-                superzone,
-                x_min,
-                x_max,
-                "SR: Resistance",
-                PLOT_CONFIG.resistance_zone_color,
             );
         }
     }

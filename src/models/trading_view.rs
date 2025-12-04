@@ -143,8 +143,8 @@ pub struct ClassifiedZones {
     pub high_wicks_superzones: Vec<SuperZone>,
     pub low_wicks_superzones: Vec<SuperZone>,
     // Note: support/resistance superzones are dynamically calculated from sticky superzones
-    pub support_superzones: Vec<SuperZone>,
-    pub resistance_superzones: Vec<SuperZone>,
+    // pub support_superzones: Vec<SuperZone>,
+    // pub resistance_superzones: Vec<SuperZone>,
 }
 
 /// Complete trading model for a pair containing CVA and classified zones
@@ -161,7 +161,7 @@ pub struct TradingModel {
 impl TradingModel {
     /// Create a new trading model from CVA results and optional current price
     pub fn from_cva(cva: Arc<CVACore>, current_price: Option<f64>) -> Self {
-        let zones = Self::classify_zones(&cva, current_price);
+        let zones = Self::classify_zones(&cva);
 
         Self {
             pair_name: cva.pair_name.clone(),
@@ -172,7 +172,7 @@ impl TradingModel {
     }
 
     /// Classify zones based on CVA results and current price
-    fn classify_zones(cva: &CVACore, current_price: Option<f64>) -> ClassifiedZones {
+    fn classify_zones(cva: &CVACore) -> ClassifiedZones {
         let (price_min, price_max) = cva.price_range.min_max();
         let zone_count = cva.zone_count;
 
@@ -199,7 +199,7 @@ impl TradingModel {
         // 3. Define Dynamic Gap (Scale Independent) - the bigger the gap, the wider the bridget.
         // 2% of the map width. (100 zones -> gap 2. 1000 zones -> gap 20).
         // This answers your concern about scale independence.
-        let gap_percent = 0.015; // # A value 0.01 to 0.02 seems reasonable here. Not tried yet with a bigger zone count.
+        let gap_percent = 0.02; // 0.015; // # A value 0.01 to 0.02 seems reasonable here. Not tried yet with a bigger zone count.
         let calculated_gap = (zone_count as f64 * gap_percent).ceil() as usize;
 
         // 4. Find Targets
@@ -242,65 +242,65 @@ impl TradingModel {
         let low_wicks_superzones = aggregate_zones(&low_wicks_zones);
 
         // Find support/resistance superzones based on current price
-        let (support_superzones, resistance_superzones) = if let Some(price) = current_price {
-            Self::find_support_resistance_superzones(&sticky_superzones, price)
-        } else {
-            (Vec::new(), Vec::new())
-        };
+        // let (support_superzones, resistance_superzones) = if let Some(price) = current_price {
+        //     Self::find_support_resistance_superzones(&sticky_superzones, price)
+        // } else {
+        //     (Vec::new(), Vec::new())
+        // };
 
         ClassifiedZones {
             sticky: sticky_zones,
             low_wicks: low_wicks_zones,
             high_wicks: high_wicks_zones,
             sticky_superzones,
-            support_superzones,
-            resistance_superzones,
+            // support_superzones,
+            // resistance_superzones,
             low_wicks_superzones,
             high_wicks_superzones,
         }
     }
 
     /// Find nearest sticky superzones above (resistance) and below (support) current price
-    fn find_support_resistance_superzones(
-        sticky_superzones: &[SuperZone],
-        current_price: f64,
-    ) -> (Vec<SuperZone>, Vec<SuperZone>) {
-        let mut support_superzone = None;
-        let mut resistance_superzone = None;
-        let mut support_dist = f64::INFINITY;
-        let mut resistance_dist = f64::INFINITY;
+    // fn find_support_resistance_superzones(
+    //     sticky_superzones: &[SuperZone],
+    //     current_price: f64,
+    // ) -> (Vec<SuperZone>, Vec<SuperZone>) {
+    //     let mut support_superzone = None;
+    //     let mut resistance_superzone = None;
+    //     let mut support_dist = f64::INFINITY;
+    //     let mut resistance_dist = f64::INFINITY;
 
-        for superzone in sticky_superzones {
-            if superzone.price_center < current_price {
-                // Below current price - potential support
-                let dist = superzone.distance_to(current_price);
-                if dist < support_dist {
-                    support_dist = dist;
-                    support_superzone = Some(superzone.clone());
-                }
-            } else if superzone.price_center > current_price {
-                // Above current price - potential resistance
-                let dist = superzone.distance_to(current_price);
-                if dist < resistance_dist {
-                    resistance_dist = dist;
-                    resistance_superzone = Some(superzone.clone());
-                }
-            }
-        }
+    //     for superzone in sticky_superzones {
+    //         if superzone.price_center < current_price {
+    //             // Below current price - potential support
+    //             let dist = superzone.distance_to(current_price);
+    //             if dist < support_dist {
+    //                 support_dist = dist;
+    //                 support_superzone = Some(superzone.clone());
+    //             }
+    //         } else if superzone.price_center > current_price {
+    //             // Above current price - potential resistance
+    //             let dist = superzone.distance_to(current_price);
+    //             if dist < resistance_dist {
+    //                 resistance_dist = dist;
+    //                 resistance_superzone = Some(superzone.clone());
+    //             }
+    //         }
+    //     }
 
-        (
-            support_superzone.into_iter().collect(),
-            resistance_superzone.into_iter().collect(),
-        )
-    }
+    //     (
+    //         support_superzone.into_iter().collect(),
+    //         resistance_superzone.into_iter().collect(),
+    //     )
+    // }
 
     /// Update the model with a new current price (recalculates S/R)
     pub fn update_price(&mut self, new_price: f64) {
         self.current_price = Some(new_price);
-        let (support_superzones, resistance_superzones) =
-            Self::find_support_resistance_superzones(&self.zones.sticky_superzones, new_price);
-        self.zones.support_superzones = support_superzones;
-        self.zones.resistance_superzones = resistance_superzones;
+        // let (support_superzones, resistance_superzones) =
+        // Self::find_support_resistance_superzones(&self.zones.sticky_superzones, new_price);
+        // self.zones.support_superzones = support_superzones;
+        // self.zones.resistance_superzones = resistance_superzones;
     }
 
     /// Get all sticky zones (for potential S/R candidates)
@@ -311,12 +311,32 @@ impl TradingModel {
 
     /// Get nearest support superzone
     pub fn nearest_support_superzone(&self) -> Option<&SuperZone> {
-        self.zones.support_superzones.first()
+        let price = self.current_price?;
+        // Find sticky zone below price with minimum distance
+        self.zones
+            .sticky_superzones
+            .iter()
+            .filter(|sz| sz.price_center < price)
+            .min_by(|a, b| {
+                a.distance_to(price)
+                    .partial_cmp(&b.distance_to(price))
+                    .unwrap()
+            })
     }
 
     /// Get nearest resistance superzone
     pub fn nearest_resistance_superzone(&self) -> Option<&SuperZone> {
-        self.zones.resistance_superzones.first()
+        let price = self.current_price?;
+        // Find sticky zone above price with minimum distance
+        self.zones
+            .sticky_superzones
+            .iter()
+            .filter(|sz| sz.price_center > price)
+            .min_by(|a, b| {
+                a.distance_to(price)
+                    .partial_cmp(&b.distance_to(price))
+                    .unwrap()
+            })
     }
 
     /// Find all superzones containing the given price
@@ -324,24 +344,30 @@ impl TradingModel {
     pub fn find_superzones_at_price(&self, price: f64) -> Vec<(usize, ZoneType)> {
         let mut zones = Vec::new();
 
-        // Check support superzones
-        for sz in &self.zones.support_superzones {
-            if sz.contains(price) {
-                zones.push((sz.id, ZoneType::Support));
-            }
-        }
-        // Check resistance superzones
-        for sz in &self.zones.resistance_superzones {
-            if sz.contains(price) {
-                zones.push((sz.id, ZoneType::Resistance));
-            }
-        }
         // Check sticky superzones
         for sz in &self.zones.sticky_superzones {
             if sz.contains(price) {
-                zones.push((sz.id, ZoneType::Sticky));
+                // Determine if this specific sticky zone is acting as S or R
+                let zone_type = if let Some(sup) = self.nearest_support_superzone() {
+                    if sup.id == sz.id {
+                        ZoneType::Support
+                    } else {
+                        ZoneType::Sticky
+                    }
+                } else if let Some(res) = self.nearest_resistance_superzone() {
+                    if res.id == sz.id {
+                        ZoneType::Resistance
+                    } else {
+                        ZoneType::Sticky
+                    }
+                } else {
+                    ZoneType::Sticky
+                };
+
+                zones.push((sz.id, zone_type));
             }
         }
+
         // Check low wick superzones
         for sz in &self.zones.low_wicks_superzones {
             if sz.contains(price) {
