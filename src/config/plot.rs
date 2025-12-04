@@ -60,8 +60,8 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
         "#8b0000", // Dark red
     ],
     show_sticky_zones: true,
-    show_support_zones: false,
-    show_resistance_zones: false,
+    show_support_zones: true,
+    show_resistance_zones: true,
     show_low_wicks_zones: false,
     show_high_wicks_zones: false,
     zone_boundary_line_width: 2.0,
@@ -69,6 +69,6 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     current_price_outer_width: 8.0,
     plot_aspect_ratio: 2.0,
     plot_axis_divisions: 20,
-    zone_fill_opacity_pct: 0.25, // Testing value. Original values was 0.25
+    zone_fill_opacity_pct: 0.25,
     background_bar_intensity_pct: 0.75,
 };

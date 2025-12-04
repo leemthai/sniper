@@ -182,9 +182,19 @@ impl TradingModel {
         // 1. Get Normalized Data (0.0 to 1.0)
         let raw_sticky = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::FullCandleTVW));
 
-        // 2. Apply Contrast (Sharpening)
-        // This pushes "mushy" valleys down, creating separation for the island logic.
-        let sharpened_sticky: Vec<f64> = raw_sticky.iter().map(|&s| s * s).collect();
+        // 2. SMOOTHING (The Fix)
+        // We want a smoothing window of roughly 1-2% of the map.
+        // e.g. 100 zones -> window 3.
+        // e.g. 1000 zones -> window 21.
+        // Ensure it is at least 1 and is odd.
+        let smoothing_window = ((zone_count as f64 * 0.02).ceil() as usize).max(1) | 1;
+        let smoothed_sticky = smooth_data(&raw_sticky, smoothing_window);
+
+        // 3. Normalize the SMOOTHED data
+        let normalized_sticky = maths_utils::normalize_max(&smoothed_sticky);
+
+        // 4. Contrast (Squaring)
+        let sharpened_sticky: Vec<f64> = normalized_sticky.iter().map(|&s| s * s).collect();
 
         // 3. Define Dynamic Gap (Scale Independent) - the bigger the gap, the wider the bridget.
         // 2% of the map width. (100 zones -> gap 2. 1000 zones -> gap 20).
@@ -347,7 +357,6 @@ impl TradingModel {
 
         zones
     }
-
 }
 
 /// Zone classification types for a given price level
@@ -359,4 +368,30 @@ pub enum ZoneType {
     LowWicks,   // High rejection activity below current price
     HighWicks,  // High rejection activity above current price
     Neutral,    // No special classification
+}
+
+/// Applies a simple centered moving average to smooth the data.
+/// window_size should be an odd number (e.g., 3, 5, 7).
+pub fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
+    if data.is_empty() {
+        return Vec::new();
+    }
+    if window_size <= 1 {
+        return data.to_vec();
+    }
+
+    let half_window = window_size / 2;
+    let len = data.len();
+    let mut smoothed = vec![0.0; len];
+
+    for i in 0..len {
+        let start = i.saturating_sub(half_window);
+        let end = (i + half_window + 1).min(len);
+        let count = end - start;
+
+        let sum: f64 = data[start..end].iter().sum();
+        smoothed[i] = sum / count as f64;
+    }
+
+    smoothed
 }

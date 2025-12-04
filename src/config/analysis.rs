@@ -44,7 +44,7 @@ pub struct AnalysisConfig {
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     interval_width_ms: TimeUtils::MS_IN_30_MIN,
-    default_zone_count: 100,
+    default_zone_count: 200,
 
     time_horizon: TimeHorizonConfig {
         min_days: 1,
