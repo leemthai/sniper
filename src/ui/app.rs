@@ -13,6 +13,7 @@ use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::journeys::{JourneyExecution, Outcome};
 use crate::models::{CVACore, PairContext, TradingModel};
+use crate::models::cva::{ScoreType};
 use crate::ui::app_async::AsyncCalcResult;
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
 use crate::ui::app_triggers::PairTriggerState;
@@ -355,6 +356,15 @@ pub struct ZoneSniperApp {
     pub(super) sim_direction: SimDirection,
     #[serde(skip)]
     pub(super) sim_step_size: SimStepSize,
+
+    // Debug toggle for background plot (Sticky / LowWick / HighWick)
+    // We skip serialization so it resets on restart, but we MUST provide a default fn
+    #[serde(skip, default = "default_debug_background_mode")]
+    pub(super) debug_background_mode: ScoreType,
+}
+
+fn default_debug_background_mode() -> ScoreType {
+    ScoreType::FullCandleTVW
 }
 
 /// Default value for zone count - used by serde and initialization
@@ -1022,6 +1032,7 @@ impl ZoneSniperApp {
             simulated_prices: std::collections::HashMap::new(),
             sim_direction: SimDirection::default(),
             sim_step_size: SimStepSize::default(),
+            debug_background_mode: default_debug_background_mode(),
         }
     }
 

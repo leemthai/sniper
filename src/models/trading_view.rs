@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::analysis::zone_scoring::find_high_activity_zones;
 use crate::analysis::zone_scoring::find_target_zones;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::utils::maths_utils;
@@ -142,9 +141,6 @@ pub struct ClassifiedZones {
     pub sticky_superzones: Vec<SuperZone>,
     pub high_wicks_superzones: Vec<SuperZone>,
     pub low_wicks_superzones: Vec<SuperZone>,
-    // Note: support/resistance superzones are dynamically calculated from sticky superzones
-    // pub support_superzones: Vec<SuperZone>,
-    // pub resistance_superzones: Vec<SuperZone>,
 }
 
 /// Complete trading model for a pair containing CVA and classified zones
@@ -172,135 +168,83 @@ impl TradingModel {
     }
 
     /// Classify zones based on CVA results and current price
+/// Classify zones based on CVA results and current price
     fn classify_zones(cva: &CVACore) -> ClassifiedZones {
         let (price_min, price_max) = cva.price_range.min_max();
         let zone_count = cva.zone_count;
 
-        let high_wicks_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::HighWickVW));
-        let low_wicks_data = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::LowWickVW));
+        // Helper closure to process a specific score type into Zones and SuperZones.
+        // This consolidates the Smoothing, Normalizing, Squaring, and Clustering logic.
+        let process_layer = |score_type: ScoreType, smooth_pct: f64, gap_pct: f64, threshold: f64| {
+            // 1. Get & Smooth Data
+            let raw = cva.get_scores_ref(score_type);
+            let smooth_window = ((zone_count as f64 * smooth_pct).ceil() as usize).max(1) | 1;
+            let smoothed = smooth_data(raw, smooth_window);
 
-        // 1. Get Normalized Data (0.0 to 1.0)
-        let raw_sticky = maths_utils::normalize_max(cva.get_scores_ref(ScoreType::FullCandleTVW));
+            // 2. Normalize & Sharpen (Contrast)
+            let sharpened: Vec<f64> = maths_utils::normalize_max(&smoothed)
+                .iter()
+                .map(|&s| s * s)
+                .collect();
 
-        // 2. SMOOTHING (The Fix)
-        // We want a smoothing window of roughly 1-2% of the map.
-        // e.g. 100 zones -> window 3.
-        // e.g. 1000 zones -> window 21.
-        // Ensure it is at least 1 and is odd.
-        let smoothing_window = ((zone_count as f64 * 0.02).ceil() as usize).max(1) | 1;
-        let smoothed_sticky = smooth_data(&raw_sticky, smoothing_window);
+            // 3. Find Targets (Islands)
+            let gap = (zone_count as f64 * gap_pct).ceil() as usize;
+            let targets = find_target_zones(&sharpened, threshold, gap);
 
-        // 3. Normalize the SMOOTHED data
-        let normalized_sticky = maths_utils::normalize_max(&smoothed_sticky);
+            // 4. Convert to Zones
+            let zones: Vec<Zone> = targets
+                .iter()
+                .flat_map(|t| t.start_idx..=t.end_idx)
+                .map(|idx| Zone::new(idx, price_min, price_max, zone_count))
+                .collect();
 
-        // 4. Contrast (Squaring)
-        let sharpened_sticky: Vec<f64> = normalized_sticky.iter().map(|&s| s * s).collect();
+            // 5. Aggregate to SuperZones
+            let superzones = aggregate_zones(&zones);
 
-        // 3. Define Dynamic Gap (Scale Independent) - the bigger the gap, the wider the bridget.
-        // 2% of the map width. (100 zones -> gap 2. 1000 zones -> gap 20).
-        // This answers your concern about scale independence.
-        let gap_percent = 0.02; // 0.015; // # A value 0.01 to 0.02 seems reasonable here. Not tried yet with a bigger zone count.
-        let calculated_gap = (zone_count as f64 * gap_percent).ceil() as usize;
+            (zones, superzones)
+        };
 
-        // 4. Find Targets
-        // Use a LOWER threshold on squared data.
-        // 0.1 squared threshold ~= 0.31 original threshold.
-        // BUT, a valley of 0.4 (original) -> 0.16 (squared), which is still above 0.1.
-        // You might want to try 0.15 or 0.20 here to really break up the super-islands.
-        let sticky_targets = find_target_zones(&sharpened_sticky, 0.16, calculated_gap);
+        // --- Sticky Zones ---
+        // Smooth: 2%, Gap: 2%, Threshold: 0.16 (squared)
+        let (sticky, sticky_superzones) = process_layer(
+            ScoreType::FullCandleTVW, 
+            0.02, 
+            0.02, 
+            0.16
+        );
 
-        // 5. Explode back to indices for the rest of your app
-        let mut sticky_indices = Vec::new();
-        for target in sticky_targets {
-            for i in target.start_idx..=target.end_idx {
-                sticky_indices.push(i);
-            }
-        }
+        // --- Low Wicks (Reversal Support) ---
+        // Smooth: 0.5%, Gap: 0.5%, Threshold: 0.15 (squared)
+        let (low_wicks, low_wicks_superzones) = process_layer(
+            ScoreType::LowWickVW, 
+            0.005, 
+            0.005, 
+            0.15
+        );
 
-        let high_wicks_indices = find_high_activity_zones(&high_wicks_data, 0.75);
-        let low_wicks_indices = find_high_activity_zones(&low_wicks_data, 0.75);
-
-        // Convert indices to Zone objects
-        let sticky_zones: Vec<Zone> = sticky_indices
-            .iter()
-            .map(|&idx| Zone::new(idx, price_min, price_max, zone_count))
-            .collect();
-
-        let low_wicks_zones: Vec<Zone> = low_wicks_indices
-            .iter()
-            .map(|&idx| Zone::new(idx, price_min, price_max, zone_count))
-            .collect();
-
-        let high_wicks_zones: Vec<Zone> = high_wicks_indices
-            .iter()
-            .map(|&idx| Zone::new(idx, price_min, price_max, zone_count))
-            .collect();
-
-        // Aggregate contiguous zones into SuperZones
-        let sticky_superzones = aggregate_zones(&sticky_zones);
-        let high_wicks_superzones = aggregate_zones(&high_wicks_zones);
-        let low_wicks_superzones = aggregate_zones(&low_wicks_zones);
-
-        // Find support/resistance superzones based on current price
-        // let (support_superzones, resistance_superzones) = if let Some(price) = current_price {
-        //     Self::find_support_resistance_superzones(&sticky_superzones, price)
-        // } else {
-        //     (Vec::new(), Vec::new())
-        // };
+        // --- High Wicks (Reversal Resistance) ---
+        // Smooth: 0.5%, Gap: 0.5%, Threshold: 0.15 (squared)
+        let (high_wicks, high_wicks_superzones) = process_layer(
+            ScoreType::HighWickVW, 
+            0.005, 
+            0.005, 
+            0.15
+        );
 
         ClassifiedZones {
-            sticky: sticky_zones,
-            low_wicks: low_wicks_zones,
-            high_wicks: high_wicks_zones,
+            sticky,
+            low_wicks,
+            high_wicks,
             sticky_superzones,
-            // support_superzones,
-            // resistance_superzones,
             low_wicks_superzones,
             high_wicks_superzones,
         }
     }
 
-    /// Find nearest sticky superzones above (resistance) and below (support) current price
-    // fn find_support_resistance_superzones(
-    //     sticky_superzones: &[SuperZone],
-    //     current_price: f64,
-    // ) -> (Vec<SuperZone>, Vec<SuperZone>) {
-    //     let mut support_superzone = None;
-    //     let mut resistance_superzone = None;
-    //     let mut support_dist = f64::INFINITY;
-    //     let mut resistance_dist = f64::INFINITY;
-
-    //     for superzone in sticky_superzones {
-    //         if superzone.price_center < current_price {
-    //             // Below current price - potential support
-    //             let dist = superzone.distance_to(current_price);
-    //             if dist < support_dist {
-    //                 support_dist = dist;
-    //                 support_superzone = Some(superzone.clone());
-    //             }
-    //         } else if superzone.price_center > current_price {
-    //             // Above current price - potential resistance
-    //             let dist = superzone.distance_to(current_price);
-    //             if dist < resistance_dist {
-    //                 resistance_dist = dist;
-    //                 resistance_superzone = Some(superzone.clone());
-    //             }
-    //         }
-    //     }
-
-    //     (
-    //         support_superzone.into_iter().collect(),
-    //         resistance_superzone.into_iter().collect(),
-    //     )
-    // }
 
     /// Update the model with a new current price (recalculates S/R)
     pub fn update_price(&mut self, new_price: f64) {
         self.current_price = Some(new_price);
-        // let (support_superzones, resistance_superzones) =
-        // Self::find_support_resistance_superzones(&self.zones.sticky_superzones, new_price);
-        // self.zones.support_superzones = support_superzones;
-        // self.zones.resistance_superzones = resistance_superzones;
     }
 
     /// Get all sticky zones (for potential S/R candidates)

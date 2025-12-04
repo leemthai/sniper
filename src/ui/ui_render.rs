@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use crate::config::ANALYSIS;
 use crate::data::price_stream::PriceStreamManager;
+use crate::models::cva::ScoreType;
 use crate::ui::app_simulation::SimDirection;
 use crate::ui::config::UI_CONFIG;
 use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
@@ -148,8 +149,12 @@ impl ZoneSniperApp {
                 }
 
                 if let Some(cva_results) = &self.data_state.cva_results {
-                    self.plot_view
-                        .show_my_plot(ui, cva_results, self.current_pair_price);
+                    self.plot_view.show_my_plot(
+                        ui,
+                        cva_results,
+                        self.current_pair_price,
+                        self.debug_background_mode,
+                    );
                 } else if !self.is_calculating() {
                     if let Some(error) = &self.data_state.last_error {
                         ui.vertical_centered(|ui| {
@@ -275,6 +280,27 @@ impl ZoneSniperApp {
 
                             ui.separator();
                         }
+
+                        ui.separator();
+                        ui.label(
+                            egui::RichText::new("View:")
+                                .small()
+                                .color(egui::Color32::GRAY),
+                        );
+                        let mode_text = match self.debug_background_mode {
+                            ScoreType::FullCandleTVW => "Sticky",
+                            ScoreType::LowWickVW => "Low Wicks",
+                            ScoreType::HighWickVW => "High Wicks",
+                            _ => "Unknown",
+                        };
+
+                        ui.label(
+                            egui::RichText::new(mode_text)
+                                .small()
+                                .color(egui::Color32::from_rgb(0, 255, 255)), // Cyan for visibility
+                        );
+                        ui.separator();
+
 
                         let pair_count = self
                             .data_state
@@ -528,9 +554,14 @@ impl ZoneSniperApp {
                 self.show_debug_help = false;
             }
 
-            #[cfg(debug_assertions)]
+            // 'B'ackground plot type toggle
             if i.key_pressed(egui::Key::B) {
-                log::info!("✅ Debug key `B` pressed - but does nothing yet TBA!");
+                // Cycle: Sticky -> LowWick -> HighWick -> Sticky
+                self.debug_background_mode = match self.debug_background_mode {
+                    ScoreType::FullCandleTVW => ScoreType::LowWickVW,
+                    ScoreType::LowWickVW => ScoreType::HighWickVW,
+                    _ => ScoreType::FullCandleTVW,
+                };
             }
 
             if i.key_pressed(egui::Key::S) {

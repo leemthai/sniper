@@ -6,7 +6,8 @@ pub struct PlotConfig {
     pub support_zone_color: Color32,
     pub resistance_zone_color: Color32,
     pub sticky_zone_color: Color32,
-    pub price_within_sticky_zone_color: Color32,
+    // Could be sticky zone, could be reversal zone, doesn't distinguish rn
+    pub price_within_any_zone_color: Color32,
     pub current_price_color: Color32,
     pub current_price_outer_color: Color32,
     pub low_wicks_zone_color: Color32,
@@ -45,11 +46,11 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     support_zone_color: Color32::from_rgb(0, 200, 0), // Green
     resistance_zone_color: Color32::from_rgb(200, 0, 0), // Red
     sticky_zone_color: Color32::from_rgb(0, 191, 255), // Deep sky blue
-    price_within_sticky_zone_color: Color32::from_rgb(255, 165, 0), // Orange (Active)
+    price_within_any_zone_color: Color32::from_rgb(255, 165, 0), // Orange (Active)
     current_price_color: Color32::from_rgb(255, 215, 0), // Gold
     current_price_outer_color: Color32::from_rgb(255, 0, 0), // Red border
     low_wicks_zone_color: Color32::from_rgb(0, 255, 255), // Cyan
-    high_wicks_zone_color: Color32::from_rgb(255, 145, 164), // Salmon pink
+    high_wicks_zone_color: Color32::from_rgb(255, 20, 147), // Deep Pink ((To distinguish from Orange Active zones))
     default_bar_color: Color32::from_rgb(255, 165, 0),
     // From low importance (navy blue) to high importance (dark red)
     zone_gradient_colors: &[
@@ -61,11 +62,9 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
         "#b22222", // Firebrick
         "#8b0000", // Dark red
     ],
-    show_sticky_zones: true,
-    // show_support_zones: true,
-    // show_resistance_zones: true,
-    show_low_wicks_zones: false,
-    show_high_wicks_zones: false,
+    show_sticky_zones: false,
+    show_low_wicks_zones: true,
+    show_high_wicks_zones: true,
     zone_boundary_line_width: 2.0,
     current_price_line_width: 4.0,
     current_price_outer_width: 8.0,

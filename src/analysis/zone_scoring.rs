@@ -95,89 +95,14 @@ pub fn find_target_zones(scores: &[f64], threshold: f64, max_gap: usize) -> Vec<
     targets
 }
 
-/// Returns vector of size scores.len() - 1
-pub fn calculate_zone_gradient(zone_scores: &[f64]) -> Vec<f64> {
-    if zone_scores.len() < 2 {
-        return Vec::new();
-    }
+// Returns vector of size scores.len() - 1
+// pub fn calculate_zone_gradient(zone_scores: &[f64]) -> Vec<f64> {
+//     if zone_scores.len() < 2 {
+//         return Vec::new();
+//     }
 
-    zone_scores
-        .windows(2)
-        .map(|window| (window[1] - window[0]).abs())
-        .collect()
-}
-
-
-/// Find zones with high activity but don't care about gradient to next zones
-/// Because low wick and high wicks are often single candles with large wicks, so gradient doesn't matter
-pub fn find_high_activity_zones(zone_scores: &[f64], top_percentile: f64) -> Vec<usize> {
-    if zone_scores.is_empty() {
-        return Vec::new();
-    }
-
-    // Calculate score threshold (top X%)
-    let mut sorted_scores: Vec<f64> = zone_scores.to_vec();
-    sorted_scores.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let score_threshold_idx =
-        ((sorted_scores.len() as f64 * top_percentile) as usize).min(sorted_scores.len() - 1);
-    let score_threshold = sorted_scores[score_threshold_idx];
-
-    // Simply return all zones above the threshold
-    // No gradient check - reversals are often sharp, single-candle events
-    zone_scores
-        .iter()
-        .enumerate()
-        .filter(|(_, score)| **score >= score_threshold)
-        .map(|(i, _)| i)
-        .collect()
-}
-
-/// Identify slippy zones - low score with low gradient (PERCENTILE VERSION)
-/// bottom_percentile: e.g., 0.20 = bottom 20% of scores
-/// gradient_percentile: e.g., 0.70 = zones with gradient in bottom 30%
-pub fn find_low_activity_zones_low_gradient(
-    zone_scores: &[f64],
-    bottom_percentile: f64,
-    gradient_percentile: f64,
-) -> Vec<usize> {
-    if zone_scores.is_empty() {
-        return Vec::new();
-    }
-
-    let gradients = calculate_zone_gradient(zone_scores);
-
-    // Calculate score threshold (bottom X%)
-    // let mut sorted_scores: Vec<f64> = zone_scores.iter().copied().collect();
-    let mut sorted_scores: Vec<f64> = zone_scores.to_vec();
-
-    sorted_scores.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let score_threshold_idx =
-        ((sorted_scores.len() as f64 * bottom_percentile) as usize).min(sorted_scores.len() - 1);
-    let score_threshold = sorted_scores[score_threshold_idx];
-
-    // Calculate gradient threshold (low gradients only)
-    let mut sorted_gradients = gradients.clone();
-    sorted_gradients.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let gradient_threshold_idx = ((sorted_gradients.len() as f64 * gradient_percentile) as usize)
-        .min(sorted_gradients.len().saturating_sub(1));
-    let max_gradient = if !sorted_gradients.is_empty() {
-        sorted_gradients[gradient_threshold_idx]
-    } else {
-        f64::INFINITY
-    };
-
-    zone_scores
-        .iter()
-        .enumerate()
-        .filter(|(i, score)| {
-            **score <= score_threshold
-                && (
-                    // Check gradient before this zone
-                    (*i == 0 || gradients.get(i - 1).is_none_or(|&g| g <= max_gradient))
-                    // Check gradient after this zone
-                    && gradients.get(*i).is_none_or(|&g| g <= max_gradient)
-                )
-        })
-        .map(|(i, _)| i)
-        .collect()
-}
+//     zone_scores
+//         .windows(2)
+//         .map(|window| (window[1] - window[0]).abs())
+//         .collect()
+// }

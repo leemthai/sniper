@@ -36,14 +36,23 @@ I could turn their graphs on now to see where they are of course
     - Validation: any way to confirm what we decide are `QRZ`, really are high probability reversal zones.
 
 
+# Reversal ZOnes Notes;
+Huge SOLUSDT reversal zone between $124 and $165 ish. Maybe this is just very revealing
+The size of reversal zones does actually vary between small sharp zones, and conglomerated zones. This might be ok. actually.
+Is he sure a ctx.request_repaint() is what we need after changing the background plot type? It's never worked before afai can remember.
+            // Update the 'B' key handler
+            if i.key_pressed(egui::Key::B) {
+                // Cycle: Sticky -> LowWick -> HighWick -> Sticky
+                self.debug_background_mode = match self.debug_background_mode {
+                    ScoreType::FullCandleTVW => ScoreType::LowWickVW,
+                    ScoreType::LowWickVW => ScoreType::HighWickVW,
+                    _ => ScoreType::FullCandleTVW,
+                };
+                ctx.request_repaint(); // TEMP Really not sure if this does anything useful. Let's see
+            }
 
 
-
-# Support / Resistance Zones
-There is just one of each.
-These are just `symbolic` zones i.e. `support zone` is nearest sticky zone beneath live price. `Resistance zone` is nearest sticky zone above live price.
-Usage: Unknown (help user I suppose).
-
+            
 
 # Plot Presentation: How to visualize the combination of `QSZ` and `QRZ` for the user
 in a way that is useful to them and easy to understand.
@@ -54,7 +63,6 @@ But if we do thst how do we choose which of the to the background bars are ?
 Currently we can display both all sticky zones, plus the two (max) SR zones. So confusing already ? No, they should just be one thing though. Not separable.
 ## Legend
 Can legend group bars of same type?
-
 
 
 ## WASM version (via trunk serve locally or web version): why stuck on 100 zones?

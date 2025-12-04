@@ -85,6 +85,7 @@ impl PlotView {
         ui: &mut egui::Ui,
         cva_results: &CVACore,
         current_pair_price: Option<f64>,
+        background_score_type: ScoreType,
     ) {
         let pair_name = &cva_results.pair_name;
 
@@ -93,7 +94,7 @@ impl PlotView {
             TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);
 
         // Background bars can be any member of ScoreType
-        let background_score_type = ScoreType::FullCandleTVW;
+        // let background_score_type = ScoreType::FullCandleTVW;
         let cache = self.calculate_plot_data(cva_results, background_score_type);
 
         let x_min = cache.x_min;
@@ -366,7 +367,6 @@ fn draw_classified_zones(
     // 3. Draw Sticky Zones (consolidated logic)
     if PLOT_CONFIG.show_sticky_zones {
         for superzone in &trading_model.zones.sticky_superzones {
-            
             // Check if price is strictly inside this zone
             let is_inside = current_price
                 .map(|p| superzone.contains(p))
@@ -375,7 +375,7 @@ fn draw_classified_zones(
             // Determine Label and Color with priority:
             // 1. Inside (Active) -> 2. Support/Resistance -> 3. Standard Sticky
             let (label, color) = if is_inside {
-                ("Active", PLOT_CONFIG.price_within_sticky_zone_color)
+                ("Active", PLOT_CONFIG.price_within_any_zone_color)
             } else if Some(superzone.id) == support_id {
                 ("Support", PLOT_CONFIG.support_zone_color)
             } else if Some(superzone.id) == resistance_id {
@@ -388,31 +388,64 @@ fn draw_classified_zones(
         }
     }
 
-    // Draw low wick (reversal) superzones (aggregated rejection areas) - only if enabled
+    // 3. Draw Low Wicks (Reversal Support)
     if PLOT_CONFIG.show_low_wicks_zones {
         for superzone in &trading_model.zones.low_wicks_superzones {
-            draw_superzone(
-                plot_ui,
-                superzone,
-                x_min,
-                x_max,
-                "Low Wick(Reversal)",
-                PLOT_CONFIG.low_wicks_zone_color,
-            );
+            // Check if price exists
+            if let Some(price) = trading_model.current_price {
+                // PRIORITY 1: Is Price INSIDE? -> Active Color
+                if superzone.contains(price) {
+                    draw_superzone(
+                        plot_ui,
+                        superzone,
+                        x_min,
+                        x_max,
+                        "Active Reversal", // Or "Active Support"
+                        PLOT_CONFIG.price_within_any_zone_color, // Reuse Orange
+                    );
+                }
+                // PRIORITY 2: Is it strictly BELOW? -> Support Color
+                else if superzone.price_center < price {
+                    draw_superzone(
+                        plot_ui,
+                        superzone,
+                        x_min,
+                        x_max,
+                        UI_TEXT.label_reversal_support,
+                        PLOT_CONFIG.low_wicks_zone_color,
+                    );
+                }
+            }
         }
     }
 
-    // Draw high wick (reversal) superzones (aggregated rejection areas) - only if enabled
+    // 4. Draw High Wicks (Reversal Resistance)
     if PLOT_CONFIG.show_high_wicks_zones {
         for superzone in &trading_model.zones.high_wicks_superzones {
-            draw_superzone(
-                plot_ui,
-                superzone,
-                x_min,
-                x_max,
-                "High Wick(Reversal)",
-                PLOT_CONFIG.high_wicks_zone_color,
-            );
+            if let Some(price) = trading_model.current_price {
+                // PRIORITY 1: Is Price INSIDE? -> Active Color
+                if superzone.contains(price) {
+                    draw_superzone(
+                        plot_ui,
+                        superzone,
+                        x_min,
+                        x_max,
+                        "Active Reversal", // Or "Active Resistance"
+                        PLOT_CONFIG.price_within_any_zone_color, // Reuse Orange
+                    );
+                }
+                // PRIORITY 2: Is it strictly ABOVE? -> Resistance Color
+                else if superzone.price_center > price {
+                    draw_superzone(
+                        plot_ui,
+                        superzone,
+                        x_min,
+                        x_max,
+                        UI_TEXT.label_reversal_resistance,
+                        PLOT_CONFIG.high_wicks_zone_color,
+                    );
+                }
+            }
         }
     }
 }
