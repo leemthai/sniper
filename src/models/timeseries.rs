@@ -251,7 +251,6 @@ impl TimeSeriesSlice<'_> {
         // 1. FULL CANDLE (Sticky Zones) - Keep Volume Weighting
         let candle_low = clamp(candle.low_price);
         let candle_high = clamp(candle.high_price);
-
         cva_core.increase_score_multi_zones_spread(
             ScoreType::FullCandleTVW,
             candle_low,

@@ -361,9 +361,9 @@ fn draw_classified_zones(
             let (label, color) = if is_inside {
                 ("Active Sticky", PLOT_CONFIG.price_within_any_zone_color)
             } else if Some(superzone.id) == support_id {
-                ("Support", PLOT_CONFIG.support_zone_color)
+                ("Sticky Support", PLOT_CONFIG.support_zone_color)
             } else if Some(superzone.id) == resistance_id {
-                ("Resistance", PLOT_CONFIG.resistance_zone_color)
+                ("Sticky Resistance", PLOT_CONFIG.resistance_zone_color)
             } else {
                 ("Sticky", PLOT_CONFIG.sticky_zone_color)
             };

@@ -26,32 +26,33 @@ Do we end up with more and more output zones as we scale up the number of input 
     If so, it's not scale-independent is it.
 
 
-# Look again at this stuff tonight....
-I really want to drill down into exactly where we see reversal zones, what the granularity is, do our reversal zones then tally with known reversal zones I will find on other trading software.
-To that end:
-1) I want the plot bar labels to print the $ range  the bar represents, something like this: "OLD TEXT ($1832.20 - $1855.40)"
-How to test eliminating island gapping for reversal zones, for testing at least. So here are 3 parameters we have for reversal zones.
-        let reversal_threshold = 0.0004;
-         smooth_pct, 0.005,
-         gap_pct   0.005,
-Please remind me what all 3 achieve (couple of lines of text each explanation), and changing which would most help me zoom in on identifying only the most popular reversal zones.
-
-
-# Reversal plots What we haven't done yet is fix tallest dwarf effect (but don't know how to, yet)
-Reversal Zones: This creates the "Tallest Dwarf" visual effect. The gray bars will stretch to the top even if the zone is weak.
-Recommendation: Leave it as normalize_max for now. This ensures the user can see where the wicks are, even if they are weak. The Colored Overlay (Target Zone) will only appear if the absolute score crosses the Global Threshold. This distinction (Visible Gray Bar vs. Missing Colored Zone) accurately communicates: "There is activity here, but it wasn't strong enough to be a target."
-
-Find a pair near a reversal zone in Trading View and see how it looks in mine
-Or just find one in trading view randomly that is up at resistance then can load into mine.
-Reversal zones sshould be narrower. How can I achieve that?
-Does bridging gaps even make sense for reversal zones? Not sure.
-I want to see absolute numbers. How many wicks? Maybe a minimum % qualifying threshold?
+## What to change to get more or less reversal zones:
+Not sure good value for reversal_threshold. Depends how many reversal zones we want I guess.
+# Try getting rid of islands ow as well
+Done that. Still get lots of zones stuck together. SO maybe don't want islands at all for wicks.
+# We now have temporal weighting in as well.
+But this has not been tested really. Not sure how to test
+# Tooltips are useless for wicks
+Not sure would be useful to print, though. Maybe absolute numbers. How many wicks? Maybe a minimum % qualifying threshold?
 So maybe show abs % numbers in plot for reversal zones, not normalized.
-
-The size of reversal zones does actually vary between small sharp zones, and conglomerated zones. This might be ok. actually.
+# Reversal plots What we haven't done yet is fix tallest dwarf effect (but don't know how to, yet)
+(This is still true, right?) Reversal Zones: This creates the "Tallest Dwarf" visual effect. The background bars will stretch to the right even if the (strongest) zone is weak.
 # "B"ackground key
 "B" key currently to toggel round background plot type. See if reverals anything, particularly with reversal zones.
 Note this is not gated for debug, it works for anyone
+Is there a better way to trigger this change-  something more auto?
+# Find cases where high/low wicks are significatly different than sticky zones
+This is the real point of it after all
+# Do low wick areas and high wick areas every vary much?
+Maybe off into price discovery I would have thought
+# What does it mean if live price is in both:
+Active Resistance (wick), and
+Active Support (wick)
+at same time. Just overlapping zones?
+# Decide on final reversal_threshold
+current value: let reversal_threshold = 0.00001; // About 0.3% wick density 
+        
+
 ## Legend
 Can legend group bars of same type?
 That would be great.

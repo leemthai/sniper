@@ -226,20 +226,24 @@ impl TradingModel {
             None,
         );
 
-        // --- REVERSAL ZONES (Global Normalized) ---
-        // Divisor: Total Candles (Absolute %)
+        // --- REVERSAL ZONES (Global / Absolute) ---
 
-        // Threshold Calculation:
-        // We want significant anomalies. e.g., > 2% of ALL candles wicked here.
-        // Raw Threshold = 0.02.
-        // Squared Threshold = 0.0004.
-        let reversal_threshold = 0.0004;
+        //let reversal_threshold = 0.0004; // 2% Wick Density target (produces very very few zones if any)
+        // let reversal_threshold = 0.0001; // 1% wick density (not enough zones)
+        //let reversal_threshold = 0.000025; // This is 0.5% Wick Density target (produces not many zones)
+        let reversal_threshold = 0.00001; // About 0.3% wick density 
+        // let reversal_threshold: f64 = 0.000004; // Requirees 0.2% of all candles to wick here (e.g. 2 wicks per 1000 candles)
+
+        // 2. Define Dynamic Gap for Wicks
+        // CHANGE: Set to 0.0. 
+        // This means if there is ANY empty space between wicks, they become separate zones.
+        // No "Ghost Zones" created by bridging.
 
         // 1. Low Wicks
         let (low_wicks, low_wicks_superzones) = process_layer(
             cva.get_scores_ref(ScoreType::LowWickCount),
             0.005,
-            0.005,
+            0.0, // Gap Pct (0.0%) <--- HERE. 0.0 means "Strict Separation"
             reversal_threshold,
             Some(total_candles),
         );
@@ -248,7 +252,7 @@ impl TradingModel {
         let (high_wicks, high_wicks_superzones) = process_layer(
             cva.get_scores_ref(ScoreType::HighWickCount),
             0.005,
-            0.005,
+            0.0, // Gap Pct (0.0%) <--- HERE. 0.0 means "Strict Separation"
             reversal_threshold,
             Some(total_candles),
         );

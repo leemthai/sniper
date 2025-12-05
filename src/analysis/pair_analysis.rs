@@ -286,19 +286,39 @@ fn pair_analysis(
         )
     });
 
-    // Validate minimum candle count for reliable analysis
+    // Validate minimum candle count
     let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();
     if total_candle_count < ANALYSIS.cva.min_candles_for_analysis {
         bail!(
             "Insufficient data: {} has only {} candles across {} ranges (minimum: {}). \
-             This pair is not currently analyzable - likely due to rapid price discovery \
-             or limited historical data at current price levels. No tradeable opportunities detected.",
+             This pair is not currently analyzable.",
             selected_pair,
             total_candle_count,
             slice_ranges.len(),
             ANALYSIS.cva.min_candles_for_analysis
         );
     }
+
+    // --- DYNAMIC DECAY LOGIC (Fixed) ---
+    let start_idx = slice_ranges.first().map(|r| r.0).unwrap_or(0);
+    let end_idx = slice_ranges.last().map(|r| r.1).unwrap_or(0);
+
+    let duration_years = if end_idx > start_idx {
+        // Calculate duration directly from indices and interval width
+        // (end_idx is exclusive, so end - start = count of intervals covered)
+        let duration_ms = (end_idx - start_idx) as f64 * ANALYSIS.interval_width_ms as f64;
+        let millis_per_year = 31_536_000_000.0; // 365 * 24 * 3600 * 1000
+        duration_ms / millis_per_year
+    } else {
+        0.0
+    };
+
+    let dynamic_decay_factor = if duration_years > 0.0 {
+        time_decay_factor.powf(duration_years).max(1.0)
+    } else {
+        1.0
+    };
+    // ---------------------------
 
     let timeseries_slice = TimeSeriesSlice {
         series_data: ohlcv_time_series,
@@ -308,11 +328,11 @@ fn pair_analysis(
     let mut cva_results = timeseries_slice.generate_cva_results(
         zone_count,
         selected_pair.clone(),
-        time_decay_factor,
+        dynamic_decay_factor,
         price_range,
     );
 
-    // Compute start/end timestamps based on the earliest and latest candles across all ranges
+    // Compute start/end timestamps based on the earliest and latest candles
     let first_kline_timestamp = ohlcv_time_series.first_kline_timestamp_ms;
 
     if let (Some((first_start, _)), Some((_, last_end))) =
