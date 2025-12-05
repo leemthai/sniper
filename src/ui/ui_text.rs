@@ -45,6 +45,7 @@ pub struct UiText {
     pub plot_this_zone_is: &'static str,
     pub label_reversal_support: &'static str,
     pub label_reversal_resistance: &'static str,
+    pub label_sticky: &'static str,
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -94,4 +95,5 @@ pub const UI_TEXT: UiText = UiText {
     plot_this_zone_is: "This zone is",
     label_reversal_support: "Reversal Support",
     label_reversal_resistance: "Reversal Resistance",
+    label_sticky: "Sticky",
 };

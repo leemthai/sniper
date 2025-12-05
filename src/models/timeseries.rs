@@ -188,11 +188,17 @@ impl TimeSeriesSlice<'_> {
     ) -> CVACore {
         let (min_price, max_price) = price_range;
 
-        let mut cva_core =
-            CVACore::new(min_price, max_price, n_chunks, pair_name, time_decay_factor);
-
         // Calculate total candles across all ranges
         let total_candles: usize = self.ranges.iter().map(|(start, end)| end - start).sum();
+
+        let mut cva_core = CVACore::new(
+            min_price,
+            max_price,
+            n_chunks,
+            pair_name,
+            time_decay_factor,
+            total_candles,
+        );
 
         // Process all candles across all ranges, maintaining temporal decay based on position
         let mut position = 0;
@@ -240,124 +246,51 @@ impl TimeSeriesSlice<'_> {
 
     fn process_candle_scores(&self, cva_core: &mut CVACore, candle: &Candle, temporal_weight: f64) {
         let (price_min, price_max) = cva_core.price_range.min_max();
-
-        // Helper to clamp to analysis range
         let clamp = |price: f64| price.max(price_min).min(price_max);
 
-        // 1. FULL CANDLE ANALYSIS (The new Sticky Logic)
-        // We now use Low to High to capture the full range of price exploration
+        // 1. FULL CANDLE (Sticky Zones) - Keep Volume Weighting
         let candle_low = clamp(candle.low_price);
         let candle_high = clamp(candle.high_price);
-
-        // We use Base Asset Volume weighted by Time Decay.
-        // The CVA function `increase_score_multi_zones_spread` handles the "Density" logic
-        // by automatically dividing this weight by the number of zones covered.
-        let weight = candle.base_volume * temporal_weight;
 
         cva_core.increase_score_multi_zones_spread(
             ScoreType::FullCandleTVW,
             candle_low,
             candle_high,
-            weight,
+            candle.base_volume * temporal_weight,
         );
 
-        // 2. Low wick volume-weighted (Reversal Zones - for later)
+        // 2. LOW WICK (Reversal Support) - Count Only (Volume Removed)
+        // We use temporal_weight as the "Count" (1.0 if no decay)
         let low_wick_start = clamp(candle.low_wick_low());
         let low_wick_end = clamp(candle.low_wick_high());
-        // Note: You might want to apply the same base_volume * temporal_weight logic here too
-        // but we can leave wicks as-is for now until you tackle Reversal Zones specifically.
+
         cva_core.increase_score_multi_zones_spread(
-            ScoreType::LowWickVW,
+            ScoreType::LowWickCount,
             low_wick_start,
             low_wick_end,
-            candle.base_volume * temporal_weight, // Consistency: apply weighting here too?
+            temporal_weight, // Just the count/time factor
         );
 
-        // 3. High wick volume-weighted (Reversal Zones - for later)
+        // 3. HIGH WICK (Reversal Resistance) - Count Only (Volume Removed)
         let high_wick_start = clamp(candle.high_wick_low());
         let high_wick_end = clamp(candle.high_wick_high());
+
         cva_core.increase_score_multi_zones_spread(
-            ScoreType::HighWickVW,
+            ScoreType::HighWickCount,
             high_wick_start,
             high_wick_end,
-            candle.base_volume * temporal_weight, // Consistency: apply weighting here too?
+            temporal_weight,
         );
 
-        // 4. Quote volume spread (Optional - keep if you use it for borders, otherwise remove)
-        // If you keep it, use quote volume here as it's specifically for "QuoteVolume" score type
-        let candle_start = clamp(candle.low_price);
-        let candle_end = clamp(candle.high_price);
+        // 5. Quote Volume (Legacy/Debug) - Keep if you want
         cva_core.increase_score_multi_zones_spread(
             ScoreType::QuoteVolume,
-            candle_start,
-            candle_end,
-            candle.quote_volume, // No temporal weight? (Keep as is for now)
+            candle_low,
+            candle_high,
+            candle.quote_volume,
         );
     }
 }
-
-//     fn process_candle_scores_old(&self, cva_core: &mut CVACore, candle: &Candle, temporal_weight: f64) {
-//         let (price_min, price_max) = cva_core.price_range.min_max();
-
-//         // Skip candles entirely outside the CVA price range
-//         if candle.high_price < price_min || candle.low_price > price_max {
-//             return;
-//         }
-
-//         // Helper to clamp ranges to CVA bounds
-//         let clamp = |price: f64| price.max(price_min).min(price_max);
-
-//         // 1. Candle body volume-weighted (for sticky/slippy detection)
-//         let body_start = clamp(candle.open_price.min(candle.close_price));
-//         let body_end = clamp(candle.open_price.max(candle.close_price));
-//         if body_start != body_end {
-//             cva_core.increase_score_multi_zones_spread(
-//                 ScoreType::CandleBodyVW,
-//                 body_start,
-//                 body_end,
-//                 candle.quote_volume * temporal_weight,
-//             );
-//         }
-
-//         // 2. Low wick volume-weighted (reversal zones)
-//         let low_wick_start = clamp(candle.low_wick_low());
-//         let low_wick_end = clamp(candle.low_wick_high());
-//         if low_wick_start != low_wick_end {
-//             let low_wick_score = candle.quote_volume * temporal_weight;
-//             cva_core.increase_score_multi_zones_spread(
-//                 ScoreType::LowWickVW,
-//                 low_wick_start,
-//                 low_wick_end,
-//                 low_wick_score,
-//             );
-//         }
-
-//         // 3. High wick volume-weighted (reversal zones)
-//         let high_wick_start = clamp(candle.high_wick_low());
-//         let high_wick_end = clamp(candle.high_wick_high());
-//         if high_wick_start != high_wick_end {
-//             let high_wick_score = candle.quote_volume * temporal_weight;
-//             cva_core.increase_score_multi_zones_spread(
-//                 ScoreType::HighWickVW,
-//                 high_wick_start,
-//                 high_wick_end,
-//                 high_wick_score,
-//             );
-//         }
-
-//         // 4. Quote volume spread across full candle range (for border detection)
-//         let candle_start = clamp(candle.low_price);
-//         let candle_end = clamp(candle.high_price);
-//         if candle_start != candle_end {
-//             cva_core.increase_score_multi_zones_spread(
-//                 ScoreType::QuoteVolume,
-//                 candle_start,
-//                 candle_end,
-//                 candle.quote_volume * temporal_weight,
-//             );
-//         }
-//     }
-// }
 
 // ============================================================================
 // Helper types

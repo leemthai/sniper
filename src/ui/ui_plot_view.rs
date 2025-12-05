@@ -3,17 +3,17 @@ use eframe::egui::{self, Color32, Stroke};
 use egui_plot::{
     AxisHints, Bar, BarChart, Corner, HLine, HPlacement, Legend, Plot, PlotPoints, Polygon,
 };
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use crate::analysis::selection_criteria::{FilterChain, ZoneSelectionCriteria};
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::{SuperZone, TradingModel};
 use crate::ui::ui_text::UI_TEXT;
 use crate::utils::maths_utils;
 
-#[cfg(debug_assertions)]
-use crate::config::DEBUG_FLAGS;
+// #[cfg(debug_assertions)]
+// use crate::config::DEBUG_FLAGS;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlotCache {
@@ -161,112 +161,96 @@ impl PlotView {
         let time_decay_factor = cva_results.time_decay_factor;
 
         // Calculate hash of CVA results to detect changes
-        let cva_hash = {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            (
-                &cva_results.pair_name, // Include pair name to detect pair changes!
-                cva_results.start_timestamp_ms,
-                cva_results.end_timestamp_ms,
-                (
-                    cva_results.price_range.min_max().0 as i64,
-                    cva_results.price_range.min_max().1 as i64,
-                ),
-            )
-                .hash(&mut hasher);
-            hasher.finish()
-        };
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        cva_results
+            .price_range
+            .min_max()
+            .0
+            .to_bits()
+            .hash(&mut hasher);
+        cva_results
+            .price_range
+            .min_max()
+            .1
+            .to_bits()
+            .hash(&mut hasher);
+        zone_count.hash(&mut hasher);
+        score_type.hash(&mut hasher);
+        time_decay_factor.to_bits().hash(&mut hasher);
+        // Include raw data hash for deep correctness
+        cva_results
+            .get_scores_ref(score_type)
+            .len()
+            .hash(&mut hasher);
+        let current_hash = hasher.finish();
 
-        // Check if we have cached data that matches
-        if let Some(cache) = &self.cache
-            && cache.zone_count == zone_count
-            && cache.score_type == score_type
-            && cache.cva_hash == cva_hash
-            && cache.time_decay_factor.to_bits() == time_decay_factor.to_bits()
-        {
-            self.cache_hits += 1;
-            #[cfg(debug_assertions)]
-            if DEBUG_FLAGS.print_cva_cache_events {
-                log::info!(
-                    "[plot cache] HIT: {} zones for {} (cache key {:?})",
-                    cache.zone_scores.len(),
-                    cache.score_type,
-                    cache.cva_hash
-                );
+        if let Some(cache) = &self.cache {
+            if cache.cva_hash == current_hash {
+                return cache.clone();
             }
-            return cache.clone();
         }
-        // Cache miss
-        #[cfg(debug_assertions)]
-        if DEBUG_FLAGS.print_plot_cache_stats {
-            log::info!(
-                "Bar Plot Cache MISS for {} with {} zones.",
-                score_type,
-                zone_count
-            );
-        }
-        self.cache_misses += 1;
 
-        // Calculate plot bounds
+        // Cache miss - Recalculate
         let (y_min, y_max) = cva_results.price_range.min_max();
+        let bar_width = (y_max - y_min) / zone_count as f64;
 
-        let x_min: f64 = (cva_results.start_timestamp_ms as f64) / 1000.0;
-        let x_max: f64 = (cva_results.end_timestamp_ms as f64) / 1000.0;
-        let total_width = x_max - x_min;
-        let zone_score_scalar = total_width;
-        let bar_width_scalar = y_max - y_min;
-        let bar_thickness = bar_width_scalar / (zone_count as f64);
+        // --- PREPARE DATA FOR DISPLAY ---
+        let raw_data_vec = cva_results.get_scores_ref(score_type).clone();
 
-        // Use FullCandleTVW for background bars (consolidated volume)
-        let data_for_display = maths_utils::normalize_max(cva_results.get_scores_ref(score_type));
+        // FIX: APPLY SMOOTHING HERE
+        // Use 2% window (same as Sticky Model) to restore the "stretched" look.
+        let smoothing_window = ((zone_count as f64 * 0.02).ceil() as usize).max(1) | 1;
+        let smoothed_data = maths_utils::smooth_data(&raw_data_vec, smoothing_window);
 
-        // Apply filter chain to select all zones
-        let filter_chain =
-            FilterChain::new(score_type, ZoneSelectionCriteria::PercentileRange(0.0, 1.0));
+        // Normalize for display (0.0 to 1.0)
+        let data_for_display = maths_utils::normalize_max(&smoothed_data);
 
-        let combined_indices: Vec<usize> = filter_chain
-            .evaluate(cva_results)
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
+        // Apply filter chain (Optional - effectively just passes everything through if threshold is 0)
+        // We use a simple select_all here since we just want to draw the bars
+        let indices: Vec<usize> = (0..zone_count).collect();
 
-        // Create color gradient from config
+        // Create color gradient
         let grad = colorgrad::GradientBuilder::new()
             .html_colors(PLOT_CONFIG.zone_gradient_colors)
             .build::<colorgrad::CatmullRomGradient>()
             .expect("Failed to create color gradient");
 
-        // Generate bars using the display data (single or combined scores)
-        // Dim bars significantly so they serve as background layer
-        let bars = combined_indices
+        // Generate bars
+        let bars: Vec<Bar> = indices
             .iter()
             .map(|&original_index| {
                 let zone_score = data_for_display[original_index];
+
+                // Physical position
+                let (z_min, z_max) = cva_results.price_range.chunk_bounds(original_index);
+                let center_price = (z_min + z_max) / 2.0;
+
                 let color = get_zone_color_from_zone_value(zone_score, &grad);
                 let dimmed_color = color.linear_multiply(PLOT_CONFIG.background_bar_intensity_pct);
-                let y_position = y_min + (original_index as f64) * bar_thickness;
-                let x_position = x_min + zone_score * zone_score_scalar;
-                Bar::new(y_position, x_position)
+
+                // Use 'Argument' (horizontal length) as the score
+                Bar::new(center_price, zone_score)
+                    .width(bar_width * 0.9) // 90% width for slight gap
                     .fill(dimmed_color)
                     .name(format!("{}", original_index))
+                // .orientation(egui_plot::Orientation::Horizontal)
             })
             .collect();
 
-        // Create and store cache
         let cache = PlotCache {
+            cva_hash: current_hash,
             bars,
-            x_min,
-            x_max,
             y_min,
             y_max,
-            bar_thickness,
-            total_width,
+            x_min: 0.0,
+            x_max: 1.0, // Normalized
+            bar_thickness: bar_width,
             zone_count,
-            score_type,
-            cva_hash,
             time_decay_factor,
-            sticky_zone_indices: combined_indices,
+            score_type,
+            sticky_zone_indices: indices, // Used to be filtered, now we just pass all for background
             zone_scores: data_for_display,
+            total_width: 1.0,
         };
 
         self.cache = Some(cache.clone());
@@ -374,7 +358,7 @@ fn draw_classified_zones(
             // Determine Label and Color with priority:
             // 1. Inside (Active) -> 2. Support/Resistance -> 3. Standard Sticky
             let (label, color) = if is_inside {
-                ("Active", PLOT_CONFIG.price_within_any_zone_color)
+                ("Active Sticky", PLOT_CONFIG.price_within_any_zone_color)
             } else if Some(superzone.id) == support_id {
                 ("Support", PLOT_CONFIG.support_zone_color)
             } else if Some(superzone.id) == resistance_id {
@@ -399,7 +383,7 @@ fn draw_classified_zones(
                         superzone,
                         x_min,
                         x_max,
-                        "Active Reversal", // Or "Active Support"
+                        "Active Support (Wick)", // Or "Active Support"
                         PLOT_CONFIG.price_within_any_zone_color, // Reuse Orange
                     );
                 }
@@ -429,7 +413,7 @@ fn draw_classified_zones(
                         superzone,
                         x_min,
                         x_max,
-                        "Active Reversal", // Or "Active Resistance"
+                        "Active Resistance (Wick", // Or "Active Resistance"
                         PLOT_CONFIG.price_within_any_zone_color, // Reuse Orange
                     );
                 }

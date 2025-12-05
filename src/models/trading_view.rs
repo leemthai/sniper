@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::analysis::zone_scoring::find_target_zones;
 use crate::models::cva::{CVACore, ScoreType};
-use crate::utils::maths_utils;
+use crate::utils::maths_utils::{normalize_max, smooth_data};
 
 /// A single price zone with its properties
 #[derive(Debug, Clone)]
@@ -167,68 +167,90 @@ impl TradingModel {
         }
     }
 
-    /// Classify zones based on CVA results and current price
-/// Classify zones based on CVA results and current price
     fn classify_zones(cva: &CVACore) -> ClassifiedZones {
         let (price_min, price_max) = cva.price_range.min_max();
         let zone_count = cva.zone_count;
+        let total_candles = cva.total_candles as f64;
 
-        // Helper closure to process a specific score type into Zones and SuperZones.
-        // This consolidates the Smoothing, Normalizing, Squaring, and Clustering logic.
-        let process_layer = |score_type: ScoreType, smooth_pct: f64, gap_pct: f64, threshold: f64| {
-            // 1. Get & Smooth Data
-            let raw = cva.get_scores_ref(score_type);
+        // Helper closure with Custom Normalization Logic
+        // divisor: If Some(val), divide by val. If None, divide by Max(smoothed).
+        let process_layer = |raw_data: &[f64],
+                             smooth_pct: f64,
+                             gap_pct: f64,
+                             threshold: f64,
+                             divisor: Option<f64>| {
+            // 1. Smooth
             let smooth_window = ((zone_count as f64 * smooth_pct).ceil() as usize).max(1) | 1;
-            let smoothed = smooth_data(raw, smooth_window);
+            let smoothed = smooth_data(raw_data, smooth_window);
 
-            // 2. Normalize & Sharpen (Contrast)
-            let sharpened: Vec<f64> = maths_utils::normalize_max(&smoothed)
-                .iter()
-                .map(|&s| s * s)
-                .collect();
+            // 2. Normalize (Global vs Max)
+            let normalized: Vec<f64> = if let Some(div) = divisor {
+                // Global Normalization (Absolute %)
+                // If div is 0 (no candles), result is 0.
+                if div > 0.0 {
+                    smoothed.iter().map(|&s| s / div).collect()
+                } else {
+                    vec![0.0; smoothed.len()]
+                }
+            } else {
+                // Standard Max Normalization (Relative)
+                normalize_max(&smoothed)
+            };
 
-            // 3. Find Targets (Islands)
+            // 3. Contrast (Square)
+            let sharpened: Vec<f64> = normalized.iter().map(|&s| s * s).collect();
+
+            // 4. Find Targets
             let gap = (zone_count as f64 * gap_pct).ceil() as usize;
             let targets = find_target_zones(&sharpened, threshold, gap);
 
-            // 4. Convert to Zones
+            // ... (Explode / Aggregate remains same) ...
             let zones: Vec<Zone> = targets
                 .iter()
                 .flat_map(|t| t.start_idx..=t.end_idx)
                 .map(|idx| Zone::new(idx, price_min, price_max, zone_count))
                 .collect();
-
-            // 5. Aggregate to SuperZones
             let superzones = aggregate_zones(&zones);
 
             (zones, superzones)
         };
 
-        // --- Sticky Zones ---
-        // Smooth: 2%, Gap: 2%, Threshold: 0.16 (squared)
+        // --- Sticky Zones (Max Normalized) ---
+        // Divisor: None (Relative to Peak)
+        // Threshold: 0.16 (Squared) -> ~0.40 Raw
         let (sticky, sticky_superzones) = process_layer(
-            ScoreType::FullCandleTVW, 
-            0.02, 
-            0.02, 
-            0.16
+            cva.get_scores_ref(ScoreType::FullCandleTVW),
+            0.02,
+            0.02,
+            0.16,
+            None,
         );
 
-        // --- Low Wicks (Reversal Support) ---
-        // Smooth: 0.5%, Gap: 0.5%, Threshold: 0.15 (squared)
+        // --- REVERSAL ZONES (Global Normalized) ---
+        // Divisor: Total Candles (Absolute %)
+
+        // Threshold Calculation:
+        // We want significant anomalies. e.g., > 2% of ALL candles wicked here.
+        // Raw Threshold = 0.02.
+        // Squared Threshold = 0.0004.
+        let reversal_threshold = 0.0004;
+
+        // 1. Low Wicks
         let (low_wicks, low_wicks_superzones) = process_layer(
-            ScoreType::LowWickVW, 
-            0.005, 
-            0.005, 
-            0.15
+            cva.get_scores_ref(ScoreType::LowWickCount),
+            0.005,
+            0.005,
+            reversal_threshold,
+            Some(total_candles),
         );
 
-        // --- High Wicks (Reversal Resistance) ---
-        // Smooth: 0.5%, Gap: 0.5%, Threshold: 0.15 (squared)
+        // 2. High Wicks
         let (high_wicks, high_wicks_superzones) = process_layer(
-            ScoreType::HighWickVW, 
-            0.005, 
-            0.005, 
-            0.15
+            cva.get_scores_ref(ScoreType::HighWickCount),
+            0.005,
+            0.005,
+            reversal_threshold,
+            Some(total_candles),
         );
 
         ClassifiedZones {
@@ -240,7 +262,6 @@ impl TradingModel {
             high_wicks_superzones,
         }
     }
-
 
     /// Update the model with a new current price (recalculates S/R)
     pub fn update_price(&mut self, new_price: f64) {
@@ -338,30 +359,4 @@ pub enum ZoneType {
     LowWicks,   // High rejection activity below current price
     HighWicks,  // High rejection activity above current price
     Neutral,    // No special classification
-}
-
-/// Applies a simple centered moving average to smooth the data.
-/// window_size should be an odd number (e.g., 3, 5, 7).
-pub fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
-    if data.is_empty() {
-        return Vec::new();
-    }
-    if window_size <= 1 {
-        return data.to_vec();
-    }
-
-    let half_window = window_size / 2;
-    let len = data.len();
-    let mut smoothed = vec![0.0; len];
-
-    for i in 0..len {
-        let start = i.saturating_sub(half_window);
-        let end = (i + half_window + 1).min(len);
-        let count = end - start;
-
-        let sum: f64 = data[start..end].iter().sum();
-        smoothed[i] = sum / count as f64;
-    }
-
-    smoothed
 }

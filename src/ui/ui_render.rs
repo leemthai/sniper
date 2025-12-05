@@ -8,12 +8,12 @@ use crate::ui::app_simulation::SimDirection;
 use crate::ui::config::UI_CONFIG;
 use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
 
+use crate::ui::config::UI_TEXT;
+
 use super::app::ZoneSniperApp;
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
-#[cfg(debug_assertions)]
-use crate::ui::config::UI_TEXT;
 
 impl ZoneSniperApp {
     pub(super) fn render_side_panel(&mut self, ctx: &egui::Context) {
@@ -288,9 +288,9 @@ impl ZoneSniperApp {
                                 .color(egui::Color32::GRAY),
                         );
                         let mode_text = match self.debug_background_mode {
-                            ScoreType::FullCandleTVW => "Sticky",
-                            ScoreType::LowWickVW => UI_TEXT.label_reversal_support,
-                            ScoreType::HighWickVW => UI_TEXT.label_reversal_resistance,
+                            ScoreType::FullCandleTVW => UI_TEXT.label_sticky,
+                            ScoreType::LowWickCount => UI_TEXT.label_reversal_support,
+                            ScoreType::HighWickCount => UI_TEXT.label_reversal_resistance,
                             _ => "Unknown",
                         };
 
@@ -463,6 +463,7 @@ impl ZoneSniperApp {
                 let general_shortcuts = [
                     ("H", "Toggle this help panel"),
                     ("S", "Toggle Simulation Mode"),
+                    ("B", "Toggle Background Data"),
                 ];
 
                 egui::Grid::new("general_shortcuts_grid")
@@ -509,7 +510,7 @@ impl ZoneSniperApp {
 
                     // Note: any keys added here have to be hand-inserted in handle_global_shortcuts, too
                     let debug_shortcuts =
-                        [("B", "Insert future debug only key-trigger operation here")];
+                        [("Cuts", "Insert future debug only key-trigger operation here")];
 
                     egui::Grid::new("debug_shortcuts_grid")
                         .num_columns(2)
@@ -558,8 +559,8 @@ impl ZoneSniperApp {
             if i.key_pressed(egui::Key::B) {
                 // Cycle: Sticky -> LowWick -> HighWick -> Sticky
                 self.debug_background_mode = match self.debug_background_mode {
-                    ScoreType::FullCandleTVW => ScoreType::LowWickVW,
-                    ScoreType::LowWickVW => ScoreType::HighWickVW,
+                    ScoreType::FullCandleTVW => ScoreType::LowWickCount,
+                    ScoreType::LowWickCount => ScoreType::HighWickCount,
                     _ => ScoreType::FullCandleTVW,
                 };
             }

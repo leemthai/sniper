@@ -29,17 +29,18 @@ Always be scaling price_horizon up and down. Very good way to get many different
 Do we end up with more and more output zones as we scale up the number of input zones?
     If so, it's not scale-independent is it.
 
-
 # Reversal Zones Notes
 Huge SOLUSDT reversal zone between $124 and $165 ish. Maybe this is just very revealing
 The size of reversal zones does actually vary between small sharp zones, and conglomerated zones. This might be ok. actually.
-Review this in the morning
-"B" key currently to toggel round background plot type. See if reverals anything, partgicularly with reversal zones.
-(STILL TO DO), How accurate are reversal zones? Find some examples of real reversal zones in local data at least. I feel they are more useful for local changes.. maybe? e.g where does PAXGUSDT actually reverse?
- or for SOLUSDT as well. Good to ivnestigate to get invested in the actual output.
-Change this to be something more neutral:
-                            ScoreType::FullCandleTVW => "Sticky",
 
+# Very base dfn. of reversal zones
+Something interesting about reversal zones. Scores very similar to sticky zones...... because all volume weighted right? Shouldn't reversal zones be pure counts, regardless of volume. Interesting thought antyway
+Currently the volume scalar dwarfs the wick count I think. Why not just have wick count instead?
+How to scale down the effect of the volume? Need an extra parameter? 
+
+# "B"ackground key
+"B" key currently to toggel round background plot type. See if reverals anything, particularly with reversal zones.
+Note this is not gated for debug, it works for anyone
 
 ## Legend
 Can legend group bars of same type?
@@ -47,8 +48,7 @@ That would be great.
 
 
 ## WASM version (via trunk serve locally or web version): why stuck on 100 zones?
-7. Why is this not up to date with latest zoning code?
-    https://leemthai.github.io/zone-sniper/
-    - How is trunk serve version?
-    - Might be using 100 zones not 200 because we can't read from a state file.? Where do we set default? Need think about differences. Maybe I have set it to 200 now in config/analysis.rs
-    - trunk serve version still feels like 100, however. what about web version? 100 as well. Oh well, lol. Maybe delete local state file and try again?
+(UPDATE) It DOES! have latst code (coz "B" key works to alter background). But still using a very old 100 zone count. Why?
+- How is trunk serve version?
+- Might be using 100 zones not 200 because we can't read from a state file.? Where do we set default? Need think about differences. Maybe I have set it to 200 now in config/analysis.rs
+- trunk serve version still feels like 100, however. what about web version? 100 as well. Oh well, lol. Maybe delete local state file and try again?

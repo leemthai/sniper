@@ -15,6 +15,14 @@ impl RangeF64 {
         self.n_chunks
     }
 
+    pub fn new(start_range: f64, end_range: f64, n_chunks: usize) -> Self {
+        Self {
+            start_range,
+            end_range,
+            n_chunks,
+        }
+    }
+
     #[allow(dead_code)]
     pub fn min_max(&self) -> (f64, f64) {
         (self.start_range, self.end_range)
@@ -167,4 +175,29 @@ fn euclidean_normalization(vec: &mut [f64]) {
             *x /= euclidean_norm;
         }
     }
+}
+
+/// Applies a simple centered moving average to smooth the data.
+/// window_size should be an odd number (e.g., 3, 5, 7).
+pub fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
+    if data.is_empty() {
+        return Vec::new();
+    }
+    if window_size <= 1 {
+        return data.to_vec();
+    }
+
+    let half_window = window_size / 2;
+    let len = data.len();
+    let mut smoothed = vec![0.0; len];
+
+    for i in 0..len {
+        let start = i.saturating_sub(half_window);
+        let end = (i + half_window + 1).min(len);
+        let sum: f64 = data[start..end].iter().sum();
+        let count = end - start;
+        smoothed[i] = sum / count as f64;
+    }
+
+    smoothed
 }
