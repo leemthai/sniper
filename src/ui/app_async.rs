@@ -193,7 +193,7 @@ impl ZoneSniperApp {
                     }
 
                     #[cfg(debug_assertions)]
-                    log::error!("❌ Async calculation failed: {}", error);
+                    log::warn!("❌ Async calculation failed: {}", error);
                 }
             }
 

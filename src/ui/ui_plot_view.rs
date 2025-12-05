@@ -227,12 +227,13 @@ impl PlotView {
 
                 let color = get_zone_color_from_zone_value(zone_score, &grad);
                 let dimmed_color = color.linear_multiply(PLOT_CONFIG.background_bar_intensity_pct);
+                let label = format!("Zone #{} (${:.2} - ${:.2})", original_index, z_min, z_max);
 
                 // Use 'Argument' (horizontal length) as the score
                 Bar::new(center_price, zone_score)
                     .width(bar_width * 0.9) // 90% width for slight gap
                     .fill(dimmed_color)
-                    .name(format!("{}", original_index))
+                    .name(label)
                 // .orientation(egui_plot::Orientation::Horizontal)
             })
             .collect();
@@ -453,12 +454,19 @@ fn draw_superzone(
         [x_min, zone_top],
     ]);
 
+    // Format the label with price details
+    // e.g. "Sticky #0 ($95,000.00 - $95,200.00)"
+    let tooltip_label = format!(
+        "{} #{} (${:.2} - ${:.2})",
+        label, superzone.id, superzone.price_bottom, superzone.price_top
+    );
+
     // Draw semi-transparent filled polygon with matching stroke
     // Each superzone gets a unique identifier and a unique legend entry
     let polygon = Polygon::new(format!("{} #{}", label, superzone.id), points)
         .fill_color(color.linear_multiply(PLOT_CONFIG.zone_fill_opacity_pct))
         .stroke(Stroke::new(1.0, color))
-        .name(format!("{} #{}", label, superzone.id)) // Unique legend entry per superzone
+        .name(tooltip_label) // Unique legend entry per superzone
         .highlight(false)
         .allow_hover(false);
 
