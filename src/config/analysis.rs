@@ -29,6 +29,28 @@ pub struct CvaSettings {
     pub min_candles_for_analysis: usize,
 }
 
+/// Parameters for a specific zone type (Sticky, Reversal, etc.)
+#[derive(Debug, Clone, Copy)]
+pub struct ZoneParams {
+    /// Smoothing Window % (0.0 to 1.0). 
+    /// Turn UP to merge jagged spikes into hills. Turn DOWN for sharp precision.
+    pub smooth_pct: f64,
+    
+    /// Gap Tolerance % (0.0 to 1.0).
+    /// Turn UP to bridge gaps and create larger "continents". Turn DOWN (or to 0.0) to keep islands separated.
+    pub gap_pct: f64,
+    
+    /// Intensity Threshold.
+    /// Turn UP to reduce coverage (only show strong zones). Turn DOWN to see fainter zones.
+    pub threshold: f64,
+}
+
+pub struct ZoneClassificationConfig {
+    pub sticky: ZoneParams,
+    pub reversal: ZoneParams,
+}
+
+
 /// The Master Analysis Configuration
 pub struct AnalysisConfig {
     // This defines the candle interval for all analysis (1h, 5m, 15m, etc.)
@@ -40,11 +62,34 @@ pub struct AnalysisConfig {
     pub time_horizon: TimeHorizonConfig,
     pub journey: JourneySettings,
     pub cva: CvaSettings,
+    pub zones: ZoneClassificationConfig,
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     interval_width_ms: TimeUtils::MS_IN_30_MIN,
-    default_zone_count: 200, // Goldilocks number (see private project-3eed40f.md for explanation)
+    default_zone_count: 256, // Goldilocks number (see private project-3eed40f.md for explanation)
+
+    zones: ZoneClassificationConfig {
+        // STICKY ZONES (Volume Weighted)
+        sticky: ZoneParams {
+            smooth_pct: 0.02,  // 2% smoothing makes hills out of spikes
+            gap_pct: 0.01,     // 1% gap bridging merges nearby structures
+            threshold: 0.25,   // (Squared). Only top 50% volume areas qualify.
+        },
+        
+        // REVERSAL ZONES (Wick Counts)
+        reversal: ZoneParams {
+            smooth_pct: 0.005, // 0.5% (Low) - Keep wicks sharp
+            gap_pct: 0.0,      // 0.0% - Strict separation. Don't create ghost zones.
+            
+            // THRESHOLD TUNING GUIDE:
+            // 0.000400 = Requires ~2.0% Wick Density (Very Strict, few zones)
+            // 0.000100 = Requires ~1.0% Wick Density
+            // 0.000025 = Requires ~0.5% Wick Density
+            // 0.000010 = Requires ~0.3% Wick Density (Noisier)
+            threshold: 0.000025, // Defaulting to 0.5% based on your "too much coverage" feedback
+        },
+    },
 
     time_horizon: TimeHorizonConfig {
         min_days: 1,
@@ -64,3 +109,5 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         min_candles_for_analysis: 100,
     },
 };
+
+

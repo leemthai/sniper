@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
 use crate::analysis::zone_scoring::find_target_zones;
+use crate::config::ANALYSIS; // Import Config
+// use crate::config::analysis::ZoneParams; // Would love this to just use crate::config::ZoneParams
+use crate::config::ZoneParams; // Would love this to just use crate::config::ZoneParams
 use crate::models::cva::{CVACore, ScoreType};
 use crate::utils::maths_utils::{normalize_max, smooth_data};
 
@@ -152,59 +155,64 @@ pub struct TradingModel {
     pub cva: Arc<CVACore>,
     pub zones: ClassifiedZones,
     pub current_price: Option<f64>,
+    pub coverage: ZoneCoverageStats,
+}
+
+// New Struct for Stats
+#[derive(Debug, Clone, Default)]
+pub struct ZoneCoverageStats {
+    pub sticky_pct: f64,
+    pub resistance_pct: f64,
+    pub support_pct: f64,
 }
 
 impl TradingModel {
     /// Create a new trading model from CVA results and optional current price
     pub fn from_cva(cva: Arc<CVACore>, current_price: Option<f64>) -> Self {
-        let zones = Self::classify_zones(&cva);
+        let (zones, coverage) = Self::classify_zones(&cva);
 
         Self {
             pair_name: cva.pair_name.clone(),
             cva,
             zones,
             current_price,
+            coverage,
         }
     }
 
-    fn classify_zones(cva: &CVACore) -> ClassifiedZones {
+    // src/models/trading_view.rs
+
+    fn classify_zones(cva: &CVACore) -> (ClassifiedZones, ZoneCoverageStats) {
         let (price_min, price_max) = cva.price_range.min_max();
         let zone_count = cva.zone_count;
         let total_candles = cva.total_candles as f64;
 
-        // Helper closure with Custom Normalization Logic
-        // divisor: If Some(val), divide by val. If None, divide by Max(smoothed).
-        let process_layer = |raw_data: &[f64],
-                             smooth_pct: f64,
-                             gap_pct: f64,
-                             threshold: f64,
-                             divisor: Option<f64>| {
+        // Helper closure
+        let process_layer = |raw_data: &[f64], params: ZoneParams, divisor: Option<f64>| {
             // 1. Smooth
-            let smooth_window = ((zone_count as f64 * smooth_pct).ceil() as usize).max(1) | 1;
+            let smooth_window =
+                ((zone_count as f64 * params.smooth_pct).ceil() as usize).max(1) | 1;
             let smoothed = smooth_data(raw_data, smooth_window);
 
-            // 2. Normalize (Global vs Max)
+            // 2. Normalize
             let normalized: Vec<f64> = if let Some(div) = divisor {
-                // Global Normalization (Absolute %)
-                // If div is 0 (no candles), result is 0.
                 if div > 0.0 {
                     smoothed.iter().map(|&s| s / div).collect()
                 } else {
                     vec![0.0; smoothed.len()]
                 }
             } else {
-                // Standard Max Normalization (Relative)
                 normalize_max(&smoothed)
             };
 
-            // 3. Contrast (Square)
+            // 3. Contrast
             let sharpened: Vec<f64> = normalized.iter().map(|&s| s * s).collect();
 
             // 4. Find Targets
-            let gap = (zone_count as f64 * gap_pct).ceil() as usize;
-            let targets = find_target_zones(&sharpened, threshold, gap);
+            let gap = (zone_count as f64 * params.gap_pct).ceil() as usize;
+            let targets = find_target_zones(&sharpened, params.threshold, gap);
 
-            // ... (Explode / Aggregate remains same) ...
+            // ... (Convert/Aggregate) ...
             let zones: Vec<Zone> = targets
                 .iter()
                 .flat_map(|t| t.start_idx..=t.end_idx)
@@ -215,58 +223,53 @@ impl TradingModel {
             (zones, superzones)
         };
 
-        // --- Sticky Zones (Max Normalized) ---
-        // Divisor: None (Relative to Peak)
-        // Threshold: 0.16 (Squared) -> ~0.40 Raw
+        // --- Sticky Zones ---
         let (sticky, sticky_superzones) = process_layer(
             cva.get_scores_ref(ScoreType::FullCandleTVW),
-            0.02,
-            0.02,
-            0.16,
+            ANALYSIS.zones.sticky,
             None,
         );
 
-        // --- REVERSAL ZONES (Global / Absolute) ---
-
-        // To find the % wick density, take square root of reversal_threshold
-
-        //let reversal_threshold = 0.0004; // 2% Wick Density target (produces very very few zones if any)
-        // let reversal_threshold = 0.0001; // 1% wick density (not enough zones)
-        //let reversal_threshold = 0.000025; // This is 0.5% Wick Density target (produces not many zones)
-        let reversal_threshold = 0.00001; // About 0.3% wick density 
-        // let reversal_threshold: f64 = 0.000004; // Requirees 0.2% of all candles to wick here (e.g. 2 wicks per 1000 candles)
-
-        // 2. Define Dynamic Gap for Wicks
-        // CHANGE: Set to 0.0. 
-        // This means if there is ANY empty space between wicks, they become separate zones.
-        // No "Ghost Zones" created by bridging.
-
+        // --- Reversal Zones ---
         // 1. Low Wicks
         let (low_wicks, low_wicks_superzones) = process_layer(
             cva.get_scores_ref(ScoreType::LowWickCount),
-            0.005,
-            0.0, // Gap Pct (0.0%) <--- HERE. 0.0 means "Strict Separation"
-            reversal_threshold,
+            ANALYSIS.zones.reversal,
             Some(total_candles),
         );
 
         // 2. High Wicks
         let (high_wicks, high_wicks_superzones) = process_layer(
             cva.get_scores_ref(ScoreType::HighWickCount),
-            0.005,
-            0.0, // Gap Pct (0.0%) <--- HERE. 0.0 means "Strict Separation"
-            reversal_threshold,
+            ANALYSIS.zones.reversal,
             Some(total_candles),
         );
 
-        ClassifiedZones {
+        // --- Calculate Coverage Statistics ---
+        // Logic: Count unique indices / total zones * 100
+        let calc_coverage = |zones: &[Zone]| -> f64 {
+            if zone_count == 0 {
+                return 0.0;
+            }
+            (zones.len() as f64 / zone_count as f64) * 100.0
+        };
+
+        let stats = ZoneCoverageStats {
+            sticky_pct: calc_coverage(&sticky),
+            support_pct: calc_coverage(&low_wicks),
+            resistance_pct: calc_coverage(&high_wicks),
+        };
+
+        let classified = ClassifiedZones {
             sticky,
             low_wicks,
             high_wicks,
             sticky_superzones,
             low_wicks_superzones,
             high_wicks_superzones,
-        }
+        };
+
+        (classified, stats)
     }
 
     /// Update the model with a new current price (recalculates S/R)

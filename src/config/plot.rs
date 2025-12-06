@@ -62,9 +62,9 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
         "#b22222", // Firebrick
         "#8b0000", // Dark red
     ],
-    show_sticky_zones: false,
-    show_low_wicks_zones: false,
-    show_high_wicks_zones: false,
+    show_sticky_zones: true,
+    show_low_wicks_zones: true,
+    show_high_wicks_zones: true,
     zone_boundary_line_width: 2.0,
     current_price_line_width: 4.0,
     current_price_outer_width: 8.0,

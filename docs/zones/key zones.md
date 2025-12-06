@@ -25,6 +25,14 @@ Always be scaling price_horizon up and down. Very good way to get many different
 Do we end up with more and more output zones as we scale up the number of input zones?
     If so, it's not scale-independent is it.
 
+# WE have giant SR zones again
+Don't panic, what can we do ....
+Do a checklist of what to change
+IF X happens turn knob X down....
+etc.
+
+
+
 
 ## What to change to get more or less reversal zones:
 Not sure good value for reversal_threshold. Depends how many reversal zones we want I guess.

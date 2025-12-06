@@ -305,6 +305,58 @@ impl ZoneSniperApp {
                         );
                         ui.separator();
 
+                        if let Some(cva) = &self.data_state.cva_results {
+                            // We regenerate the model briefly to get the stats.
+                            // This is fast for 200 zones.
+                            let model = crate::models::trading_view::TradingModel::from_cva(
+                                std::sync::Arc::clone(cva),
+                                self.current_pair_price,
+                            );
+
+                            // Helper to color-code coverage
+                            // > 30% is Red (Too much), < 5% is Yellow (Too little?), Green is good
+                            let coverage_color = |pct: f64| {
+                                if pct > 30.0 {
+                                    egui::Color32::from_rgb(255, 100, 100)
+                                }
+                                // Red warning
+                                else {
+                                    egui::Color32::from_rgb(150, 255, 150)
+                                } // Green ok
+                            };
+
+                            ui.label(
+                                egui::RichText::new("Coverage:")
+                                    .small()
+                                    .color(egui::Color32::GRAY),
+                            );
+
+                            ui.label(
+                                egui::RichText::new(format!("Sticky:{:.0}%", model.coverage.sticky_pct))
+                                    .small()
+                                    .color(coverage_color(model.coverage.sticky_pct)),
+                            );
+
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "R-Sup:{:.0}%",
+                                    model.coverage.support_pct
+                                ))
+                                .small()
+                                .color(coverage_color(model.coverage.support_pct)),
+                            );
+
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "R-Res:{:.0}%",
+                                    model.coverage.resistance_pct
+                                ))
+                                .small()
+                                .color(coverage_color(model.coverage.resistance_pct)),
+                            );
+
+                            ui.separator();
+                        }
                         let pair_count = self
                             .data_state
                             .timeseries_collection
