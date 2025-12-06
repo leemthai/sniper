@@ -270,7 +270,7 @@ pub struct ZoneSniperApp {
     // UI state
     #[serde(default = "default_selected_pair")]
     pub(super) selected_pair: Option<String>,
-    #[serde(default = "default_zone_count")]
+    #[serde(skip, default = "default_zone_count")] // `skip` tells Serde not save this field in local storage.
     pub(super) zone_count: usize,
     #[serde(default = "default_time_decay_factor")]
     pub(super) time_decay_factor: f64,

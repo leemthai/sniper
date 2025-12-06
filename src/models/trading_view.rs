@@ -228,6 +228,8 @@ impl TradingModel {
 
         // --- REVERSAL ZONES (Global / Absolute) ---
 
+        // To find the % wick density, take square root of reversal_threshold
+
         //let reversal_threshold = 0.0004; // 2% Wick Density target (produces very very few zones if any)
         // let reversal_threshold = 0.0001; // 1% wick density (not enough zones)
         //let reversal_threshold = 0.000025; // This is 0.5% Wick Density target (produces not many zones)

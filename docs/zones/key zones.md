@@ -51,7 +51,6 @@ Active Support (wick)
 at same time. Just overlapping zones?
 # Decide on final reversal_threshold
 current value: let reversal_threshold = 0.00001; // About 0.3% wick density 
-        
 
 ## Legend
 Can legend group bars of same type?
@@ -59,13 +58,3 @@ That would be great.
 ## Sticky zone price target
 Shoud price target be center rather than nearest edge of sticky zone ? (seems more natural than aiming for edge of structure, right?)
 That's journey stuff I think, though, don't want let Gemimi loose on that yet, though, lol
-
-
-
-
-
-## WASM version (via trunk serve locally or web version): why stuck on 100 zones?
-(UPDATE) It DOES! have latst code (coz "B" key works to alter background). But still using a very old 100 zone count. Why?
-- How is trunk serve version?
-- Might be using 100 zones not 200 because we can't read from a state file.? Where do we set default? Need think about differences. Maybe I have set it to 200 now in config/analysis.rs
-- trunk serve version still feels like 100, however. what about web version? 100 as well. Oh well, lol. Maybe delete local state file and try again?

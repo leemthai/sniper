@@ -272,10 +272,14 @@ impl ZoneSniperApp {
                             let zone_size = (cva_results.price_range.end_range
                                 - cva_results.price_range.start_range)
                                 / cva_results.zone_count as f64;
+
                             ui.label(
-                                egui::RichText::new(format!("📏 Zone Size: ${:.2}", zone_size))
-                                    .small()
-                                    .color(egui::Color32::GRAY),
+                                egui::RichText::new(format!(
+                                    "📏 Zone Size: ${:.2} (N={})",
+                                    zone_size, cva_results.zone_count
+                                ))
+                                .small()
+                                .color(egui::Color32::from_rgb(180, 200, 255)), // Light blue for visibility
                             );
 
                             ui.separator();
@@ -300,7 +304,6 @@ impl ZoneSniperApp {
                                 .color(egui::Color32::from_rgb(0, 255, 255)), // Cyan for visibility
                         );
                         ui.separator();
-
 
                         let pair_count = self
                             .data_state
@@ -509,8 +512,10 @@ impl ZoneSniperApp {
                     ui.add_space(5.0);
 
                     // Note: any keys added here have to be hand-inserted in handle_global_shortcuts, too
-                    let debug_shortcuts =
-                        [("Cuts", "Insert future debug only key-trigger operation here")];
+                    let debug_shortcuts = [(
+                        "Cuts",
+                        "Insert future debug only key-trigger operation here",
+                    )];
 
                     egui::Grid::new("debug_shortcuts_grid")
                         .num_columns(2)
