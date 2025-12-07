@@ -292,9 +292,9 @@ impl ZoneSniperApp {
                                 .color(egui::Color32::GRAY),
                         );
                         let mode_text = match self.debug_background_mode {
-                            ScoreType::FullCandleTVW => UI_TEXT.label_sticky,
-                            ScoreType::LowWickCount => UI_TEXT.label_reversal_support,
-                            ScoreType::HighWickCount => UI_TEXT.label_reversal_resistance,
+                            ScoreType::FullCandleTVW => UI_TEXT.label_hvz_within,
+                            ScoreType::LowWickCount => UI_TEXT.label_hvz_beneath,
+                            ScoreType::HighWickCount => UI_TEXT.label_hvz_above,
                             _ => "Unknown",
                         };
 

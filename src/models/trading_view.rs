@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::analysis::zone_scoring::find_target_zones;
 use crate::config::ANALYSIS; // Import Config
-// use crate::config::analysis::ZoneParams; // Would love this to just use crate::config::ZoneParams
 use crate::config::ZoneParams; // Would love this to just use crate::config::ZoneParams
 use crate::models::cva::{CVACore, ScoreType};
 use crate::utils::maths_utils::{normalize_max, smooth_data};

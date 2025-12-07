@@ -45,7 +45,9 @@ pub struct UiText {
     pub plot_this_zone_is: &'static str,
     pub label_reversal_support: &'static str,
     pub label_reversal_resistance: &'static str,
-    pub label_sticky: &'static str,
+    pub label_hvz_above: &'static str,
+    pub label_hvz_beneath: &'static str,
+    pub label_hvz_within: &'static str,
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -93,7 +95,9 @@ pub const UI_TEXT: UiText = UiText {
     plot_x_axis: "Key Zone Strength (0 % of the strongest zone)",
     plot_strongest_zone: "of strongest zone",
     plot_this_zone_is: "This zone is",
-    label_reversal_support: "Reversal Support",
-    label_reversal_resistance: "Reversal Resistance",
-    label_sticky: "Sticky",
+    label_reversal_support: "High Lower Wick Density Zone (reversal likely) ",
+    label_reversal_resistance: "High Upper Wick Density Zone (reversal likely)",
+    label_hvz_above: "High Volume Zone (act as future resistance, bullish target price)",
+    label_hvz_beneath: "High Volume Zone (act as future support, bearish target price)",
+    label_hvz_within: "Inside `High Volume Zone` Now (consolidation likely)",
 };

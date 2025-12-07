@@ -85,7 +85,6 @@ impl PlotView {
             
             // // FIX ATTEMP: on-hover plot label. adding this code just renders a tiny empty box instead of default (x,y) box so not much use but at least it is small I guess
             .label_formatter(|_, _| String::new()) 
-            
             .x_grid_spacer(move |_input| {
                 let mut marks = Vec::new();
                 let (min, max) = _input.bounds;
@@ -248,8 +247,8 @@ fn draw_background_plot(
 
         let polygon = Polygon::new("Zone Strength",points)
             .fill_color(bar.color)
-            // .allow_hover(false) // Note doesn't seem to help anything like remove the "Null_window" issue.
-            .stroke(Stroke::NONE); // Very important to have this code in i.e. set Stroke to None.
+            .allow_hover(false) // Note doesn't seem to help anything but default is aparently .allow_hover = true
+            .stroke(Stroke::NONE); // Very important to have this code in i.e. set Stroke to None. If not, rendering of background bars is *very different*
 
         plot_ui.polygon(polygon);
     }
@@ -282,33 +281,38 @@ fn draw_classified_zones(
     x_min: f64,
     x_max: f64,
 ) {
-    let support_id = trading_model
-        .nearest_support_superzone()
-        .map(|z| z.id);
-    let resistance_id = trading_model
-        .nearest_resistance_superzone()
-        .map(|z| z.id);
+    // let support_id = trading_model
+        // .nearest_support_superzone()
+        // .map(|z| z.id);
+    // let resistance_id = trading_model
+        // .nearest_resistance_superzone()
+        // .map(|z| z.id);
     let current_price = trading_model.current_price;
 
     // 1. Sticky Zones
+    // 1. Sticky Zones
     if PLOT_CONFIG.show_sticky_zones {
         for superzone in &trading_model.zones.sticky_superzones {
-            let is_inside = current_price
-                .map(|p| superzone.contains(p))
-                .unwrap_or(false);
+            // Default to "Sticky" if we have no live price to compare against
+            let mut label = "Sticky";
+            let mut color = PLOT_CONFIG.sticky_zone_color;
 
-            let (label, color) = if is_inside {
-                (
-                    "Active Sticky",
-                    PLOT_CONFIG.price_within_any_zone_color,
-                )
-            } else if Some(superzone.id) == support_id {
-                ("Support", PLOT_CONFIG.support_zone_color)
-            } else if Some(superzone.id) == resistance_id {
-                ("Resistance", PLOT_CONFIG.resistance_zone_color)
-            } else {
-                ("Sticky", PLOT_CONFIG.sticky_zone_color)
-            };
+            if let Some(price) = current_price {
+                let is_inside = superzone.contains(price);
+                
+                if is_inside {
+                    label = UI_TEXT.label_hvz_within;
+                    color = PLOT_CONFIG.price_within_any_zone_color;
+                } else if superzone.price_center < price {
+                    // ALL zones below are Support
+                    label = UI_TEXT.label_hvz_beneath;
+                    color = PLOT_CONFIG.support_zone_color;
+                } else {
+                    // ALL zones above are Resistance
+                    label = UI_TEXT.label_hvz_above;
+                    color = PLOT_CONFIG.resistance_zone_color;
+                }
+            }
 
             draw_superzone(plot_ui, superzone, x_min, x_max, label, color);
         }
@@ -324,7 +328,7 @@ fn draw_classified_zones(
                         superzone,
                         x_min,
                         x_max,
-                        "Active Support (Wick)",
+                        UI_TEXT.label_reversal_support,
                         PLOT_CONFIG.price_within_any_zone_color,
                     );
                 } else if superzone.price_center < price {
@@ -351,7 +355,7 @@ fn draw_classified_zones(
                         superzone,
                         x_min,
                         x_max,
-                        "Active Resistance (Wick)",
+                        UI_TEXT.label_reversal_resistance,
                         PLOT_CONFIG.price_within_any_zone_color,
                     );
                 } else if superzone.price_center > price {
@@ -377,7 +381,6 @@ fn draw_superzone(
     label: &str,
     color: Color32,
 ) {
-    use egui_plot::{PlotPoints, Polygon};
 
     let points = PlotPoints::new(vec![
         [x_min, superzone.price_bottom],
@@ -386,9 +389,8 @@ fn draw_superzone(
         [x_min, superzone.price_top],
     ]);
 
-    // Polygon::new(name, points)
     let polygon = Polygon::new(label, points)
-        .id(egui::Id::new(format!("sz_{}_{}", label, superzone.id)))
+        // .id(egui::Id::new(format!("sz_{}_{}", label, superzone.id))) // Removed to fix legend toggling issue whereby egui_plot would only remove one item when toggled off in legend
         .fill_color(color.linear_multiply(PLOT_CONFIG.zone_fill_opacity_pct))
         .stroke(Stroke::new(1.0, color))
         .highlight(true); // Highlight superzones

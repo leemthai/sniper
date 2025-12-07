@@ -12,12 +12,15 @@ Find out API stats..... maybe updated once an hour or less... dunno, but I must 
 # Find cases where high/low wicks are significatly different than sticky zones
 This is the real point of it after all. This should be real reversal areas
 Maybe there is truck in contrasting sticky zones with reversal zones
-# Do low wick areas and high wick areas every vary much?
-Maybe off into price discovery I would have thought
+
+# Bugs
+Any left?
+
 
 
 # Summary of plots stuff
-Left with 'null window' hanging around
+Left with 'null window' hanging around because an egui_plot must have an 'over hover label' - no way to turn it off it seems rn
+
 
 # B key to select background bars
 Much too manual job at the moment
