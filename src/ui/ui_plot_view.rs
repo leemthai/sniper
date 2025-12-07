@@ -1,81 +1,63 @@
-use colorgrad::{CatmullRomGradient, Color, Gradient};
-use eframe::egui::{self, Color32, Stroke};
-use egui_plot::{
-    AxisHints, Bar, BarChart, Corner, HLine, HPlacement, Legend, Plot, PlotPoints, Polygon, CoordinatesFormatter,
-};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+use eframe::egui::{self, Color32, Stroke};
+use egui_plot::{
+    AxisHints, Corner, HPlacement, Legend, Plot, PlotPoints, Polygon,
+};
+use colorgrad::Gradient; // Import needed for gradient.at()
+
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::cva::{CVACore, ScoreType};
-use crate::models::{SuperZone, TradingModel};
+use crate::models::trading_view::{SuperZone, TradingModel};
 use crate::ui::ui_text::UI_TEXT;
 use crate::utils::maths_utils;
 
-// #[cfg(debug_assertions)]
-// use crate::config::DEBUG_FLAGS;
+/// A lightweight representation of a background bar, drawn as a Polygon.
+#[derive(Clone)]
+pub struct BackgroundBar {
+    pub x_max: f64,    // The length of the bar (0.0 to 1.0)
+    pub y_center: f64, // The center price
+    pub height: f64,   // The thickness of the bar
+    pub color: Color32,
+}
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub struct PlotCache {
-    bars: Vec<Bar>,
-    x_min: f64,
-    x_max: f64,
-    y_min: f64,
-    y_max: f64,
-    bar_thickness: f64,
-    total_width: f64,
-    zone_count: usize,
-    score_type: ScoreType,
-    cva_hash: u64,
-    time_decay_factor: f64,
-    sticky_zone_indices: Vec<usize>, // Zones passing the filter (for support/resistance)
-    zone_scores: Vec<f64>, // Full normalized scores for all zones (for gradient calculation)
+    pub cva_hash: u64,
+    // CHANGED: Stores our custom struct instead of egui_plot::Bar
+    pub bars: Vec<BackgroundBar>, 
+    pub y_min: f64,
+    pub y_max: f64,
+    pub x_min: f64,
+    pub x_max: f64,
+    pub bar_thickness: f64,
+    pub time_decay_factor: f64,
+    // Metadata fields
+    pub score_type: ScoreType,
+    pub sticky_zone_indices: Vec<usize>,
+    pub zone_scores: Vec<f64>,
+    pub total_width: f64,
 }
 
 #[derive(Default)]
 pub struct PlotView {
     cache: Option<PlotCache>,
-    cache_hits: usize,
-    cache_misses: usize,
 }
 
 impl PlotView {
     pub fn new() -> Self {
-        Self {
-            cache: None,
-            cache_hits: 0,
-            cache_misses: 0,
-        }
+        Self { cache: None }
     }
 
-    /// Returns the number of cache hits
-    pub fn cache_hits(&self) -> usize {
-        self.cache_hits
-    }
+    pub fn cache_hits(&self) -> usize { 0 }
+    pub fn cache_misses(&self) -> usize { 0 }
+    pub fn cache_hit_rate(&self) -> Option<f64> { None }
 
-    /// Returns the number of cache misses
-    pub fn cache_misses(&self) -> usize {
-        self.cache_misses
-    }
-
-    /// Returns the cache hit rate as a percentage
-    pub fn cache_hit_rate(&self) -> Option<f64> {
-        let total = self.cache_hits + self.cache_misses;
-        if total == 0 {
-            None
-        } else {
-            Some((self.cache_hits as f64 / total as f64) * 100.0)
-        }
-    }
-
-    /// Clears the cache and resets statistics
     pub fn clear_cache(&mut self) {
         self.cache = None;
-        self.cache_hits = 0;
-        self.cache_misses = 0;
     }
 
-    /// Returns whether the cache is currently populated
     pub fn has_cache(&self) -> bool {
         self.cache.is_some()
     }
@@ -87,101 +69,68 @@ impl PlotView {
         current_pair_price: Option<f64>,
         background_score_type: ScoreType,
     ) {
-        let pair_name = &cva_results.pair_name;
-
-        // Build trading model with zone classification
         let trading_model =
             TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);
 
-        // Background bars can be any member of ScoreType
         let cache = self.calculate_plot_data(cva_results, background_score_type);
+        let pair_name = &cva_results.pair_name;
 
-        let x_min = cache.x_min;
-        let total_width = cache.total_width;
-
-        // Legend setup
         let _legend = Legend::default().position(Corner::RightTop);
 
-        // Show the plot within the CentralPanel
-        Plot::new("cva")
+        Plot::new("my_plot")
             .view_aspect(PLOT_CONFIG.plot_aspect_ratio)
             .legend(_legend)
             .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_y_axes(vec![create_y_axis(pair_name)])
+            
+            // // FIX ATTEMP: on-hover plot label. adding this code just renders a tiny empty box instead of default (x,y) box so not much use but at least it is small I guess
+            .label_formatter(|_, _| String::new()) 
+            
             .x_grid_spacer(move |_input| {
-                let step_count = PLOT_CONFIG.plot_axis_divisions;
-                (0..=step_count)
-                    .map(|i| {
-                        let fraction = i as f64 / step_count as f64;
-                        let value = x_min + (total_width * fraction);
-
-                        egui_plot::GridMark {
-                            value,
-                            step_size: total_width / step_count as f64,
-                        }
-                    })
-                    .collect()
+                let mut marks = Vec::new();
+                let (min, max) = _input.bounds;
+                let range = max - min;
+                let step_size = if range < 0.1 { 0.02 } else { 0.1 }; 
+                let start = (min / step_size).ceil() as i64;
+                let end = (max / step_size).floor() as i64;
+                for i in start..=end {
+                    let value = i as f64 * step_size;
+                    if value >= 0.0 && value <= 1.0 {
+                        marks.push(egui_plot::GridMark { value, step_size });
+                    }
+                }
+                marks
             })
-            // FIX 1: Suppress Item Value Tooltips (Background bars, etc)
-            .label_formatter(|_, _| String::new())
-            // FIX 2: Suppress Mouse Coordinate Tooltips (The "Null Window")
-            .coordinates_formatter(
-                Corner::LeftBottom,
-                CoordinatesFormatter::new(|_, _| String::new()),
-            )
             .allow_scroll(false)
             .allow_zoom(false)
             .allow_drag(false)
             .allow_boxed_zoom(false)
             .show(ui, |plot_ui| {
-                // Expand Y bounds to include current price if needed
-                let (y_min_adjusted, y_max_adjusted) = if let Some(price) = current_pair_price {
-                    (cache.y_min.min(price), cache.y_max.max(price))
-                } else {
-                    (cache.y_min, cache.y_max)
-                };
-
+                let (y_min, y_max) = cva_results.price_range.min_max();
+                let price = current_pair_price.unwrap_or(y_min);
+                let y_min_adjusted = y_min.min(price);
+                let y_max_adjusted = y_max.max(price);
+                
                 plot_ui.set_plot_bounds_y(y_min_adjusted..=y_max_adjusted);
                 plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
 
-                // draw background plot first
-                draw_background_plot(plot_ui, &cache, background_score_type);
-
-                // Draw all classified zones from TradingModel
+                draw_background_plot(plot_ui, &cache);
                 draw_classified_zones(plot_ui, &trading_model, cache.x_min, cache.x_max);
-
-                // Draw current price line LAST for max. visibility
                 draw_current_price(plot_ui, current_pair_price);
             });
     }
 
     fn calculate_plot_data(&mut self, cva_results: &CVACore, score_type: ScoreType) -> PlotCache {
-        // Source of truth: read zone_count from the data itself
         let zone_count = cva_results.zone_count;
         let time_decay_factor = cva_results.time_decay_factor;
 
-        // Calculate hash of CVA results to detect changes
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        cva_results
-            .price_range
-            .min_max()
-            .0
-            .to_bits()
-            .hash(&mut hasher);
-        cva_results
-            .price_range
-            .min_max()
-            .1
-            .to_bits()
-            .hash(&mut hasher);
+        cva_results.price_range.min_max().0.to_bits().hash(&mut hasher);
+        cva_results.price_range.min_max().1.to_bits().hash(&mut hasher);
         zone_count.hash(&mut hasher);
         score_type.hash(&mut hasher);
         time_decay_factor.to_bits().hash(&mut hasher);
-        // Include raw data hash for deep correctness
-        cva_results
-            .get_scores_ref(score_type)
-            .len()
-            .hash(&mut hasher);
+        cva_results.get_scores_ref(score_type).len().hash(&mut hasher);
         let current_hash = hasher.finish();
 
         if let Some(cache) = &self.cache {
@@ -190,51 +139,45 @@ impl PlotView {
             }
         }
 
-        // Cache miss - Recalculate
         let (y_min, y_max) = cva_results.price_range.min_max();
         let bar_width = (y_max - y_min) / zone_count as f64;
 
         // --- PREPARE DATA FOR DISPLAY ---
         let raw_data_vec = cva_results.get_scores_ref(score_type).clone();
 
-        // FIX: APPLY SMOOTHING HERE
-        // Use 2% window (same as Sticky Model) to restore the "stretched" look.
+        // Apply Smoothing
         let smoothing_window = ((zone_count as f64 * 0.02).ceil() as usize).max(1) | 1;
         let smoothed_data = maths_utils::smooth_data(&raw_data_vec, smoothing_window);
 
-        // Normalize for display (0.0 to 1.0)
+        // Normalize
         let data_for_display = maths_utils::normalize_max(&smoothed_data);
 
-        // Apply filter chain (Optional - effectively just passes everything through if threshold is 0)
-        // We use a simple select_all here since we just want to draw the bars
         let indices: Vec<usize> = (0..zone_count).collect();
 
-        // Create color gradient
         let grad = colorgrad::GradientBuilder::new()
             .html_colors(PLOT_CONFIG.zone_gradient_colors)
             .build::<colorgrad::CatmullRomGradient>()
             .expect("Failed to create color gradient");
 
-        // Generate bars
-        let bars: Vec<Bar> = indices
+        // --- GENERATE POLYGON DATA ---
+        let bars: Vec<BackgroundBar> = indices
             .iter()
             .map(|&original_index| {
                 let zone_score = data_for_display[original_index];
-
-                // Physical position
                 let (z_min, z_max) = cva_results.price_range.chunk_bounds(original_index);
                 let center_price = (z_min + z_max) / 2.0;
 
                 let color = get_zone_color_from_zone_value(zone_score, &grad);
                 let dimmed_color = color.linear_multiply(PLOT_CONFIG.background_bar_intensity_pct);
 
-                // let label = format!("Zone #{} (${:.2} - ${:.2})", original_index, z_min, z_max);
+                // log::warn!("{}", format!("{:?} {}", dimmed_color, zone_score));
 
-                // Use 'Argument' (horizontal length) as the score
-                Bar::new(center_price, zone_score)
-                    .width(bar_width * 0.9) // 90% width for slight gap
-                    .fill(dimmed_color)
-                // .name(label) // No name = No tooltip / No legend
+                BackgroundBar {
+                    x_max: zone_score,
+                    y_center: center_price,
+                    height: bar_width * 0.9,
+                    color: dimmed_color,
+                }
             })
             .collect();
 
@@ -244,12 +187,11 @@ impl PlotView {
             y_min,
             y_max,
             x_min: 0.0,
-            x_max: 1.0, // Normalized
+            x_max: 1.0,
             bar_thickness: bar_width,
-            zone_count,
             time_decay_factor,
             score_type,
-            sticky_zone_indices: indices, // Used to be filtered, now we just pass all for background
+            sticky_zone_indices: indices,
             zone_scores: data_for_display,
             total_width: 1.0,
         };
@@ -259,112 +201,111 @@ impl PlotView {
     }
 }
 
-fn create_x_axis(plot_cache: &PlotCache) -> AxisHints<'static> {
-    let x_min = plot_cache.x_min;
-    let total_width = plot_cache.total_width;
-
+fn create_x_axis(_plot_cache: &PlotCache) -> AxisHints<'static> {
     AxisHints::new_x()
         .label(UI_TEXT.plot_x_axis)
         .formatter(move |grid_mark, _range| {
-            let pct = ((grid_mark.value - x_min) / total_width) * 100.0;
+            let pct = grid_mark.value * 100.0;
             format!("{:.0}%", pct)
         })
 }
 
 fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
+    let label = format!("{}  {}", pair_name, UI_TEXT.plot_y_axis);
     AxisHints::new_y()
-        .label(format!("{}  {}", pair_name, UI_TEXT.plot_y_axis)) // 2 spaces deliberate here
+        .label(label)
         .formatter(|grid_mark, _range| format!("${:.2}", grid_mark.value))
         .placement(HPlacement::Left)
 }
 
-fn get_zone_color_from_zone_value(zone_value: f64, gradient: &CatmullRomGradient) -> Color32 {
-    debug_assert!(
-        (0.0..=1.).contains(&zone_value),
-        "zone_value must be between 0. and 1."
-    );
+fn get_zone_color_from_zone_value(
+    zone_value: f64,
+    gradient: &colorgrad::CatmullRomGradient,
+) -> Color32 {
     to_egui_color(gradient.at(zone_value as f32))
 }
 
-fn to_egui_color(colorgrad_color: Color) -> Color32 {
+fn to_egui_color(colorgrad_color: colorgrad::Color) -> Color32 {
     let rgba8 = colorgrad_color.to_rgba8();
-    Color32::from_rgba_unmultiplied(rgba8[0], rgba8[1], rgba8[2], rgba8[3])
+    Color32::from_rgba_unmultiplied(rgba8[0], rgba8[1], rgba8[2], 255)
 }
 
-/// Draw background plot with bars representing score type
+/// Draw background plot using dumb Polygons (no interaction)
 fn draw_background_plot(
     plot_ui: &mut egui_plot::PlotUi,
     cache: &PlotCache,
-    background_score_type: ScoreType,
 ) {
-    let title = format!("{}", background_score_type);
-    // let x_min = cache.x_min;
-    // let total_width = cache.total_width;
-    let name = background_score_type.to_string();
-    let chart = BarChart::new(title, cache.bars.clone())
-        .color(PLOT_CONFIG.default_bar_color) // Legend color only
-        .width(cache.bar_thickness)
-        .allow_hover(false)
-        .horizontal()
-        .name(name);
-    // .element_formatter(Box::new(|_bar, _chart| String::new()));
-    plot_ui.bar_chart(chart);
-}
 
-/// Draw the current price line with outer border for visibility
+    for bar in &cache.bars {
+        let half_h = bar.height / 2.0;
+        
+        let points = PlotPoints::new(vec![
+            [0.0, bar.y_center - half_h],
+            [bar.x_max, bar.y_center - half_h],
+            [bar.x_max, bar.y_center + half_h],
+            [0.0, bar.y_center + half_h],
+        ]);
+
+        let polygon = Polygon::new("Zone Strength",points)
+            .fill_color(bar.color)
+            // .allow_hover(false) // Note doesn't seem to help anything like remove the "Null_window" issue.
+            .stroke(Stroke::NONE); // Very important to have this code in i.e. set Stroke to None.
+
+        plot_ui.polygon(polygon);
+    }
+}
 
 fn draw_current_price(plot_ui: &mut egui_plot::PlotUi, current_pair_price: Option<f64>) {
     if let Some(price) = current_pair_price {
+        use egui_plot::HLine;
 
         let label = "Current Price";
 
-        // Outer Line (Border)
         plot_ui.hline(
             HLine::new(label, price)
                 .color(PLOT_CONFIG.current_price_outer_color)
                 .width(PLOT_CONFIG.current_price_outer_width)
-                .style(egui_plot::LineStyle::dashed_loose())
+                .style(egui_plot::LineStyle::dashed_loose()),
         );
 
-        // Inner Line (Color)
         plot_ui.hline(
             HLine::new(label, price)
                 .color(PLOT_CONFIG.current_price_color)
-                .width(PLOT_CONFIG.current_price_line_width)
+                .width(PLOT_CONFIG.current_price_line_width),
         );
     }
 }
 
-/// Draw all classified zones from a TradingModel
 fn draw_classified_zones(
     plot_ui: &mut egui_plot::PlotUi,
     trading_model: &TradingModel,
     x_min: f64,
     x_max: f64,
 ) {
-    // 1. Identify IDs of the dynamic S/R zones
-    let support_id = trading_model.nearest_support_superzone().map(|z| z.id);
-    let resistance_id = trading_model.nearest_resistance_superzone().map(|z| z.id);
-
-    // 2. Get current price to check "Inside" status
+    let support_id = trading_model
+        .nearest_support_superzone()
+        .map(|z| z.id);
+    let resistance_id = trading_model
+        .nearest_resistance_superzone()
+        .map(|z| z.id);
     let current_price = trading_model.current_price;
 
-    // 3. Draw Sticky Zones (consolidated logic)
+    // 1. Sticky Zones
     if PLOT_CONFIG.show_sticky_zones {
         for superzone in &trading_model.zones.sticky_superzones {
-            // Check if price is strictly inside this zone
             let is_inside = current_price
                 .map(|p| superzone.contains(p))
                 .unwrap_or(false);
 
-            // Determine Label and Color with priority:
-            // 1. Inside (Active) -> 2. Support/Resistance -> 3. Standard Sticky
             let (label, color) = if is_inside {
-                ("Active Sticky", PLOT_CONFIG.price_within_any_zone_color)
+                (
+                    "Active Sticky",
+                    PLOT_CONFIG.price_within_any_zone_color,
+                )
             } else if Some(superzone.id) == support_id {
-                ("Sticky Support", PLOT_CONFIG.support_zone_color)
+                ("Support", PLOT_CONFIG.support_zone_color)
             } else if Some(superzone.id) == resistance_id {
-                ("Sticky Resistance", PLOT_CONFIG.resistance_zone_color)
+                ("Resistance", PLOT_CONFIG.resistance_zone_color)
             } else {
                 ("Sticky", PLOT_CONFIG.sticky_zone_color)
             };
@@ -373,24 +314,20 @@ fn draw_classified_zones(
         }
     }
 
-    // 3. Draw Low Wicks (Reversal Support)
+    // 2. Low Wicks (Support)
     if PLOT_CONFIG.show_low_wicks_zones {
         for superzone in &trading_model.zones.low_wicks_superzones {
-            // Check if price exists
-            if let Some(price) = trading_model.current_price {
-                // PRIORITY 1: Is Price INSIDE? -> Active Color
+            if let Some(price) = current_price {
                 if superzone.contains(price) {
                     draw_superzone(
                         plot_ui,
                         superzone,
                         x_min,
                         x_max,
-                        "Active Support (Wick)", // Or "Active Support"
-                        PLOT_CONFIG.price_within_any_zone_color, // Reuse Orange
+                        "Active Support (Wick)",
+                        PLOT_CONFIG.price_within_any_zone_color,
                     );
-                }
-                // PRIORITY 2: Is it strictly BELOW? -> Support Color
-                else if superzone.price_center < price {
+                } else if superzone.price_center < price {
                     draw_superzone(
                         plot_ui,
                         superzone,
@@ -404,23 +341,20 @@ fn draw_classified_zones(
         }
     }
 
-    // 4. Draw High Wicks (Reversal Resistance)
+    // 3. High Wicks (Resistance)
     if PLOT_CONFIG.show_high_wicks_zones {
         for superzone in &trading_model.zones.high_wicks_superzones {
-            if let Some(price) = trading_model.current_price {
-                // PRIORITY 1: Is Price INSIDE? -> Active Color
+            if let Some(price) = current_price {
                 if superzone.contains(price) {
                     draw_superzone(
                         plot_ui,
                         superzone,
                         x_min,
                         x_max,
-                        "Active Resistance (Wick", // Or "Active Resistance"
-                        PLOT_CONFIG.price_within_any_zone_color, // Reuse Orange
+                        "Active Resistance (Wick)",
+                        PLOT_CONFIG.price_within_any_zone_color,
                     );
-                }
-                // PRIORITY 2: Is it strictly ABOVE? -> Resistance Color
-                else if superzone.price_center > price {
+                } else if superzone.price_center > price {
                     draw_superzone(
                         plot_ui,
                         superzone,
@@ -435,8 +369,6 @@ fn draw_classified_zones(
     }
 }
 
-/// Draw a SuperZone from TradingModel as a semi-transparent filled rectangle
-/// // src/ui/ui_plot_view.rs
 fn draw_superzone(
     plot_ui: &mut egui_plot::PlotUi,
     superzone: &SuperZone,
@@ -445,6 +377,8 @@ fn draw_superzone(
     label: &str,
     color: Color32,
 ) {
+    use egui_plot::{PlotPoints, Polygon};
+
     let points = PlotPoints::new(vec![
         [x_min, superzone.price_bottom],
         [x_max, superzone.price_bottom],
@@ -452,29 +386,25 @@ fn draw_superzone(
         [x_min, superzone.price_top],
     ]);
 
-    // FIXED: Polygon::new(points) - No string in constructor
-    let polygon = Polygon::new("", points)
-        // Set explicit ID here using .id()
+    // Polygon::new(name, points)
+    let polygon = Polygon::new(label, points)
         .id(egui::Id::new(format!("sz_{}_{}", label, superzone.id)))
         .fill_color(color.linear_multiply(PLOT_CONFIG.zone_fill_opacity_pct))
         .stroke(Stroke::new(1.0, color))
-        .name(label) // Legend grouping
-        .highlight(true);
+        .highlight(true); // Highlight superzones
 
     plot_ui.polygon(polygon);
 
-    // 2. Manual Hit Test (For Rich Tooltip)
+    // Manual Hit Test
     if let Some(pointer) = plot_ui.pointer_coordinate() {
         if pointer.y >= superzone.price_bottom
             && pointer.y <= superzone.price_top
             && pointer.x >= x_min
             && pointer.x <= x_max
         {
-            // Define the layer for the tooltip (Topmost layer)
             let tooltip_layer =
                 egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("zone_tooltips"));
 
-            // Use show_tooltip_at_pointer with the required LayerId
             #[allow(deprecated)]
             egui::show_tooltip_at_pointer(
                 plot_ui.ctx(),
