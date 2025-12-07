@@ -6,63 +6,45 @@ Find out API stats..... maybe updated once an hour or less... dunno, but I must 
     - looks like 11 questions I asked for project-b68cd74. That's pretty efficient coding.
     - Probably a few more for project-3402007.md because I was being a bit more lax. but still. did 2 big projects in a day. Don't ever really need more than that???
 
-
 # Summary of what we need to work on regarding `target zones` :
 
-## Rename `key zones` to `target zones`
-    Currently, we use the term `key zones` in docs + probably code as well.
-    (previously known as `key zones` conceptually at least, maybe not in app yet.)
-    I want to rename `key zones` to `target zones` (`key zones` is imprecise term)
-    Need update spec.md as bare minimum.
 
-## Incorporate `qualifying reversal zones` (`QRZ`) into `target zones` list
-- Currently, the only zones that qualify as `target zones` are `qualifying sticky zones` (`QST`) (using very imperfect algos in `docs/zones/zone_scoring.md`)
-- I would like to add `qualifying reversal zones` as `target zones` as well (see 2.4 of "System outline" section)
-- Q: What happens during `merge` of `QRZ` and `QSV`? There are possbilities of overlaps etc. I guess we keep them as separate sub-lists. as we need to know whether the target zone is a reversal zone or sticky zone.
-
-# 💡 Testing tip
-Always be scaling price_horizon up and down. Very good way to get many different views of what this new algo does.
-Do we end up with more and more output zones as we scale up the number of input zones?
-    If so, it's not scale-independent is it.
-
-# WE have giant SR zones again
-Don't panic, what can we do ....
-Do a checklist of what to change
-IF X happens turn knob X down....
-etc.
-
-
-
-
-## What to change to get more or less reversal zones:
-Not sure good value for reversal_threshold. Depends how many reversal zones we want I guess.
-# Try getting rid of islands ow as well
-Done that. Still get lots of zones stuck together. SO maybe don't want islands at all for wicks.
-# We now have temporal weighting in as well.
-But this has not been tested really. Not sure how to test
-# Tooltips are useless for wicks
-Not sure would be useful to print, though. Maybe absolute numbers. How many wicks? Maybe a minimum % qualifying threshold?
-So maybe show abs % numbers in plot for reversal zones, not normalized.
-# Reversal plots What we haven't done yet is fix tallest dwarf effect (but don't know how to, yet)
-(This is still true, right?) Reversal Zones: This creates the "Tallest Dwarf" visual effect. The background bars will stretch to the right even if the (strongest) zone is weak.
-# "B"ackground key
-"B" key currently to toggel round background plot type. See if reverals anything, particularly with reversal zones.
-Note this is not gated for debug, it works for anyone
-Is there a better way to trigger this change-  something more auto?
 # Find cases where high/low wicks are significatly different than sticky zones
-This is the real point of it after all
+This is the real point of it after all. This should be real reversal areas
+Maybe there is truck in contrasting sticky zones with reversal zones
 # Do low wick areas and high wick areas every vary much?
 Maybe off into price discovery I would have thought
+
+
+# Summary of plots stuff
+Left with 'null window' hanging around
+
+# B key to select background bars
+Much too manual job at the moment
+Should be tied to which zones we are currently viewing
+But if we do that, can't view all zones on same map. Not good.
+"B" key currently to toggel round background plot type. See if reverals anything, particularly with reversal zones.
+
+# Overlapping zones
+what to do about them
+how to turn each type of zone on and off in legend
+Can legend group bars of same type?
+That would be great I think
+Think it is connected with zone name though or something?
+maybe an id thing? Not sure.... it did used to work like that
 # What does it mean if live price is in both:
 Active Resistance (wick), and
 Active Support (wick)
 at same time. Just overlapping zones?
-# Decide on final reversal_threshold
-current value: let reversal_threshold = 0.00001; // About 0.3% wick density 
 
-## Legend
-Can legend group bars of same type?
-That would be great.
+
+# Eventually add candlesticks
+Q. why don't background bars appear in the legend at all?
+Want one option in legend if possible.
+omg. but how can we drawn candles with interrupted price ranges? With interrupted candles I guess, lol.
+
+
+
 ## Sticky zone price target
 Shoud price target be center rather than nearest edge of sticky zone ? (seems more natural than aiming for edge of structure, right?)
 That's journey stuff I think, though, don't want let Gemimi loose on that yet, though, lol

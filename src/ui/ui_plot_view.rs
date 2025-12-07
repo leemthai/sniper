@@ -1,7 +1,7 @@
 use colorgrad::{CatmullRomGradient, Color, Gradient};
 use eframe::egui::{self, Color32, Stroke};
 use egui_plot::{
-    AxisHints, Bar, BarChart, Corner, HLine, HPlacement, Legend, Plot, PlotPoints, Polygon,
+    AxisHints, Bar, BarChart, Corner, HLine, HPlacement, Legend, Plot, PlotPoints, Polygon, CoordinatesFormatter,
 };
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -122,13 +122,13 @@ impl PlotView {
                     })
                     .collect()
             })
-            .label_formatter(move |_name, value| {
-                let pct = ((value.x - x_min) / total_width) * 100.;
-                format!(
-                    "{:.2}% {}\n${:.4}",
-                    pct, UI_TEXT.plot_strongest_zone, value.y
-                )
-            })
+            // FIX 1: Suppress Item Value Tooltips (Background bars, etc)
+            .label_formatter(|_, _| String::new())
+            // FIX 2: Suppress Mouse Coordinate Tooltips (The "Null Window")
+            .coordinates_formatter(
+                Corner::LeftBottom,
+                CoordinatesFormatter::new(|_, _| String::new()),
+            )
             .allow_scroll(false)
             .allow_zoom(false)
             .allow_drag(false)
@@ -227,14 +227,14 @@ impl PlotView {
 
                 let color = get_zone_color_from_zone_value(zone_score, &grad);
                 let dimmed_color = color.linear_multiply(PLOT_CONFIG.background_bar_intensity_pct);
-                let label = format!("Zone #{} (${:.2} - ${:.2})", original_index, z_min, z_max);
+
+                // let label = format!("Zone #{} (${:.2} - ${:.2})", original_index, z_min, z_max);
 
                 // Use 'Argument' (horizontal length) as the score
                 Bar::new(center_price, zone_score)
                     .width(bar_width * 0.9) // 90% width for slight gap
                     .fill(dimmed_color)
-                    .name(label)
-                // .orientation(egui_plot::Orientation::Horizontal)
+                // .name(label) // No name = No tooltip / No legend
             })
             .collect();
 
@@ -298,39 +298,40 @@ fn draw_background_plot(
     background_score_type: ScoreType,
 ) {
     let title = format!("{}", background_score_type);
-    let x_min = cache.x_min;
-    let total_width = cache.total_width;
+    // let x_min = cache.x_min;
+    // let total_width = cache.total_width;
+    let name = background_score_type.to_string();
     let chart = BarChart::new(title, cache.bars.clone())
         .color(PLOT_CONFIG.default_bar_color) // Legend color only
         .width(cache.bar_thickness)
+        .allow_hover(false)
         .horizontal()
-        .element_formatter(Box::new(move |bar, _chart| {
-            format!(
-                "{} {:.2}% {}\n${:.4}",
-                UI_TEXT.plot_this_zone_is,
-                ((bar.value - x_min) / total_width) * 100.,
-                UI_TEXT.plot_strongest_zone,
-                bar.argument
-            )
-        }));
+        .name(name);
+    // .element_formatter(Box::new(|_bar, _chart| String::new()));
     plot_ui.bar_chart(chart);
 }
 
 /// Draw the current price line with outer border for visibility
+
 fn draw_current_price(plot_ui: &mut egui_plot::PlotUi, current_pair_price: Option<f64>) {
     if let Some(price) = current_pair_price {
-        // Draw contrasting outer border first
-        let outer_line = HLine::new("Current Price", price)
-            .color(PLOT_CONFIG.current_price_outer_color)
-            .width(PLOT_CONFIG.current_price_outer_width)
-            .style(egui_plot::LineStyle::dashed_loose());
-        plot_ui.hline(outer_line);
-        // Draw inner colored line on top
-        let inner_line = HLine::new("Current Price", price)
-            .color(PLOT_CONFIG.current_price_color)
-            .width(PLOT_CONFIG.current_price_line_width)
-            .style(egui_plot::LineStyle::dashed_loose());
-        plot_ui.hline(inner_line);
+
+        let label = "Current Price";
+
+        // Outer Line (Border)
+        plot_ui.hline(
+            HLine::new(label, price)
+                .color(PLOT_CONFIG.current_price_outer_color)
+                .width(PLOT_CONFIG.current_price_outer_width)
+                .style(egui_plot::LineStyle::dashed_loose())
+        );
+
+        // Inner Line (Color)
+        plot_ui.hline(
+            HLine::new(label, price)
+                .color(PLOT_CONFIG.current_price_color)
+                .width(PLOT_CONFIG.current_price_line_width)
+        );
     }
 }
 
@@ -435,6 +436,7 @@ fn draw_classified_zones(
 }
 
 /// Draw a SuperZone from TradingModel as a semi-transparent filled rectangle
+/// // src/ui/ui_plot_view.rs
 fn draw_superzone(
     plot_ui: &mut egui_plot::PlotUi,
     superzone: &SuperZone,
@@ -443,32 +445,53 @@ fn draw_superzone(
     label: &str,
     color: Color32,
 ) {
-    let zone_bottom = superzone.price_bottom;
-    let zone_top = superzone.price_top;
-
-    // Create rectangle vertices (spanning full X-axis)
     let points = PlotPoints::new(vec![
-        [x_min, zone_bottom],
-        [x_max, zone_bottom],
-        [x_max, zone_top],
-        [x_min, zone_top],
+        [x_min, superzone.price_bottom],
+        [x_max, superzone.price_bottom],
+        [x_max, superzone.price_top],
+        [x_min, superzone.price_top],
     ]);
 
-    // Format the label with price details
-    // e.g. "Sticky #0 ($95,000.00 - $95,200.00)"
-    let tooltip_label = format!(
-        "{} #{} (${:.2} - ${:.2})",
-        label, superzone.id, superzone.price_bottom, superzone.price_top
-    );
-
-    // Draw semi-transparent filled polygon with matching stroke
-    // Each superzone gets a unique identifier and a unique legend entry
-    let polygon = Polygon::new(format!("{} #{}", label, superzone.id), points)
+    // FIXED: Polygon::new(points) - No string in constructor
+    let polygon = Polygon::new("", points)
+        // Set explicit ID here using .id()
+        .id(egui::Id::new(format!("sz_{}_{}", label, superzone.id)))
         .fill_color(color.linear_multiply(PLOT_CONFIG.zone_fill_opacity_pct))
         .stroke(Stroke::new(1.0, color))
-        .name(tooltip_label) // Unique legend entry per superzone
-        .highlight(false)
-        .allow_hover(false);
+        .name(label) // Legend grouping
+        .highlight(true);
 
     plot_ui.polygon(polygon);
+
+    // 2. Manual Hit Test (For Rich Tooltip)
+    if let Some(pointer) = plot_ui.pointer_coordinate() {
+        if pointer.y >= superzone.price_bottom
+            && pointer.y <= superzone.price_top
+            && pointer.x >= x_min
+            && pointer.x <= x_max
+        {
+            // Define the layer for the tooltip (Topmost layer)
+            let tooltip_layer =
+                egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("zone_tooltips"));
+
+            // Use show_tooltip_at_pointer with the required LayerId
+            #[allow(deprecated)]
+            egui::show_tooltip_at_pointer(
+                plot_ui.ctx(),
+                tooltip_layer,
+                egui::Id::new(format!("tooltip_{}", superzone.id)),
+                |ui: &mut egui::Ui| {
+                    ui.label(egui::RichText::new(label).strong().color(color));
+                    ui.separator();
+                    ui.label(format!("ID: #{}", superzone.id));
+                    ui.label(format!(
+                        "Range: ${:.2} - ${:.2}",
+                        superzone.price_bottom, superzone.price_top
+                    ));
+                    let height = superzone.price_top - superzone.price_bottom;
+                    ui.label(format!("Height: ${:.2}", height));
+                },
+            );
+        }
+    }
 }
