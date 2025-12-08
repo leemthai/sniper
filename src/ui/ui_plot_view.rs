@@ -88,7 +88,7 @@ impl PlotView {
         let _legend = Legend::default().position(Corner::RightTop);
 
         Plot::new("my_plot")
-            .view_aspect(PLOT_CONFIG.plot_aspect_ratio)
+            // .view_aspect(PLOT_CONFIG.plot_aspect_ratio)
             .legend(_legend)
             .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_y_axes(vec![create_y_axis(pair_name)])

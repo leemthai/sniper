@@ -27,11 +27,6 @@ Cooolllll!!!!!!!!!!!!!!!!!!
 # WebGL isn't supported in WASM Version
 What is that all about? Has it stopped running for some reason?
 
-# On the price scale, how to ensure we get a price drawn at start of axis/
-Definitely need it to see start of price range.
-And for prices everywhere. Come up with a function or use a crate that prints fp more intelligently.
-So $283218.31, $1300.3231, $0.0000032 i.e total number of digits, something like that?
-
 # Never looked at this yet
             .view_aspect(PLOT_CONFIG.plot_aspect_ratio)
-I think it should adjust to the space availabel rather than being fixed 2:1 or whatever?
+I think it should adjust to the space available rather than being fixed 2:1 or whatever? I thought it went wrong when the user readjusts the app window size.....
