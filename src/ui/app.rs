@@ -265,6 +265,24 @@ impl DataState {
     }
 }
 
+// 1. Define the Visibility Structure
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct PlotVisibility {
+    pub sticky: bool,
+    pub low_wicks: bool,
+    pub high_wicks: bool,
+}
+
+impl Default for PlotVisibility {
+    fn default() -> Self {
+        Self {
+            sticky: true,
+            low_wicks: true,
+            high_wicks: true,
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct ZoneSniperApp {
     // UI state
@@ -278,6 +296,10 @@ pub struct ZoneSniperApp {
     pub(super) time_horizon_days: u64,
     #[serde(default)]
     pub(super) auto_duration_config: crate::domain::auto_duration::AutoDurationConfig,
+
+    // Persistent Plot Visibility
+    #[serde(default)] 
+    pub plot_visibility: PlotVisibility,
 
     // Data state - skip serialization since it contains runtime-only data
     #[serde(skip)]
@@ -1033,6 +1055,7 @@ impl ZoneSniperApp {
             sim_direction: SimDirection::default(),
             sim_step_size: SimStepSize::default(),
             debug_background_mode: default_debug_background_mode(),
+            plot_visibility: PlotVisibility::default(),
         }
     }
 

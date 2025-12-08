@@ -10,6 +10,7 @@ use colorgrad::Gradient; // Import needed for gradient.at()
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::trading_view::{SuperZone, TradingModel};
+use crate::ui::app::PlotVisibility;
 use crate::ui::ui_text::UI_TEXT;
 use crate::utils::maths_utils;
 
@@ -68,6 +69,7 @@ impl PlotView {
         cva_results: &CVACore,
         current_pair_price: Option<f64>,
         background_score_type: ScoreType,
+        visibility: &PlotVisibility,
     ) {
         let trading_model =
             TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);
@@ -114,7 +116,7 @@ impl PlotView {
                 plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
 
                 draw_background_plot(plot_ui, &cache);
-                draw_classified_zones(plot_ui, &trading_model, cache.x_min, cache.x_max);
+                draw_classified_zones(plot_ui, &trading_model, cache.x_min, cache.x_max, &visibility);
                 draw_current_price(plot_ui, current_pair_price);
             });
     }
@@ -280,18 +282,12 @@ fn draw_classified_zones(
     trading_model: &TradingModel,
     x_min: f64,
     x_max: f64,
+    visibility: &PlotVisibility,
 ) {
-    // let support_id = trading_model
-        // .nearest_support_superzone()
-        // .map(|z| z.id);
-    // let resistance_id = trading_model
-        // .nearest_resistance_superzone()
-        // .map(|z| z.id);
     let current_price = trading_model.current_price;
 
     // 1. Sticky Zones
-    // 1. Sticky Zones
-    if PLOT_CONFIG.show_sticky_zones {
+    if visibility.sticky {
         for superzone in &trading_model.zones.sticky_superzones {
             // Default to "Sticky" if we have no live price to compare against
             let mut label = "Sticky";
@@ -319,7 +315,7 @@ fn draw_classified_zones(
     }
 
     // 2. Low Wicks (Support)
-    if PLOT_CONFIG.show_low_wicks_zones {
+    if visibility.low_wicks {
         for superzone in &trading_model.zones.low_wicks_superzones {
             if let Some(price) = current_price {
                 if superzone.contains(price) {
@@ -346,7 +342,7 @@ fn draw_classified_zones(
     }
 
     // 3. High Wicks (Resistance)
-    if PLOT_CONFIG.show_high_wicks_zones {
+    if visibility.high_wicks {
         for superzone in &trading_model.zones.high_wicks_superzones {
             if let Some(price) = current_price {
                 if superzone.contains(price) {

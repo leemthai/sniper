@@ -43,11 +43,26 @@ pub struct UiText {
     pub plot_y_axis: &'static str,
     pub plot_strongest_zone: &'static str,
     pub plot_this_zone_is: &'static str,
+
+    pub label_volume: &'static str,
     pub label_reversal_support: &'static str,
     pub label_reversal_resistance: &'static str,
+    pub label_lower_wick_count: &'static str,
+    pub label_upper_wick_count:&'static str,
+    pub label_hvz: &'static str,
+    pub label_lower_wick_zones: &'static str,
+    pub label_upper_wick_zones: &'static str,
     pub label_hvz_above: &'static str,
     pub label_hvz_beneath: &'static str,
     pub label_hvz_within: &'static str,
+    pub label_help_background: &'static str,
+    pub label_help_sim_toggle_direction: &'static str,
+    pub label_help_sim_step_size: &'static str,
+    pub label_help_sim_activate_price_change: &'static str,
+    pub label_help_sim_jump_hvz: &'static str,
+    pub label_help_sim_jump_lower_wicks: &'static str,
+    pub label_help_sim_jump_higher_wicks: &'static str,
+
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -95,9 +110,25 @@ pub const UI_TEXT: UiText = UiText {
     plot_x_axis: "Key Zone Strength (0 % of the strongest zone)",
     plot_strongest_zone: "of strongest zone",
     plot_this_zone_is: "This zone is",
-    label_reversal_support: "High Lower Wick Density Zone (reversal likely) ",
-    label_reversal_resistance: "High Upper Wick Density Zone (reversal likely)",
-    label_hvz_above: "High Volume Zone (act as future resistance, bullish target price)",
-    label_hvz_beneath: "High Volume Zone (act as future support, bearish target price)",
-    label_hvz_within: "Inside `High Volume Zone` Now (consolidation likely)",
+    
+    label_volume: "Trading Volume",
+    label_lower_wick_count: "Lower Wick Count",
+    label_upper_wick_count: "Higher Wick Count",
+    label_hvz: "High Volume Zones",
+    label_lower_wick_zones: "Lower Wick Zones",
+    label_upper_wick_zones: "Upper Wick Zones",
+    label_reversal_support: "`High Lower Wick Count Zone` (HLWCZ)  (reversal likely) ",
+    label_reversal_resistance: "`High Upper Wick Count Zone` (HUWCZ)  (reversal likely)",
+    label_hvz_above: "`High Volume Zone` (HVZ) is above (if bullish, acts as future target price)",
+    label_hvz_beneath: "`High Volume Zone` (HVZ) is below (if bearish, acts as future target price)",
+    label_hvz_within: "Inside `High Volume Zone` (HVZ) now (consolidation likely)",
+
+    label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Count ,(3) Upper Wick Count",
+    label_help_sim_toggle_direction: "Toggle direction (⬆️ UP / ⬇️ DOWN)",
+    label_help_sim_step_size: "Cycle step size (0.1% → 1% → 5% → 10%)",
+    label_help_sim_activate_price_change:"Activate price change in current direction",
+    label_help_sim_jump_hvz: "Jump to next high volume zone (HVZ)",
+    label_help_sim_jump_lower_wicks: "Jump to next high lower wick count zone (HLWCZ)",
+    label_help_sim_jump_higher_wicks: "Jump to next high upper wick count zone (HUWCZ)",
+
 };

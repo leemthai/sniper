@@ -154,6 +154,7 @@ impl ZoneSniperApp {
                         cva_results,
                         self.current_pair_price,
                         self.debug_background_mode,
+                        &self.plot_visibility,
                     );
                 } else if !self.is_calculating() {
                     if let Some(error) = &self.data_state.last_error {
@@ -287,14 +288,14 @@ impl ZoneSniperApp {
 
                         ui.separator();
                         ui.label(
-                            egui::RichText::new("View:")
+                            egui::RichText::new("Background plot view:")
                                 .small()
                                 .color(egui::Color32::GRAY),
                         );
                         let mode_text = match self.debug_background_mode {
-                            ScoreType::FullCandleTVW => UI_TEXT.label_hvz_within,
-                            ScoreType::LowWickCount => UI_TEXT.label_hvz_beneath,
-                            ScoreType::HighWickCount => UI_TEXT.label_hvz_above,
+                            ScoreType::FullCandleTVW => UI_TEXT.label_volume,
+                            ScoreType::LowWickCount => UI_TEXT.label_lower_wick_count,
+                            ScoreType::HighWickCount => UI_TEXT.label_upper_wick_count,
                             _ => "Unknown",
                         };
 
@@ -332,9 +333,12 @@ impl ZoneSniperApp {
                             );
 
                             ui.label(
-                                egui::RichText::new(format!("Sticky:{:.0}%", model.coverage.sticky_pct))
-                                    .small()
-                                    .color(coverage_color(model.coverage.sticky_pct)),
+                                egui::RichText::new(format!(
+                                    "Sticky:{:.0}%",
+                                    model.coverage.sticky_pct
+                                ))
+                                .small()
+                                .color(coverage_color(model.coverage.sticky_pct)),
                             );
 
                             ui.label(
@@ -518,7 +522,13 @@ impl ZoneSniperApp {
                 let general_shortcuts = [
                     ("H", "Toggle this help panel"),
                     ("S", "Toggle Simulation Mode"),
-                    ("B", "Toggle Background Data"),
+                    ("B", UI_TEXT.label_help_background),
+                    ("1", &("Toggle ".to_owned() + &UI_TEXT.label_hvz)),
+                    ("2", &("Toggle ".to_owned() + &UI_TEXT.label_lower_wick_zones)),
+                    (
+                        "3",
+                        &("Toggle ".to_owned() + &UI_TEXT.label_upper_wick_zones),
+                    ),
                 ];
 
                 egui::Grid::new("general_shortcuts_grid")
@@ -537,13 +547,12 @@ impl ZoneSniperApp {
                     ui.add_space(5.0);
 
                     let sim_shortcuts = [
-                        ("D", "Toggle direction (▲ UP / ▼ DOWN)"),
-                        ("X", "Cycle step size (0.1% → 1% → 5% → 10%)"),
-                        ("A", "Activate price change in current direction"),
-                        ("1", "Jump to next sticky zone"),
-                        ("2", "Jump to next slippy zone"),
-                        ("3", "Jump to next low wick zone"),
-                        ("4", "Jump to next high wick zone"),
+                        ("D", UI_TEXT.label_help_sim_toggle_direction),
+                        ("X", UI_TEXT.label_help_sim_step_size),
+                        ("A", UI_TEXT.label_help_sim_activate_price_change),
+                        ("4", UI_TEXT.label_help_sim_jump_hvz),
+                        ("5", UI_TEXT.label_help_sim_jump_lower_wicks),
+                        ("6", UI_TEXT.label_help_sim_jump_higher_wicks),
                     ];
 
                     egui::Grid::new("sim_shortcuts_grid")
@@ -557,25 +566,27 @@ impl ZoneSniperApp {
 
                 #[cfg(debug_assertions)]
                 {
-                    ui.add_space(10.0);
-                    ui.separator();
-                    ui.add_space(5.0);
-                    ui.heading("Debug Shortcuts");
-                    ui.add_space(5.0);
-
                     // Note: any keys added here have to be hand-inserted in handle_global_shortcuts, too
                     let debug_shortcuts = [(
-                        "Cuts",
+                        "INSERT-HERE",
                         "Insert future debug only key-trigger operation here",
                     )];
 
-                    egui::Grid::new("debug_shortcuts_grid")
-                        .num_columns(2)
-                        .spacing([20.0, 8.0])
-                        .striped(true)
-                        .show(ui, |ui| {
-                            Self::render_shortcut_rows(ui, &debug_shortcuts);
-                        });
+                    if debug_shortcuts.len() > 1 {
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(5.0);
+                        ui.heading("Debug Shortcuts");
+                        ui.add_space(5.0);
+
+                        egui::Grid::new("debug_shortcuts_grid")
+                            .num_columns(2)
+                            .spacing([20.0, 8.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                Self::render_shortcut_rows(ui, &debug_shortcuts);
+                            });
+                    }
                 }
 
                 ui.add_space(10.0);
@@ -604,6 +615,17 @@ impl ZoneSniperApp {
 
     pub(super) fn handle_global_shortcuts(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
+            // Use 1/2/3 keys to toggle plot visibility
+            if i.key_pressed(egui::Key::Num1) {
+                self.plot_visibility.sticky = !self.plot_visibility.sticky;
+            }
+            if i.key_pressed(egui::Key::Num2) {
+                self.plot_visibility.low_wicks = !self.plot_visibility.low_wicks;
+            }
+            if i.key_pressed(egui::Key::Num3) {
+                self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks;
+            }
+
             if i.key_pressed(egui::Key::H) {
                 self.show_debug_help = !self.show_debug_help;
             }
@@ -627,6 +649,16 @@ impl ZoneSniperApp {
             }
 
             if self.is_simulation_mode {
+                    if i.key_pressed(egui::Key::Num4) {
+                        self.jump_to_next_zone("sticky");
+                    }
+                    if i.key_pressed(egui::Key::Num5) {
+                        self.jump_to_next_zone("low-wick");
+                    }
+                    if i.key_pressed(egui::Key::Num6) {
+                        self.jump_to_next_zone("high-wick");
+                    }
+
                 if i.key_pressed(egui::Key::D) {
                     self.sim_direction = match self.sim_direction {
                         SimDirection::Up => SimDirection::Down,
@@ -649,19 +681,6 @@ impl ZoneSniperApp {
                         SimDirection::Down => -percent,
                     };
                     self.adjust_simulated_price_by_percent(adjusted_percent);
-                }
-
-                if i.key_pressed(egui::Key::Num1) {
-                    self.jump_to_next_zone("sticky");
-                }
-                if i.key_pressed(egui::Key::Num2) {
-                    self.jump_to_next_zone("slippy");
-                }
-                if i.key_pressed(egui::Key::Num3) {
-                    self.jump_to_next_zone("low-wick");
-                }
-                if i.key_pressed(egui::Key::Num4) {
-                    self.jump_to_next_zone("high-wick");
                 }
             }
         });
