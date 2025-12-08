@@ -1,12 +1,9 @@
+use colorgrad::Gradient;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use colorgrad::Gradient;
-
 
 use eframe::egui::{self, Color32};
-use egui_plot::{
-    AxisHints, Corner, HPlacement, Legend, Plot,
-};
+use egui_plot::{AxisHints, Corner, HPlacement, Legend, Plot};
 
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::cva::{CVACore, ScoreType};
@@ -16,22 +13,22 @@ use crate::utils::maths_utils;
 
 // Import the new Layer System
 use crate::ui::plot_layers::{
-    LayerContext, PlotLayer, BackgroundLayer, StickyZoneLayer, ReversalZoneLayer, PriceLineLayer
+    BackgroundLayer, LayerContext, PlotLayer, PriceLineLayer, ReversalZoneLayer, StickyZoneLayer,
 };
 
 /// A lightweight representation of a background bar.
 #[derive(Clone)]
 pub struct BackgroundBar {
-    pub x_max: f64,    
-    pub y_center: f64, 
-    pub height: f64,   
+    pub x_max: f64,
+    pub y_center: f64,
+    pub height: f64,
     pub color: Color32,
 }
 
 #[derive(Clone)]
 pub struct PlotCache {
     pub cva_hash: u64,
-    pub bars: Vec<BackgroundBar>, 
+    pub bars: Vec<BackgroundBar>,
     pub y_min: f64,
     pub y_max: f64,
     pub x_min: f64,
@@ -54,9 +51,15 @@ impl PlotView {
         Self { cache: None }
     }
 
-    pub fn cache_hits(&self) -> usize { 0 }
-    pub fn cache_misses(&self) -> usize { 0 }
-    pub fn cache_hit_rate(&self) -> Option<f64> { None }
+    pub fn cache_hits(&self) -> usize {
+        0
+    }
+    pub fn cache_misses(&self) -> usize {
+        0
+    }
+    pub fn cache_hit_rate(&self) -> Option<f64> {
+        None
+    }
 
     pub fn clear_cache(&mut self) {
         self.cache = None;
@@ -79,6 +82,8 @@ impl PlotView {
 
         let cache = self.calculate_plot_data(cva_results, background_score_type);
         let pair_name = &cva_results.pair_name;
+        let (y_min, y_max) = cva_results.price_range.min_max();
+        let total_y_range = y_max - y_min;
 
         let _legend = Legend::default().position(Corner::RightTop);
 
@@ -87,14 +92,13 @@ impl PlotView {
             .legend(_legend)
             .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_y_axes(vec![create_y_axis(pair_name)])
-            
             // Suppress Defaults
-            .label_formatter(|_, _| String::new()) 
+            .label_formatter(|_, _| String::new())
             .x_grid_spacer(move |_input| {
                 let mut marks = Vec::new();
                 let (min, max) = _input.bounds;
                 let range = max - min;
-                let step_size = if range < 0.1 { 0.02 } else { 0.1 }; 
+                let step_size = if range < 0.1 { 0.02 } else { 0.1 };
                 let start = (min / step_size).ceil() as i64;
                 let end = (max / step_size).floor() as i64;
                 for i in start..=end {
@@ -103,6 +107,36 @@ impl PlotView {
                         marks.push(egui_plot::GridMark { value, step_size });
                     }
                 }
+                marks
+            })
+            // NEW: Force Y-Axis Labels at Start/End
+            .y_grid_spacer(move |_input| {
+                let mut marks = Vec::new();
+
+                // 1. Mandatory Start (Min Price)
+                marks.push(egui_plot::GridMark {
+                    value: y_min,
+                    step_size: total_y_range,
+                });
+
+                // 2. Mandatory End (Max Price)
+                marks.push(egui_plot::GridMark {
+                    value: y_max,
+                    step_size: total_y_range,
+                });
+
+                // 3. Fill in the middle (e.g. 5 even steps) to keep it readable
+                // We use a slightly different step_size so egui knows they are secondary
+                let divisions = 5;
+                let step = total_y_range / divisions as f64;
+                for i in 1..divisions {
+                    let value = y_min + (step * i as f64);
+                    marks.push(egui_plot::GridMark {
+                        value,
+                        step_size: step,
+                    });
+                }
+
                 marks
             })
             .allow_scroll(false)
@@ -114,12 +148,12 @@ impl PlotView {
                 let price = current_pair_price.unwrap_or(y_min);
                 let y_min_adjusted = y_min.min(price);
                 let y_max_adjusted = y_max.max(price);
-                
+
                 plot_ui.set_plot_bounds_y(y_min_adjusted..=y_max_adjusted);
                 plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
 
                 // --- LAYER RENDERING SYSTEM ---
-                
+
                 // 1. Create Context
                 let ctx = LayerContext {
                     trading_model: &trading_model,
@@ -150,12 +184,25 @@ impl PlotView {
         let time_decay_factor = cva_results.time_decay_factor;
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        cva_results.price_range.min_max().0.to_bits().hash(&mut hasher);
-        cva_results.price_range.min_max().1.to_bits().hash(&mut hasher);
+        cva_results
+            .price_range
+            .min_max()
+            .0
+            .to_bits()
+            .hash(&mut hasher);
+        cva_results
+            .price_range
+            .min_max()
+            .1
+            .to_bits()
+            .hash(&mut hasher);
         zone_count.hash(&mut hasher);
         score_type.hash(&mut hasher);
         time_decay_factor.to_bits().hash(&mut hasher);
-        cva_results.get_scores_ref(score_type).len().hash(&mut hasher);
+        cva_results
+            .get_scores_ref(score_type)
+            .len()
+            .hash(&mut hasher);
         let current_hash = hasher.finish();
 
         if let Some(cache) = &self.cache {
