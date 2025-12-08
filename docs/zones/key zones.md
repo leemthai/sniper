@@ -21,8 +21,13 @@ https://github.com/emilk/egui_plot/issues/200
 Shoud price target be center rather than nearest edge of sticky zone ? (seems more natural than aiming for edge of structure, right?)
 That's journey stuff I think, though, don't want let Gemimi loose on that yet, though, lol
 
-# Target zone is represented with a circle
+# Target zone should be represented with a circle (the sniper target zone)
 Cooolllll!!!!!!!!!!!!!!!!!!
 
 # WebGL isn't supported in WASM Version
 What is that all about? Has it stopped running for some reason?
+
+# On the price scale, how to ensure we get a price drawn at start of axis/
+Definitely need it to see start of price range.
+And for prices everywhere. Come up with a function or use a crate that prints fp more intelligently.
+So $283218.31, $1300.3231, $0.0000032 i.e total number of digits, something like that?
