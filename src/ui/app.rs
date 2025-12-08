@@ -12,8 +12,8 @@ use crate::config::ANALYSIS;
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::journeys::{JourneyExecution, Outcome};
+use crate::models::cva::ScoreType;
 use crate::models::{CVACore, PairContext, TradingModel};
-use crate::models::cva::{ScoreType};
 use crate::ui::app_async::AsyncCalcResult;
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
 use crate::ui::app_triggers::PairTriggerState;
@@ -288,7 +288,8 @@ pub struct ZoneSniperApp {
     // UI state
     #[serde(default = "default_selected_pair")]
     pub(super) selected_pair: Option<String>,
-    #[serde(skip, default = "default_zone_count")] // `skip` tells Serde not save this field in local storage.
+    #[serde(skip, default = "default_zone_count")]
+    // `skip` tells Serde not save this field in local storage.
     pub(super) zone_count: usize,
     #[serde(default = "default_time_decay_factor")]
     pub(super) time_decay_factor: f64,
@@ -298,7 +299,7 @@ pub struct ZoneSniperApp {
     pub(super) auto_duration_config: crate::domain::auto_duration::AutoDurationConfig,
 
     // Persistent Plot Visibility
-    #[serde(default)] 
+    #[serde(default)]
     pub plot_visibility: PlotVisibility,
 
     // Data state - skip serialization since it contains runtime-only data
@@ -1198,8 +1199,10 @@ impl eframe::App for ZoneSniperApp {
         self.handle_global_shortcuts(ctx);
 
         self.render_side_panel(ctx);
-        self.render_central_panel(ctx);
         self.render_status_panel(ctx);
+        // 3. Render Central Panel LAST
+        // Now it will respect the space taken by the status panel.
+        self.render_central_panel(ctx);
         if self.show_debug_help {
             self.render_help_panel(ctx);
         }
