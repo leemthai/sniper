@@ -32,6 +32,8 @@ pub struct PlotConfig {
     /// Background bar intensity (original score bars serve as background layer)
     /// Lower values = more dimmed, letting zone overlays stand out
     pub background_bar_intensity_pct: f32,
+    pub active_zone_stroke_color: Color32,
+    pub active_zone_stroke_width: f32,
 }
 
 pub const PLOT_CONFIG: PlotConfig = PlotConfig {
@@ -61,4 +63,8 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     plot_axis_divisions: 20,
     zone_fill_opacity_pct: 0.40,
     background_bar_intensity_pct: 0.2, // 0.001, // 0.75,
+
+    // I recommend Gold/Yellow for visibility against dark backgrounds
+    active_zone_stroke_color: Color32::from_rgb(200, 185, 0), // Gold
+    active_zone_stroke_width: 1.5, 
 };

@@ -121,7 +121,7 @@ pub const UI_TEXT: UiText = UiText {
     label_reversal_resistance: "`High Upper Wick Count Zone` (HUWCZ)  (reversal likely)",
     label_hvz_above: "`High Volume Zone` (HVZ) is above (if bullish, acts as future target price)",
     label_hvz_beneath: "`High Volume Zone` (HVZ) is below (if bearish, acts as future target price)",
-    label_hvz_within: "Inside `High Volume Zone` (HVZ) now (consolidation likely)",
+    label_hvz_within: "Inside `High Volume Zone` (HVZ) now (consolidating...)",
 
     label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Count ,(3) Upper Wick Count",
     label_help_sim_toggle_direction: "Toggle direction (⬆️ UP / ⬇️ DOWN)",

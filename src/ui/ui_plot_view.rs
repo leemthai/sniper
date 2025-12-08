@@ -1,11 +1,9 @@
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+use colorgrad::Gradient;
 use eframe::egui::{self, Color32, Stroke};
-use egui_plot::{
-    AxisHints, Corner, HPlacement, Legend, Plot, PlotPoints, Polygon,
-};
-use colorgrad::Gradient; // Import needed for gradient.at()
+use egui_plot::{AxisHints, Corner, HPlacement, Legend, Plot, PlotPoints, Polygon}; // Import needed for gradient.at()
 
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::cva::{CVACore, ScoreType};
@@ -27,7 +25,7 @@ pub struct BackgroundBar {
 pub struct PlotCache {
     pub cva_hash: u64,
     // CHANGED: Stores our custom struct instead of egui_plot::Bar
-    pub bars: Vec<BackgroundBar>, 
+    pub bars: Vec<BackgroundBar>,
     pub y_min: f64,
     pub y_max: f64,
     pub x_min: f64,
@@ -51,9 +49,15 @@ impl PlotView {
         Self { cache: None }
     }
 
-    pub fn cache_hits(&self) -> usize { 0 }
-    pub fn cache_misses(&self) -> usize { 0 }
-    pub fn cache_hit_rate(&self) -> Option<f64> { None }
+    pub fn cache_hits(&self) -> usize {
+        0
+    }
+    pub fn cache_misses(&self) -> usize {
+        0
+    }
+    pub fn cache_hit_rate(&self) -> Option<f64> {
+        None
+    }
 
     pub fn clear_cache(&mut self) {
         self.cache = None;
@@ -84,14 +88,13 @@ impl PlotView {
             .legend(_legend)
             .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_y_axes(vec![create_y_axis(pair_name)])
-            
             // // FIX ATTEMP: on-hover plot label. adding this code just renders a tiny empty box instead of default (x,y) box so not much use but at least it is small I guess
-            .label_formatter(|_, _| String::new()) 
+            .label_formatter(|_, _| String::new())
             .x_grid_spacer(move |_input| {
                 let mut marks = Vec::new();
                 let (min, max) = _input.bounds;
                 let range = max - min;
-                let step_size = if range < 0.1 { 0.02 } else { 0.1 }; 
+                let step_size = if range < 0.1 { 0.02 } else { 0.1 };
                 let start = (min / step_size).ceil() as i64;
                 let end = (max / step_size).floor() as i64;
                 for i in start..=end {
@@ -111,12 +114,18 @@ impl PlotView {
                 let price = current_pair_price.unwrap_or(y_min);
                 let y_min_adjusted = y_min.min(price);
                 let y_max_adjusted = y_max.max(price);
-                
+
                 plot_ui.set_plot_bounds_y(y_min_adjusted..=y_max_adjusted);
                 plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
 
-                draw_background_plot(plot_ui, &cache);
-                draw_classified_zones(plot_ui, &trading_model, cache.x_min, cache.x_max, &visibility);
+                draw_background_plot(plot_ui, &cache, background_score_type);
+                draw_classified_zones(
+                    plot_ui,
+                    &trading_model,
+                    cache.x_min,
+                    cache.x_max,
+                    &visibility,
+                );
                 draw_current_price(plot_ui, current_pair_price);
             });
     }
@@ -126,12 +135,25 @@ impl PlotView {
         let time_decay_factor = cva_results.time_decay_factor;
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        cva_results.price_range.min_max().0.to_bits().hash(&mut hasher);
-        cva_results.price_range.min_max().1.to_bits().hash(&mut hasher);
+        cva_results
+            .price_range
+            .min_max()
+            .0
+            .to_bits()
+            .hash(&mut hasher);
+        cva_results
+            .price_range
+            .min_max()
+            .1
+            .to_bits()
+            .hash(&mut hasher);
         zone_count.hash(&mut hasher);
         score_type.hash(&mut hasher);
         time_decay_factor.to_bits().hash(&mut hasher);
-        cva_results.get_scores_ref(score_type).len().hash(&mut hasher);
+        cva_results
+            .get_scores_ref(score_type)
+            .len()
+            .hash(&mut hasher);
         let current_hash = hasher.finish();
 
         if let Some(cache) = &self.cache {
@@ -232,14 +254,21 @@ fn to_egui_color(colorgrad_color: colorgrad::Color) -> Color32 {
 }
 
 /// Draw background plot using dumb Polygons (no interaction)
-fn draw_background_plot(
-    plot_ui: &mut egui_plot::PlotUi,
-    cache: &PlotCache,
-) {
+fn draw_background_plot(plot_ui: &mut egui_plot::PlotUi, cache: &PlotCache, score_type: ScoreType) {
+
+        // 1. Determine Label
+    let type_label = match score_type {
+        ScoreType::FullCandleTVW => "Trading Volume",
+        ScoreType::LowWickCount => "Lower Wick Count",
+        ScoreType::HighWickCount => "Upper Wick Count",
+        _ => "Unknown",
+    };
+    // 2. Create Group Name (Appears in Legend)
+    let legend_label = format!("Zone Strength: {}", type_label);
 
     for bar in &cache.bars {
         let half_h = bar.height / 2.0;
-        
+
         let points = PlotPoints::new(vec![
             [0.0, bar.y_center - half_h],
             [bar.x_max, bar.y_center - half_h],
@@ -247,7 +276,7 @@ fn draw_background_plot(
             [0.0, bar.y_center + half_h],
         ]);
 
-        let polygon = Polygon::new("Zone Strength",points)
+        let polygon = Polygon::new(&legend_label, points)
             .fill_color(bar.color)
             .allow_hover(false) // Note doesn't seem to help anything but default is aparently .allow_hover = true
             .stroke(Stroke::NONE); // Very important to have this code in i.e. set Stroke to None. If not, rendering of background bars is *very different*
@@ -286,87 +315,93 @@ fn draw_classified_zones(
 ) {
     let current_price = trading_model.current_price;
 
-    // 1. Sticky Zones
+    // Helper: Determine Color (Red/Green/Purple) based on price position
+    let get_zone_status = |zone: &SuperZone| -> Color32 {
+        if let Some(price) = current_price {
+            if zone.contains(price) {
+                PLOT_CONFIG.sticky_zone_color // Purple (Active)
+            } else if zone.price_center < price {
+                PLOT_CONFIG.support_zone_color // Green
+            } else {
+                PLOT_CONFIG.resistance_zone_color // Red
+            }
+        } else {
+            PLOT_CONFIG.sticky_zone_color
+        }
+    };
+
+    // Helper: Determine Stroke (Gold if active)
+    let get_stroke = |zone: &SuperZone, base_color: Color32| -> Stroke {
+        let is_active = current_price.map(|p| zone.contains(p)).unwrap_or(false);
+
+        if is_active {
+            Stroke::new(
+                PLOT_CONFIG.active_zone_stroke_width,
+                PLOT_CONFIG.active_zone_stroke_color,
+            )
+        } else {
+            Stroke::new(1.0, base_color)
+        }
+    };
+
+       // 1. Sticky Zones (Wide, Faint)
     if visibility.sticky {
         for superzone in &trading_model.zones.sticky_superzones {
-            // Default to "Sticky" if we have no live price to compare against
-            let mut label = "Sticky";
-            let mut color = PLOT_CONFIG.sticky_zone_color;
+            let color = get_zone_status(superzone);
+            let label = UI_TEXT.label_hvz;
+            let stroke = get_stroke(superzone, color);
 
-            if let Some(price) = current_price {
-                let is_inside = superzone.contains(price);
-                
-                if is_inside {
-                    label = UI_TEXT.label_hvz_within;
-                    color = PLOT_CONFIG.price_within_any_zone_color;
-                } else if superzone.price_center < price {
-                    // ALL zones below are Support
-                    label = UI_TEXT.label_hvz_beneath;
-                    color = PLOT_CONFIG.support_zone_color;
-                } else {
-                    // ALL zones above are Resistance
-                    label = UI_TEXT.label_hvz_above;
-                    color = PLOT_CONFIG.resistance_zone_color;
-                }
-            }
-
-            draw_superzone(plot_ui, superzone, x_min, x_max, label, color);
+            draw_superzone(
+                plot_ui, superzone, x_min, x_max, &label, color, stroke, 1.0, 1.0, ZoneShape::Rectangle,
+            );
         }
     }
 
-    // 2. Low Wicks (Support)
+    // 2. Low Wicks (Narrow, Solid)
     if visibility.low_wicks {
         for superzone in &trading_model.zones.low_wicks_superzones {
-            if let Some(price) = current_price {
-                if superzone.contains(price) {
-                    draw_superzone(
-                        plot_ui,
-                        superzone,
-                        x_min,
-                        x_max,
-                        UI_TEXT.label_reversal_support,
-                        PLOT_CONFIG.price_within_any_zone_color,
-                    );
-                } else if superzone.price_center < price {
-                    draw_superzone(
-                        plot_ui,
-                        superzone,
-                        x_min,
-                        x_max,
-                        UI_TEXT.label_reversal_support,
-                        PLOT_CONFIG.low_wicks_zone_color,
-                    );
-                }
+            // Filter: Only draw if relevant (Below or Active)
+            let is_relevant = current_price
+                .map(|p| superzone.contains(p) || superzone.price_center < p)
+                .unwrap_or(false);
+
+            if is_relevant {
+                let color = get_zone_status(superzone);
+                let label = UI_TEXT.label_reversal_support;
+                let stroke = get_stroke(superzone, color);
+
+                draw_superzone(
+                    plot_ui, superzone, x_min, x_max, &label, color, stroke, 0.5, 1.5, ZoneShape::TriangleUp
+                );
             }
         }
     }
 
-    // 3. High Wicks (Resistance)
+        // 3. High Wicks (Narrow, Solid)
     if visibility.high_wicks {
         for superzone in &trading_model.zones.high_wicks_superzones {
-            if let Some(price) = current_price {
-                if superzone.contains(price) {
-                    draw_superzone(
-                        plot_ui,
-                        superzone,
-                        x_min,
-                        x_max,
-                        UI_TEXT.label_reversal_resistance,
-                        PLOT_CONFIG.price_within_any_zone_color,
-                    );
-                } else if superzone.price_center > price {
-                    draw_superzone(
-                        plot_ui,
-                        superzone,
-                        x_min,
-                        x_max,
-                        UI_TEXT.label_reversal_resistance,
-                        PLOT_CONFIG.high_wicks_zone_color,
-                    );
-                }
+            // Filter: Only draw if relevant (Above or Active)
+            let is_relevant = current_price
+                .map(|p| superzone.contains(p) || superzone.price_center > p)
+                .unwrap_or(false);
+
+            if is_relevant {
+                let color= get_zone_status(superzone);
+                let label = UI_TEXT.label_reversal_resistance;
+                let stroke = get_stroke(superzone, color);
+
+                draw_superzone(
+                    plot_ui, superzone, x_min, x_max, &label, color, stroke, 0.5, 1.5, ZoneShape::TriangleDown
+                );
             }
         }
     }
+}
+
+enum ZoneShape {
+    Rectangle,
+    TriangleUp,   // Flat bottom, points up
+    TriangleDown, // Flat top, points down
 }
 
 fn draw_superzone(
@@ -375,20 +410,46 @@ fn draw_superzone(
     x_min: f64,
     x_max: f64,
     label: &str,
-    color: Color32,
+    fill_color: Color32,
+    stroke: Stroke,
+    width_factor: f64,
+    opacity_factor: f32,
+    shape: ZoneShape,
 ) {
+    // Calculate Centered Width
+    let total_width = x_max - x_min;
+    let actual_width = total_width * width_factor;
+    let margin = (total_width - actual_width) / 2.0;
 
-    let points = PlotPoints::new(vec![
-        [x_min, superzone.price_bottom],
-        [x_max, superzone.price_bottom],
-        [x_max, superzone.price_top],
-        [x_min, superzone.price_top],
-    ]);
+    let z_x_min = x_min + margin;
+    let z_x_max = x_max - margin;
+    let z_x_center = z_x_min + (actual_width / 2.0);
+
+    let points_vec = match shape {
+        ZoneShape::Rectangle => vec![
+            [z_x_min, superzone.price_bottom],
+            [z_x_max, superzone.price_bottom],
+            [z_x_max, superzone.price_top],
+            [z_x_min, superzone.price_top],
+        ],
+        ZoneShape::TriangleUp => vec![
+            [z_x_min, superzone.price_bottom], // Bottom Left
+            [z_x_max, superzone.price_bottom], // Bottom Right
+            [z_x_center, superzone.price_top], // Top Point
+        ],
+        ZoneShape::TriangleDown => vec![
+            [z_x_min, superzone.price_top],    // Top Left
+            [z_x_max, superzone.price_top],    // Top Right
+            [z_x_center, superzone.price_bottom], // Bottom Point
+        ],
+    };
+
+    let points = PlotPoints::new(points_vec);
+    let final_color = fill_color.linear_multiply(PLOT_CONFIG.zone_fill_opacity_pct * opacity_factor);
 
     let polygon = Polygon::new(label, points)
-        // .id(egui::Id::new(format!("sz_{}_{}", label, superzone.id))) // Removed to fix legend toggling issue whereby egui_plot would only remove one item when toggled off in legend
-        .fill_color(color.linear_multiply(PLOT_CONFIG.zone_fill_opacity_pct))
-        .stroke(Stroke::new(1.0, color))
+        .fill_color(final_color)
+        .stroke(stroke)
         .highlight(true); // Highlight superzones
 
     plot_ui.polygon(polygon);
@@ -409,7 +470,7 @@ fn draw_superzone(
                 tooltip_layer,
                 egui::Id::new(format!("tooltip_{}", superzone.id)),
                 |ui: &mut egui::Ui| {
-                    ui.label(egui::RichText::new(label).strong().color(color));
+                    ui.label(egui::RichText::new(label).strong().color(fill_color));
                     ui.separator();
                     ui.label(format!("ID: #{}", superzone.id));
                     ui.label(format!(
