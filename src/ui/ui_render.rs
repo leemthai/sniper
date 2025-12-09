@@ -1,11 +1,12 @@
-use eframe::egui::{ScrollArea, Color32, RichText, Ui, Context, Grid, Key, SidePanel, TopBottomPanel, Margin, CentralPanel, Window, Frame};
-use std::sync::Arc;
+use eframe::egui::{
+    CentralPanel, Color32, Context, Frame, Grid, Key, Margin, RichText, ScrollArea, SidePanel,
+    TopBottomPanel, Ui, Window,
+};
 use std::time::Duration;
 
 use crate::config::ANALYSIS;
 use crate::data::price_stream::PriceStreamManager;
 use crate::models::cva::ScoreType;
-use crate::models::trading_view::TradingModel;
 use crate::ui::app_simulation::SimDirection;
 use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
 
@@ -43,10 +44,6 @@ impl ZoneSniperApp {
 
                 for event in data_events {
                     match event {
-                        DataGenerationEventChanged::ZoneCount(new_count) => {
-                            self.zone_count = new_count;
-                            self.schedule_selected_pair_recalc("zone count changed");
-                        }
                         DataGenerationEventChanged::Pair(new_pair) => {
                             self.handle_pair_selection(new_pair);
                         }
@@ -151,13 +148,23 @@ impl ZoneSniperApp {
                 }
 
                 if let Some(cva_results) = &self.data_state.cva_results {
-                    self.plot_view.show_my_plot(
-                        ui,
-                        cva_results,
-                        self.current_pair_price,
-                        self.debug_background_mode,
-                        &self.plot_visibility,
-                    );
+                    // Use cached model if available
+                    if let Some(model) = &mut self.data_state.current_model {
+                        // Critical: Update the price on the cached model before drawing
+                        // This is cheap (just setting a floatand updating S/R pointers
+                        if let Some(p) = self.current_pair_price {
+                            model.update_price(p);
+                        }
+
+                        self.plot_view.show_my_plot(
+                            ui,
+                            cva_results,
+                            model,
+                            self.current_pair_price,
+                            self.debug_background_mode,
+                            &self.plot_visibility,
+                        );
+                    }
                 } else if !self.is_calculating() {
                     if let Some(error) = &self.data_state.last_error {
                         ui.vertical_centered(|ui| {
@@ -223,18 +230,28 @@ impl ZoneSniperApp {
                             ui.separator();
                         }
 
-                         // 2. Price Display
+                        // 2. Price Display
                         if let Some(ref pair) = self.selected_pair {
                             if self.is_simulation_mode {
                                 if let Some(sim_price) = self.simulated_prices.get(pair) {
-                                    ui.metric("💰", &format!("${:.2}", sim_price), Color32::from_rgb(255, 200, 100));
-                                    
-                                    if let Some(live_price) = self.price_stream.as_ref().and_then(|s| s.get_price(pair)) {
+                                    ui.metric(
+                                        "💰",
+                                        &format!("${:.2}", sim_price),
+                                        Color32::from_rgb(255, 200, 100),
+                                    );
+
+                                    if let Some(live_price) =
+                                        self.price_stream.as_ref().and_then(|s| s.get_price(pair))
+                                    {
                                         ui.label_subdued(format!("(live: ${:.2})", live_price));
                                     }
                                 }
                             } else if let Some(price) = self.current_pair_price {
-                                ui.metric("💰", &format!("${:.2}", price), Color32::from_rgb(100, 200, 255));
+                                ui.metric(
+                                    "💰",
+                                    &format!("${:.2}", price),
+                                    Color32::from_rgb(100, 200, 255),
+                                );
                             }
                             ui.separator();
                         }
@@ -244,8 +261,12 @@ impl ZoneSniperApp {
                             let zone_size = (cva_results.price_range.end_range
                                 - cva_results.price_range.start_range)
                                 / cva_results.zone_count as f64;
-                            
-                            ui.metric("📏 Zone Size", &format!("${:.2} (N={})", zone_size, cva_results.zone_count), Color32::from_rgb(180, 200, 255));
+
+                            ui.metric(
+                                "📏 Zone Size",
+                                &format!("${:.2} (N={})", zone_size, cva_results.zone_count),
+                                Color32::from_rgb(180, 200, 255),
+                            );
                             ui.separator();
                         }
 
@@ -259,7 +280,11 @@ impl ZoneSniperApp {
                             ScoreType::HighWickCount => UI_TEXT.label_upper_wick_count,
                             _ => "Unknown",
                         };
-                        ui.label(RichText::new(mode_text).small().color(Color32::from_rgb(0, 255, 255)));
+                        ui.label(
+                            RichText::new(mode_text)
+                                .small()
+                                .color(Color32::from_rgb(0, 255, 255)),
+                        );
                         ui.separator();
 
                         ui.label(
@@ -270,12 +295,8 @@ impl ZoneSniperApp {
                         ui.separator();
 
                         // Coverage Statistics
-                        if let Some(cva) = &self.data_state.cva_results {
-                            // We regenerate the model briefly to get the stats.
-                            // This is fast for 200 zones.
-                            let model =
-                                TradingModel::from_cva(Arc::clone(cva), self.current_pair_price);
-
+                        // NEW: Use Cache
+                        if let Some(model) = &self.data_state.current_model {
                             // Helper to color-code coverage
                             // > 30% is Red (Too much), < 5% is Yellow (Too little?), Green is good
                             let cov_color = |pct: f64| {
@@ -291,20 +312,33 @@ impl ZoneSniperApp {
                             // NEW STYLE: Using the Trait
                             ui.label_subdued("Coverage");
 
-                            ui.metric("Sticky", &format!("{:.0}%", model.coverage.sticky_pct), 
-                                cov_color(model.coverage.sticky_pct));
-                            
-                            ui.metric("R-Sup", &format!("{:.0}%", model.coverage.support_pct), 
-                                cov_color(model.coverage.support_pct));
+                            ui.metric(
+                                "Sticky",
+                                &format!("{:.0}%", model.coverage.sticky_pct),
+                                cov_color(model.coverage.sticky_pct),
+                            );
 
-                            ui.metric("R-Res", &format!("{:.0}%", model.coverage.resistance_pct), 
-                                cov_color(model.coverage.resistance_pct));
-                                
+                            ui.metric(
+                                "R-Sup",
+                                &format!("{:.0}%", model.coverage.support_pct),
+                                cov_color(model.coverage.support_pct),
+                            );
+
+                            ui.metric(
+                                "R-Res",
+                                &format!("{:.0}%", model.coverage.resistance_pct),
+                                cov_color(model.coverage.resistance_pct),
+                            );
+
                             ui.separator();
                         }
 
                         // 6. System & Model Status
-                        let pair_count = self.data_state.timeseries_collection.unique_pair_names().len();
+                        let pair_count = self
+                            .data_state
+                            .timeseries_collection
+                            .unique_pair_names()
+                            .len();
                         ui.label_subdued(format!("📊 {} pairs", pair_count));
 
                         // NEW: Data-driven status
@@ -327,14 +361,26 @@ impl ZoneSniperApp {
                                 let total: usize = ranges.iter().map(|(s, e)| e - s).sum();
                                 let ms = total as f64 * ANALYSIS.interval_width_ms as f64;
                                 let days = ms / (1000.0 * 60.0 * 60.0 * 24.0);
-                                
+
                                 // Refactored to use metric style
-                                ui.metric(&format!("🕒 {}", heading), &format!("{} candles ({:.1}d)", total, days), Color32::from_rgb(150, 200, 255));
+                                ui.metric(
+                                    &format!("🕒 {}", heading),
+                                    &format!("{} candles ({:.1}d)", total, days),
+                                    Color32::from_rgb(150, 200, 255),
+                                );
                             } else {
                                 ui.label_subdued(format!("🕒 {}: calculating…", heading));
                             }
-                            
-                            ui.metric("🧮 Decay", &format!("{:.3}", self.time_decay_factor), Color32::from_rgb(180, 200, 255));
+
+                            // UPDATED: Explicit text when Decay is 1.0
+                            let decay_text = if (self.time_decay_factor - 1.0).abs() < f64::EPSILON
+                            {
+                                "1.0 ( = OFF)".to_string()
+                            } else {
+                                format!("{:.3}", self.time_decay_factor)
+                            };
+
+                            ui.metric("🧮 Decay", &decay_text, Color32::from_rgb(180, 200, 255));
                         }
                         ui.separator();
 
@@ -348,7 +394,11 @@ impl ZoneSniperApp {
                             } else {
                                 ("🔴", Color32::from_rgb(200, 0, 0))
                             };
-                            ui.metric(&format!("{} Live Prices", icon), &format!("{:.0}% connected", health), color);
+                            ui.metric(
+                                &format!("{} Live Prices", icon),
+                                &format!("{:.0}% connected", health),
+                                color,
+                            );
                         }
                     });
 
@@ -360,7 +410,7 @@ impl ZoneSniperApp {
             });
     }
 
-#[cfg(debug_assertions)]
+    #[cfg(debug_assertions)]
     fn render_journey_debug_info(&self, ui: &mut Ui) {
         if !DEBUG_FLAGS.display_journey_status_lines {
             return;
@@ -382,7 +432,7 @@ impl ZoneSniperApp {
             }
 
             ui.separator();
-            
+
             // Current Line (Dynamic Color)
             ui.label(RichText::new(current_line).small().color(current_color));
 
@@ -395,7 +445,7 @@ impl ZoneSniperApp {
             }
 
             ui.separator();
-            
+
             // Aggregate Line (Dynamic Color)
             ui.label(RichText::new(aggregate_line).small().color(aggregate_color));
         });

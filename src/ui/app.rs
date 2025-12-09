@@ -59,6 +59,7 @@ pub struct DataState {
     pub timeseries_collection: TimeSeriesCollection,
     pub cva_results: Option<Arc<CVACore>>,
     pub generator: ZoneGenerator,
+    pub current_model: Option<TradingModel>,
     pub last_error: Option<AppError>,
 }
 
@@ -258,8 +259,9 @@ impl DataState {
     pub fn new(timeseries_collection: TimeSeriesCollection, generator: ZoneGenerator) -> Self {
         Self {
             timeseries_collection,
-            cva_results: None,
             generator,
+            cva_results: None,
+            current_model: None,
             last_error: None,
         }
     }
@@ -401,6 +403,23 @@ fn default_selected_pair() -> Option<String> {
 }
 
 fn default_time_decay_factor() -> f64 {
+    // CURRENT STATE: 1.0 (Equal Weighting / No Decay).
+    //
+    // RATIONALE:
+    // 1. "Support is Memory": Historic volume nodes often remain relevant for years.
+    //    Decaying them might erase valid long-term structure.
+    // 2. Tuning Stability: Current thresholds (Sticky 0.25, Wicks 0.000025) were tuned
+    //    assuming equal weighting. Changing weights changes the normalization baseline.
+    //
+    // FUTURE EXPERIMENTATION (Try 2.0):
+    // - Setting this to 2.0 activates "Annualized Decay" (Data today is 2x stronger
+    //   than data from 1 year ago).
+    // - The math handles short timeframes safely (1 month data ≈ 1.06 factor / Flat).
+    // - The math becomes aggressive on long timeframes (3 years data ≈ 8.0 factor).
+    //
+    // WARNING: This global factor affects ALL zones (Sticky & Reversal). Switching to 2.0
+    // may cause valid historical support/resistance to vanish below the threshold.
+    // Test extensively before changing.
     1.0
 }
 

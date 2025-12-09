@@ -25,8 +25,15 @@ That's journey stuff I think, though, don't want let Gemimi loose on that yet, t
 Cooolllll!!!!!!!!!!!!!!!!!!
 
 # Notes
-Stop re-running trading model just to produce coverage stats
-Do this after styles
+Weird thing when you get inside a Low Wick area, ie using Sim to move price up, it splits into Low Wick and High Wick Area. ie two 'interfering' triangles.
+Why does live price make a difference here? Oh yes, of course, because price defines what is low and high wick zoens. So they will change based on price.
+Seems fine then.
+
+# Play with time_decay_factor
+Try it at 2.0
+default_time_decay_factor() in app.rs
+How does it affect BTC / SOL etc.
+
 
 # WebGL isn't supported in WASM Version
 What is that all about? Has it stopped running for some reason?

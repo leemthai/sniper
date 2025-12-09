@@ -99,6 +99,9 @@ impl ZoneSniperApp {
                     if is_selected {
                         self.last_calculated_params = Some(params.clone());
                         self.data_state.cva_results = Some(Arc::clone(&cva_results));
+                        let price = self.get_display_price(&cva_results.pair_name);
+                        // New code. Build and cache the model ONCE.
+                        self.data_state.current_model = Some(TradingModel::from_cva(Arc::clone(&cva_results), price,));
                         self.data_state.last_error = None;
                     }
 

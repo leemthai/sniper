@@ -147,7 +147,7 @@ impl<'a> DataGenerationPanel<'a> {
 
 #[derive(Debug)]
 pub enum DataGenerationEventChanged {
-    ZoneCount(usize),
+    // ZoneCount(usize),
     Pair(String),
     AutoDurationThreshold(f64),
     TimeHorizonDays(u64),
@@ -158,12 +158,6 @@ impl<'a> Panel for DataGenerationPanel<'a> {
     fn render(&mut self, ui: &mut Ui) -> Vec<Self::Event> {
         let mut events = Vec::new();
         section_heading(ui, UI_TEXT.data_generation_heading);
-
-        // if let Some(zone_count) = self.render_zone_count_selector(ui) {
-        //     events.push(DataGenerationEventChanged::ZoneCount(zone_count));
-        // }
-        // ui.label(format!("Zones: {}", self.zone_count));
-        // spaced_separator(ui);
 
         // Auto duration display (always enabled)
         if let Some(threshold) = self.render_auto_duration_display(ui) {

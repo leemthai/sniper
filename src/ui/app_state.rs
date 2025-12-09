@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
+use crate::TradingModel;
 use crate::config::ANALYSIS;
-use crate::models::{find_matching_ohlcv};
-
-#[cfg(debug_assertions)]
-use crate::config::DEBUG_FLAGS;
+use crate::models::find_matching_ohlcv;
 
 use super::app::ZoneSniperApp;
 
@@ -56,16 +54,35 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn apply_cached_results_for_pair(&mut self, pair: &str) -> bool {
-        let Some(cva) = self.cva_results_by_pair.get(pair) else {
+        // 1. Extraction Phase (Immutable Borrow)
+        // We clone the Arc and Params immediately to release the borrow on `self`.
+        // 'map(Arc::clone)' increments the ref count, it doesn't deep copy the CVA data.
+        let cva_opt = self.cva_results_by_pair.get(pair).map(Arc::clone);
+        let params_opt = self.last_calculated_params_by_pair.get(pair).cloned();
+
+        // If no CVA, we can't do anything
+        let Some(cva) = cva_opt else {
             return false;
         };
 
-        self.data_state.cva_results = Some(Arc::clone(cva));
+        // 2. Update Phase (Mutable Borrow)
+        // Now that we own 'cva' and 'params_opt' independently, we can mutate 'self'.
 
-        if let Some(params) = self.last_calculated_params_by_pair.get(pair) {
+        // Restore Raw Data
+        self.data_state.cva_results = Some(Arc::clone(&cva));
+
+        // Get Price (Safe to call now)
+        let price = self.get_display_price(pair);
+
+        // Rebuild Model immediately
+        // We pass the owned 'cva' Arc here
+        self.data_state.current_model = Some(TradingModel::from_cva(cva, price));
+
+        // Restore Params
+        if let Some(params) = params_opt {
             self.computed_slice_indices = Some(params.slice_ranges.clone());
             self.last_price_range = Some(params.price_range);
-            self.last_calculated_params = Some(params.clone());
+            self.last_calculated_params = Some(params);
         }
 
         true
@@ -76,20 +93,21 @@ impl ZoneSniperApp {
             return;
         }
 
+        // 1. Wipe State (CRITICAL: Fixes "Ghost Data" bug)
+        self.data_state.cva_results = None;
+        self.data_state.current_model = None; // Clears old coverage stats immediately
+        self.data_state.last_error = None;
+        self.last_price_range = None;
+        self.computed_slice_indices = None;
+        self.last_calculated_params = None;
+
         self.selected_pair = Some(new_pair.clone());
 
+        // 2. Try Cache
         if self.apply_cached_results_for_pair(&new_pair) {
-            #[cfg(debug_assertions)]
-            if DEBUG_FLAGS.print_ui_interactions {
-                log::info!("[pair] Switched to {new_pair} using cached CVA results");
-            }
+            // Success: state is now populated with NEW pair data
             return;
         }
-
-        self.data_state.cva_results = None;
-        self.computed_slice_indices = None;
-        self.last_price_range = None;
-        self.last_calculated_params = None;
 
         let price_hint = self.get_display_price(&new_pair);
         self.mark_pair_trigger_stale(&new_pair, "first selection (no cached CVA)", price_hint);

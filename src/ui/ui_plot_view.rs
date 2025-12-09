@@ -1,6 +1,5 @@
 use colorgrad::Gradient;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 
 use eframe::egui::{self, Color32};
 use egui_plot::{AxisHints, Corner, HPlacement, Legend, Plot};
@@ -73,12 +72,13 @@ impl PlotView {
         &mut self,
         ui: &mut egui::Ui,
         cva_results: &CVACore,
+        trading_model: &TradingModel,
         current_pair_price: Option<f64>,
         background_score_type: ScoreType,
         visibility: &crate::ui::app::PlotVisibility,
     ) {
-        let trading_model =
-            TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);
+        // let trading_model =
+        //     TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);
 
         let cache = self.calculate_plot_data(cva_results, background_score_type);
         let pair_name = &cva_results.pair_name;
