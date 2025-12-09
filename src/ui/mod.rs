@@ -12,6 +12,7 @@ pub mod ui_render;
 pub mod ui_text;
 pub mod utils;
 pub mod plot_layers;
+pub mod styles;
 
 // Re-export main app
 pub use app::ZoneSniperApp;

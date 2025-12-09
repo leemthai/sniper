@@ -1,14 +1,16 @@
-use eframe::egui::{self, ScrollArea};
+use eframe::egui::{ScrollArea, Color32, RichText, Ui, Context, Grid, Key, SidePanel, TopBottomPanel, Margin, CentralPanel, Window, Frame};
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::config::ANALYSIS;
 use crate::data::price_stream::PriceStreamManager;
 use crate::models::cva::ScoreType;
+use crate::models::trading_view::TradingModel;
 use crate::ui::app_simulation::SimDirection;
-use crate::ui::config::UI_CONFIG;
 use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
 
-use crate::ui::config::UI_TEXT;
+use crate::ui::config::{UI_CONFIG, UI_TEXT};
+use crate::ui::styles::UiStyleExt;
 
 use super::app::ZoneSniperApp;
 
@@ -16,9 +18,9 @@ use super::app::ZoneSniperApp;
 use crate::config::DEBUG_FLAGS;
 
 impl ZoneSniperApp {
-    pub(super) fn render_side_panel(&mut self, ctx: &egui::Context) {
-        let side_panel_frame = egui::Frame::new().fill(UI_CONFIG.colors.side_panel);
-        egui::SidePanel::left("left_panel")
+    pub(super) fn render_side_panel(&mut self, ctx: &Context) {
+        let side_panel_frame = Frame::new().fill(UI_CONFIG.colors.side_panel);
+        SidePanel::left("left_panel")
             .min_width(140.0)
             .frame(side_panel_frame)
             .show(ctx, |ui| {
@@ -71,9 +73,9 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_central_panel(&mut self, ctx: &egui::Context) {
-        let central_panel_frame = egui::Frame::new().fill(UI_CONFIG.colors.central_panel);
-        egui::CentralPanel::default()
+    pub(super) fn render_central_panel(&mut self, ctx: &Context) {
+        let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
+        CentralPanel::default()
             .frame(central_panel_frame)
             .show(ctx, |ui| {
                 ui.add_space(10.0);
@@ -174,8 +176,8 @@ impl ZoneSniperApp {
                             ui.heading("Preparing live data...");
                             ui.add_space(6.0);
                             ui.label(
-                                egui::RichText::new("Connecting to the price feed")
-                                    .color(egui::Color32::from_gray(190)),
+                                RichText::new("Connecting to the price feed")
+                                    .color(Color32::from_gray(190)),
                             );
                         });
                     } else {
@@ -191,8 +193,8 @@ impl ZoneSniperApp {
                             }
                             ui.add_space(6.0);
                             ui.label(
-                                egui::RichText::new("Rebuilding zones with the latest settings")
-                                    .color(egui::Color32::from_gray(190)),
+                                RichText::new("Rebuilding zones with the latest settings")
+                                    .color(Color32::from_gray(190)),
                             );
                         });
                     }
@@ -200,240 +202,153 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_status_panel(&mut self, ctx: &egui::Context) {
-        let status_frame = egui::Frame::new()
+    pub(super) fn render_status_panel(&mut self, ctx: &Context) {
+        let status_frame = Frame::new()
             .fill(UI_CONFIG.colors.side_panel)
-            .inner_margin(egui::Margin::symmetric(8, 4));
-        egui::TopBottomPanel::bottom("status_panel")
+            .inner_margin(Margin::symmetric(8, 4));
+        TopBottomPanel::bottom("status_panel")
             .frame(status_frame)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
+                        // 1. Simulation Mode
                         if self.is_simulation_mode {
-                            ui.label(
-                                egui::RichText::new("🎮 SIMULATION MODE")
-                                    .strong()
-                                    .color(egui::Color32::from_rgb(255, 150, 0)),
-                            );
+                            ui.label_warning("🎮 SIMULATION MODE");
                             ui.separator();
-
-                            ui.label(
-                                egui::RichText::new(format!("{}", self.sim_direction))
-                                    .small()
-                                    .color(egui::Color32::from_rgb(200, 200, 255)),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!("| Step: {}", self.sim_step_size))
-                                    .small()
-                                    .color(egui::Color32::from_rgb(200, 200, 255)),
-                            );
+                            ui.label_subdued(format!("{}", self.sim_direction));
+                            ui.label_subdued(format!("| Step: {}", self.sim_step_size));
                             ui.separator();
                         } else {
-                            ui.label(
-                                egui::RichText::new("📡 LIVE MODE")
-                                    .small()
-                                    .color(egui::Color32::from_rgb(100, 200, 100)),
-                            );
+                            ui.metric("📡", "LIVE MODE", Color32::from_rgb(100, 200, 100));
                             ui.separator();
                         }
 
+                         // 2. Price Display
                         if let Some(ref pair) = self.selected_pair {
                             if self.is_simulation_mode {
                                 if let Some(sim_price) = self.simulated_prices.get(pair) {
-                                    ui.label(
-                                        egui::RichText::new(format!("💰 ${:.2}", sim_price))
-                                            .strong()
-                                            .color(egui::Color32::from_rgb(255, 200, 100)),
-                                    );
-                                    if let Some(live_price) = self
-                                        .price_stream
-                                        .as_ref()
-                                        .and_then(|stream| stream.get_price(pair))
-                                    {
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "(live: ${:.2})",
-                                                live_price
-                                            ))
-                                            .small()
-                                            .color(egui::Color32::GRAY),
-                                        );
+                                    ui.metric("💰", &format!("${:.2}", sim_price), Color32::from_rgb(255, 200, 100));
+                                    
+                                    if let Some(live_price) = self.price_stream.as_ref().and_then(|s| s.get_price(pair)) {
+                                        ui.label_subdued(format!("(live: ${:.2})", live_price));
                                     }
                                 }
                             } else if let Some(price) = self.current_pair_price {
-                                ui.label(
-                                    egui::RichText::new(format!("💰 ${:.2}", price))
-                                        .color(egui::Color32::from_rgb(100, 200, 255)),
-                                );
+                                ui.metric("💰", &format!("${:.2}", price), Color32::from_rgb(100, 200, 255));
                             }
                             ui.separator();
                         }
 
+                        // 3. Zone Size
                         if let Some(ref cva_results) = self.data_state.cva_results {
                             let zone_size = (cva_results.price_range.end_range
                                 - cva_results.price_range.start_range)
                                 / cva_results.zone_count as f64;
-
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "📏 Zone Size: ${:.2} (N={})",
-                                    zone_size, cva_results.zone_count
-                                ))
-                                .small()
-                                .color(egui::Color32::from_rgb(180, 200, 255)), // Light blue for visibility
-                            );
-
+                            
+                            ui.metric("📏 Zone Size", &format!("${:.2} (N={})", zone_size, cva_results.zone_count), Color32::from_rgb(180, 200, 255));
                             ui.separator();
                         }
 
                         ui.separator();
-                        ui.label(
-                            egui::RichText::new("Background plot view:")
-                                .small()
-                                .color(egui::Color32::GRAY),
-                        );
+
+                        // 4. Background View Mode
+                        ui.label_subdued("Background plot view:");
                         let mode_text = match self.debug_background_mode {
                             ScoreType::FullCandleTVW => UI_TEXT.label_volume,
                             ScoreType::LowWickCount => UI_TEXT.label_lower_wick_count,
                             ScoreType::HighWickCount => UI_TEXT.label_upper_wick_count,
                             _ => "Unknown",
                         };
+                        ui.label(RichText::new(mode_text).small().color(Color32::from_rgb(0, 255, 255)));
+                        ui.separator();
 
                         ui.label(
-                            egui::RichText::new(mode_text)
+                            RichText::new(mode_text)
                                 .small()
-                                .color(egui::Color32::from_rgb(0, 255, 255)), // Cyan for visibility
+                                .color(Color32::from_rgb(0, 255, 255)), // Cyan for visibility
                         );
                         ui.separator();
 
+                        // Coverage Statistics
                         if let Some(cva) = &self.data_state.cva_results {
                             // We regenerate the model briefly to get the stats.
                             // This is fast for 200 zones.
-                            let model = crate::models::trading_view::TradingModel::from_cva(
-                                std::sync::Arc::clone(cva),
-                                self.current_pair_price,
-                            );
+                            let model =
+                                TradingModel::from_cva(Arc::clone(cva), self.current_pair_price);
 
                             // Helper to color-code coverage
                             // > 30% is Red (Too much), < 5% is Yellow (Too little?), Green is good
-                            let coverage_color = |pct: f64| {
+                            let cov_color = |pct: f64| {
                                 if pct > 30.0 {
-                                    egui::Color32::from_rgb(255, 100, 100)
+                                    Color32::from_rgb(255, 100, 100)
                                 }
                                 // Red warning
                                 else {
-                                    egui::Color32::from_rgb(150, 255, 150)
+                                    Color32::from_rgb(150, 255, 150)
                                 } // Green ok
                             };
 
-                            ui.label(
-                                egui::RichText::new("Coverage:")
-                                    .small()
-                                    .color(egui::Color32::GRAY),
-                            );
+                            // NEW STYLE: Using the Trait
+                            ui.label_subdued("Coverage");
 
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "Sticky:{:.0}%",
-                                    model.coverage.sticky_pct
-                                ))
-                                .small()
-                                .color(coverage_color(model.coverage.sticky_pct)),
-                            );
+                            ui.metric("Sticky", &format!("{:.0}%", model.coverage.sticky_pct), 
+                                cov_color(model.coverage.sticky_pct));
+                            
+                            ui.metric("R-Sup", &format!("{:.0}%", model.coverage.support_pct), 
+                                cov_color(model.coverage.support_pct));
 
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "R-Sup:{:.0}%",
-                                    model.coverage.support_pct
-                                ))
-                                .small()
-                                .color(coverage_color(model.coverage.support_pct)),
-                            );
-
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "R-Res:{:.0}%",
-                                    model.coverage.resistance_pct
-                                ))
-                                .small()
-                                .color(coverage_color(model.coverage.resistance_pct)),
-                            );
-
+                            ui.metric("R-Res", &format!("{:.0}%", model.coverage.resistance_pct), 
+                                cov_color(model.coverage.resistance_pct));
+                                
                             ui.separator();
                         }
-                        let pair_count = self
-                            .data_state
-                            .timeseries_collection
-                            .unique_pair_names()
-                            .len();
-                        ui.label(
-                            egui::RichText::new(format!("📊 {} pairs loaded", pair_count))
-                                .small()
-                                .color(egui::Color32::GRAY),
-                        );
 
-                        if let Some(summary) = self.model_status_summary() {
+                        // 6. System & Model Status
+                        let pair_count = self.data_state.timeseries_collection.unique_pair_names().len();
+                        ui.label_subdued(format!("📊 {} pairs", pair_count));
+
+                        // NEW: Data-driven status
+                        let status = self.model_status_summary();
+                        if status.is_calculating {
                             ui.separator();
-                            ui.label(
-                                egui::RichText::new(summary)
-                                    .small()
-                                    .color(egui::Color32::from_rgb(255, 165, 0)),
-                            );
+                            ui.label_warning("⚙ Updating CVA...");
+                        }
+                        if status.pairs_queued > 0 {
+                            ui.separator();
+                            ui.label_warning(format!("Journeys: {} queued", status.pairs_queued));
                         }
 
+                        // 7. Debug Horizon Info
                         #[cfg(debug_assertions)]
                         {
-                            let horizon_heading = UI_TEXT.price_horizon_heading;
-                            let horizon_text = if let Some(ranges) =
-                                self.computed_slice_indices.as_ref()
-                            {
-                                let total_candles: usize = ranges.iter().map(|(s, e)| e - s).sum();
-                                let total_ms =
-                                    total_candles as f64 * ANALYSIS.interval_width_ms as f64;
-                                let days = total_ms / (1000.0 * 60.0 * 60.0 * 24.0);
-                                format!(
-                                    "🕒 {}: {} candles ({:.1}d)",
-                                    horizon_heading, total_candles, days
-                                )
-                            } else {
-                                format!("🕒 {}: calculating…", horizon_heading)
-                            };
                             ui.separator();
-                            ui.label(
-                                egui::RichText::new(horizon_text)
-                                    .small()
-                                    .color(egui::Color32::from_rgb(150, 200, 255)),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "🧮 Decay: {:.3}",
-                                    self.time_decay_factor
-                                ))
-                                .small()
-                                .color(egui::Color32::from_rgb(180, 200, 255)),
-                            );
+                            let heading = UI_TEXT.price_horizon_heading;
+                            if let Some(ranges) = self.computed_slice_indices.as_ref() {
+                                let total: usize = ranges.iter().map(|(s, e)| e - s).sum();
+                                let ms = total as f64 * ANALYSIS.interval_width_ms as f64;
+                                let days = ms / (1000.0 * 60.0 * 60.0 * 24.0);
+                                
+                                // Refactored to use metric style
+                                ui.metric(&format!("🕒 {}", heading), &format!("{} candles ({:.1}d)", total, days), Color32::from_rgb(150, 200, 255));
+                            } else {
+                                ui.label_subdued(format!("🕒 {}: calculating…", heading));
+                            }
+                            
+                            ui.metric("🧮 Decay", &format!("{:.3}", self.time_decay_factor), Color32::from_rgb(180, 200, 255));
                         }
-
                         ui.separator();
 
+                        // 8. Network health
                         if let Some(ref stream) = self.price_stream {
                             let health = stream.connection_health();
                             let (icon, color) = if health >= 90.0 {
-                                ("🟢", egui::Color32::from_rgb(0, 200, 0))
+                                ("🟢", Color32::from_rgb(0, 200, 0))
                             } else if health >= 50.0 {
-                                ("🟡", egui::Color32::from_rgb(200, 200, 0))
+                                ("🟡", Color32::from_rgb(200, 200, 0))
                             } else {
-                                ("🔴", egui::Color32::from_rgb(200, 0, 0))
+                                ("🔴", Color32::from_rgb(200, 0, 0))
                             };
-
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{} Live Prices: {:.0}% connected",
-                                    icon, health
-                                ))
-                                .small()
-                                .color(color),
-                            );
+                            ui.metric(&format!("{} Live Prices", icon), &format!("{:.0}% connected", health), color);
                         }
                     });
 
@@ -445,9 +360,8 @@ impl ZoneSniperApp {
             });
     }
 
-    #[cfg(debug_assertions)]
-    fn render_journey_debug_info(&self, ui: &mut egui::Ui) {
-        // Only run if DISPLAY_JOURNEY_STATUS_LINES flag is enabled
+#[cfg(debug_assertions)]
+    fn render_journey_debug_info(&self, ui: &mut Ui) {
         if !DEBUG_FLAGS.display_journey_status_lines {
             return;
         }
@@ -459,55 +373,44 @@ impl ZoneSniperApp {
         let (aggregate_color, aggregate_line) = self.journey_aggregate_line();
 
         ui.vertical(|ui| {
-            ui.label(
-                egui::RichText::new(UI_TEXT.journey_status_heading)
-                    .small()
-                    .strong()
-                    .color(egui::Color32::from_rgb(220, 220, 200)),
-            );
+            // Header
+            ui.label_subdued(UI_TEXT.journey_status_heading.to_uppercase());
 
+            // Status Lines (Gray/Italic concept -> Subdued)
             for line in status_lines {
-                ui.label(
-                    egui::RichText::new(line)
-                        .small()
-                        .italics()
-                        .color(egui::Color32::from_rgb(180, 180, 200)),
-                );
+                ui.label_subdued(line);
             }
 
             ui.separator();
-            ui.label(
-                egui::RichText::new(current_line)
-                    .small()
-                    .color(current_color),
-            );
+            
+            // Current Line (Dynamic Color)
+            ui.label(RichText::new(current_line).small().color(current_color));
 
+            // Zone Lines (Dynamic Colors)
             for (color, line) in zone_lines {
                 ui.horizontal(|ui| {
                     ui.add_space(12.0);
-                    ui.label(egui::RichText::new(line).small().color(color));
+                    ui.label(RichText::new(line).small().color(color));
                 });
             }
 
             ui.separator();
-            ui.label(
-                egui::RichText::new(aggregate_line)
-                    .small()
-                    .color(aggregate_color),
-            );
+            
+            // Aggregate Line (Dynamic Color)
+            ui.label(RichText::new(aggregate_line).small().color(aggregate_color));
         });
     }
 
-    fn render_shortcut_rows(ui: &mut egui::Ui, rows: &[(&str, &str)]) {
+    fn render_shortcut_rows(ui: &mut Ui, rows: &[(&str, &str)]) {
         for (key, description) in rows {
-            ui.label(egui::RichText::new(*key).monospace().strong());
+            ui.label(RichText::new(*key).monospace().strong());
             ui.label(*description);
             ui.end_row();
         }
     }
 
-    pub(super) fn render_help_panel(&mut self, ctx: &egui::Context) {
-        egui::Window::new("⌨️ Keyboard Shortcuts")
+    pub(super) fn render_help_panel(&mut self, ctx: &Context) {
+        Window::new("⌨️ Keyboard Shortcuts")
             .open(&mut self.show_debug_help)
             .resizable(false)
             .collapsible(false)
@@ -524,14 +427,17 @@ impl ZoneSniperApp {
                     ("S", "Toggle Simulation Mode"),
                     ("B", UI_TEXT.label_help_background),
                     ("1", &("Toggle ".to_owned() + &UI_TEXT.label_hvz)),
-                    ("2", &("Toggle ".to_owned() + &UI_TEXT.label_lower_wick_zones)),
+                    (
+                        "2",
+                        &("Toggle ".to_owned() + &UI_TEXT.label_lower_wick_zones),
+                    ),
                     (
                         "3",
                         &("Toggle ".to_owned() + &UI_TEXT.label_upper_wick_zones),
                     ),
                 ];
 
-                egui::Grid::new("general_shortcuts_grid")
+                Grid::new("general_shortcuts_grid")
                     .num_columns(2)
                     .spacing([20.0, 8.0])
                     .striped(true)
@@ -555,7 +461,7 @@ impl ZoneSniperApp {
                         ("6", UI_TEXT.label_help_sim_jump_higher_wicks),
                     ];
 
-                    egui::Grid::new("sim_shortcuts_grid")
+                    Grid::new("sim_shortcuts_grid")
                         .num_columns(2)
                         .spacing([20.0, 8.0])
                         .striped(true)
@@ -579,7 +485,7 @@ impl ZoneSniperApp {
                         ui.heading("Debug Shortcuts");
                         ui.add_space(5.0);
 
-                        egui::Grid::new("debug_shortcuts_grid")
+                        Grid::new("debug_shortcuts_grid")
                             .num_columns(2)
                             .spacing([20.0, 8.0])
                             .striped(true)
@@ -595,13 +501,13 @@ impl ZoneSniperApp {
             });
     }
 
-    fn signals_panel(&mut self, ui: &mut egui::Ui) -> Vec<String> {
+    fn signals_panel(&mut self, ui: &mut Ui) -> Vec<String> {
         let signals = self.multi_pair_monitor.get_signals();
         let mut panel = SignalsPanel::new(signals);
         panel.render(ui)
     }
 
-    fn data_generation_panel(&mut self, ui: &mut egui::Ui) -> Vec<DataGenerationEventChanged> {
+    fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
         let available_pairs = self.data_state.timeseries_collection.unique_pair_names();
         let mut panel = DataGenerationPanel::new(
             self.zone_count,
@@ -613,29 +519,29 @@ impl ZoneSniperApp {
         panel.render(ui)
     }
 
-    pub(super) fn handle_global_shortcuts(&mut self, ctx: &egui::Context) {
+    pub(super) fn handle_global_shortcuts(&mut self, ctx: &Context) {
         ctx.input(|i| {
             // Use 1/2/3 keys to toggle plot visibility
-            if i.key_pressed(egui::Key::Num1) {
+            if i.key_pressed(Key::Num1) {
                 self.plot_visibility.sticky = !self.plot_visibility.sticky;
             }
-            if i.key_pressed(egui::Key::Num2) {
+            if i.key_pressed(Key::Num2) {
                 self.plot_visibility.low_wicks = !self.plot_visibility.low_wicks;
             }
-            if i.key_pressed(egui::Key::Num3) {
+            if i.key_pressed(Key::Num3) {
                 self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks;
             }
 
-            if i.key_pressed(egui::Key::H) {
+            if i.key_pressed(Key::H) {
                 self.show_debug_help = !self.show_debug_help;
             }
 
-            if i.key_pressed(egui::Key::Escape) && self.show_debug_help {
+            if i.key_pressed(Key::Escape) && self.show_debug_help {
                 self.show_debug_help = false;
             }
 
             // 'B'ackground plot type toggle
-            if i.key_pressed(egui::Key::B) {
+            if i.key_pressed(Key::B) {
                 // Cycle: Sticky -> LowWick -> HighWick -> Sticky
                 self.debug_background_mode = match self.debug_background_mode {
                     ScoreType::FullCandleTVW => ScoreType::LowWickCount,
@@ -644,22 +550,22 @@ impl ZoneSniperApp {
                 };
             }
 
-            if i.key_pressed(egui::Key::S) {
+            if i.key_pressed(Key::S) {
                 self.toggle_simulation_mode();
             }
 
             if self.is_simulation_mode {
-                    if i.key_pressed(egui::Key::Num4) {
-                        self.jump_to_next_zone("sticky");
-                    }
-                    if i.key_pressed(egui::Key::Num5) {
-                        self.jump_to_next_zone("low-wick");
-                    }
-                    if i.key_pressed(egui::Key::Num6) {
-                        self.jump_to_next_zone("high-wick");
-                    }
+                if i.key_pressed(Key::Num4) {
+                    self.jump_to_next_zone("sticky");
+                }
+                if i.key_pressed(Key::Num5) {
+                    self.jump_to_next_zone("low-wick");
+                }
+                if i.key_pressed(Key::Num6) {
+                    self.jump_to_next_zone("high-wick");
+                }
 
-                if i.key_pressed(egui::Key::D) {
+                if i.key_pressed(Key::D) {
                     self.sim_direction = match self.sim_direction {
                         SimDirection::Up => SimDirection::Down,
                         SimDirection::Down => SimDirection::Up,
@@ -668,13 +574,13 @@ impl ZoneSniperApp {
                     log::info!("🔄 Direction: {}", self.sim_direction);
                 }
 
-                if i.key_pressed(egui::Key::X) {
+                if i.key_pressed(Key::X) {
                     self.sim_step_size.cycle();
                     #[cfg(debug_assertions)]
                     log::info!("📏 Step size: {}", self.sim_step_size);
                 }
 
-                if i.key_pressed(egui::Key::A) {
+                if i.key_pressed(Key::A) {
                     let percent = self.sim_step_size.as_percentage();
                     let adjusted_percent = match self.sim_direction {
                         SimDirection::Up => percent,

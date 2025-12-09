@@ -24,6 +24,10 @@ That's journey stuff I think, though, don't want let Gemimi loose on that yet, t
 # Target zone should be represented with a circle (the sniper target zone)
 Cooolllll!!!!!!!!!!!!!!!!!!
 
+# Notes
+Stop re-running trading model just to produce coverage stats
+Do this after styles
+
 # WebGL isn't supported in WASM Version
 What is that all about? Has it stopped running for some reason?
 

@@ -803,42 +803,24 @@ impl ZoneSniperApp {
         lines
     }
 
-    pub(super) fn model_status_summary(&self) -> Option<String> {
-        let cva_pending = self.calculation_promise.is_some();
-        let queued = self.journey_queue.len();
-
-        let completed_pairs = self
+    // In ZoneSniperApp impl
+    pub(super) fn model_status_summary(&self) -> ModelStatusData {
+        let is_calculating = self.calculation_promise.is_some();
+        let (completed, total) = self
             .journey_aggregate
             .as_ref()
-            .map(|agg| agg.completed_pairs)
-            .unwrap_or(0);
+            .map(|agg| (agg.completed_pairs, agg.pair_count))
+            .unwrap_or((0, 0));
 
-        let total_jobs = completed_pairs + queued;
+        let queued = self.journey_queue.len();
 
-        // If there's no work in flight and nothing queued, report an explicit idle state.
-        if !cva_pending && queued == 0 {
-            if let Some(agg) = &self.journey_aggregate {
-                if agg.pair_count > 0 && agg.completed_pairs == agg.pair_count {
-                    return Some("Model Status: idle (all pairs up to date).".to_string());
-                }
-            }
-
-            return Some("Model Status: idle.".to_string());
+        ModelStatusData {
+            is_calculating,
+            pairs_queued: queued,
+            pairs_completed: completed,
+            total_pairs: total,
         }
-
-        // If we only know that CVA is running but have no journey progress yet, keep it simple.
-        if total_jobs == 0 {
-            return Some("Model Update in Progress".to_string());
-        }
-
-        let pct = (completed_pairs as f64 / total_jobs as f64) * 100.0;
-
-        Some(format!(
-            "Model Update in Progress: {}/{} = {:.0}%.",
-            completed_pairs, total_jobs, pct,
-        ))
     }
-
     #[cfg(debug_assertions)]
     fn format_journey_note_line(summary: &JourneySummary) -> String {
         let note = summary
@@ -1211,4 +1193,11 @@ impl eframe::App for ZoneSniperApp {
 
         self.drain_trigger_queue();
     }
+}
+
+pub struct ModelStatusData {
+    pub is_calculating: bool,
+    pub pairs_queued: usize,
+    pub pairs_completed: usize,
+    pub total_pairs: usize,
 }
