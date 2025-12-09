@@ -1,6 +1,10 @@
-use eframe::egui::{self, Color32, Stroke};
-use egui_plot::{PlotUi};
-use egui_plot::{PlotPoints, Polygon};
+use eframe::egui::{Color32, Stroke, RichText, LayerId, Order::Tooltip, Id, Ui};
+
+#[allow(deprecated)]
+use eframe::egui::show_tooltip_at_pointer;
+
+use egui_plot::{PlotPoints, Polygon, PlotUi, HLine};
+
 
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::cva::ScoreType;
@@ -8,6 +12,8 @@ use crate::models::trading_view::{SuperZone, TradingModel};
 use crate::ui::app::PlotVisibility;
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
+use crate::ui::utils::format_price;
+
 
 /// Context passed to every layer during rendering.
 /// This prevents argument explosion.
@@ -162,7 +168,6 @@ pub struct PriceLineLayer;
 impl PlotLayer for PriceLineLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         if let Some(price) = ctx.trading_model.current_price {
-            use egui_plot::HLine;
             let label = "Current Price";
 
             // Outer Line (Border)
@@ -278,23 +283,23 @@ fn draw_superzone(
            && pointer.x >= z_x_min 
            && pointer.x <= z_x_max 
         {
-            let tooltip_layer = egui::LayerId::new(
-                egui::Order::Tooltip,
-                egui::Id::new("zone_tooltips")
+            let tooltip_layer = LayerId::new(
+                Tooltip,
+                Id::new("zone_tooltips")
             );
 
             #[allow(deprecated)]
-            egui::show_tooltip_at_pointer(
+            show_tooltip_at_pointer(
                 plot_ui.ctx(),
                 tooltip_layer,
-                egui::Id::new(format!("tooltip_{}", superzone.id)),
-                |ui: &mut egui::Ui| {
-                    ui.label(egui::RichText::new(label).strong().color(fill_color));
+                Id::new(format!("tooltip_{}", superzone.id)),
+                |ui: &mut Ui| {
+                    ui.label(RichText::new(label).strong().color(fill_color));
                     ui.separator();
                     ui.label(format!("ID: #{}", superzone.id));
-                    ui.label(format!("Range: ${:.2} - ${:.2}", superzone.price_bottom, superzone.price_top));
+                    ui.label(format!("Range: {} - {}", format_price(superzone.price_bottom), format_price(superzone.price_top)));
                     let height = superzone.price_top - superzone.price_bottom;
-                    ui.label(format!("Height: ${:.2}", height));
+                    ui.label(format!("Height: {}", format_price(height)));
                 }
             );
         }

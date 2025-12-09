@@ -9,10 +9,10 @@ use crate::data::price_stream::PriceStreamManager;
 use crate::models::cva::ScoreType;
 use crate::ui::app_simulation::SimDirection;
 use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
-
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
 
+use crate::ui::utils::format_price;
 use super::app::ZoneSniperApp;
 
 #[cfg(debug_assertions)]
@@ -72,11 +72,13 @@ impl ZoneSniperApp {
 
     pub(super) fn render_central_panel(&mut self, ctx: &Context) {
         let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
+
         CentralPanel::default()
             .frame(central_panel_frame)
             .show(ctx, |ui| {
                 ui.add_space(10.0);
 
+                // Initialize streams/monitor if needed
                 if self.price_stream.is_none() {
                     let stream = PriceStreamManager::new();
                     let all_pairs = self.data_state.timeseries_collection.unique_pair_names();
@@ -84,126 +86,78 @@ impl ZoneSniperApp {
                     self.price_stream = Some(stream);
                 }
 
-                if !self.monitor_initialized {
+                if !self.monitor_initialized && self.price_stream.is_some() {
                     self.initialize_multi_pair_monitor();
                 }
 
                 if self.price_stream.is_some() {
-                    let all_pairs = self.data_state.timeseries_collection.unique_pair_names();
+                    // 1. Show Plot if data is ready
+                    if let Some(cva_results) = &self.data_state.cva_results {
+                        // Use CACHED model if available (Performance Optimization)
+                        if let Some(model) = &mut self.data_state.current_model {
+                            // Heartbeat (Keep UI alive for price updates)
+                            ctx.request_repaint_after(Duration::from_secs(1));
 
-                    let selected_pair = self.selected_pair.clone();
-                    let selected_waiting_for_price = selected_pair
-                        .as_ref()
-                        .map(|pair| self.get_display_price(pair).is_none())
-                        .unwrap_or(false);
-
-                    for pair in &all_pairs {
-                        if selected_waiting_for_price {
-                            if let Some(sel) = self.selected_pair.as_ref() {
-                                if sel != pair {
-                                    continue;
-                                }
+                            // Vital: Update the price on the cached model before drawing
+                            if let Some(p) = self.current_pair_price {
+                                model.update_price(p);
                             }
-                        }
 
-                        if let Some(new_price) = self.get_display_price(pair) {
-                            if let Some(trigger) = self.pair_triggers.get_mut(pair) {
-                                if trigger.consider_price_move(new_price)
-                                    && trigger.ready_to_schedule()
-                                {
-                                    trigger.pending_price = Some(new_price);
-                                }
-                            }
-                            if let Some(selected) = self.selected_pair.as_ref() {
-                                if selected == pair {
-                                    let ready = self
-                                        .pair_triggers
-                                        .get(pair)
-                                        .map(|trigger| trigger.ready_to_schedule())
-                                        .unwrap_or(false);
-
-                                    if ready && !self.is_calculating() {
-                                        self.enqueue_recalc_for_pair(pair.clone());
-                                    }
-                                }
-                            }
+                            // Pass the model explicitly
+                            self.plot_view.show_my_plot(
+                                ui,
+                                cva_results,
+                                model, // <--- Pass cached model
+                                self.current_pair_price,
+                                self.debug_background_mode,
+                                &self.plot_visibility,
+                            );
+                        } else {
+                            // Fallback if model missing (should be rare if CVA exists)
+                            // Ideally trigger a rebuild here or show loading
+                            render_fullscreen_message(
+                                ui,
+                                "Initializing Model...",
+                                "Please wait...",
+                                false,
+                            );
+                            // Self-healing: Trigger param check to rebuild model if stuck
+                            self.process_automatic_triggers();
                         }
                     }
-
-                    if let Some(pair) = self.selected_pair.clone() {
-                        let new_price = self.get_display_price(&pair);
-
-                        if let Some(price) = new_price {
-                            if let Some(trigger) = self.pair_triggers.get_mut(&pair) {
-                                if trigger.consider_price_move(price) && trigger.ready_to_schedule()
-                                {
-                                    trigger.pending_price = Some(price);
-                                }
-                            }
-                            self.current_pair_price = Some(price);
-                        }
-                    }
-
-                    ctx.request_repaint_after(Duration::from_secs(1));
-                }
-
-                if let Some(cva_results) = &self.data_state.cva_results {
-                    // Use cached model if available
-                    if let Some(model) = &mut self.data_state.current_model {
-                        // Critical: Update the price on the cached model before drawing
-                        // This is cheap (just setting a floatand updating S/R pointers
-                        if let Some(p) = self.current_pair_price {
-                            model.update_price(p);
-                        }
-
-                        self.plot_view.show_my_plot(
+                    // 2. Show Error
+                    else if let Some(error) = &self.data_state.last_error {
+                        render_fullscreen_message(
                             ui,
-                            cva_results,
-                            model,
-                            self.current_pair_price,
-                            self.debug_background_mode,
-                            &self.plot_visibility,
+                            "Unable to Generate Results",
+                            &format!("Error: {}", error),
+                            true,
                         );
                     }
-                } else if !self.is_calculating() {
-                    if let Some(error) = &self.data_state.last_error {
-                        ui.vertical_centered(|ui| {
-                            ui.add_space(40.0);
-                            ui.heading("⚠ Unable to Generate Results");
-                            ui.add_space(10.0);
-                            ui.label(format!("Error: {}", error));
-                            ui.add_space(20.0);
-                            ui.label("Please check your pair selection and try again.");
-                        });
-                    } else if self.current_pair_price.is_none() {
-                        ui.vertical_centered(|ui| {
-                            ui.add_space(40.0);
-                            ui.spinner();
-                            ui.add_space(12.0);
-                            ui.heading("Preparing live data...");
-                            ui.add_space(6.0);
-                            ui.label(
-                                RichText::new("Connecting to the price feed")
-                                    .color(Color32::from_gray(190)),
-                            );
-                        });
-                    } else {
-                        let pair_name = self.selected_pair.clone();
-                        ui.vertical_centered(|ui| {
-                            ui.add_space(40.0);
-                            ui.spinner();
-                            ui.add_space(12.0);
-                            if let Some(pair) = pair_name {
-                                ui.heading(format!("Preparing analysis for {}...", pair));
-                            } else {
-                                ui.heading("Preparing analysis...");
-                            }
-                            ui.add_space(6.0);
-                            ui.label(
-                                RichText::new("Rebuilding zones with the latest settings")
-                                    .color(Color32::from_gray(190)),
-                            );
-                        });
+                    // 3. Show "Connecting..." (No Price yet)
+                    else if self.current_pair_price.is_none() {
+                        render_fullscreen_message(
+                            ui,
+                            "Preparing live data...",
+                            "Connecting to the price feed",
+                            false,
+                        );
+                    }
+                    // 4. Show "Calculating..." (Has Price, No Result yet)
+                    else {
+                        let pair_text = self.selected_pair.as_deref().unwrap_or("");
+                        let title = if !pair_text.is_empty() {
+                            format!("Preparing analysis for {}...", pair_text)
+                        } else {
+                            "Preparing analysis...".to_string()
+                        };
+
+                        render_fullscreen_message(
+                            ui,
+                            &title,
+                            "Rebuilding zones with latest parameters...",
+                            false,
+                        );
                     }
                 }
             });
@@ -218,44 +172,60 @@ impl ZoneSniperApp {
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        // 1. Simulation Mode
-                        if self.is_simulation_mode {
-                            ui.label_warning("🎮 SIMULATION MODE");
-                            ui.separator();
-                            ui.label_subdued(format!("{}", self.sim_direction));
-                            ui.label_subdued(format!("| Step: {}", self.sim_step_size));
-                            ui.separator();
-                        } else {
-                            ui.metric("📡", "LIVE MODE", Color32::from_rgb(100, 200, 100));
-                            ui.separator();
-                        }
-
-                        // 2. Price Display
-                        if let Some(ref pair) = self.selected_pair {
+                        // 2. Simulation Mode / Live Price Logic
+                        if let Some(pair) = &self.selected_pair.clone() {
                             if self.is_simulation_mode {
-                                if let Some(sim_price) = self.simulated_prices.get(pair) {
-                                    ui.metric(
-                                        "💰",
-                                        &format!("${:.2}", sim_price),
-                                        Color32::from_rgb(255, 200, 100),
-                                    );
-
-                                    if let Some(live_price) =
-                                        self.price_stream.as_ref().and_then(|s| s.get_price(pair))
-                                    {
-                                        ui.label_subdued(format!("(live: ${:.2})", live_price));
-                                    }
-                                }
-                            } else if let Some(price) = self.current_pair_price {
-                                ui.metric(
-                                    "💰",
-                                    &format!("${:.2}", price),
-                                    Color32::from_rgb(100, 200, 255),
+                                // --- SIMULATION MODE UI ---
+                                ui.label(
+                                    RichText::new("SIMULATION MODE")
+                                        .strong()
+                                        .color(Color32::from_rgb(255, 150, 0)),
                                 );
-                            }
-                            ui.separator();
-                        }
+                                ui.separator();
 
+                                // Sim Controls Display
+                                ui.label(
+                                    RichText::new(format!("{}", self.sim_direction))
+                                        .small()
+                                        .color(Color32::from_rgb(200, 200, 255)),
+                                );
+                                ui.separator();
+                                ui.label(
+                                    RichText::new(format!("| Step: {}", self.sim_step_size))
+                                        .small()
+                                        .color(Color32::from_rgb(100, 200, 100)),
+                                );
+                                ui.separator();
+
+                                if let Some(sim_price) = self.simulated_prices.get(pair) {
+                                    ui.label(
+                                        RichText::new(format!("💰 {}", format_price(*sim_price)))
+                                            .strong()
+                                            .color(Color32::from_rgb(255, 200, 100)),
+                                    );
+                                }
+                            } else {
+                                // --- FIX: LIVE MODE UI ---
+                                // This else block was missing/empty in previous versions
+                                ui.label(
+                                    RichText::new("🟢 LIVE MODE")
+                                        .small()
+                                        .color(Color32::GREEN),
+                                );
+                                ui.separator();
+
+                                if let Some(price) = self.get_display_price(pair) {
+                                    ui.label(
+                                        RichText::new(format!("💰 {}", format_price(price)))
+                                            .strong()
+                                            .color(Color32::from_rgb(100, 200, 100)), // Light Green
+                                    );
+                                } else {
+                                    ui.label("Connecting...");
+                                }
+                            }
+                        }
+                        
                         // 3. Zone Size
                         if let Some(ref cva_results) = self.data_state.cva_results {
                             let zone_size = (cva_results.price_range.end_range
@@ -264,7 +234,7 @@ impl ZoneSniperApp {
 
                             ui.metric(
                                 "📏 Zone Size",
-                                &format!("${:.2} (N={})", zone_size, cva_results.zone_count),
+                                &format!("{} (N={})", format_price(zone_size), cva_results.zone_count),
                                 Color32::from_rgb(180, 200, 255),
                             );
                             ui.separator();
@@ -641,4 +611,28 @@ impl ZoneSniperApp {
             }
         });
     }
+}
+
+fn render_fullscreen_message(ui: &mut Ui, title: &str, subtitle: &str, is_error: bool) {
+    ui.vertical_centered(|ui| {
+        ui.add_space(40.0);
+
+        if is_error {
+            ui.heading(format!("⚠ {}", title));
+        } else {
+            ui.spinner();
+            ui.add_space(12.0);
+            ui.heading(title);
+        }
+
+        ui.add_space(6.0);
+
+        let text = RichText::new(subtitle).color(if is_error {
+            Color32::LIGHT_RED
+        } else {
+            Color32::from_gray(190)
+        });
+
+        ui.label(text);
+    });
 }

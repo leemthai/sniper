@@ -1,4 +1,4 @@
-use eframe::egui::{ComboBox, ScrollArea, Ui};
+use eframe::egui::{ComboBox, ScrollArea, Ui, Slider, RichText, Color32};
 use strum::IntoEnumIterator;
 
 use crate::config::ANALYSIS;
@@ -54,7 +54,7 @@ impl<'a> DataGenerationPanel<'a> {
 
         let mut threshold_pct = self.auto_duration_config.relevancy_threshold * 100.0;
         let response = ui.add(
-            eframe::egui::Slider::new(&mut threshold_pct, 2.0..=50.0)
+            Slider::new(&mut threshold_pct, 2.0..=50.0)
                 .step_by(1.0)
                 .suffix("%"),
         );
@@ -70,9 +70,9 @@ impl<'a> DataGenerationPanel<'a> {
             UI_TEXT.price_horizon_helper_suffix
         );
         ui.label(
-            eframe::egui::RichText::new(helper_text)
+            RichText::new(helper_text)
                 .small()
-                .color(eframe::egui::Color32::GRAY),
+                .color(Color32::GRAY),
         );
 
         changed
@@ -86,7 +86,7 @@ impl<'a> DataGenerationPanel<'a> {
 
         let mut horizon_days = self.time_horizon_days as f64;
         let response = ui.add(
-            eframe::egui::Slider::new(
+            Slider::new(
                 &mut horizon_days,
                 ANALYSIS.time_horizon.min_days as f64..=ANALYSIS.time_horizon.max_days as f64,
             )
@@ -106,9 +106,9 @@ impl<'a> DataGenerationPanel<'a> {
             UI_TEXT.time_horizon_helper_prefix, new_value, UI_TEXT.time_horizon_helper_suffix
         );
         ui.label(
-            eframe::egui::RichText::new(helper_text)
+            RichText::new(helper_text)
                 .small()
-                .color(eframe::egui::Color32::GRAY),
+                .color(Color32::GRAY),
         );
 
         changed
@@ -246,15 +246,15 @@ impl<'a> Panel for SignalsPanel<'a> {
 
         if self.signals.is_empty() {
             ui.label(
-                eframe::egui::RichText::new("No high-interest signals")
+                RichText::new("No high-interest signals")
                     .small()
-                    .color(eframe::egui::Color32::GRAY),
+                    .color(Color32::GRAY),
             );
         } else {
             ui.label(
-                eframe::egui::RichText::new(format!("{} active", self.signals.len()))
+                RichText::new(format!("{} active", self.signals.len()))
                     .small()
-                    .color(eframe::egui::Color32::from_rgb(100, 200, 255)),
+                    .color(Color32::from_rgb(100, 200, 255)),
             );
             ui.add_space(5.0);
 
@@ -277,7 +277,7 @@ impl<'a> Panel for SignalsPanel<'a> {
                         };
 
                         if let Some((text, color)) = zone_label {
-                            ui.label(eframe::egui::RichText::new(text).small().color(color));
+                            ui.label(RichText::new(text).small().color(color));
                         }
                     }
                 });

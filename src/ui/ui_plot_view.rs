@@ -1,7 +1,7 @@
 use colorgrad::Gradient;
 use std::hash::{Hash, Hasher};
 
-use eframe::egui::{self, Color32};
+use eframe::egui::{Color32, Ui};
 use egui_plot::{AxisHints, Corner, HPlacement, Legend, Plot};
 
 use crate::config::plot::PLOT_CONFIG;
@@ -9,6 +9,7 @@ use crate::models::cva::{CVACore, ScoreType};
 use crate::models::trading_view::TradingModel;
 use crate::ui::ui_text::UI_TEXT;
 use crate::utils::maths_utils;
+use crate::ui::utils::format_price;
 
 // Import the new Layer System
 use crate::ui::plot_layers::{
@@ -70,7 +71,7 @@ impl PlotView {
 
     pub fn show_my_plot(
         &mut self,
-        ui: &mut egui::Ui,
+        ui: &mut Ui,
         cva_results: &CVACore,
         trading_model: &TradingModel,
         current_pair_price: Option<f64>,
@@ -290,6 +291,6 @@ fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
     let label = format!("{}  {}", pair_name, UI_TEXT.plot_y_axis);
     AxisHints::new_y()
         .label(label)
-        .formatter(|grid_mark, _range| format!("${:.2}", grid_mark.value))
+        .formatter(|grid_mark, _range| format!("{}", format_price(grid_mark.value)))
         .placement(HPlacement::Left)
 }

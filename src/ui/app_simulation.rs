@@ -2,6 +2,9 @@ use std::sync::Arc;
 
 use super::ZoneSniperApp;
 use crate::models::TradingModel;
+#[cfg(debug_assertions)]
+use crate::ui::utils::format_price;
+
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
@@ -70,9 +73,9 @@ impl ZoneSniperApp {
                 #[cfg(debug_assertions)]
                 if DEBUG_FLAGS.print_simulation_events {
                     log::info!(
-                        "🎮 Initialized simulation price for {}: ${:.2}",
+                        "🎮 Initialized simulation price for {}: {}",
                         pair,
-                        live_price
+                        format_price(live_price)
                     );
                 }
             }
@@ -98,9 +101,9 @@ impl ZoneSniperApp {
                             #[cfg(debug_assertions)]
                             if DEBUG_FLAGS.print_simulation_events {
                                 log::info!(
-                                    "🎮 Entered SIMULATION MODE for {} at ${:.2}",
+                                    "🎮 Entered SIMULATION MODE for {} at {}",
                                     pair,
-                                    live_price
+                                    format_price(live_price),
                                 );
                             }
                         }
@@ -108,9 +111,9 @@ impl ZoneSniperApp {
                         #[cfg(debug_assertions)]
                         if DEBUG_FLAGS.print_simulation_events {
                             log::info!(
-                                "🎮 Entered SIMULATION MODE for {} at ${:.2} (restored)",
+                                "🎮 Entered SIMULATION MODE for {} at {} (restored)",
                                 pair,
-                                _sim_price
+                                format_price(*_sim_price),
                             );
                         }
                     }
@@ -142,10 +145,10 @@ impl ZoneSniperApp {
             #[cfg(debug_assertions)]
             if DEBUG_FLAGS.print_simulation_events {
                 log::info!(
-                    "💰 {} price: ${:.2} → ${:.2} ({:+.1}%)",
+                    "💰 {} price: {} → {} ({:+.1}%)",
                     pair,
-                    current_price,
-                    new_price,
+                    format_price(current_price),
+                    format_price(new_price),
                     percent
                 );
             }

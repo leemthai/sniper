@@ -47,3 +47,30 @@ pub fn spaced_separator(ui: &mut Ui) {
     ui.separator();
     ui.add_space(10.0);
 }
+
+/// Formats a price with "Trader Precision".
+/// - Large (>1000): 2 decimals ($95,123.50)
+/// - Medium (1-1000): 4 decimals ($12.4829)
+/// - Small (<1): 6-8 decimals ($0.00000231)
+pub fn format_price(price: f64) -> String {
+    if price == 0.0 {
+        return "$0.00".to_string();
+    }
+
+    // Determine magnitude
+    let abs_price = price.abs();
+
+    if abs_price >= 1000.0 {
+        // BTC: 2 decimals is standard for high value
+        format!("${:.2}", price)
+    } else if abs_price >= 1.0 {
+        // SOL/Normal Alts: 4 decimals captures the cents + fractions
+        format!("${:.4}", price)
+    } else if abs_price >= 0.01 {
+        // Pennies: 5 decimals
+        format!("${:.5}", price)
+    } else {
+        // Sub-penny / Meme coins: 8 decimals needed to see movement
+        format!("${:.8}", price)
+    }
+}

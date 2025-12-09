@@ -1,4 +1,9 @@
-use eframe::{Frame, egui};
+use eframe::Frame;
+
+use eframe::egui::{Context};
+#[cfg(debug_assertions)]
+use eframe::egui::{Color32};
+
 use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -428,6 +433,30 @@ fn default_time_horizon_days() -> u64 {
 }
 
 impl ZoneSniperApp {
+    /// Checks if any pair (specifically the selected one) needs a recalculation
+    /// and schedules it if the system is idle.
+    pub fn process_automatic_triggers(&mut self) {
+        if let Some(pair) = self.selected_pair.clone() {
+            // 1. UPDATE: Feed latest price into the trigger state
+            if let Some(current_price) = self.get_display_price(&pair) {
+                if let Some(trigger) = self.pair_triggers.get_mut(&pair) {
+                    trigger.consider_price_move(current_price);
+                }
+            }
+
+            // 2. CHECK: Now check if it's ready to run
+            let ready = self
+                .pair_triggers
+                .get(&pair)
+                .map(|t| t.ready_to_schedule())
+                .unwrap_or(false);
+
+            if ready && !self.is_calculating() {
+                self.enqueue_recalc_for_pair(pair);
+            }
+        }
+    }
+
     pub(super) fn record_journey_summary_success(
         &mut self,
         pair: &str,
@@ -601,27 +630,27 @@ impl ZoneSniperApp {
     }
 
     #[cfg(debug_assertions)]
-    pub(super) fn journey_status_line(&self) -> (egui::Color32, String) {
+    pub(super) fn journey_status_line(&self) -> (Color32, String) {
         if let Some(pair) = &self.selected_pair {
             if let Some(summary) = self.journey_summaries.get(pair) {
                 return match summary.status {
                     JourneySummaryStatus::Completed => (
-                        egui::Color32::from_rgb(130, 200, 140),
+                        Color32::from_rgb(130, 200, 140),
                         Self::format_current_journey_line(summary),
                     ),
                     JourneySummaryStatus::NoData => (
-                        egui::Color32::from_rgb(200, 200, 160),
+                        Color32::from_rgb(200, 200, 160),
                         Self::format_journey_note_line(summary),
                     ),
                     JourneySummaryStatus::Failed => (
-                        egui::Color32::from_rgb(220, 120, 120),
+                        Color32::from_rgb(220, 120, 120),
                         Self::format_journey_note_line(summary),
                     ),
                 };
             }
 
             return (
-                egui::Color32::from_rgb(160, 160, 160),
+                Color32::from_rgb(160, 160, 160),
                 format!(
                     "{} {}: {}",
                     UI_TEXT.journey_status_current_prefix, pair, UI_TEXT.journey_status_waiting
@@ -630,7 +659,7 @@ impl ZoneSniperApp {
         }
 
         (
-            egui::Color32::from_rgb(160, 160, 160),
+            Color32::from_rgb(160, 160, 160),
             format!(
                 "{}: {}",
                 UI_TEXT.journey_status_current_prefix, UI_TEXT.journey_status_waiting
@@ -639,15 +668,15 @@ impl ZoneSniperApp {
     }
 
     #[cfg(debug_assertions)]
-    pub(super) fn journey_aggregate_line(&self) -> (egui::Color32, String) {
+    pub(super) fn journey_aggregate_line(&self) -> (Color32, String) {
         if let Some(aggregate) = &self.journey_aggregate {
             if let Some(line) = Self::format_aggregate_journey_line(aggregate) {
-                return (egui::Color32::from_rgb(150, 200, 255), line);
+                return (Color32::from_rgb(150, 200, 255), line);
             }
         }
 
         (
-            egui::Color32::from_rgb(160, 160, 160),
+            Color32::from_rgb(160, 160, 160),
             format!(
                 "{}: {}",
                 UI_TEXT.journey_status_aggregate_prefix, UI_TEXT.journey_status_waiting
@@ -694,7 +723,7 @@ impl ZoneSniperApp {
     }
 
     #[cfg(debug_assertions)]
-    pub(super) fn current_journey_zone_lines(&self) -> Vec<(egui::Color32, String)> {
+    pub(super) fn current_journey_zone_lines(&self) -> Vec<(Color32, String)> {
         let mut lines = Vec::new(); // yes
 
         let pair = match &self.selected_pair {
@@ -1187,29 +1216,36 @@ impl eframe::App for ZoneSniperApp {
         eframe::set_value(storage, eframe::APP_KEY, &self);
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         setup_custom_visuals(ctx);
 
         // Poll async calculation
         self.poll_async_calculation(ctx);
-
-        // Drain any pending journey work for pairs whose CVA params have
-        // changed or that were enqueued during monitor initialisation.
         self.drain_journey_queue();
-
         self.handle_global_shortcuts(ctx);
 
-        // 2. Render Shell Panels (Side & Bottom) FIRST
+        // 2. Run Automatic Logic (Price Movement Checks)
+        // We do this BEFORE render so the UI reflects the "Calculating" state immediately if triggered.
+        self.process_automatic_triggers();
+
+        // 3. Render UI
+        //  Render Shell Panels (Side & Bottom) FIRST
         // This ensures they reserve space before the Central Panel calculates its size
         self.render_side_panel(ctx);
         self.render_status_panel(ctx);
-        // 3. Render Central Panel LAST
-        // Now it will respect the space taken by the status panel.
+        // 3. Render Central Panel LAST so it respect the space taken by the status panel.
         self.render_central_panel(ctx);
+
+        // 3. Help Panel Overlay
         if self.show_debug_help {
             self.render_help_panel(ctx);
         }
 
+        // 4. Drain Triggers (FINAL STEP)
+        // This catches events from:
+        // - process_automatic_triggers (above)
+        // - render_side_panel (user clicked a pair)
+        // - handle_global_shortcuts (user pressed 'A')
         self.drain_trigger_queue();
     }
 }

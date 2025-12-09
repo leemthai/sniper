@@ -1,5 +1,6 @@
 use crate::utils::app_time::now;
-use eframe::egui;
+use eframe::egui::Context;
+
 use poll_promise::Promise;
 use std::sync::Arc;
 use std::time::Duration;
@@ -52,7 +53,7 @@ impl ZoneSniperApp {
         self.calculation_promise = Some(promise);
     }
 
-    pub(super) fn poll_async_calculation(&mut self, ctx: &egui::Context) {
+    pub(super) fn poll_async_calculation(&mut self, ctx: &Context) {
         let outcome = self.calculation_promise.as_ref().and_then(|promise| {
             promise.ready().map(|calc_result| {
                 let result = calc_result
