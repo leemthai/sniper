@@ -1198,6 +1198,8 @@ impl eframe::App for ZoneSniperApp {
 
         self.handle_global_shortcuts(ctx);
 
+        // 2. Render Shell Panels (Side & Bottom) FIRST
+        // This ensures they reserve space before the Central Panel calculates its size
         self.render_side_panel(ctx);
         self.render_status_panel(ctx);
         // 3. Render Central Panel LAST

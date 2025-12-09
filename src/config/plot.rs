@@ -22,8 +22,6 @@ pub struct PlotConfig {
     pub current_price_line_width: f32,
     /// Width of current price outer stroke (for visibility)
     pub current_price_outer_width: f32,
-    /// Plot aspect ratio (width:height)
-    pub plot_aspect_ratio: f32,
     /// Plot x axis divisions (split axis into n equal parts)
     pub plot_axis_divisions: u32,
     /// Transparency/opacity for support and resistance zone rectangles (0.0 = invisible, 1.0 = fully opaque)
@@ -59,7 +57,6 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     zone_boundary_line_width: 2.0,
     current_price_line_width: 4.0,
     current_price_outer_width: 8.0,
-    plot_aspect_ratio: 2.0,
     plot_axis_divisions: 20,
     zone_fill_opacity_pct: 0.40,
     background_bar_intensity_pct: 0.2, // 0.001, // 0.75,
