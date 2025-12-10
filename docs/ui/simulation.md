@@ -6,16 +6,16 @@
      D - Direction of price movement (toggle)
      X - rotate cycle step size
      A - activate price change
-     1 - Jump to next sticky zone (respect `Direction`)
-     2 - Jump to next slippy zone (respect `Direction`)
-     3 - Jump to next reversal zone (respect `Direction`)
+     4 - Jump to next sticky zone (respect `Direction`)
+     5 - Jump to next slippy zone (respect `Direction`)
+     6 - Jump to next reversal zone (respect `Direction`)
 
 ## Sanity test checklist
 
 1. Enter simulation mode with `S` and confirm the status banner switches to **SIMULATION MODE**.
 2. Tap `A` ten times at the default 0.1% step and verify exactly one CVA recalculation runs (new trigger system).
 3. Toggle direction with `D`, press `A` once, and ensure no additional recalcs occur unless the cumulative move crosses the 1% threshold.
-4. Use `1`–`3` hotkeys to jump to zones and confirm the plot updates without forcing extra recalcs every frame.
+4. Use `4`–`6` hotkeys to jump to zones and confirm the plot updates without forcing extra recalcs every frame.
 5. Exit simulation mode with `S` and verify live pricing resumes (status banner returns to **LIVE MODE**).
 
 ## Questions:

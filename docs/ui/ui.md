@@ -1,3 +1,0 @@
-# All things UI
-Coming soon....
-See `docs/ui/trade_ui.md` for detailed information about the trade UI.
