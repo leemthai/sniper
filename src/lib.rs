@@ -13,8 +13,10 @@ pub mod models;
 pub mod ui;
 pub mod utils;
 
+// NEW: The engine
+pub mod engine;
+
 // Re-export commonly used types
-pub use analysis::ZoneGenerator;
 pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
 pub use domain::{Candle, PairInterval};
 pub use models::{CVACore, TimeSeriesSlice, TradingModel, Zone};
@@ -38,6 +40,10 @@ pub fn run_app(
     cc: &eframe::CreationContext,
     timeseries_data: TimeSeriesCollection,
 ) -> Box<dyn eframe::App> {
-    let app = ui::ZoneSniperApp::new(cc, timeseries_data);
+
+    // 1. Initialize the Engine (The Brain)
+    let engine = crate::engine::SniperEngine::new(timeseries_data);
+
+    let app = ui::ZoneSniperApp::new(cc, engine);
     Box::new(app)
 }

@@ -43,14 +43,8 @@ Seems fine then.
                 .suffix("%"),
         );
 
-# Later today (after 3pm)
-Once it is debugged, in config/analysis.rs 
-        price_recalc_threshold_pct: 0.000003,
-Set it back to default value once we have it sorted out
-
 # Notes: Don't forget any time we print prices, use format_price() instead of just ${:.2} or whatever.
 Fixed via format_price()
-
 
 # 0.35
 See when 0.35 version is due out and what features it will offer. Might help guide decision making

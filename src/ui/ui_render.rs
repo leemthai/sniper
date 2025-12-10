@@ -2,21 +2,17 @@ use eframe::egui::{
     CentralPanel, Color32, Context, Frame, Grid, Key, Margin, RichText, ScrollArea, SidePanel,
     TopBottomPanel, Ui, Window,
 };
-use std::time::Duration;
 
 use crate::config::ANALYSIS;
-use crate::data::price_stream::PriceStreamManager;
 use crate::models::cva::ScoreType;
 use crate::ui::app_simulation::SimDirection;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
-use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
+use crate::ui::ui_panels::{DataGenerationEventChanged, Panel};
 
 use super::app::ZoneSniperApp;
 use crate::ui::utils::format_price;
 
-#[cfg(debug_assertions)]
-use crate::config::DEBUG_FLAGS;
 
 impl ZoneSniperApp {
     pub(super) fn render_side_panel(&mut self, ctx: &Context) {
@@ -38,7 +34,6 @@ impl ZoneSniperApp {
                 for pair in opp_events {
                     if Some(&pair) != self.selected_pair.as_ref() {
                         self.selected_pair = Some(pair);
-                        self.schedule_selected_pair_recalc("selected from signals panel");
                     }
                 }
 
@@ -70,7 +65,9 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_central_panel(&mut self, ctx: &Context) {
+    pub(super) fn render_central_panel(&mut self, ctx: &eframe::egui::Context) {
+        use crate::ui::ui_render::render_fullscreen_message; // Ensure helper is available
+
         let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
 
         CentralPanel::default()
@@ -78,89 +75,48 @@ impl ZoneSniperApp {
             .show(ctx, |ui| {
                 ui.add_space(10.0);
 
-                // Initialize streams/monitor if needed
-                if self.price_stream.is_none() {
-                    let stream = PriceStreamManager::new();
-                    let all_pairs = self.data_state.timeseries_collection.unique_pair_names();
-                    stream.subscribe_all(all_pairs);
-                    self.price_stream = Some(stream);
-                }
+                // Safety check
+                let Some(engine) = &self.engine else {
+                    render_fullscreen_message(ui, "System Error", "Engine not initialized", true);
+                    return;
+                };
 
-                if !self.monitor_initialized && self.price_stream.is_some() {
-                    self.initialize_multi_pair_monitor();
-                }
+                let Some(pair) = self.selected_pair.clone() else {
+                    render_fullscreen_message(
+                        ui,
+                        "No Pair Selected",
+                        "Select a pair to begin",
+                        false,
+                    );
+                    return;
+                };
 
-                if self.price_stream.is_some() {
-                    // Heartbeat (Keep UI alive for price updates)
-                    // This ensures the UI refreshes (at least 1Hz) to show live prices / spinners
-                    // regardless of whether the model is ready or not.
-                    ctx.request_repaint_after(Duration::from_secs(1));
+                let current_price = self.get_display_price(&pair);
 
-                    // 1. Show Plot if data is ready
-                    if let Some(cva_results) = &self.data_state.cva_results {
-                        // Use CACHED model if available (Performance Optimization)
-                        if let Some(model) = &mut self.data_state.current_model {
-                            // Vital: Update the price on the cached model before drawing
-                            if let Some(p) = self.current_pair_price {
-                                model.update_price(p);
-                            }
+                // ASK THE ENGINE FOR DATA
+                if let Some(model) = engine.get_model(&pair) {
+                    // Success: We have a model. Draw it.
 
-                            // Pass the model explicitly
-                            self.plot_view.show_my_plot(
-                                ui,
-                                cva_results,
-                                model, // <--- Pass cached model
-                                self.current_pair_price,
-                                self.debug_background_mode,
-                                &self.plot_visibility,
-                            );
-                        } else {
-                            // Fallback if model missing (should be rare if CVA exists)
-                            // Ideally trigger a rebuild here or show loading
-                            render_fullscreen_message(
-                                ui,
-                                "Initializing Model...",
-                                "Please wait...",
-                                false,
-                            );
-                            // Self-healing: Trigger param check to rebuild model if stuck
-                            self.process_automatic_triggers();
-                        }
-                    }
-                    // 2. Show Error
-                    else if let Some(error) = &self.data_state.last_error {
-                        render_fullscreen_message(
-                            ui,
-                            "Unable to Generate Results",
-                            &format!("Error: {}", error),
-                            true,
-                        );
-                    }
-                    // 3. Show "Connecting..." (No Price yet)
-                    else if self.current_pair_price.is_none() {
-                        render_fullscreen_message(
-                            ui,
-                            "Preparing live data...",
-                            "Connecting to the price feed",
-                            false,
-                        );
-                    }
-                    // 4. Show "Calculating..." (Has Price, No Result yet)
-                    else {
-                        let pair_text = self.selected_pair.as_deref().unwrap_or("");
-                        let title = if !pair_text.is_empty() {
-                            format!("Preparing analysis for {}...", pair_text)
-                        } else {
-                            "Preparing analysis...".to_string()
-                        };
+                    // Note: If in Sim mode, we might want to update the model's current price
+                    // pointer for S/R highlighting, or just pass the price to the plot view.
+                    // The plot view uses `current_pair_price` for the gold line.
 
-                        render_fullscreen_message(
-                            ui,
-                            &title,
-                            "Rebuilding zones with latest parameters...",
-                            false,
-                        );
-                    }
+                    self.plot_view.show_my_plot(
+                        ui,
+                        &model.cva, // Access CVA via the model
+                        &model,
+                        current_price,
+                        self.debug_background_mode,
+                        &self.plot_visibility,
+                    );
+                } else {
+                    // No model yet (Startup or Worker Busy)
+                    render_fullscreen_message(
+                        ui,
+                        &format!("Analyzing {}...", pair),
+                        "Calculating Zones...",
+                        false,
+                    );
                 }
             });
     }
@@ -227,22 +183,22 @@ impl ZoneSniperApp {
                         }
 
                         // 3. Zone Size
-                        if let Some(ref cva_results) = self.data_state.cva_results {
-                            let zone_size = (cva_results.price_range.end_range
-                                - cva_results.price_range.start_range)
-                                / cva_results.zone_count as f64;
+                        // if let Some(ref cva_results) = self.data_state.cva_results {
+                        //     let zone_size = (cva_results.price_range.end_range
+                        //         - cva_results.price_range.start_range)
+                        //         / cva_results.zone_count as f64;
 
-                            ui.metric(
-                                "📏 Zone Size",
-                                &format!(
-                                    "{} (N={})",
-                                    format_price(zone_size),
-                                    cva_results.zone_count
-                                ),
-                                Color32::from_rgb(180, 200, 255),
-                            );
-                            ui.separator();
-                        }
+                        //     ui.metric(
+                        //         "📏 Zone Size",
+                        //         &format!(
+                        //             "{} (N={})",
+                        //             format_price(zone_size),
+                        //             cva_results.zone_count
+                        //         ),
+                        //         Color32::from_rgb(180, 200, 255),
+                        //     );
+                        //     ui.separator();
+                        // }
 
                         ui.separator();
 
@@ -270,159 +226,83 @@ impl ZoneSniperApp {
 
                         // Coverage Statistics
                         // NEW: Use Cache
-                        if let Some(model) = &self.data_state.current_model {
-                            // Helper to color-code coverage
-                            // > 30% is Red (Too much), < 5% is Yellow (Too little?), Green is good
-                            let cov_color = |pct: f64| {
-                                if pct > 30.0 {
-                                    Color32::from_rgb(255, 100, 100)
-                                }
-                                // Red warning
-                                else {
-                                    Color32::from_rgb(150, 255, 150)
-                                } // Green ok
-                            };
+                        // if let Some(model) = &self.data_state.current_model {
+                        //     // Helper to color-code coverage
+                        //     // > 30% is Red (Too much), < 5% is Yellow (Too little?), Green is good
+                        //     let cov_color = |pct: f64| {
+                        //         if pct > 30.0 {
+                        //             Color32::from_rgb(255, 100, 100)
+                        //         }
+                        //         // Red warning
+                        //         else {
+                        //             Color32::from_rgb(150, 255, 150)
+                        //         } // Green ok
+                        //     };
 
-                            // NEW STYLE: Using the Trait
-                            ui.label_subdued("Coverage");
+                        //     // NEW STYLE: Using the Trait
+                        //     ui.label_subdued("Coverage");
 
-                            ui.metric(
-                                "Sticky",
-                                &format!("{:.0}%", model.coverage.sticky_pct),
-                                cov_color(model.coverage.sticky_pct),
-                            );
+                        //     ui.metric(
+                        //         "Sticky",
+                        //         &format!("{:.0}%", model.coverage.sticky_pct),
+                        //         cov_color(model.coverage.sticky_pct),
+                        //     );
 
-                            ui.metric(
-                                "R-Sup",
-                                &format!("{:.0}%", model.coverage.support_pct),
-                                cov_color(model.coverage.support_pct),
-                            );
+                        //     ui.metric(
+                        //         "R-Sup",
+                        //         &format!("{:.0}%", model.coverage.support_pct),
+                        //         cov_color(model.coverage.support_pct),
+                        //     );
 
-                            ui.metric(
-                                "R-Res",
-                                &format!("{:.0}%", model.coverage.resistance_pct),
-                                cov_color(model.coverage.resistance_pct),
-                            );
+                        //     ui.metric(
+                        //         "R-Res",
+                        //         &format!("{:.0}%", model.coverage.resistance_pct),
+                        //         cov_color(model.coverage.resistance_pct),
+                        //     );
 
-                            ui.separator();
-                        }
+                        //     ui.separator();
+                        // }
 
                         // 6. System & Model Status
-                        let pair_count = self
-                            .data_state
-                            .timeseries_collection
-                            .unique_pair_names()
-                            .len();
-                        ui.label_subdued(format!("📊 {} pairs", pair_count));
+                        // let pair_count = self
+                        //     .data_state
+                        //     .timeseries_collection
+                        //     .unique_pair_names()
+                        //     .len();
+                        // ui.label_subdued(format!("📊 {} pairs", pair_count));
 
-                        // NEW: Data-driven status
-                        let status = self.model_status_summary();
-                        if status.is_calculating {
-                            ui.separator();
-                            ui.label_warning("⚙ Updating CVA...");
-                        }
-                        if status.pairs_queued > 0 {
-                            ui.separator();
-                            ui.label_warning(format!("Journeys: {} queued", status.pairs_queued));
-                        }
+                        // // NEW: Data-driven status
+                        // let status = self.model_status_summary();
+                        // if status.is_calculating {
+                        //     ui.separator();
+                        //     ui.label_warning("⚙ Updating CVA...");
+                        // }
+                        // if status.pairs_queued > 0 {
+                        //     ui.separator();
+                        //     ui.label_warning(format!("Journeys: {} queued", status.pairs_queued));
+                        // }
 
-                        // 7. Debug Horizon Info
-                        #[cfg(debug_assertions)]
-                        {
-                            ui.separator();
-                            let heading = UI_TEXT.price_horizon_heading;
-                            if let Some(ranges) = self.computed_slice_indices.as_ref() {
-                                let total: usize = ranges.iter().map(|(s, e)| e - s).sum();
-                                let ms = total as f64 * ANALYSIS.interval_width_ms as f64;
-                                let days = ms / (1000.0 * 60.0 * 60.0 * 24.0);
-
-                                // Refactored to use metric style
-                                ui.metric(
-                                    &format!("🕒 {}", heading),
-                                    &format!("{} candles ({:.1}d)", total, days),
-                                    Color32::from_rgb(150, 200, 255),
-                                );
-                            } else {
-                                ui.label_subdued(format!("🕒 {}: calculating…", heading));
-                            }
-
-                            // UPDATED: Explicit text when Decay is 1.0
-                            let decay_text = if (self.time_decay_factor - 1.0).abs() < f64::EPSILON
-                            {
-                                "1.0 ( = OFF)".to_string()
-                            } else {
-                                format!("{:.3}", self.time_decay_factor)
-                            };
-
-                            ui.metric("🧮 Decay", &decay_text, Color32::from_rgb(180, 200, 255));
-                        }
                         ui.separator();
 
                         // 8. Network health
-                        if let Some(ref stream) = self.price_stream {
-                            let health = stream.connection_health();
-                            let (icon, color) = if health >= 90.0 {
-                                ("🟢", Color32::from_rgb(0, 200, 0))
-                            } else if health >= 50.0 {
-                                ("🟡", Color32::from_rgb(200, 200, 0))
-                            } else {
-                                ("🔴", Color32::from_rgb(200, 0, 0))
-                            };
-                            ui.metric(
-                                &format!("{} Live Prices", icon),
-                                &format!("{:.0}% connected", health),
-                                color,
-                            );
-                        }
+                        // if let Some(ref stream) = self.price_stream {
+                        //     let health = stream.connection_health();
+                        //     let (icon, color) = if health >= 90.0 {
+                        //         ("🟢", Color32::from_rgb(0, 200, 0))
+                        //     } else if health >= 50.0 {
+                        //         ("🟡", Color32::from_rgb(200, 200, 0))
+                        //     } else {
+                        //         ("🔴", Color32::from_rgb(200, 0, 0))
+                        //     };
+                        //     ui.metric(
+                        //         &format!("{} Live Prices", icon),
+                        //         &format!("{:.0}% connected", health),
+                        //         color,
+                        //     );
+                        // }
                     });
-
-                    #[cfg(debug_assertions)]
-                    {
-                        self.render_journey_debug_info(ui);
-                    }
                 });
             });
-    }
-
-    #[cfg(debug_assertions)]
-    fn render_journey_debug_info(&self, ui: &mut Ui) {
-        if !DEBUG_FLAGS.display_journey_status_lines {
-            return;
-        }
-
-        ui.add_space(6.0);
-        let status_lines = self.model_status_lines();
-        let (current_color, current_line) = self.journey_status_line();
-        let zone_lines = self.current_journey_zone_lines();
-        let (aggregate_color, aggregate_line) = self.journey_aggregate_line();
-
-        ui.vertical(|ui| {
-            // Header
-            ui.label_subdued(UI_TEXT.journey_status_heading.to_uppercase());
-
-            // Status Lines (Gray/Italic concept -> Subdued)
-            for line in status_lines {
-                ui.label_subdued(line);
-            }
-
-            ui.separator();
-
-            // Current Line (Dynamic Color)
-            ui.label(RichText::new(current_line).small().color(current_color));
-
-            // Zone Lines (Dynamic Colors)
-            for (color, line) in zone_lines {
-                ui.horizontal(|ui| {
-                    ui.add_space(12.0);
-                    ui.label(RichText::new(line).small().color(color));
-                });
-            }
-
-            ui.separator();
-
-            // Aggregate Line (Dynamic Color)
-            ui.label(RichText::new(aggregate_line).small().color(aggregate_color));
-        });
     }
 
     fn render_shortcut_rows(ui: &mut Ui, rows: &[(&str, &str)]) {
@@ -526,19 +406,30 @@ impl ZoneSniperApp {
     }
 
     fn signals_panel(&mut self, ui: &mut Ui) -> Vec<String> {
-        let signals = self.multi_pair_monitor.get_signals();
-        let mut panel = SignalsPanel::new(signals);
+        // Use the wrapper method we added to App
+        let signals = self.get_signals();
+        let mut panel = crate::ui::ui_panels::SignalsPanel::new(signals);
         panel.render(ui)
     }
 
-    fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
-        let available_pairs = self.data_state.timeseries_collection.unique_pair_names();
-        let mut panel = DataGenerationPanel::new(
-            self.zone_count,
+    fn data_generation_panel(
+        &mut self,
+        ui: &mut eframe::egui::Ui,
+    ) -> Vec<crate::ui::ui_panels::DataGenerationEventChanged> {
+        // Use Engine or Config for available pairs
+        let available_pairs = if let Some(engine) = &self.engine {
+            engine.get_all_pair_names()
+        } else {
+            Vec::new()
+        };
+
+        // Pass global constant zone_count from ANALYSIS
+        let mut panel = crate::ui::ui_panels::DataGenerationPanel::new(
+            ANALYSIS.zone_count,
             self.selected_pair.clone(),
             available_pairs,
-            &self.auto_duration_config,
-            self.time_horizon_days,
+            &self.auto_duration_config, // Now exists on self
+            self.time_horizon_days,     // Now exists on self
         );
         panel.render(ui)
     }

@@ -1,10 +1,6 @@
 // User interface components
 pub mod app;
-pub mod app_async;
-pub mod app_journeys;
 pub mod app_simulation;
-pub mod app_state;
-pub mod app_triggers;
 pub mod config;
 pub mod ui_panels;
 pub mod ui_plot_view;

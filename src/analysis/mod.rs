@@ -6,4 +6,3 @@ pub mod zone_scoring;
 
 // Re-export commonly used types
 pub use multi_pair_monitor::MultiPairMonitor;
-pub use pair_analysis::ZoneGenerator;

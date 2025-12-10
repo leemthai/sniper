@@ -1,23 +1,15 @@
-use std::sync::Arc;
-
-use super::ZoneSniperApp;
-use crate::models::TradingModel;
-#[cfg(debug_assertions)]
-use crate::ui::utils::format_price;
-
-
-#[cfg(debug_assertions)]
+use super::app::ZoneSniperApp;
 use crate::config::DEBUG_FLAGS;
+use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(super) enum SimDirection {
-    #[default]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SimDirection {
     Up,
     Down,
 }
 
-impl std::fmt::Display for SimDirection {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for SimDirection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SimDirection::Up => write!(f, "▲ PRICE UP"),
             SimDirection::Down => write!(f, "▼ PRICE DOWN"),
@@ -25,11 +17,17 @@ impl std::fmt::Display for SimDirection {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub(super) enum SimStepSize {
+impl Default for SimDirection {
+    fn default() -> Self {
+        Self::Up
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SimStepSize {
     Point1, // 0.1%
-    #[default]
-    One, // 1%
+    Point5, // 0.5%
+    One,    // 1%
     Five,   // 5%
     Ten,    // 10%
 }
@@ -37,16 +35,18 @@ pub(super) enum SimStepSize {
 impl SimStepSize {
     pub(super) fn as_percentage(&self) -> f64 {
         match self {
-            SimStepSize::Point1 => 0.1,
-            SimStepSize::One => 1.0,
-            SimStepSize::Five => 5.0,
-            SimStepSize::Ten => 10.0,
+            SimStepSize::Point1 => 0.001,
+            SimStepSize::Point5 => 0.005,
+            SimStepSize::One => 0.01,
+            SimStepSize::Five => 0.05,
+            SimStepSize::Ten => 0.10,
         }
     }
 
     pub(super) fn cycle(&mut self) {
         *self = match self {
-            SimStepSize::Point1 => SimStepSize::One,
+            SimStepSize::Point1 => SimStepSize::Point5,
+            SimStepSize::Point5 => SimStepSize::One,
             SimStepSize::One => SimStepSize::Five,
             SimStepSize::Five => SimStepSize::Ten,
             SimStepSize::Ten => SimStepSize::Point1,
@@ -54,133 +54,125 @@ impl SimStepSize {
     }
 }
 
-impl std::fmt::Display for SimStepSize {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}%", self.as_percentage())
+impl Default for SimStepSize {
+    fn default() -> Self {
+        Self::Point1
+    }
+}
+
+impl fmt::Display for SimStepSize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.1}%", self.as_percentage() * 100.0)
     }
 }
 
 impl ZoneSniperApp {
     pub(super) fn toggle_simulation_mode(&mut self) {
         self.is_simulation_mode = !self.is_simulation_mode;
+        let is_sim = self.is_simulation_mode;
 
-        if self.is_simulation_mode {
-            if let Some(ref stream) = self.price_stream {
-                stream.suspend();
-
-                if let Some(ref pair) = self.selected_pair {
-                    if !self.simulated_prices.contains_key(pair) {
-                        if let Some(live_price) = stream.get_price(pair) {
-                            self.simulated_prices.insert(pair.clone(), live_price);
-                            #[cfg(debug_assertions)]
-                            if DEBUG_FLAGS.print_simulation_events {
-                                log::info!(
-                                    "🎮 Entered SIMULATION MODE for {} at {}",
-                                    pair,
-                                    format_price(live_price),
-                                );
-                            }
-                        }
-                    } else if let Some(_sim_price) = self.simulated_prices.get(pair) {
-                        #[cfg(debug_assertions)]
-                        if DEBUG_FLAGS.print_simulation_events {
-                            log::info!(
-                                "🎮 Entered SIMULATION MODE for {} at {} (restored)",
-                                pair,
-                                format_price(*_sim_price),
-                            );
-                        }
+        // 1. Tell Engine to Suspend/Resume live updates
+        if let Some(engine) = &self.engine {
+            engine.set_stream_suspended(is_sim);
+            
+            // 2. If Entering Sim Mode, Snapshot current price
+            if is_sim {
+                if let Some(pair) = &self.selected_pair {
+                    // Try to get live price from Engine to seed the simulation
+                    if let Some(live_price) = engine.get_price(pair) {
+                        self.simulated_prices.insert(pair.clone(), live_price);
                     }
                 }
             }
-        } else if let Some(ref stream) = self.price_stream {
-            stream.resume();
-            #[cfg(debug_assertions)]
-            if DEBUG_FLAGS.print_simulation_events {
-                log::info!("📡 Exited to LIVE MODE (simulated prices preserved)");
+        }
+
+        if self.is_simulation_mode {
+            if cfg!(debug_assertions) && DEBUG_FLAGS.print_simulation_events {
+                log::info!("Entered Simulation Mode");
+            }
+        } else {
+            // Clearing simulated prices effectively resets them to live on next fetch
+            self.simulated_prices.clear();
+            if cfg!(debug_assertions) && DEBUG_FLAGS.print_simulation_events {
+                log::info!("Exited Simulation Mode");
             }
         }
     }
 
     pub(super) fn adjust_simulated_price_by_percent(&mut self, percent: f64) {
-        if !self.is_simulation_mode {
-            return;
-        }
+        let Some(pair) = self.selected_pair.clone() else { return; };
+        
+        // 1. Calculate new price
+        // We must rely on get_display_price to handle the fallback logic
+        let current_price = self.get_display_price(&pair).unwrap_or(0.0);
+        if current_price == 0.0 { return; }
 
-        if let Some((pair, current_price)) = self
-            .selected_pair
-            .as_ref()
-            .and_then(|p| self.simulated_prices.get(p).copied().map(|c| (p, c)))
-        {
-            let adjustment = current_price * (percent / 100.0);
-            let new_price = current_price + adjustment;
-            self.simulated_prices.insert(pair.clone(), new_price);
+        let new_price = current_price * (1.0 + percent);
+        self.simulated_prices.insert(pair.clone(), new_price);
 
-            #[cfg(debug_assertions)]
-            if DEBUG_FLAGS.print_simulation_events {
-                log::info!(
-                    "💰 {} price: {} → {} ({:+.1}%)",
-                    pair,
-                    format_price(current_price),
-                    format_price(new_price),
-                    percent
-                );
-            }
-
-            self.multi_pair_monitor
-                .process_price_update(pair, new_price);
+        // 2. Notify Monitor (Optional: if we want signals to update in Sim mode)
+        // Since we removed direct access to multi_pair_monitor, we skip this for now.
+        // The PlotView will update automatically because it reads `current_pair_price`.
+        
+        if cfg!(debug_assertions) && DEBUG_FLAGS.print_simulation_events {
+            log::info!(
+                "Simulated Price Change: {} -> {:.2} ({:+.2}%)",
+                pair,
+                new_price,
+                percent * 100.0
+            );
         }
     }
 
     pub(super) fn jump_to_next_zone(&mut self, zone_type: &str) {
-        if !self.is_simulation_mode {
-            return;
-        }
+        let Some(pair) = self.selected_pair.clone() else { return; };
+        
+        // 1. Get Model from Engine
+        let Some(engine) = &self.engine else { return; };
+        let Some(model) = engine.get_model(&pair) else { return; };
 
-        let Some(ref pair) = self.selected_pair else {
-            return;
-        };
-        let Some(current_price) = self.simulated_prices.get(pair).copied() else {
-            return;
-        };
-        let Some(ref cva_results) = self.data_state.cva_results else {
-            return;
-        };
+        let current_price = self.get_display_price(&pair).unwrap_or(0.0);
 
-        let trading_model = TradingModel::from_cva(Arc::clone(cva_results), Some(current_price));
-
+        // 2. Select Zone List
+        // Note: Using Arc<TradingModel> fields directly
         let superzones = match zone_type {
-            "sticky" => Some(&trading_model.zones.sticky_superzones),
-            "low-wick" => Some(&trading_model.zones.low_wicks_superzones),
-            "high-wick" => Some(&trading_model.zones.high_wicks_superzones),
+            "sticky" => Some(&model.zones.sticky_superzones),
+            "low-wick" => Some(&model.zones.low_wicks_superzones),
+            "high-wick" => Some(&model.zones.high_wicks_superzones),
             _ => None,
         };
 
-        let Some(superzones) = superzones else {
-            return;
-        };
+        if let Some(superzones) = superzones {
+            if superzones.is_empty() {
+                return;
+            }
 
-        if superzones.is_empty() {
-            return;
-        }
+            // 3. Find Next Target
+            let target_zone = match self.sim_direction {
+                SimDirection::Up => superzones
+                    .iter()
+                    .filter(|sz| sz.price_center > current_price)
+                    .min_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
+                SimDirection::Down => superzones
+                    .iter()
+                    .filter(|sz| sz.price_center < current_price)
+                    .max_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
+            };
 
-        let target_superzone = match self.sim_direction {
-            SimDirection::Up => superzones
-                .iter()
-                .filter(|sz| sz.price_center > current_price)
-                .min_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
-            SimDirection::Down => superzones
-                .iter()
-                .filter(|sz| sz.price_center < current_price)
-                .max_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
-        };
-
-        if let Some(superzone) = target_superzone {
-            let new_price = superzone.price_center;
-            self.simulated_prices.insert(pair.clone(), new_price);
-
-            self.multi_pair_monitor
-                .process_price_update(pair, new_price);
+            // 4. Move Price
+            if let Some(zone) = target_zone {
+                // Jump slightly past the center to ensure we are "in" it or clearly past previous
+                let new_price = zone.price_center;
+                self.simulated_prices.insert(pair.clone(), new_price);
+                
+                if cfg!(debug_assertions) && DEBUG_FLAGS.print_simulation_events {
+                    log::info!(
+                        "Jumped to {} zone at {:.2}",
+                        zone_type,
+                        new_price
+                    );
+                }
+            }
         }
     }
 }

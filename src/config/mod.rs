@@ -11,7 +11,7 @@ mod persistence;
 pub mod plot;
 
 // Re-export commonly used items
-pub use analysis::{ANALYSIS, ZoneParams};
+pub use analysis::{ANALYSIS, ZoneParams, AnalysisConfig};
 pub use binance::{BINANCE, BinanceApiConfig};
 pub use debug::DEBUG_FLAGS;
 pub use demo::DEMO;

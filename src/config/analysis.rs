@@ -1,8 +1,9 @@
 //! Analysis and computation configuration
 
-use crate::utils::TimeUtils;
+use crate::{domain::auto_duration::AutoDurationConfig, utils::TimeUtils};
 
 /// Configuration for the Time Horizon UI Slider
+#[derive(Clone, Debug)] 
 pub struct TimeHorizonConfig {
     // Time Horizon slider configuration
     pub min_days: u64,
@@ -11,6 +12,7 @@ pub struct TimeHorizonConfig {
 }
 
 /// Settings specific to Journey Analysis
+#[derive(Clone, Debug)] 
 pub struct JourneySettings {
     // Tolerance when matching historical prices for journey analysis (percentage)
     pub start_price_tolerance_pct: f64,
@@ -18,12 +20,10 @@ pub struct JourneySettings {
 }
 
 /// Settings for CVA (Cumulative Volume Analysis)
+#[derive(Clone, Debug)]
 pub struct CvaSettings {
     // Price change threshold (fractional) to trigger CVA recomputation
-    // 0.01 corresponds to a 1% move from the anchor price
     pub price_recalc_threshold_pct: f64,
-    // Minimum debounce window between CVA recalculations (in seconds)
-    pub min_seconds_between_recalcs: u64,
     // Minimum number of candles required for valid CVA analysis
     // Below this threshold, the system lacks sufficient data for reliable zone detection
     pub min_candles_for_analysis: usize,
@@ -45,28 +45,35 @@ pub struct ZoneParams {
     pub threshold: f64,
 }
 
+#[derive(Clone, Debug)] 
 pub struct ZoneClassificationConfig {
     pub sticky: ZoneParams,
     pub reversal: ZoneParams,
 }
 
 /// The Master Analysis Configuration
+#[derive(Clone, Debug)]
 pub struct AnalysisConfig {
     // This defines the candle interval for all analysis (1h, 5m, 15m, etc.)
     pub interval_width_ms: i64,
     // Number of price zones for analysis (actually constant rn, never updated)
-    pub default_zone_count: usize,
+    pub zone_count: usize,
+
+    pub time_decay_factor: f64,
 
     // Sub-groups
     pub time_horizon: TimeHorizonConfig,
     pub journey: JourneySettings,
     pub cva: CvaSettings,
     pub zones: ZoneClassificationConfig,
+
+    pub auto_duration: AutoDurationConfig,
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     interval_width_ms: TimeUtils::MS_IN_30_MIN,
-    default_zone_count: 256, // Goldilocks number (see private project-3eed40f.md for explanation)
+    zone_count: 256, // Goldilocks number (see private project-3eed40f.md for explanation)
+    time_decay_factor: 1.0,
 
     zones: ZoneClassificationConfig {
         // STICKY ZONES (Volume Weighted)
@@ -107,9 +114,13 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         // This makes the model 20x more sensitive for testing.
         // TESTING ONLY CHANGE .... change back when not testing to 0.01
         price_recalc_threshold_pct: 0.000003,
-
         // price_recalc_threshold_pct: 0.01,
-        min_seconds_between_recalcs: 5, // Enough time to stop jitters, fast enough to feel respons
         min_candles_for_analysis: 100,
+    },
+
+        // NEW: Initialize Default AutoDuration
+    auto_duration: AutoDurationConfig {
+        relevancy_threshold: 0.15, // Default 15%
+        min_lookback_days: 7,
     },
 };
