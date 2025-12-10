@@ -98,7 +98,7 @@ impl SniperEngine {
             match result.result {
                 Ok(model) => {
                     // Update Buffer
-                    state.update_buffer(model.clone());
+                    state.update_buffer(model.clone()); // <--- Passing the Arc to the State
 
                     // Update Monitor
                     // Note: We need a PairContext.

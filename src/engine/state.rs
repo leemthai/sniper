@@ -1,6 +1,6 @@
+use crate::models::trading_view::TradingModel;
 use std::sync::Arc;
 use std::time::Instant;
-use crate::models::trading_view::TradingModel;
 
 /// Represents the state of a single pair in the engine.
 #[derive(Debug, Clone)]
@@ -13,7 +13,7 @@ pub struct PairState {
     /// Metadata for the trigger system
     pub last_update_price: f64,
     pub last_update_time: Instant,
-    
+
     /// Is a worker currently crunching this pair?
     pub is_calculating: bool,
 
@@ -32,9 +32,12 @@ impl PairState {
         }
     }
 
-    /// The "Swap" operation. 
+    /// The "Swap" operation.
     /// Promotes the Back Buffer (Result) to the Front Buffer (UI).
     pub fn update_buffer(&mut self, new_model: Arc<TradingModel>) {
+        // THIS IS THE SWAP.
+        // Overwriting 'self.model' drops the old pointer and sets the new one.
+        // It takes nanoseconds.
         self.model = Some(new_model);
         self.is_calculating = false;
         self.last_update_time = Instant::now();
