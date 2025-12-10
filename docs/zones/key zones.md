@@ -19,7 +19,7 @@ Cooolllll!!!!!!!!!!!!!!!!!!
 # Next 
 Command stuff for keyboard action
 
-# Stop printing pop-windows in random colors
+# Stop printing hover windows in random colors
 I want to print in fixed colors somehow
 
 # Notes
@@ -27,13 +27,30 @@ Weird thing when you get inside a Low Wick area, ie using Sim to move price up, 
 Why does live price make a difference here? Oh yes, of course, because price defines what is low and high wick zoens. So they will change based on price.
 Seems fine then.
 
-# Play with time_decay_factor
-Try it at 2.0. What other values. What does 2.0 do exactly? (Setting this to 2.0 activates "Annualized Decay" (Data today is 2x stronger)
-default_time_decay_factor() in app.rs
-How does it affect BTC / SOL etc.
+# Things I can fix myself without AI
+1.  Play with time_decay_factor
+    - Could do this on my own without AI help......
+    - Try it at 2.0. What other values. What does 2.0 do exactly? (Setting this to 2.0 activates "Annualized Decay" (Data today is 2x stronger)
+    - default_time_decay_factor() in app.rs
+    - How does it affect BTC / SOL etc.
 
-# Issue with price printing
+
+2.  Price Horizon currently hard coded here (no good, lol - can sort that ymself)
+        let mut threshold_pct = self.auto_duration_config.relevancy_threshold * 100.0;
+        let response = ui.add(
+            Slider::new(&mut threshold_pct, 2.0..=50.0)
+                .step_by(1.0)
+                .suffix("%"),
+        );
+
+# Later today (after 3pm)
+Once it is debugged, in config/analysis.rs 
+        price_recalc_threshold_pct: 0.000003,
+Set it back to default value once we have it sorted out
+
+# Notes: Don't forget any time we print prices, use format_price() instead of just ${:.2} or whatever.
 Fixed via format_price()
+
 
 # 0.35
 See when 0.35 version is due out and what features it will offer. Might help guide decision making

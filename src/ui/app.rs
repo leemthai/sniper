@@ -1,8 +1,8 @@
 use eframe::Frame;
 
-use eframe::egui::{Context};
 #[cfg(debug_assertions)]
-use eframe::egui::{Color32};
+use eframe::egui::Color32;
+use eframe::egui::Context;
 
 use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
@@ -433,27 +433,47 @@ fn default_time_horizon_days() -> u64 {
 }
 
 impl ZoneSniperApp {
+
+    /// Core function to get the current price for a pair.
+    /// Routes between Simulation Mode (Static/Manual) and Live Mode (WebSocket).
+    pub(super) fn get_display_price(&self, pair: &str) -> Option<f64> {
+        // 1. Simulation Mode: Strictly look at the manual override map
+        if self.is_simulation_mode {
+            return self.simulated_prices.get(pair).copied();
+        }
+
+        // 2. Live Mode: Strictly look at the WebSocket stream
+        if let Some(stream) = &self.price_stream {
+            return stream.get_price(pair);
+        }
+
+        None
+    }
+
     /// Checks if any pair (specifically the selected one) needs a recalculation
     /// and schedules it if the system is idle.
-    pub fn process_automatic_triggers(&mut self) {
-        if let Some(pair) = self.selected_pair.clone() {
-            // 1. UPDATE: Feed latest price into the trigger state
+    pub(super) fn process_automatic_triggers(&mut self) {
+        let all_pairs = self.data_state.timeseries_collection.unique_pair_names();
+
+        // Debug: Print total vs priced count once per second (to avoid frame spam)
+        // or just rely on the specific warnings below.
+
+        for pair in all_pairs {
             if let Some(current_price) = self.get_display_price(&pair) {
-                if let Some(trigger) = self.pair_triggers.get_mut(&pair) {
-                    trigger.consider_price_move(current_price);
+                if Some(&pair) == self.selected_pair.as_ref() {
+                    self.current_pair_price = Some(current_price);
                 }
-            }
 
-            // 2. CHECK: Now check if it's ready to run
-            let ready = self
-                .pair_triggers
-                .get(&pair)
-                .map(|t| t.ready_to_schedule())
-                .unwrap_or(false);
+                let trigger = self.pair_triggers.entry(pair.clone()).or_default();
+                trigger.consider_price_move(&pair, current_price);
 
-            if ready && !self.is_calculating() {
-                self.enqueue_recalc_for_pair(pair);
-            }
+                // ... scheduling logic ...
+                // if let Some(trigger) = self.pair_triggers.get(&pair) {
+                //     if trigger.ready_to_schedule() && !self.is_calculating() {
+                //         self.enqueue_recalc_for_pair(pair);
+                //     }
+                // }
+            } 
         }
     }
 

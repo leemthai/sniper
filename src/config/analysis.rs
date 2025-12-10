@@ -32,14 +32,14 @@ pub struct CvaSettings {
 /// Parameters for a specific zone type (Sticky, Reversal, etc.)
 #[derive(Debug, Clone, Copy)]
 pub struct ZoneParams {
-    /// Smoothing Window % (0.0 to 1.0). 
+    /// Smoothing Window % (0.0 to 1.0).
     /// Turn UP to merge jagged spikes into hills. Turn DOWN for sharp precision.
     pub smooth_pct: f64,
-    
+
     /// Gap Tolerance % (0.0 to 1.0).
     /// Turn UP to bridge gaps and create larger "continents". Turn DOWN (or to 0.0) to keep islands separated.
     pub gap_pct: f64,
-    
+
     /// Intensity Threshold.
     /// Turn UP to reduce coverage (only show strong zones). Turn DOWN to see fainter zones.
     pub threshold: f64,
@@ -49,7 +49,6 @@ pub struct ZoneClassificationConfig {
     pub sticky: ZoneParams,
     pub reversal: ZoneParams,
 }
-
 
 /// The Master Analysis Configuration
 pub struct AnalysisConfig {
@@ -72,16 +71,16 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     zones: ZoneClassificationConfig {
         // STICKY ZONES (Volume Weighted)
         sticky: ZoneParams {
-            smooth_pct: 0.02,  // 2% smoothing makes hills out of spikes
-            gap_pct: 0.01,     // 1% gap bridging merges nearby structures
-            threshold: 0.25,   // (Squared). Only top 50% volume areas qualify.
+            smooth_pct: 0.02, // 2% smoothing makes hills out of spikes
+            gap_pct: 0.01,    // 1% gap bridging merges nearby structures
+            threshold: 0.25,  // (Squared). Only top 50% volume areas qualify.
         },
-        
+
         // REVERSAL ZONES (Wick Counts)
         reversal: ZoneParams {
             smooth_pct: 0.005, // 0.5% (Low) - Keep wicks sharp
             gap_pct: 0.0,      // 0.0% - Strict separation. Don't create ghost zones.
-            
+
             // THRESHOLD TUNING GUIDE:
             // 0.000400 = Requires ~2.0% Wick Density (Very Strict, few zones)
             // 0.000100 = Requires ~1.0% Wick Density
@@ -104,10 +103,13 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     },
 
     cva: CvaSettings {
-        price_recalc_threshold_pct: 0.01,
-        min_seconds_between_recalcs: 60,
+        // CHANGE: 0.01 (1%) -> 0.0005 (0.05%)
+        // This makes the model 20x more sensitive for testing.
+        // TESTING ONLY CHANGE .... change back when not testing to 0.01
+        price_recalc_threshold_pct: 0.000003,
+
+        // price_recalc_threshold_pct: 0.01,
+        min_seconds_between_recalcs: 5, // Enough time to stop jitters, fast enough to feel respons
         min_candles_for_analysis: 100,
     },
 };
-
-

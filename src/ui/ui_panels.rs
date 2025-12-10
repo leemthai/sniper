@@ -54,7 +54,7 @@ impl<'a> DataGenerationPanel<'a> {
 
         let mut threshold_pct = self.auto_duration_config.relevancy_threshold * 100.0;
         let response = ui.add(
-            Slider::new(&mut threshold_pct, 2.0..=50.0)
+            Slider::new(&mut threshold_pct, 1.0..=80.0)
                 .step_by(1.0)
                 .suffix("%"),
         );

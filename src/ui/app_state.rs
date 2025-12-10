@@ -93,6 +93,13 @@ impl ZoneSniperApp {
             return;
         }
 
+        // DEBUG LOG: Confirm the switch happening
+        log::info!(
+            ">>> UI: Switching selected pair from {:?} to {}",
+            self.selected_pair,
+            new_pair
+        );
+
         // 1. Wipe State (CRITICAL: Fixes "Ghost Data" bug)
         self.data_state.cva_results = None;
         self.data_state.current_model = None; // Clears old coverage stats immediately
@@ -106,7 +113,15 @@ impl ZoneSniperApp {
         // 2. Try Cache
         if self.apply_cached_results_for_pair(&new_pair) {
             // Success: state is now populated with NEW pair data
+            log::info!(">>> UI: Found cached results for {}", new_pair);
             return;
+        }
+
+        // 3. Force Immediate Recalculation (Bypass Debounce)
+        // We manually reset 'last_run_at' to None so the system doesn't make us wait
+        // if this pair was recently updated in the background.
+        if let Some(trigger) = self.pair_triggers.get_mut(&new_pair) {
+            trigger.last_run_at = None; // Kill the debounce
         }
 
         let price_hint = self.get_display_price(&new_pair);

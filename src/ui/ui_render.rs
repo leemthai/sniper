@@ -8,12 +8,12 @@ use crate::config::ANALYSIS;
 use crate::data::price_stream::PriceStreamManager;
 use crate::models::cva::ScoreType;
 use crate::ui::app_simulation::SimDirection;
-use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
+use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
 
-use crate::ui::utils::format_price;
 use super::app::ZoneSniperApp;
+use crate::ui::utils::format_price;
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
@@ -91,13 +91,15 @@ impl ZoneSniperApp {
                 }
 
                 if self.price_stream.is_some() {
+                    // Heartbeat (Keep UI alive for price updates)
+                    // This ensures the UI refreshes (at least 1Hz) to show live prices / spinners
+                    // regardless of whether the model is ready or not.
+                    ctx.request_repaint_after(Duration::from_secs(1));
+
                     // 1. Show Plot if data is ready
                     if let Some(cva_results) = &self.data_state.cva_results {
                         // Use CACHED model if available (Performance Optimization)
                         if let Some(model) = &mut self.data_state.current_model {
-                            // Heartbeat (Keep UI alive for price updates)
-                            ctx.request_repaint_after(Duration::from_secs(1));
-
                             // Vital: Update the price on the cached model before drawing
                             if let Some(p) = self.current_pair_price {
                                 model.update_price(p);
@@ -208,9 +210,7 @@ impl ZoneSniperApp {
                                 // --- FIX: LIVE MODE UI ---
                                 // This else block was missing/empty in previous versions
                                 ui.label(
-                                    RichText::new("🟢 LIVE MODE")
-                                        .small()
-                                        .color(Color32::GREEN),
+                                    RichText::new("🟢 LIVE MODE").small().color(Color32::GREEN),
                                 );
                                 ui.separator();
 
@@ -225,7 +225,7 @@ impl ZoneSniperApp {
                                 }
                             }
                         }
-                        
+
                         // 3. Zone Size
                         if let Some(ref cva_results) = self.data_state.cva_results {
                             let zone_size = (cva_results.price_range.end_range
@@ -234,7 +234,11 @@ impl ZoneSniperApp {
 
                             ui.metric(
                                 "📏 Zone Size",
-                                &format!("{} (N={})", format_price(zone_size), cva_results.zone_count),
+                                &format!(
+                                    "{} (N={})",
+                                    format_price(zone_size),
+                                    cva_results.zone_count
+                                ),
                                 Color32::from_rgb(180, 200, 255),
                             );
                             ui.separator();

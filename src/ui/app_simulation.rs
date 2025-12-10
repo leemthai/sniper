@@ -61,32 +61,6 @@ impl std::fmt::Display for SimStepSize {
 }
 
 impl ZoneSniperApp {
-    pub(super) fn get_display_price(&mut self, pair: &str) -> Option<f64> {
-        if self.is_simulation_mode {
-            if let Some(live_price) = self
-                .price_stream
-                .as_ref()
-                .and_then(|stream| stream.get_price(pair))
-                .filter(|_| !self.simulated_prices.contains_key(pair))
-            {
-                self.simulated_prices.insert(pair.to_string(), live_price);
-                #[cfg(debug_assertions)]
-                if DEBUG_FLAGS.print_simulation_events {
-                    log::info!(
-                        "🎮 Initialized simulation price for {}: {}",
-                        pair,
-                        format_price(live_price)
-                    );
-                }
-            }
-            self.simulated_prices.get(pair).copied()
-        } else if let Some(ref stream) = self.price_stream {
-            stream.get_price(pair)
-        } else {
-            None
-        }
-    }
-
     pub(super) fn toggle_simulation_mode(&mut self) {
         self.is_simulation_mode = !self.is_simulation_mode;
 
