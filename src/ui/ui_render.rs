@@ -65,7 +65,6 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn render_central_panel(&mut self, ctx: &eframe::egui::Context) {
-
         let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
 
         CentralPanel::default()
@@ -96,52 +95,65 @@ impl ZoneSniperApp {
                 };
 
                 // 3. Get Price State (Do we have a live price?)
-                let current_price = engine.get_price(&pair);
+                let current_price = self.get_display_price(&pair); // engine.get_price(&pair);
 
-                // 4. View Logic
-                if let Some(model) = engine.get_model(&pair) {
-                    // CASE A: We have data. Draw the plot.
+                let (is_calculating, last_error) = engine.get_pair_status(&pair);
+
+                // Debug log to confirm what the UI is sending to the plot
+                if self.is_simulation_mode {
+                     log::info!("UI sending price to plot: {:?}", current_price);
+                }
+
+                // PRIORITY 1: ERRORS
+                // If the most recent calculation failed (e.g. "Insufficient Data" at 1%),
+                // we must show the error, even if we have an old cached model.
+                // The old model is valid for the OLD settings, not the CURRENT ones.
+                if let Some(err_msg) = last_error {
+                    render_fullscreen_message(ui, "Analysis Failed", &err_msg, true);
+                }
+                // PRIORITY 2: VALID MODEL
+                // If no error, and we have data, draw it.
+                else if let Some(model) = engine.get_model(&pair) {
                     self.plot_view.show_my_plot(
                         ui,
                         &model.cva,
                         &model,
-                        current_price, // Might be None if stream briefly disconnects, but Model persists
+                        current_price,
                         self.debug_background_mode,
                         &self.plot_visibility,
                     );
-                } else {
-                    // CASE B: No Model. Why?
-                    let (is_calculating, last_error) = engine.get_pair_status(&pair);
 
-                    if let Some(err_msg) = last_error {
-                        // Error during calculation
-                        render_fullscreen_message(ui, "Analysis Failed", &err_msg, true);
-                    } else if is_calculating {
-                        // Worker is busy
-                        render_fullscreen_message(
-                            ui,
-                            &format!("Analyzing {}...", pair),
-                            "Calculating Zones...",
-                            false,
-                        );
-                    } else if current_price.is_some() {
-                        // We HAVE a price, but NO model and NOT calculating.
-                        // This means it is sitting in the Queue waiting for its turn.
-                        render_fullscreen_message(
-                            ui,
-                            &format!("Queued: {}...", pair),
-                            "Waiting for worker thread...",
-                            false,
-                        );
-                    } else {
-                        // We have NO price.
-                        render_fullscreen_message(
-                            ui,
-                            "Waiting for Price...",
-                            "Listening to Binance Stream...",
-                            false,
-                        );
+                    // Optional: Small loading indicator overlay if updating in background
+                    if is_calculating {
+                        ui.ctx().set_cursor_icon(eframe::egui::CursorIcon::Progress);
                     }
+                }
+                // PRIORITY 3: CALCULATING (Initial Load)
+                else if is_calculating {
+                    render_fullscreen_message(
+                        ui,
+                        &format!("Analyzing {}...", pair),
+                        "Calculating Zones...",
+                        false,
+                    );
+                }
+                // PRIORITY 4: QUEUED / WAITING
+                else if current_price.is_some() {
+                    render_fullscreen_message(
+                        ui,
+                        &format!("Queued: {}...", pair),
+                        "Waiting for worker thread...",
+                        false,
+                    );
+                }
+                // PRIORITY 5: NO DATA STREAM
+                else {
+                    render_fullscreen_message(
+                        ui,
+                        "Waiting for Price...",
+                        "Listening to Binance Stream...",
+                        false,
+                    );
                 }
             });
     }

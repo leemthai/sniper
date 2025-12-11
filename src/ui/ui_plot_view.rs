@@ -163,6 +163,7 @@ impl PlotView {
                     background_score_type,
                     x_min: cache.x_min,
                     x_max: cache.x_max,
+                    current_price: current_pair_price,
                 };
 
                 // 2. Define Layer Stack (Back to Front)

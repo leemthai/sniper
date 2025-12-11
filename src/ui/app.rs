@@ -125,9 +125,12 @@ impl ZoneSniperApp {
     pub fn handle_pair_selection(&mut self, new_pair: String) {
         self.selected_pair = Some(new_pair.clone());
 
-        // Notify Engine to prioritize this pair (move to front of queue)
+        // 1. Get the price FIRST (Immutable borrow of self)
+        let price = self.get_display_price(&new_pair);
+
+        // 2. THEN borrow the engine mutably
         if let Some(engine) = &mut self.engine {
-            engine.force_recalc(&new_pair);
+            engine.force_recalc(&new_pair, price);
         }
     }
 
@@ -181,15 +184,20 @@ impl App for ZoneSniperApp {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         setup_custom_visuals(ctx);
 
-        // 1. Update the Engine (The Game Loop)
+        // 1. Update Engine (We will remove the 'bool' return in the next step)
         if let Some(engine) = &mut self.engine {
-            // FIX: If engine returns true (BUSY), we request another frame immediately.
-            // This prevents the queue from stalling when the mouse stops moving.
-            let is_busy = engine.update();
-            if is_busy {
-                ctx.request_repaint();
-            }
+            engine.update();
         }
+
+        // // 1. Update the Engine (The Game Loop)
+        // if let Some(engine) = &mut self.engine {
+        //     // FIX: If engine returns true (BUSY), we request another frame immediately.
+        //     // This prevents the queue from stalling when the mouse stops moving.
+        //     let is_busy = engine.update();
+        //     if is_busy {
+        //         ctx.request_repaint();
+        //     }
+        // }
 
         // 2. Handle Inputs
         self.handle_global_shortcuts(ctx);
@@ -202,5 +210,7 @@ impl App for ZoneSniperApp {
         if self.show_debug_help {
             self.render_help_panel(ctx);
         }
+
+        ctx.request_repaint();
     }
 }

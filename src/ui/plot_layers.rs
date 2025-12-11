@@ -1,10 +1,9 @@
-use eframe::egui::{Color32, Stroke, RichText, LayerId, Order::Tooltip, Id, Ui};
+use eframe::egui::{Color32, Id, LayerId, Order::Tooltip, RichText, Stroke, Ui};
 
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
 
-use egui_plot::{PlotPoints, Polygon, PlotUi, HLine};
-
+use egui_plot::{HLine, PlotPoints, PlotUi, Polygon};
 
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::cva::ScoreType;
@@ -13,7 +12,6 @@ use crate::ui::app::PlotVisibility;
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
-
 
 /// Context passed to every layer during rendering.
 /// This prevents argument explosion.
@@ -24,6 +22,7 @@ pub struct LayerContext<'a> {
     pub background_score_type: ScoreType,
     pub x_min: f64,
     pub x_max: f64,
+    pub current_price: Option<f64>, // Pass SIM-aware price so layers render correctly in SIM mode
 }
 
 /// A standardized layer in the plot stack.
@@ -53,7 +52,7 @@ impl PlotLayer for BackgroundLayer {
 
         for bar in &ctx.cache.bars {
             let half_h = bar.height / 2.0;
-            
+
             let points = PlotPoints::new(vec![
                 [0.0, bar.y_center - half_h],
                 [bar.x_max, bar.y_center - half_h],
@@ -78,17 +77,19 @@ pub struct StickyZoneLayer;
 
 impl PlotLayer for StickyZoneLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        if !ctx.visibility.sticky { return; }
+        if !ctx.visibility.sticky {
+            return;
+        }
 
-        let current_price = ctx.trading_model.current_price;
+        let current_price = ctx.current_price;
 
         for superzone in &ctx.trading_model.zones.sticky_superzones {
-             // 1. Determine Identity (Color/Label) based on price position
-             let (label, color) = if let Some(price) = current_price {
+            // 1. Determine Identity (Color/Label) based on price position
+            let (label, color) = if let Some(price) = current_price {
                 if superzone.contains(price) {
-                    ("Active Sticky", PLOT_CONFIG.sticky_zone_color) 
+                    ("Active Sticky", PLOT_CONFIG.sticky_zone_color)
                 } else if superzone.price_center < price {
-                    ("Support", PLOT_CONFIG.support_zone_color)      
+                    ("Support", PLOT_CONFIG.support_zone_color)
                 } else {
                     ("Resistance", PLOT_CONFIG.resistance_zone_color)
                 }
@@ -99,9 +100,16 @@ impl PlotLayer for StickyZoneLayer {
             let stroke = get_stroke(superzone, current_price, color);
 
             draw_superzone(
-                plot_ui, superzone, ctx.x_min, ctx.x_max, 
-                label, color, stroke, 
-                1.0, 1.0, ZoneShape::Rectangle
+                plot_ui,
+                superzone,
+                ctx.x_min,
+                ctx.x_max,
+                label,
+                color,
+                stroke,
+                1.0,
+                1.0,
+                ZoneShape::Rectangle,
             );
         }
     }
@@ -114,7 +122,7 @@ pub struct ReversalZoneLayer;
 
 impl PlotLayer for ReversalZoneLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        let current_price = ctx.trading_model.current_price;
+        let current_price = ctx.current_price;
 
         // A. Low Wicks (Support)
         if ctx.visibility.low_wicks {
@@ -129,9 +137,16 @@ impl PlotLayer for ReversalZoneLayer {
                     let stroke = get_stroke(superzone, current_price, color);
 
                     draw_superzone(
-                        plot_ui, superzone, ctx.x_min, ctx.x_max, 
-                        label, color, stroke, 
-                        0.5, 1.5, ZoneShape::TriangleUp
+                        plot_ui,
+                        superzone,
+                        ctx.x_min,
+                        ctx.x_max,
+                        label,
+                        color,
+                        stroke,
+                        0.5,
+                        1.5,
+                        ZoneShape::TriangleUp,
                     );
                 }
             }
@@ -150,9 +165,16 @@ impl PlotLayer for ReversalZoneLayer {
                     let stroke = get_stroke(superzone, current_price, color);
 
                     draw_superzone(
-                        plot_ui, superzone, ctx.x_min, ctx.x_max, 
-                        label, color, stroke, 
-                        0.5, 1.5, ZoneShape::TriangleDown
+                        plot_ui,
+                        superzone,
+                        ctx.x_min,
+                        ctx.x_max,
+                        label,
+                        color,
+                        stroke,
+                        0.5,
+                        1.5,
+                        ZoneShape::TriangleDown,
                     );
                 }
             }
@@ -167,7 +189,7 @@ pub struct PriceLineLayer;
 
 impl PlotLayer for PriceLineLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        if let Some(price) = ctx.trading_model.current_price {
+        if let Some(price) = ctx.current_price {
             let label = "Current Price";
 
             // Outer Line (Border)
@@ -175,19 +197,18 @@ impl PlotLayer for PriceLineLayer {
                 HLine::new(label, price)
                     .color(PLOT_CONFIG.current_price_outer_color)
                     .width(PLOT_CONFIG.current_price_outer_width)
-                    .style(egui_plot::LineStyle::dashed_loose())
+                    .style(egui_plot::LineStyle::dashed_loose()),
             );
 
             // Inner Line (Color)
             plot_ui.hline(
                 HLine::new(label, price)
                     .color(PLOT_CONFIG.current_price_color)
-                    .width(PLOT_CONFIG.current_price_line_width)
+                    .width(PLOT_CONFIG.current_price_line_width),
             );
         }
     }
 }
-
 
 // ============================================================================
 // HELPER FUNCTIONS (Private to this module)
@@ -237,7 +258,6 @@ fn draw_superzone(
     opacity_factor: f32,
     shape: ZoneShape,
 ) {
-
     // Calculate Geometry
     let total_width = x_max - x_min;
     let actual_width = total_width * width_factor;
@@ -260,14 +280,15 @@ fn draw_superzone(
             [z_x_center, superzone.price_top], // Top Point
         ],
         ZoneShape::TriangleDown => vec![
-            [z_x_min, superzone.price_top],    // Top Left
-            [z_x_max, superzone.price_top],    // Top Right
+            [z_x_min, superzone.price_top],       // Top Left
+            [z_x_max, superzone.price_top],       // Top Right
             [z_x_center, superzone.price_bottom], // Bottom Point
         ],
     };
 
     let points = PlotPoints::new(points_vec);
-    let final_color = fill_color.linear_multiply(PLOT_CONFIG.zone_fill_opacity_pct * opacity_factor);
+    let final_color =
+        fill_color.linear_multiply(PLOT_CONFIG.zone_fill_opacity_pct * opacity_factor);
 
     let polygon = Polygon::new(label, points)
         .fill_color(final_color)
@@ -278,15 +299,12 @@ fn draw_superzone(
 
     // Manual Hit Test
     if let Some(pointer) = plot_ui.pointer_coordinate() {
-        if pointer.y >= superzone.price_bottom 
-           && pointer.y <= superzone.price_top
-           && pointer.x >= z_x_min 
-           && pointer.x <= z_x_max 
+        if pointer.y >= superzone.price_bottom
+            && pointer.y <= superzone.price_top
+            && pointer.x >= z_x_min
+            && pointer.x <= z_x_max
         {
-            let tooltip_layer = LayerId::new(
-                Tooltip,
-                Id::new("zone_tooltips")
-            );
+            let tooltip_layer = LayerId::new(Tooltip, Id::new("zone_tooltips"));
 
             #[allow(deprecated)]
             show_tooltip_at_pointer(
@@ -297,10 +315,14 @@ fn draw_superzone(
                     ui.label(RichText::new(label).strong().color(fill_color));
                     ui.separator();
                     ui.label(format!("ID: #{}", superzone.id));
-                    ui.label(format!("Range: {} - {}", format_price(superzone.price_bottom), format_price(superzone.price_top)));
+                    ui.label(format!(
+                        "Range: {} - {}",
+                        format_price(superzone.price_bottom),
+                        format_price(superzone.price_top)
+                    ));
                     let height = superzone.price_top - superzone.price_bottom;
                     ui.label(format!("Height: {}", format_price(height)));
-                }
+                },
             );
         }
     }

@@ -34,7 +34,7 @@ pub fn spawn_worker_thread(
                 Ok(cva) => {
                     let cva_arc = Arc::new(cva);
                     // The worker builds the data (the model)
-                    let model = TradingModel::from_cva(cva_arc.clone(), Some(req.current_price));
+                    let model = TradingModel::from_cva(cva_arc.clone());
                     // The worker wraps it in Arc::new() and sends it down the channel (tx)
                     tx.send(JobResult {
                         pair_name: req.pair_name,

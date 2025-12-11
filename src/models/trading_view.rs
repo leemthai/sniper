@@ -153,7 +153,7 @@ pub struct TradingModel {
     pub pair_name: String,
     pub cva: Arc<CVACore>,
     pub zones: ClassifiedZones,
-    pub current_price: Option<f64>,
+    // pub current_price: Option<f64>,
     pub coverage: ZoneCoverageStats,
 }
 
@@ -167,14 +167,13 @@ pub struct ZoneCoverageStats {
 
 impl TradingModel {
     /// Create a new trading model from CVA results and optional current price
-    pub fn from_cva(cva: Arc<CVACore>, current_price: Option<f64>) -> Self {
+    pub fn from_cva(cva: Arc<CVACore>) -> Self {
         let (zones, coverage) = Self::classify_zones(&cva);
 
         Self {
             pair_name: cva.pair_name.clone(),
             cva,
             zones,
-            current_price,
             coverage,
         }
     }
@@ -271,45 +270,24 @@ impl TradingModel {
         (classified, stats)
     }
 
-    /// Update the model with a new current price (recalculates S/R)
-    pub fn update_price(&mut self, new_price: f64) {
-        self.current_price = Some(new_price);
-    }
-
     /// Get all sticky zones (for potential S/R candidates)
     #[allow(dead_code)] // For trading strategies
     pub fn sticky_zones(&self) -> &[Zone] {
         &self.zones.sticky
     }
 
-    /// Get nearest support superzone
-    pub fn nearest_support_superzone(&self) -> Option<&SuperZone> {
-        let price = self.current_price?;
-        // Find sticky zone below price with minimum distance
-        self.zones
-            .sticky_superzones
-            .iter()
+/// Get nearest support superzone relative to a specific price
+    pub fn nearest_support_superzone(&self, price: f64) -> Option<&SuperZone> {
+        self.zones.sticky_superzones.iter()
             .filter(|sz| sz.price_center < price)
-            .min_by(|a, b| {
-                a.distance_to(price)
-                    .partial_cmp(&b.distance_to(price))
-                    .unwrap()
-            })
+            .min_by(|a, b| a.distance_to(price).partial_cmp(&b.distance_to(price)).unwrap())
     }
 
-    /// Get nearest resistance superzone
-    pub fn nearest_resistance_superzone(&self) -> Option<&SuperZone> {
-        let price = self.current_price?;
-        // Find sticky zone above price with minimum distance
-        self.zones
-            .sticky_superzones
-            .iter()
+    /// Get nearest resistance superzone relative to a specific price
+    pub fn nearest_resistance_superzone(&self, price: f64) -> Option<&SuperZone> {
+        self.zones.sticky_superzones.iter()
             .filter(|sz| sz.price_center > price)
-            .min_by(|a, b| {
-                a.distance_to(price)
-                    .partial_cmp(&b.distance_to(price))
-                    .unwrap()
-            })
+            .min_by(|a, b| a.distance_to(price).partial_cmp(&b.distance_to(price)).unwrap())
     }
 
     /// Find all superzones containing the given price
@@ -321,13 +299,13 @@ impl TradingModel {
         for sz in &self.zones.sticky_superzones {
             if sz.contains(price) {
                 // Determine if this specific sticky zone is acting as S or R
-                let zone_type = if let Some(sup) = self.nearest_support_superzone() {
+                let zone_type = if let Some(sup) = self.nearest_support_superzone(price) {
                     if sup.id == sz.id {
                         ZoneType::Support
                     } else {
                         ZoneType::Sticky
                     }
-                } else if let Some(res) = self.nearest_resistance_superzone() {
+                } else if let Some(res) = self.nearest_resistance_superzone(price) {
                     if res.id == sz.id {
                         ZoneType::Resistance
                     } else {

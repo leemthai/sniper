@@ -63,5 +63,10 @@ needs to be min/max not 2..50 or whatever?
 # Price change triggers
 Retest with value very low value again here;
         price_recalc_threshold_pct: 0.01,
-Just o be sure
+Just to be sure
+Soon I will need retest this as well......
+We need to test this as well....
+        price_recalc_threshold_pct: 0.01,
 
+# WASM mode
+make sure WASM mode works - might fail now with new price stream init?

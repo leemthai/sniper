@@ -74,15 +74,16 @@ impl ZoneSniperApp {
         // 1. Tell Engine to Suspend/Resume live updates
         if let Some(engine) = &self.engine {
             engine.set_stream_suspended(is_sim);
-            
+
             // 2. If Entering Sim Mode, Snapshot current price
             if is_sim {
-                if let Some(pair) = &self.selected_pair {
-                    // Try to get live price from Engine to seed the simulation
-                    if let Some(live_price) = engine.get_price(pair) {
-                        self.simulated_prices.insert(pair.clone(), live_price);
+                let all_pairs = engine.get_all_pair_names();
+
+                for pair in all_pairs {
+                    if let Some(live_price) = engine.get_price(&pair) {
+                            self.simulated_prices.insert(pair, live_price);
+                        }
                     }
-                }
             }
         }
 
@@ -100,12 +101,16 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn adjust_simulated_price_by_percent(&mut self, percent: f64) {
-        let Some(pair) = self.selected_pair.clone() else { return; };
-        
+        let Some(pair) = self.selected_pair.clone() else {
+            return;
+        };
+
         // 1. Calculate new price
         // We must rely on get_display_price to handle the fallback logic
         let current_price = self.get_display_price(&pair).unwrap_or(0.0);
-        if current_price == 0.0 { return; }
+        if current_price == 0.0 {
+            return;
+        }
 
         let new_price = current_price * (1.0 + percent);
         self.simulated_prices.insert(pair.clone(), new_price);
@@ -113,7 +118,7 @@ impl ZoneSniperApp {
         // 2. Notify Monitor (Optional: if we want signals to update in Sim mode)
         // Since we removed direct access to multi_pair_monitor, we skip this for now.
         // The PlotView will update automatically because it reads `current_pair_price`.
-        
+
         if cfg!(debug_assertions) && DEBUG_FLAGS.print_simulation_events {
             log::info!(
                 "Simulated Price Change: {} -> {:.2} ({:+.2}%)",
@@ -125,11 +130,17 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn jump_to_next_zone(&mut self, zone_type: &str) {
-        let Some(pair) = self.selected_pair.clone() else { return; };
-        
+        let Some(pair) = self.selected_pair.clone() else {
+            return;
+        };
+
         // 1. Get Model from Engine
-        let Some(engine) = &self.engine else { return; };
-        let Some(model) = engine.get_model(&pair) else { return; };
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let Some(model) = engine.get_model(&pair) else {
+            return;
+        };
 
         let current_price = self.get_display_price(&pair).unwrap_or(0.0);
 
@@ -164,13 +175,9 @@ impl ZoneSniperApp {
                 // Jump slightly past the center to ensure we are "in" it or clearly past previous
                 let new_price = zone.price_center;
                 self.simulated_prices.insert(pair.clone(), new_price);
-                
+
                 if cfg!(debug_assertions) && DEBUG_FLAGS.print_simulation_events {
-                    log::info!(
-                        "Jumped to {} zone at {:.2}",
-                        zone_type,
-                        new_price
-                    );
+                    log::info!("Jumped to {} zone at {:.2}", zone_type, new_price);
                 }
             }
         }
