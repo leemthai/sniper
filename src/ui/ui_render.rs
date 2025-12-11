@@ -101,7 +101,7 @@ impl ZoneSniperApp {
 
                 // Debug log to confirm what the UI is sending to the plot
                 if self.is_simulation_mode {
-                     log::info!("UI sending price to plot: {:?}", current_price);
+                    //  log::info!("UI sending price to plot: {:?}", current_price);
                 }
 
                 // PRIORITY 1: ERRORS
