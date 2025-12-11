@@ -34,5 +34,6 @@ See `docs/WASM/web_demo.md`
 
 ## More on Various Technical Elements
 Interval Switching: `docs/technical/interval_switching.md`
+Zero-Cost Data Buffer Switching using Arc Swapping: `docs/technical/buffers.md`
 AI Coding: `docs/technical/ai_technical.md`
 Discontinuous Ranges: `docs/technical/discontinuous_ranges.md`

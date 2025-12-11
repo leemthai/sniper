@@ -5,8 +5,8 @@ use eframe::egui::Context;
 use eframe::{App, Frame, Storage};
 use serde::{Deserialize, Serialize};
 
-// use crate::config::ANALYSIS;
-use crate::domain::auto_duration;
+use crate::config::ANALYSIS;
+use crate::config::AnalysisConfig;
 use crate::engine::SniperEngine;
 use crate::models::cva::ScoreType;
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
@@ -31,9 +31,9 @@ impl Default for PlotVisibility {
     }
 }
 
-fn default_time_horizon_days() -> u64 {
-    7
-}
+// fn default_time_horizon_days() -> u64 {
+//     7
+// }
 
 /// The Main Application State
 #[derive(Deserialize, Serialize)]
@@ -66,13 +66,7 @@ pub struct ZoneSniperApp {
     #[serde(skip)]
     pub sim_step_size: SimStepSize,
 
-    // RESTORED: These are UI state for the sliders.
-    // They act as "Proposed Config" for the next calculation.
-    #[serde(default)]
-    pub auto_duration_config: auto_duration::AutoDurationConfig,
-
-    #[serde(default = "default_time_horizon_days")]
-    pub time_horizon_days: u64,
+    pub app_config: AnalysisConfig,
 }
 
 impl Default for ZoneSniperApp {
@@ -82,8 +76,7 @@ impl Default for ZoneSniperApp {
             plot_visibility: PlotVisibility::default(),
 
             // Initialize Configs
-            auto_duration_config: crate::domain::auto_duration::AutoDurationConfig::default(),
-            time_horizon_days: default_time_horizon_days(),
+            app_config: ANALYSIS.clone(),
 
             engine: None, // Must be injected after creation
             plot_view: PlotView::new(),

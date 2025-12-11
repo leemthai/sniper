@@ -13,7 +13,6 @@ use crate::ui::ui_panels::{DataGenerationEventChanged, Panel};
 use super::app::ZoneSniperApp;
 use crate::ui::utils::format_price;
 
-
 impl ZoneSniperApp {
     pub(super) fn render_side_panel(&mut self, ctx: &Context) {
         let side_panel_frame = Frame::new().fill(UI_CONFIG.colors.side_panel);
@@ -42,18 +41,18 @@ impl ZoneSniperApp {
                         DataGenerationEventChanged::Pair(new_pair) => {
                             self.handle_pair_selection(new_pair);
                         }
-                        DataGenerationEventChanged::AutoDurationThreshold(new_threshold) => {
-                            let prev = self.auto_duration_config.relevancy_threshold;
+                        DataGenerationEventChanged::PriceHorizonThreshold(new_threshold) => {
+                            let prev = self.app_config.price_horizon.threshold_pct;
                             if (prev - new_threshold).abs() > f64::EPSILON {
-                                self.auto_duration_config.relevancy_threshold = new_threshold;
+                                self.app_config.price_horizon.threshold_pct = new_threshold;
                                 self.invalidate_all_pairs_for_global_change(
-                                    "auto-duration threshold changed",
+                                    "price horizon threshold changed",
                                 );
                             }
                         }
                         DataGenerationEventChanged::TimeHorizonDays(days) => {
-                            if self.time_horizon_days != days {
-                                self.time_horizon_days = days.clamp(
+                            if self.app_config.time_horizon.default_days != days {
+                                self.app_config.time_horizon.default_days = days.clamp(
                                     ANALYSIS.time_horizon.min_days,
                                     ANALYSIS.time_horizon.max_days,
                                 );
@@ -183,22 +182,27 @@ impl ZoneSniperApp {
                         }
 
                         // 3. Zone Size
-                        // if let Some(ref cva_results) = self.data_state.cva_results {
-                        //     let zone_size = (cva_results.price_range.end_range
-                        //         - cva_results.price_range.start_range)
-                        //         / cva_results.zone_count as f64;
+                        if let Some(engine) = &self.engine {
+                            if let Some(pair) = &self.selected_pair {
+                                if let Some(model) = engine.get_model(pair) {
+                                    let cva = &model.cva;
+                                    let zone_size = (cva.price_range.end_range
+                                        - cva.price_range.start_range)
+                                        / cva.zone_count as f64;
 
-                        //     ui.metric(
-                        //         "📏 Zone Size",
-                        //         &format!(
-                        //             "{} (N={})",
-                        //             format_price(zone_size),
-                        //             cva_results.zone_count
-                        //         ),
-                        //         Color32::from_rgb(180, 200, 255),
-                        //     );
-                        //     ui.separator();
-                        // }
+                                    ui.metric(
+                                        "📏 Zone Size",
+                                        &format!(
+                                            "{} (N={})",
+                                            format_price(zone_size),
+                                            cva.zone_count
+                                        ),
+                                        Color32::from_rgb(180, 200, 255),
+                                    );
+                                    ui.separator();
+                                }
+                            }
+                        }
 
                         ui.separator();
 
@@ -225,81 +229,92 @@ impl ZoneSniperApp {
                         ui.separator();
 
                         // Coverage Statistics
-                        // NEW: Use Cache
-                        // if let Some(model) = &self.data_state.current_model {
-                        //     // Helper to color-code coverage
-                        //     // > 30% is Red (Too much), < 5% is Yellow (Too little?), Green is good
-                        //     let cov_color = |pct: f64| {
-                        //         if pct > 30.0 {
-                        //             Color32::from_rgb(255, 100, 100)
-                        //         }
-                        //         // Red warning
-                        //         else {
-                        //             Color32::from_rgb(150, 255, 150)
-                        //         } // Green ok
-                        //     };
+                        // 4. Coverage Statistics
+                        if let Some(engine) = &self.engine {
+                            if let Some(pair) = &self.selected_pair {
+                                if let Some(model) = engine.get_model(pair) {
+                                    // Helper to color-code coverage
+                                    // > 30% is Red (Too much), < 5% is Yellow (Too little?), Green is good
+                                    let cov_color = |pct: f64| {
+                                        if pct > 30.0 {
+                                            Color32::from_rgb(255, 100, 100) // Red
+                                        } else if pct < 5.0 {
+                                            Color32::from_rgb(255, 215, 0) // Yellow
+                                        } else {
+                                            Color32::from_rgb(150, 255, 150) // Green
+                                        }
+                                    };
 
-                        //     // NEW STYLE: Using the Trait
-                        //     ui.label_subdued("Coverage");
+                                    ui.label_subdued("Coverage");
 
-                        //     ui.metric(
-                        //         "Sticky",
-                        //         &format!("{:.0}%", model.coverage.sticky_pct),
-                        //         cov_color(model.coverage.sticky_pct),
-                        //     );
+                                    ui.metric(
+                                        "Sticky",
+                                        &format!("{:.0}%", model.coverage.sticky_pct),
+                                        cov_color(model.coverage.sticky_pct),
+                                    );
 
-                        //     ui.metric(
-                        //         "R-Sup",
-                        //         &format!("{:.0}%", model.coverage.support_pct),
-                        //         cov_color(model.coverage.support_pct),
-                        //     );
+                                    ui.metric(
+                                        "R-Sup",
+                                        &format!("{:.0}%", model.coverage.support_pct),
+                                        cov_color(model.coverage.support_pct),
+                                    );
 
-                        //     ui.metric(
-                        //         "R-Res",
-                        //         &format!("{:.0}%", model.coverage.resistance_pct),
-                        //         cov_color(model.coverage.resistance_pct),
-                        //     );
+                                    ui.metric(
+                                        "R-Res",
+                                        &format!("{:.0}%", model.coverage.resistance_pct),
+                                        cov_color(model.coverage.resistance_pct),
+                                    );
 
-                        //     ui.separator();
-                        // }
+                                    ui.separator();
+                                }
+                            }
+                        }
 
-                        // 6. System & Model Status
-                        // let pair_count = self
-                        //     .data_state
-                        //     .timeseries_collection
-                        //     .unique_pair_names()
-                        //     .len();
-                        // ui.label_subdued(format!("📊 {} pairs", pair_count));
+                        // 5. System Status (RESTORED)
+                        if let Some(engine) = &self.engine {
+                            let total_pairs = engine.get_active_pair_count();
+                            ui.metric("📊 Pairs", &format!("{}", total_pairs), Color32::LIGHT_GRAY);
 
-                        // // NEW: Data-driven status
-                        // let status = self.model_status_summary();
-                        // if status.is_calculating {
-                        //     ui.separator();
-                        //     ui.label_warning("⚙ Updating CVA...");
-                        // }
-                        // if status.pairs_queued > 0 {
-                        //     ui.separator();
-                        //     ui.label_warning(format!("Journeys: {} queued", status.pairs_queued));
-                        // }
+                            // Worker Status
+                            if let Some(msg) = engine.get_worker_status_msg() {
+                                ui.separator();
+                                ui.label(
+                                    RichText::new(format!("⚙ {}", msg))
+                                        .small()
+                                        .color(Color32::from_rgb(255, 165, 0)), // Orange
+                                );
+                            }
+
+                            // Queue Size
+                            let q_len = engine.get_queue_len();
+                            if q_len > 0 {
+                                ui.separator();
+                                ui.label(
+                                    RichText::new(format!("Queue: {}", q_len))
+                                        .small()
+                                        .color(Color32::YELLOW),
+                                );
+                            }
+                        }
 
                         ui.separator();
 
                         // 8. Network health
-                        // if let Some(ref stream) = self.price_stream {
-                        //     let health = stream.connection_health();
-                        //     let (icon, color) = if health >= 90.0 {
-                        //         ("🟢", Color32::from_rgb(0, 200, 0))
-                        //     } else if health >= 50.0 {
-                        //         ("🟡", Color32::from_rgb(200, 200, 0))
-                        //     } else {
-                        //         ("🔴", Color32::from_rgb(200, 0, 0))
-                        //     };
-                        //     ui.metric(
-                        //         &format!("{} Live Prices", icon),
-                        //         &format!("{:.0}% connected", health),
-                        //         color,
-                        //     );
-                        // }
+                        if let Some(engine) = &self.engine {
+                            let health = engine.price_stream.connection_health();
+                            let (icon, color) = if health >= 90.0 {
+                                ("🟢", Color32::from_rgb(0, 200, 0))
+                            } else if health >= 50.0 {
+                                ("🟡", Color32::from_rgb(200, 200, 0))
+                            } else {
+                                ("🔴", Color32::from_rgb(200, 0, 0))
+                            };
+                            ui.metric(
+                                &format!("{} Live Prices", icon),
+                                &format!("{:.0}% connected", health),
+                                color,
+                            );
+                        }
                     });
                 });
             });
@@ -428,8 +443,8 @@ impl ZoneSniperApp {
             ANALYSIS.zone_count,
             self.selected_pair.clone(),
             available_pairs,
-            &self.auto_duration_config, // Now exists on self
-            self.time_horizon_days,     // Now exists on self
+            &self.app_config.price_horizon,
+            self.app_config.time_horizon.default_days,
         );
         panel.render(ui)
     }

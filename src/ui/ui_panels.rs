@@ -7,6 +7,7 @@ use crate::domain::pair_interval::PairInterval;
 
 use crate::models::cva::ScoreType;
 use crate::models::{PairContext, ZoneType};
+use crate::domain::price_horizon::PriceHorizonConfig;
 use crate::ui::config::UI_TEXT;
 use crate::ui::utils::{colored_subsection_heading, section_heading, spaced_separator};
 
@@ -25,7 +26,7 @@ pub struct DataGenerationPanel<'a> {
     zone_count: usize,
     selected_pair: Option<String>,
     available_pairs: Vec<String>,
-    auto_duration_config: &'a crate::domain::auto_duration::AutoDurationConfig,
+    price_horizon_config: &'a PriceHorizonConfig,
     time_horizon_days: u64,
 }
 
@@ -34,14 +35,14 @@ impl<'a> DataGenerationPanel<'a> {
         zone_count: usize,
         selected_pair: Option<String>,
         available_pairs: Vec<String>,
-        auto_duration_config: &'a crate::domain::auto_duration::AutoDurationConfig,
+        price_horizon_config: &'a PriceHorizonConfig,
         time_horizon_days: u64,
     ) -> Self {
         Self {
             zone_count,
             selected_pair,
             available_pairs,
-            auto_duration_config,
+            price_horizon_config,
             time_horizon_days,
         }
     }
@@ -52,7 +53,7 @@ impl<'a> DataGenerationPanel<'a> {
         ui.add_space(5.0);
         ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
 
-        let mut threshold_pct = self.auto_duration_config.relevancy_threshold * 100.0;
+        let mut threshold_pct = self.price_horizon_config.threshold_pct * 100.0;
         let response = ui.add(
             Slider::new(&mut threshold_pct, 1.0..=80.0)
                 .step_by(1.0)
@@ -149,7 +150,7 @@ impl<'a> DataGenerationPanel<'a> {
 pub enum DataGenerationEventChanged {
     // ZoneCount(usize),
     Pair(String),
-    AutoDurationThreshold(f64),
+    PriceHorizonThreshold(f64),
     TimeHorizonDays(u64),
 }
 
@@ -159,9 +160,9 @@ impl<'a> Panel for DataGenerationPanel<'a> {
         let mut events = Vec::new();
         section_heading(ui, UI_TEXT.data_generation_heading);
 
-        // Auto duration display (always enabled)
+        // Price Horizon display (always enabled)
         if let Some(threshold) = self.render_auto_duration_display(ui) {
-            events.push(DataGenerationEventChanged::AutoDurationThreshold(threshold));
+            events.push(DataGenerationEventChanged::PriceHorizonThreshold(threshold));
         }
         spaced_separator(ui);
 

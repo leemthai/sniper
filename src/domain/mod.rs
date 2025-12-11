@@ -1,5 +1,5 @@
 // Domain types and value objects
-pub mod auto_duration;
+pub mod price_horizon;
 pub mod candle;
 pub mod pair_interval;
 

@@ -24,9 +24,8 @@ pub fn spawn_worker_thread(
                 req.pair_name.clone(),
                 &req.timeseries,
                 // We need to calculate slice ranges here or inside pair_analysis
-                // Ideally pair_analysis does the Auto-Duration logic too.
                 req.current_price,
-                &req.config.auto_duration,
+                &req.config.price_horizon,
             );
 
             let elapsed = start.elapsed().as_millis();

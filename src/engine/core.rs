@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::analysis::MultiPairMonitor;
-use crate::config::ANALYSIS;
+use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::trading_view::TradingModel;
@@ -30,6 +30,9 @@ pub struct SniperEngine {
     pub queue: VecDeque<String>,
 
     pub multi_pair_monitor: MultiPairMonitor,
+
+    /// Live configuration state
+    pub current_config: AnalysisConfig,
 }
 
 impl SniperEngine {
@@ -64,6 +67,7 @@ impl SniperEngine {
             result_rx,
             queue: VecDeque::new(),
             multi_pair_monitor: MultiPairMonitor::new(),
+            current_config: ANALYSIS.clone(),
         }
     }
 
@@ -81,6 +85,39 @@ impl SniperEngine {
 
         // 3. Dispatch Jobs
         self.process_queue();
+    }
+
+    // --- TELEMETRY GETTERS (For Status Bar) ---
+    pub fn get_queue_len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn get_worker_status_msg(&self) -> Option<String> {
+        // Find if any pair is calculating
+        let calculating_pair = self
+            .pairs
+            .iter()
+            .find(|(_, state)| state.is_calculating)
+            .map(|(name, _)| name.clone());
+
+        if let Some(pair) = calculating_pair {
+            Some(format!("Processing {}", pair))
+        } else if !self.queue.is_empty() {
+            Some(format!("Queued: {}", self.queue.len()))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_active_pair_count(&self) -> usize {
+        self.pairs.len()
+    }
+
+    // --- CONFIG UPDATES ---
+    pub fn update_config(&mut self, new_config: AnalysisConfig) {
+        self.current_config = new_config;
+        // Optimization: We could auto-trigger a recalc here if we wanted,
+        // but explicit invalidation from UI is safer.
     }
 
     /// Accessor for UI: Get the current Front Buffer
@@ -144,21 +181,20 @@ impl SniperEngine {
 
     fn dispatch_job(&mut self, pair: String) {
         if let Some(state) = self.pairs.get_mut(&pair) {
-            // Get latest price for the calculation
             let price = self.price_stream.get_price(&pair).unwrap_or(0.0);
 
-            // Mark as busy so we don't queue it again immediately
             state.is_calculating = true;
-            state.last_update_price = price; // Optimistic update of anchor
+            state.last_update_price = price;
 
             let req = JobRequest {
                 pair_name: pair,
                 current_price: price,
-                config: ANALYSIS.clone(), // Snapshot current config
+                // CRITICAL FIX: Use the Engine's current_config, NOT the static ANALYSIS constant
+                config: self.current_config.clone(),
                 timeseries: self.timeseries.clone(),
             };
 
-            let _ = self.job_tx.send(req); // Send to worker
+            let _ = self.job_tx.send(req);
         }
     }
 

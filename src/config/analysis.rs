@@ -1,9 +1,14 @@
 //! Analysis and computation configuration
 
-use crate::{domain::auto_duration::AutoDurationConfig, utils::TimeUtils};
+use serde::{Deserialize, Serialize}; // Add Import
+
+use crate::{
+    domain::price_horizon::PriceHorizonConfig,
+    utils::TimeUtils,
+};
 
 /// Configuration for the Time Horizon UI Slider
-#[derive(Clone, Debug)] 
+#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
 pub struct TimeHorizonConfig {
     // Time Horizon slider configuration
     pub min_days: u64,
@@ -12,7 +17,7 @@ pub struct TimeHorizonConfig {
 }
 
 /// Settings specific to Journey Analysis
-#[derive(Clone, Debug)] 
+#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
 pub struct JourneySettings {
     // Tolerance when matching historical prices for journey analysis (percentage)
     pub start_price_tolerance_pct: f64,
@@ -20,7 +25,7 @@ pub struct JourneySettings {
 }
 
 /// Settings for CVA (Cumulative Volume Analysis)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
 pub struct CvaSettings {
     // Price change threshold (fractional) to trigger CVA recomputation
     pub price_recalc_threshold_pct: f64,
@@ -30,7 +35,7 @@ pub struct CvaSettings {
 }
 
 /// Parameters for a specific zone type (Sticky, Reversal, etc.)
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Debug, Copy, Serialize, Deserialize)] // Add Serde
 pub struct ZoneParams {
     /// Smoothing Window % (0.0 to 1.0).
     /// Turn UP to merge jagged spikes into hills. Turn DOWN for sharp precision.
@@ -45,14 +50,14 @@ pub struct ZoneParams {
     pub threshold: f64,
 }
 
-#[derive(Clone, Debug)] 
+#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
 pub struct ZoneClassificationConfig {
     pub sticky: ZoneParams,
     pub reversal: ZoneParams,
 }
 
 /// The Master Analysis Configuration
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
 pub struct AnalysisConfig {
     // This defines the candle interval for all analysis (1h, 5m, 15m, etc.)
     pub interval_width_ms: i64,
@@ -67,7 +72,7 @@ pub struct AnalysisConfig {
     pub cva: CvaSettings,
     pub zones: ZoneClassificationConfig,
 
-    pub auto_duration: AutoDurationConfig,
+    pub price_horizon: PriceHorizonConfig,
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
@@ -113,14 +118,14 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         // CHANGE: 0.01 (1%) -> 0.0005 (0.05%)
         // This makes the model 20x more sensitive for testing.
         // TESTING ONLY CHANGE .... change back when not testing to 0.01
-        price_recalc_threshold_pct: 0.000003,
-        // price_recalc_threshold_pct: 0.01,
+        // price_recalc_threshold_pct: 0.000003,
+        price_recalc_threshold_pct: 0.01,
         min_candles_for_analysis: 100,
     },
 
-        // NEW: Initialize Default AutoDuration
-    auto_duration: AutoDurationConfig {
-        relevancy_threshold: 0.15, // Default 15%
+    // NEW: Initialize Default AutoDuration
+    price_horizon: PriceHorizonConfig {
+        threshold_pct: 0.15,
         min_lookback_days: 7,
     },
 };
