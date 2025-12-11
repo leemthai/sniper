@@ -93,13 +93,23 @@ impl Default for ZoneSniperApp {
 
 impl ZoneSniperApp {
     /// Create the app and inject the Engine (called from main.rs)
-    pub fn new(cc: &eframe::CreationContext<'_>, engine: SniperEngine) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, mut engine: SniperEngine) -> Self {
         // 1. Load state from disk if available
         let mut app: ZoneSniperApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Self::default()
         };
+
+        // 2. CRITICAL FIX: Sync the loaded config to the Engine immediately
+        // This ensures the Engine uses the persisted "1%" setting, not the default "15%"
+        engine.update_config(app.app_config.clone());
+
+        // Optional: Force a rebuild of the queue based on this config?
+        // Since the Engine handles its own startup queue, updating the config
+        // *before* the first price arrives (and triggers the first job) is usually sufficient.
+        // But to be safe, we can trigger a global recalc here.
+        engine.trigger_global_recalc(app.selected_pair.clone());
 
         // 2. Inject the Engine (The Brain)
         app.engine = Some(engine);
@@ -121,15 +131,16 @@ impl ZoneSniperApp {
         }
     }
 
-    /// Called when a global setting (like Auto-Duration) changes.
-    /// Forces a recalculation of ALL pairs.
+    /// Called when a global setting (like Price Horizon) changes.
     pub fn invalidate_all_pairs_for_global_change(&mut self, reason: &str) {
         log::info!("Global invalidation triggered: {}", reason);
         if let Some(engine) = &mut self.engine {
-            let all_pairs = engine.get_all_pair_names();
-            for pair in all_pairs {
-                engine.force_recalc(&pair);
-            }
+            // 1. PUSH Config to Engine
+            engine.update_config(self.app_config.clone());
+
+            // 2. Trigger Global Recalc with Priority
+            // This clears the queue and puts selected_pair first.
+            engine.trigger_global_recalc(self.selected_pair.clone());
         }
     }
 
@@ -172,7 +183,12 @@ impl App for ZoneSniperApp {
 
         // 1. Update the Engine (The Game Loop)
         if let Some(engine) = &mut self.engine {
-            engine.update();
+            // FIX: If engine returns true (BUSY), we request another frame immediately.
+            // This prevents the queue from stalling when the mouse stops moving.
+            let is_busy = engine.update();
+            if is_busy {
+                ctx.request_repaint();
+            }
         }
 
         // 2. Handle Inputs

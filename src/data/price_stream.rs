@@ -115,46 +115,35 @@ impl PriceStreamManager {
         (connected as f64 / status_map.len() as f64) * 100.0
     }
 
-    /// Subscribe to multiple trading pairs at once
-    /// Symbol format: "BTCUSDT" (will be converted to lowercase internally)
     pub fn subscribe_all(&self, symbols: Vec<String>) {
         let symbols_lower: Vec<String> = symbols.iter().map(|s| s.to_lowercase()).collect();
-
-        // Check if already subscribed
-        {
-            let subscribed = self.subscribed_symbols.lock().unwrap();
-            if *subscribed == symbols_lower {
-                return; // Already subscribed to these symbols
-            }
+        
+        let mut subscribed = self.subscribed_symbols.lock().unwrap();
+        if *subscribed == symbols_lower {
+            return; 
         }
+        
+        log::info!(">>> PriceStream: Requesting {} pairs: {:?}", symbols_lower.len(), symbols_lower);
 
-        // Update subscribed list
-        *self.subscribed_symbols.lock().unwrap() = symbols_lower.clone();
-
-        #[cfg(debug_assertions)]
-        if DEBUG_FLAGS.print_price_stream_updates {
-            log::info!(
-                "Subscribing to {} price streams with auto-reconnect",
-                symbols_lower.len()
-            );
-        }
-
-        // Mark all symbols as connecting up-front so the UI can show progress while we establish the stream.
-        {
-            let mut status_map = self.connection_status.lock().unwrap();
-            status_map.clear();
-            for symbol in &symbols_lower {
-                status_map.insert(symbol.clone(), ConnectionStatus::Connecting);
-            }
-        }
-
-        let prices_arc = Arc::clone(&self.prices);
-        let status_arc = Arc::clone(&self.connection_status);
-        let suspended_arc = Arc::clone(&self.suspended);
+        *subscribed = symbols_lower.clone();
+        
+        // Clone Arcs to move into the background thread
+        let prices_arc = self.prices.clone();
+        let status_arc = self.connection_status.clone();
+        let suspended_arc = self.suspended.clone();
+        
+        // Clone symbol list for the warmup call
+        let symbols_for_warmup = symbols_lower.clone();
 
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
             rt.block_on(async move {
+                // 1. PULL (Batch Snapshot)
+                // This runs ONCE at startup to populate the cache immediately
+                warm_up_prices(prices_arc.clone(), &symbols_for_warmup).await;
+
+                // 2. PUSH (Live Updates)
+                // Then we enter the infinite WebSocket loop to keep prices fresh
                 run_combined_price_stream_with_reconnect(
                     symbols_lower,
                     prices_arc,
@@ -410,3 +399,94 @@ fn build_combined_stream_url(symbols: &[String]) -> String {
 
     format!("{}{}", BINANCE.ws.combined_base_url, stream_descriptor)
 }
+
+
+#[cfg(not(target_arch = "wasm32"))]
+use binance_sdk::spot::SpotRestApi;
+#[cfg(not(target_arch = "wasm32"))]
+use binance_sdk::config::ConfigurationRestApi;
+#[cfg(not(target_arch = "wasm32"))]
+use std::collections::HashSet;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::{BinanceApiConfig};
+#[cfg(not(target_arch = "wasm32"))]
+use binance_sdk::spot::rest_api::{TickerPriceParams, TickerPriceResponse};
+
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &[String]) {
+    
+    log::info!(">>> PriceStream: Warming up price cache via REST API...");
+
+    let config = BinanceApiConfig::default();
+    
+    let rest_conf = ConfigurationRestApi::builder()
+        .timeout(config.timeout_ms)
+        .retries(config.retries)
+        .backoff(config.backoff_ms)
+        .build()
+        .expect("Failed to build Binance REST config");
+
+    let client = SpotRestApi::production(rest_conf);
+
+    let params = TickerPriceParams {
+        symbol: None,
+        symbols: None,
+        symbol_status: None,
+    };
+
+    // 1. Make the Request
+    match client.ticker_price(params).await {
+        Ok(response) => {
+            // 2. Await the data extraction (It returns a Result<TickerPriceResponse>)
+            match response.data().await {
+                Ok(ticker_data) => {
+                    match ticker_data {
+                        // 3. Match the Vector Variant
+                        TickerPriceResponse::TickerPriceResponse2(all_tickers) => {
+                            let mut p_lock = prices_arc.lock().unwrap();
+                            let mut updated_count = 0;
+                            
+                            let wanted_set: HashSet<String> = symbols.iter()
+                                .map(|s| s.to_lowercase())
+                                .collect();
+
+                            for ticker in all_tickers {
+                                // 4. Safely handle Option fields (symbol/price might be None)
+                                if let (Some(s), Some(p)) = (&ticker.symbol, &ticker.price) {
+                                    let symbol_lower = s.to_lowercase();
+                                    
+                                    if wanted_set.contains(&symbol_lower) {
+                                        let price = p.parse::<f64>().unwrap_or(0.0);
+                                        if price > 0.0 {
+                                            p_lock.insert(symbol_lower, price);
+                                            updated_count += 1;
+                                        }
+                                    }
+                                }
+                            }
+                            log::info!(
+                                ">>> PriceStream: Warmup complete. Updated {}/{} pairs.",
+                                updated_count,
+                                symbols.len()
+                            );
+                        },
+                        TickerPriceResponse::TickerPriceResponse1(_) => {
+                            log::warn!(">>> PriceStream: Unexpected 'Single' response type during batch warmup.");
+                        },
+                        _ => {
+                            log::warn!(">>> PriceStream: Unexpected 'Other' response type.");
+                        }
+                    }
+                },
+                Err(e) => {
+                    log::error!(">>> PriceStream: Failed to parse response data: {:?}", e);
+                }
+            }
+        }
+        Err(e) => {
+            log::error!(">>> PriceStream: Warmup request failed: {:?}", e);
+        }
+    }
+}
+

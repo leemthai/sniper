@@ -45,35 +45,23 @@ https://github.com/emilk/egui_plot/issues/200
 
 
 
-# New thingf to tell him when I have time
-# Price change triggers
-TRIGGER: Seems to be working (can put that back to 0.01 in analyisconfig)
-But ...... it keeps printing many many times.
-Some kind of queue flooding maybe
+# Are we serializing too much? (vague guess)
+Have a look at state file soon in my spare time
+Get AI to have a look at state.json file. He can analyse
 
-I thought we ran the model before we render the UI. So why does it say 'calculating zones' when you click to a different pair.
-I think it could be because of the queue, and in debug mode, a queue item takes much longer to run?
-It should never ever say that now, right?
-
-# In case of `Not enough zones` - what happens now?
-We have a constant somewhere which describes the minimum number of qualifying candles in the price range
-min_candles_for_analysis
-What happens if our pair does not have enough candles to qualify for analysis. We should have specific message come up right? Do we have such a specific message now?
-
-
-# Too much cloning is making me itch:
+# Next big job - cloning stuff
+When we reconvene, we will audit the `JobRequest` $\to$ `Worker` $\to$ `pair_analysis` pipeline to ensure we are passing **References** and **Arcs**, not deep copies.
+Enjoy the rest. The foundation is solid.
 Example: core.rs
               timeseries: self.timeseries.clone(),
 That's a fucking massive bit of data. Cloning is very cheap trick. This is totally immutable data.
 Anaylse all of our .clone() operations through all files. We can add lifetimes....
 
-# The Queue
-Just seems to go up - never down. And up to 812..... There should only EVER be one queue job per PAIR.
-I thought I gave you some good queue logic in design dude?!?
-If price horizon is changed (i.e. global invalidation), we replace current queue with new queue. We don't add to the fucking end. What the fuck?????
-Don't fuck up this new code dude. I want it tight.
-Show me thee current queue logic, and how you plan to make it more intelligent....
+# Did we ever fix the hardcoded slider
+needs to be min/max not 2..50 or whatever?
 
-Also, the queue number only seems to go down when I move the mouse over the app. What the fuck is that? Please investigate? That is actually a thing. The queue number stays fixed unless you move the mouse over the app. Honestly. If I leave the app alone for a minute and then move the mouse over it again, the queue number will start counting down again. What happened to the model running fully indepedently?
+# Price change triggers
+Retest with value very low value again here;
+        price_recalc_threshold_pct: 0.01,
+Just o be sure
 
-No new code changes rn. Just talk to me about the issues raised

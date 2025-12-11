@@ -65,7 +65,6 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn render_central_panel(&mut self, ctx: &eframe::egui::Context) {
-        use crate::ui::ui_render::render_fullscreen_message; // Ensure helper is available
 
         let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
 
@@ -74,48 +73,75 @@ impl ZoneSniperApp {
             .show(ctx, |ui| {
                 ui.add_space(10.0);
 
-                // Safety check
+                // 1. Safety Check: Engine existence
                 let Some(engine) = &self.engine else {
-                    render_fullscreen_message(ui, "System Error", "Engine not initialized", true);
+                    render_fullscreen_message(
+                        ui,
+                        "System Starting...",
+                        "Initializing Engine",
+                        false,
+                    );
                     return;
                 };
 
+                // 2. Safety Check: Selected Pair
                 let Some(pair) = self.selected_pair.clone() else {
                     render_fullscreen_message(
                         ui,
                         "No Pair Selected",
-                        "Select a pair to begin",
+                        "Select a pair on the left.",
                         false,
                     );
                     return;
                 };
 
-                let current_price = self.get_display_price(&pair);
+                // 3. Get Price State (Do we have a live price?)
+                let current_price = engine.get_price(&pair);
 
-                // ASK THE ENGINE FOR DATA
+                // 4. View Logic
                 if let Some(model) = engine.get_model(&pair) {
-                    // Success: We have a model. Draw it.
-
-                    // Note: If in Sim mode, we might want to update the model's current price
-                    // pointer for S/R highlighting, or just pass the price to the plot view.
-                    // The plot view uses `current_pair_price` for the gold line.
-
+                    // CASE A: We have data. Draw the plot.
                     self.plot_view.show_my_plot(
                         ui,
-                        &model.cva, // Access CVA via the model
+                        &model.cva,
                         &model,
-                        current_price,
+                        current_price, // Might be None if stream briefly disconnects, but Model persists
                         self.debug_background_mode,
                         &self.plot_visibility,
                     );
                 } else {
-                    // No model yet (Startup or Worker Busy)
-                    render_fullscreen_message(
-                        ui,
-                        &format!("Analyzing {}...", pair),
-                        "Calculating Zones...",
-                        false,
-                    );
+                    // CASE B: No Model. Why?
+                    let (is_calculating, last_error) = engine.get_pair_status(&pair);
+
+                    if let Some(err_msg) = last_error {
+                        // Error during calculation
+                        render_fullscreen_message(ui, "Analysis Failed", &err_msg, true);
+                    } else if is_calculating {
+                        // Worker is busy
+                        render_fullscreen_message(
+                            ui,
+                            &format!("Analyzing {}...", pair),
+                            "Calculating Zones...",
+                            false,
+                        );
+                    } else if current_price.is_some() {
+                        // We HAVE a price, but NO model and NOT calculating.
+                        // This means it is sitting in the Queue waiting for its turn.
+                        render_fullscreen_message(
+                            ui,
+                            &format!("Queued: {}...", pair),
+                            "Waiting for worker thread...",
+                            false,
+                        );
+                    } else {
+                        // We have NO price.
+                        render_fullscreen_message(
+                            ui,
+                            "Waiting for Price...",
+                            "Listening to Binance Stream...",
+                            false,
+                        );
+                    }
                 }
             });
     }
@@ -218,13 +244,6 @@ impl ZoneSniperApp {
                             RichText::new(mode_text)
                                 .small()
                                 .color(Color32::from_rgb(0, 255, 255)),
-                        );
-                        ui.separator();
-
-                        ui.label(
-                            RichText::new(mode_text)
-                                .small()
-                                .color(Color32::from_rgb(0, 255, 255)), // Cyan for visibility
                         );
                         ui.separator();
 
