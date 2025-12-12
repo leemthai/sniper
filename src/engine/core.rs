@@ -1,13 +1,13 @@
 use std::collections::{HashMap, VecDeque};
-use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::Arc;
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::analysis::MultiPairMonitor;
 use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
-use crate::models::trading_view::TradingModel;
 use crate::models::pair_context::PairContext;
+use crate::models::trading_view::TradingModel;
 
 use super::messages::{JobRequest, JobResult};
 use super::state::PairState;
@@ -19,20 +19,27 @@ pub struct SniperEngine {
 
     /// Shared immutable data
     pub timeseries: Arc<TimeSeriesCollection>,
-    
+
     /// Live Data Feed
     pub price_stream: Arc<PriceStreamManager>,
 
     /// Owned monitor
     pub multi_pair_monitor: MultiPairMonitor,
 
-    /// Worker Communication
-    job_tx: Sender<JobRequest>,
-    result_rx: Receiver<JobResult>,
+    // Common Channels
+    job_tx: Sender<JobRequest>,     // UI writes to this
+    result_rx: Receiver<JobResult>, // UI reads from this
+
+    // WASM ONLY: The Engine acts as the Worker, so it needs the "Worker Ends" of the channels
+    #[cfg(target_arch = "wasm32")]
+    job_rx: Receiver<JobRequest>,
+
+    #[cfg(target_arch = "wasm32")]
+    result_tx: Sender<JobResult>,
 
     /// Queue Logic: (PairName, OptionalPriceOverride)
     pub queue: VecDeque<(String, Option<f64>)>,
-    
+
     /// The Live Configuration State
     pub current_config: AnalysisConfig,
 }
@@ -42,17 +49,19 @@ impl SniperEngine {
     pub fn new(timeseries: TimeSeriesCollection) -> Self {
         let timeseries_arc = Arc::new(timeseries);
         let price_stream = Arc::new(PriceStreamManager::new());
-        
+
         let (job_tx, job_rx) = channel::<JobRequest>();
         let (result_tx, result_rx) = channel::<JobResult>();
 
+        // NATIVE: Pass the receiver to the thread. It moves out of this scope.
+        #[cfg(not(target_arch = "wasm32"))]
         worker::spawn_worker_thread(job_rx, result_tx);
 
         let mut pairs = HashMap::new();
         for pair in timeseries_arc.unique_pair_names() {
             pairs.insert(pair, PairState::new());
         }
-        
+
         let all_names: Vec<String> = pairs.keys().cloned().collect();
         price_stream.subscribe_all(all_names);
 
@@ -63,14 +72,29 @@ impl SniperEngine {
             multi_pair_monitor: MultiPairMonitor::new(),
             job_tx,
             result_rx,
+            // WASM: Store the handles so they don't get dropped
+            #[cfg(target_arch = "wasm32")]
+            job_rx,
+            #[cfg(target_arch = "wasm32")]
+            result_tx,
             queue: VecDeque::new(),
-            current_config: ANALYSIS.clone(), 
+            current_config: ANALYSIS.clone(),
         }
     }
 
     /// THE GAME LOOP.
     pub fn update(&mut self) {
-        // 1. Process Results (Swap Buffers)
+        // 1. WASM ONLY: Process jobs manually in the main thread
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Non-blocking check for work
+            if let Ok(req) = self.job_rx.try_recv() {
+                // Run sync calculation
+                worker::process_request_sync(req, self.result_tx.clone());
+            }
+        }
+
+        // 2. Process Results (Swap Buffers)
         while let Ok(result) = self.result_rx.try_recv() {
             self.handle_job_result(result);
         }
@@ -86,7 +110,7 @@ impl SniperEngine {
     pub fn get_model(&self, pair: &str) -> Option<Arc<TradingModel>> {
         self.pairs.get(pair).and_then(|state| state.model.clone())
     }
-    
+
     pub fn get_price(&self, pair: &str) -> Option<f64> {
         self.price_stream.get_price(pair)
     }
@@ -102,35 +126,37 @@ impl SniperEngine {
             self.price_stream.resume();
         }
     }
-    
+
     pub fn get_all_pair_names(&self) -> Vec<String> {
         self.timeseries.unique_pair_names()
     }
 
     // --- TELEMETRY ---
-    
+
     pub fn get_queue_len(&self) -> usize {
         self.queue.len()
     }
 
     pub fn get_worker_status_msg(&self) -> Option<String> {
-        let calculating_pair = self.pairs.iter()
+        let calculating_pair = self
+            .pairs
+            .iter()
             .find(|(_, state)| state.is_calculating)
             .map(|(name, _)| name.clone());
-            
+
         if let Some(pair) = calculating_pair {
-             Some(format!("Processing {}", pair))
+            Some(format!("Processing {}", pair))
         } else if !self.queue.is_empty() {
-             Some(format!("Queued: {}", self.queue.len()))
+            Some(format!("Queued: {}", self.queue.len()))
         } else {
-             None
+            None
         }
     }
-    
+
     pub fn get_active_pair_count(&self) -> usize {
         self.pairs.len()
     }
-    
+
     pub fn get_pair_status(&self, pair: &str) -> (bool, Option<String>) {
         if let Some(state) = self.pairs.get(pair) {
             (state.is_calculating, state.last_error.clone())
@@ -140,7 +166,7 @@ impl SniperEngine {
     }
 
     // --- CONFIG UPDATES ---
-    
+
     pub fn update_config(&mut self, new_config: AnalysisConfig) {
         self.current_config = new_config;
     }
@@ -148,9 +174,9 @@ impl SniperEngine {
     /// Smart Global Invalidation
     pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
         self.queue.clear();
-        
+
         let mut all_pairs = self.get_all_pair_names();
-        
+
         if let Some(vip) = priority_pair {
             if let Some(pos) = all_pairs.iter().position(|p| p == &vip) {
                 all_pairs.remove(pos);
@@ -169,12 +195,16 @@ impl SniperEngine {
     /// Force a single recalc with optional price override
     pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>) {
         // Check if calculating
-        let is_calculating = self.pairs.get(pair).map(|s| s.is_calculating).unwrap_or(false);
-        
+        let is_calculating = self
+            .pairs
+            .get(pair)
+            .map(|s| s.is_calculating)
+            .unwrap_or(false);
+
         // Check if already in queue (by Name)
         // We use a manual iterator check because contains() fails on tuples
         let in_queue = self.queue.iter().any(|(p, _)| p == pair);
-        
+
         if !is_calculating && !in_queue {
             self.queue.push_front((pair.to_string(), price_override));
         }
@@ -187,11 +217,8 @@ impl SniperEngine {
             match result.result {
                 Ok(model) => {
                     state.update_buffer(model.clone());
-                    
-                    let ctx = PairContext::new(
-                        (*model).clone(), 
-                        state.last_update_price 
-                    );
+
+                    let ctx = PairContext::new((*model).clone(), state.last_update_price);
                     self.multi_pair_monitor.add_pair(ctx);
                 }
                 Err(e) => {
@@ -209,10 +236,9 @@ impl SniperEngine {
         for pair in pairs {
             if let Some(current_price) = self.price_stream.get_price(&pair) {
                 if let Some(state) = self.pairs.get_mut(&pair) {
-                    
                     // Don't queue if already busy or already queued (Check name only)
                     let in_queue = self.queue.iter().any(|(p, _)| p == &pair);
-                    
+
                     if state.is_calculating || in_queue {
                         continue;
                     }
@@ -222,8 +248,9 @@ impl SniperEngine {
                         self.queue.push_back((pair, None));
                     } else {
                         let threshold = ANALYSIS.cva.price_recalc_threshold_pct;
-                        let pct_diff = (current_price - state.last_update_price).abs() / state.last_update_price;
-                        
+                        let pct_diff = (current_price - state.last_update_price).abs()
+                            / state.last_update_price;
+
                         if pct_diff >= threshold {
                             log::info!("[{}] Trigger: Price moved {:.4}%", pair, pct_diff * 100.0);
                             self.queue.push_back((pair, None));
@@ -235,17 +262,19 @@ impl SniperEngine {
     }
 
     fn process_queue(&mut self) {
-        if self.queue.is_empty() { return; }
+        if self.queue.is_empty() {
+            return;
+        }
 
         // Peek at front
         if let Some((pair, _)) = self.queue.front() {
-             // Race check: is it calculating now?
-             if let Some(state) = self.pairs.get(pair) {
-                 if state.is_calculating {
-                     // It's busy. Wait.
-                     return;
-                 }
-             }
+            // Race check: is it calculating now?
+            if let Some(state) = self.pairs.get(pair) {
+                if state.is_calculating {
+                    // It's busy. Wait.
+                    return;
+                }
+            }
         }
 
         // Pop the tuple
@@ -256,7 +285,6 @@ impl SniperEngine {
 
     fn dispatch_job(&mut self, pair: String, price_override: Option<f64>) {
         if let Some(state) = self.pairs.get_mut(&pair) {
-            
             // Priority: Override -> Live Stream -> Fail
             let price = if let Some(p) = price_override {
                 p
@@ -266,14 +294,14 @@ impl SniperEngine {
                 // No price. Do nothing.
                 return;
             };
-            
+
             state.is_calculating = true;
-            state.last_update_price = price; 
+            state.last_update_price = price;
 
             let req = JobRequest {
                 pair_name: pair,
                 current_price: price,
-                config: self.current_config.clone(), 
+                config: self.current_config.clone(),
                 timeseries: self.timeseries.clone(),
             };
 

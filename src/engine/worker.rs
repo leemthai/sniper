@@ -1,57 +1,70 @@
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
 use std::time::Instant;
+
+// Only import thread on non-WASM targets
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread;
 
 use super::messages::{JobRequest, JobResult};
 use crate::analysis::pair_analysis;
 use crate::models::trading_view::TradingModel;
 
+/// NATIVE ONLY: Spawns a background thread to process jobs
+#[cfg(not(target_arch = "wasm32"))]
 pub fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult>) {
     thread::spawn(move || {
         while let Ok(req) = rx.recv() {
-            crate::trace_time!("Total Worker Job", 5000, {
-                let start = Instant::now();
+            process_request_sync(req, tx.clone());
+        }
+    });
+}
 
-                // 1. Run the heavy calculation (Pure function)
-                // Note: We need to expose a version of pair_analysis that accepts raw data,
-                // not the ZoneGenerator struct. (We will do this refactor next).
+/// WASM ONLY: No-op. 
+/// The Engine holds the receiver and processes jobs manually in the update loop.
+#[cfg(target_arch = "wasm32")]
+pub fn spawn_worker_thread(_rx: Receiver<JobRequest>, _tx: Sender<JobResult>) {
+    // Do nothing.
+}
 
-                // Placeholder until we refactor pair_analysis signature:
-                let result_cva = pair_analysis::pair_analysis_pure(
-                    req.pair_name.clone(),
-                    &req.timeseries,
-                    req.current_price,
-                    &req.config.price_horizon,
-                );
+/// SHARED: The actual calculation logic (Sync)
+/// Called by thread loop (Native) or update loop (WASM)
+pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
+    crate::trace_time!("Total Worker Job", 5000, {
+        let start = Instant::now();
 
-                let elapsed = start.elapsed().as_millis();
+        let result_cva = pair_analysis::pair_analysis_pure(
+            req.pair_name.clone(),
+            &req.timeseries,
+            req.current_price,
+            &req.config.price_horizon,
+        );
 
-                match result_cva {
-                    Ok(cva) => {
-                        let cva_arc = Arc::new(cva);
-                        // The worker builds the data (the model)
-                        let model = TradingModel::from_cva(cva_arc.clone());
-                        // The worker wraps it in Arc::new() and sends it down the channel (tx)
-                        tx.send(JobResult {
-                            pair_name: req.pair_name,
-                            duration_ms: elapsed,
-                            result: Ok(Arc::new(model)), // <- Sneding the Arc
-                            cva: Some(cva_arc),
-                        })
-                        .unwrap();
-                    }
-                    Err(e) => {
-                        tx.send(JobResult {
-                            pair_name: req.pair_name,
-                            duration_ms: elapsed,
-                            result: Err(e.to_string()),
-                            cva: None,
-                        })
-                        .unwrap();
-                    }
-                }
-            });
+        let elapsed = start.elapsed().as_millis();
+
+        match result_cva {
+            Ok(cva) => {
+                let cva_arc = Arc::new(cva);
+                // The worker builds the data (the model)
+                let model = TradingModel::from_cva(cva_arc.clone());
+                
+                // The worker wraps it in Arc::new() and sends it down the channel (tx)
+                // We use if-let or ignore error to prevent panic if receiver (Engine) is dropped
+                let _ = tx.send(JobResult {
+                    pair_name: req.pair_name,
+                    duration_ms: elapsed,
+                    result: Ok(Arc::new(model)),
+                    cva: Some(cva_arc),
+                });
+            }
+            Err(e) => {
+                let _ = tx.send(JobResult {
+                    pair_name: req.pair_name,
+                    duration_ms: elapsed,
+                    result: Err(e.to_string()),
+                    cva: None,
+                });
+            }
         }
     });
 }
