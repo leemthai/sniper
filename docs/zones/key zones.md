@@ -57,9 +57,6 @@ Example: core.rs
 That's a fucking massive bit of data. Cloning is very cheap trick. This is totally immutable data.
 Anaylse all of our .clone() operations through all files. We can add lifetimes....
 
-# Did we ever fix the hardcoded slider
-needs to be min/max not 2..50 or whatever?
-
 # Price change triggers
 Retest with value very low value again here;
         price_recalc_threshold_pct: 0.01,
@@ -68,22 +65,15 @@ Soon I will need retest this as well......
 We need to test this as well....
         price_recalc_threshold_pct: 0.01,
 
-# WASM mode
-make sure WASM mode works - might fail now with new price stream init?
-Especially since we have republished at:
+# WASM version not running rn.
 http://leemthai.github.io/sniper/
-now. Untested....
-
-# Pairs
-Strict 100MB file limit on pushes.....
-But why do I push it anyway? It gets generated!!!
-
-# New repo is called 'sniper' but I can rename the repo easily enought
-Done. But latest repo is now just called "Sniper" not "zone-sniper"
-What else:
-Set up pages as well...... actions etc... oops
+Inspect to find it is trying to spawn a threads...... as suspected. The upgrade to new codebase mean it is errantly trying to run spawning thread
+ok - can deal with that in spare time.
 
 
+# New repo is called 'sniper'
+Easy enough to rename if needed
+Pages is set up but app not running coz coding issues (see WASM Version not running)
 
 
 # Trading pairs which are stablecoin -> stablecoin
@@ -91,3 +81,4 @@ Inherently % movements are very small.......
 So even 1% is a lot.
 How to deal with these?
 They need a lower limit somehow.
+Perhaps implies price range should be per-pair not global??????

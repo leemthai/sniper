@@ -1,15 +1,7 @@
-use serde::{Deserialize, Serialize};
-use crate::models::OhlcvTimeSeries;
 
-/// Configuration for the Price Horizon.
-/// Determines the vertical price range of interest relative to the current price.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PriceHorizonConfig {
-    /// Percentage threshold for price relevancy (e.g., 0.15 = ±15%)
-    pub threshold_pct: f64,
-    /// Minimum lookback period in days
-    pub min_lookback_days: usize,
-}
+use crate::models::OhlcvTimeSeries;
+use crate::config::PriceHorizonConfig;
+
 
 /// Automatically select discontinuous slice ranges based on price relevancy.
 /// Returns a tuple: (Vector of ranges [(start, end)], (price_min, price_max)).

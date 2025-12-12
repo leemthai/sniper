@@ -2,10 +2,22 @@
 
 use serde::{Deserialize, Serialize}; // Add Import
 
-use crate::{
-    domain::price_horizon::PriceHorizonConfig,
-    utils::TimeUtils,
-};
+use crate::utils::TimeUtils;
+
+/// Configuration for the Price Horizon.
+/// Determines the vertical price range of interest relative to the current price.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceHorizonConfig {
+    /// Percentage threshold for price relevancy (e.g. 0.15 = 15%)
+    pub threshold_pct: f64,
+
+    // UI Bounds
+    pub min_threshold_pct: f64,
+    pub max_threshold_pct: f64,
+
+    /// Minimum lookback in days
+    pub min_lookback_days: usize,
+}
 
 /// Configuration for the Time Horizon UI Slider
 #[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
@@ -126,6 +138,8 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     // NEW: Initialize Default AutoDuration
     price_horizon: PriceHorizonConfig {
         threshold_pct: 0.15,
+        min_threshold_pct: 0.01,
+        max_threshold_pct: 0.80,
         min_lookback_days: 7,
     },
 };

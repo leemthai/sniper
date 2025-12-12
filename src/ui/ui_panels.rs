@@ -7,7 +7,8 @@ use crate::domain::pair_interval::PairInterval;
 
 use crate::models::cva::ScoreType;
 use crate::models::{PairContext, ZoneType};
-use crate::domain::price_horizon::PriceHorizonConfig;
+use crate::config::PriceHorizonConfig;
+
 use crate::ui::config::UI_TEXT;
 use crate::ui::utils::{colored_subsection_heading, section_heading, spaced_separator};
 
@@ -47,15 +48,19 @@ impl<'a> DataGenerationPanel<'a> {
         }
     }
 
-    fn render_auto_duration_display(&mut self, ui: &mut Ui) -> Option<f64> {
+    fn render_price_horizon_display(&mut self, ui: &mut Ui) -> Option<f64> {
         let mut changed = None;
 
         ui.add_space(5.0);
         ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
 
         let mut threshold_pct = self.price_horizon_config.threshold_pct * 100.0;
+        let min = ANALYSIS.price_horizon.min_threshold_pct * 100.0;
+        let max = ANALYSIS.price_horizon.max_threshold_pct * 100.0;
+
+
         let response = ui.add(
-            Slider::new(&mut threshold_pct, 1.0..=80.0)
+            Slider::new(&mut threshold_pct, min..=max)
                 .step_by(1.0)
                 .suffix("%"),
         );
@@ -161,7 +166,7 @@ impl<'a> Panel for DataGenerationPanel<'a> {
         section_heading(ui, UI_TEXT.data_generation_heading);
 
         // Price Horizon display (always enabled)
-        if let Some(threshold) = self.render_auto_duration_display(ui) {
+        if let Some(threshold) = self.render_price_horizon_display(ui) {
             events.push(DataGenerationEventChanged::PriceHorizonThreshold(threshold));
         }
         spaced_separator(ui);
