@@ -54,7 +54,7 @@ pub struct PersistenceConfig {
 pub const PERSISTENCE: PersistenceConfig = PersistenceConfig {
     kline: KlinePersistenceConfig {
         directory: "kline_data",
-        filename_base: "kline",
+        filename_base: "kd",
         version: 4.0,
     },
     app: AppPersistenceConfig {
