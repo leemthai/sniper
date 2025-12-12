@@ -81,7 +81,7 @@ pub const BINANCE: BinanceConfig = BinanceConfig {
     ws: WsConfig {
         base_url: "wss://stream.binance.com:9443/ws",
         combined_base_url: "wss://stream.binance.com:9443/stream?streams=",
-        max_reconnect_delay_sec: 300, // 5 minutes
+        max_reconnect_delay_sec: 300, // 5 minute
         initial_reconnect_delay_sec: 1,
     },
     client: ClientDefaults {
