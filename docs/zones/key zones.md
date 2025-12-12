@@ -70,17 +70,19 @@ We need to test this as well....
 
 # WASM mode
 make sure WASM mode works - might fail now with new price stream init?
+Especially since we have republished at:
+http://leemthai.github.io/sniper/
+now. Untested....
 
 # Pairs
 Strict 100MB file limit on pushes.....
 But why do I push it anyway? It gets generated!!!
 
-# How to deal with kline_ file getting uploaded (very slowly) to git...
-Can I just change the name of it?
-If so, need check all the demo code etc. coz I think that reads from this file....
-Yep - should be fine......
-I have just changed it to:
-        filename_base: "kd",
+# New repo is called 'sniper' but I can rename the repo easily enought
+Done. But latest repo is now just called "Sniper" not "zone-sniper"
+What else:
+Set up pages as well...... actions etc... oops
+
 
 
 
