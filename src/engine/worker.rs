@@ -21,7 +21,6 @@ pub fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult>) {
                 let result_cva = pair_analysis::pair_analysis_pure(
                     req.pair_name.clone(),
                     &req.timeseries,
-                    // We need to calculate slice ranges here or inside pair_analysis
                     req.current_price,
                     &req.config.price_horizon,
                 );

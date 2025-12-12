@@ -70,6 +70,7 @@ We need to test this as well....
 http://leemthai.github.io/sniper/
 Inspect to find it is trying to spawn a threads...... as suspected. The upgrade to new codebase mean it is errantly trying to run spawning thread
 ok - can deal with that in spare time.
+Thought: When you changed the startup code maybe  you run some code  in wasm mode that cant be run on wasm. Either network code or thread code
 
 # Plus this is shit in wasm_demo.rs
 // TEMP very dodgy code here. Hard-coding the filename to load. Will fail as soon as we switch to a different interval
@@ -77,6 +78,10 @@ const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/kline_data/demo_kd_30m_v4.bin"
 ));
+Needs to use config/binanace.rs or something
+for both 'kline_data' and 'demo_kd' etc
+Always use config/binance
+Search my code for kline_data etc
 
 
 # Info: New repo is called 'sniper'
@@ -90,6 +95,10 @@ So even 1% is a lot.
 How to deal with these?
 They need a lower limit somehow.
 Perhaps implies price range should be per-pair not global??????
+
+# Per pair price horizon settings
+As part of stablecoin thing.
+Why? Because a 0.1% change in stablecoin price is needed because 'volatility'
 
 # Up the intensity of the background bars
 But add key to allow it to be turned off as well.
