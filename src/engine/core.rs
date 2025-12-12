@@ -7,6 +7,7 @@ use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::trading_view::TradingModel;
+use crate::models::pair_context::PairContext;
 
 use super::messages::{JobRequest, JobResult};
 use super::state::PairState;
@@ -90,7 +91,7 @@ impl SniperEngine {
         self.price_stream.get_price(pair)
     }
 
-    pub fn get_signals(&self) -> Vec<&crate::models::pair_context::PairContext> {
+    pub fn get_signals(&self) -> Vec<&PairContext> {
         self.multi_pair_monitor.get_signals()
     }
 
@@ -187,7 +188,7 @@ impl SniperEngine {
                 Ok(model) => {
                     state.update_buffer(model.clone());
                     
-                    let ctx = crate::models::pair_context::PairContext::new(
+                    let ctx = PairContext::new(
                         (*model).clone(), 
                         state.last_update_price 
                     );

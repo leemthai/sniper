@@ -5,10 +5,14 @@ use eframe::egui::{Color32, Ui};
 use egui_plot::{AxisHints, Corner, HPlacement, Legend, Plot};
 
 use crate::config::plot::PLOT_CONFIG;
+
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::trading_view::TradingModel;
+
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
+use crate::ui::app::PlotVisibility;
+
 use crate::utils::maths_utils;
 
 // Import the new Layer System
@@ -76,7 +80,7 @@ impl PlotView {
         trading_model: &TradingModel,
         current_pair_price: Option<f64>,
         background_score_type: ScoreType,
-        visibility: &crate::ui::app::PlotVisibility,
+        visibility: &PlotVisibility,
     ) {
         // let trading_model =
         //     TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);

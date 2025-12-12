@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-// use std::sync::Arc;
 
 use eframe::egui::Context;
 use eframe::{App, Frame, Storage};
@@ -9,6 +8,7 @@ use crate::config::ANALYSIS;
 use crate::config::AnalysisConfig;
 use crate::engine::SniperEngine;
 use crate::models::cva::ScoreType;
+use crate::models::pair_context::PairContext;
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
 use crate::ui::ui_plot_view::PlotView;
 use crate::ui::utils::setup_custom_visuals;
@@ -153,7 +153,7 @@ impl ZoneSniperApp {
     }
 
     /// Proxy to get signals from the Engine's Monitor.
-    pub fn get_signals(&self) -> Vec<&crate::models::pair_context::PairContext> {
+    pub fn get_signals(&self) -> Vec<&PairContext> {
         if let Some(engine) = &self.engine {
             engine.get_signals()
         } else {

@@ -71,8 +71,15 @@ http://leemthai.github.io/sniper/
 Inspect to find it is trying to spawn a threads...... as suspected. The upgrade to new codebase mean it is errantly trying to run spawning thread
 ok - can deal with that in spare time.
 
+# Plus this is shit in wasm_demo.rs
+// TEMP very dodgy code here. Hard-coding the filename to load. Will fail as soon as we switch to a different interval
+const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/kline_data/demo_kd_30m_v4.bin"
+));
 
-# New repo is called 'sniper'
+
+# Info: New repo is called 'sniper'
 Easy enough to rename if needed
 Pages is set up but app not running coz coding issues (see WASM Version not running)
 
@@ -83,3 +90,7 @@ So even 1% is a lot.
 How to deal with these?
 They need a lower limit somehow.
 Perhaps implies price range should be per-pair not global??????
+
+# Up the intensity of the background bars
+But add key to allow it to be turned off as well.
+Still hate using "B" to rotate meaning of background bar. It's so awkward.

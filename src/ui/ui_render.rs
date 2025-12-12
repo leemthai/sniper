@@ -1,6 +1,6 @@
 use eframe::egui::{
     CentralPanel, Color32, Context, Frame, Grid, Key, Margin, RichText, ScrollArea, SidePanel,
-    TopBottomPanel, Ui, Window,
+    TopBottomPanel, Ui, Window, CursorIcon,
 };
 
 use crate::config::ANALYSIS;
@@ -8,7 +8,7 @@ use crate::models::cva::ScoreType;
 use crate::ui::app_simulation::SimDirection;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
-use crate::ui::ui_panels::{DataGenerationEventChanged, Panel};
+use crate::ui::ui_panels::{DataGenerationEventChanged, Panel, SignalsPanel, DataGenerationPanel};
 
 use super::app::ZoneSniperApp;
 use crate::ui::utils::format_price;
@@ -64,7 +64,7 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_central_panel(&mut self, ctx: &eframe::egui::Context) {
+    pub(super) fn render_central_panel(&mut self, ctx: &Context) {
         let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
 
         CentralPanel::default()
@@ -125,7 +125,7 @@ impl ZoneSniperApp {
 
                     // Optional: Small loading indicator overlay if updating in background
                     if is_calculating {
-                        ui.ctx().set_cursor_icon(eframe::egui::CursorIcon::Progress);
+                        ui.ctx().set_cursor_icon(CursorIcon::Progress);
                     }
                 }
                 // PRIORITY 3: CALCULATING (Initial Load)
@@ -454,14 +454,14 @@ impl ZoneSniperApp {
     fn signals_panel(&mut self, ui: &mut Ui) -> Vec<String> {
         // Use the wrapper method we added to App
         let signals = self.get_signals();
-        let mut panel = crate::ui::ui_panels::SignalsPanel::new(signals);
+        let mut panel = SignalsPanel::new(signals);
         panel.render(ui)
     }
 
     fn data_generation_panel(
         &mut self,
-        ui: &mut eframe::egui::Ui,
-    ) -> Vec<crate::ui::ui_panels::DataGenerationEventChanged> {
+        ui: &mut Ui,
+    ) -> Vec<DataGenerationEventChanged> {
         // Use Engine or Config for available pairs
         let available_pairs = if let Some(engine) = &self.engine {
             engine.get_all_pair_names()
@@ -470,7 +470,7 @@ impl ZoneSniperApp {
         };
 
         // Pass global constant zone_count from ANALYSIS
-        let mut panel = crate::ui::ui_panels::DataGenerationPanel::new(
+        let mut panel = DataGenerationPanel::new(
             ANALYSIS.zone_count,
             self.selected_pair.clone(),
             available_pairs,
