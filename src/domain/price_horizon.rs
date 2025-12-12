@@ -14,7 +14,7 @@ pub fn auto_select_ranges(
     let (price_min, price_max) = calculate_price_range(current_price, config.threshold_pct);
 
     // 2. Find all ranges where price is relevant
-    let mut ranges = find_relevant_ranges(timeseries, price_min, price_max);
+    let mut ranges = crate::trace_time!("Scan All Candles", 500, {find_relevant_ranges(timeseries, price_min, price_max)});
 
     // 3. Apply minimum lookback constraint
     ranges = apply_min_lookback_constraint(ranges, timeseries, config.min_lookback_days);

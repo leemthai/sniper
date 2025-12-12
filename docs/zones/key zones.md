@@ -44,18 +44,19 @@ Appears like quite a big API change (sigh)
 https://github.com/emilk/egui_plot/issues/200
 
 
-
 # Are we serializing too much? (vague guess)
 Have a look at state file soon in my spare time
 Get AI to have a look at state.json file. He can analyse
 
-# Next big job - cloning stuff
-When we reconvene, we will audit the `JobRequest` $\to$ `Worker` $\to$ `pair_analysis` pipeline to ensure we are passing **References** and **Arcs**, not deep copies.
-Enjoy the rest. The foundation is solid.
-Example: core.rs
-              timeseries: self.timeseries.clone(),
-That's a fucking massive bit of data. Cloning is very cheap trick. This is totally immutable data.
-Anaylse all of our .clone() operations through all files. We can add lifetimes....
+# AI Question X (random stuff. not posted yet)
+ok that feels much better. I will test SIM more tmr (how to test if model is working when we sim price.... dunno. the model doesn't care much about live price does it)
+Just out of curiosity, where does the trading model actually use the current price? It's not used much is it, coz the model is mostly about zones rn rather than relationships with price.
+What about SIM mode for a pair where model is down. SHould we still SIM mode to run? What is point with no model??? Dunno.
+Does it save sim mode? Nope. That's fine.
+And then test this as well:
+        price_recalc_threshold_pct: 0.01,
+Then we can audit cloning and see if anything to fix (though I don't want get into another massive debugging day. Just wanna check if we have massive clones going on we can avoid. Small clones are fine tbh.)
+
 
 # Price change triggers
 Retest with value very low value again here;

@@ -202,44 +202,46 @@ impl TimeSeriesSlice<'_> {
 
         // Process all candles across all ranges, maintaining temporal decay based on position
         let mut position = 0;
-        for (start_idx, end_idx) in &self.ranges {
-            for idx in *start_idx..*end_idx {
-                let candle = self.series_data.get_candle(idx);
+        crate::trace_time!("CVA Math Loop", 5000, {
+            for (start_idx, end_idx) in &self.ranges {
+                for idx in *start_idx..*end_idx {
+                    let candle = self.series_data.get_candle(idx);
 
-                // Exponential temporal decay based on position within relevant candles
-                let progress = if total_candles > 1 {
-                    position as f64 / (total_candles - 1) as f64
-                } else {
-                    1.0
-                };
+                    // Exponential temporal decay based on position within relevant candles
+                    let progress = if total_candles > 1 {
+                        position as f64 / (total_candles - 1) as f64
+                    } else {
+                        1.0
+                    };
 
-                let decay_base = if time_decay_factor < 0.01 {
-                    0.01
-                } else {
-                    time_decay_factor
-                };
+                    let decay_base = if time_decay_factor < 0.01 {
+                        0.01
+                    } else {
+                        time_decay_factor
+                    };
 
-                // If decay_base is 2.0, Newest data gets 2.0 weight, Oldest gets 1.0.
-                // If decay_base is 1.0, all data gets same weight
-                let temporal_weight = decay_base.powf(progress);
-                // It is recommended to start with 1.0 ("Equal Weighting"). Justifications:
-                // Since we use Base Asset Volume (e.g., counting physical BTC traded), we are already normalized for price inflation.
-                // Support is memory: A massive consolidation zone from 2021 is often still a massive support level today
-                // The Strategy: IF charts get clustered with "ghost zones", the bump the factor to 1.5 or 2.0 to prioritize
-                // recent structure. But "Pure Volume" (1.) is the industry standard for identifying Key Zones.
-                // let temporal_weight = decay_base.powf(progress);
-                // #[cfg(debug_assertions)]
-                // log::warn!(
-                //     "{}",
-                //     format!(
-                //         "Current temporal weight is {} from time_decay_factor of {}",
-                //         temporal_weight, time_decay_factor
-                //     )
-                // );
-                self.process_candle_scores(&mut cva_core, &candle, temporal_weight);
-                position += 1;
+                    // If decay_base is 2.0, Newest data gets 2.0 weight, Oldest gets 1.0.
+                    // If decay_base is 1.0, all data gets same weight
+                    let temporal_weight = decay_base.powf(progress);
+                    // It is recommended to start with 1.0 ("Equal Weighting"). Justifications:
+                    // Since we use Base Asset Volume (e.g., counting physical BTC traded), we are already normalized for price inflation.
+                    // Support is memory: A massive consolidation zone from 2021 is often still a massive support level today
+                    // The Strategy: IF charts get clustered with "ghost zones", the bump the factor to 1.5 or 2.0 to prioritize
+                    // recent structure. But "Pure Volume" (1.) is the industry standard for identifying Key Zones.
+                    // let temporal_weight = decay_base.powf(progress);
+                    // #[cfg(debug_assertions)]
+                    // log::warn!(
+                    //     "{}",
+                    //     format!(
+                    //         "Current temporal weight is {} from time_decay_factor of {}",
+                    //         temporal_weight, time_decay_factor
+                    //     )
+                    // );
+                    self.process_candle_scores(&mut cva_core, &candle, temporal_weight);
+                    position += 1;
+                }
             }
-        }
+        });
 
         cva_core
     }

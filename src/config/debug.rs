@@ -63,6 +63,9 @@ pub struct DebugFlags {
 
     /// Emit binance-related logs
     pub print_binance: bool,
+
+    /// Activate trace_time macro
+    pub enable_perf_logging: bool, 
 }
 
 pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
@@ -89,4 +92,6 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
     display_journey_status_lines: false,
 
     print_binance: false,
+
+    enable_perf_logging: false, // Turn this back on for cool scope-level timings..... set via trace_time! macro.
 };

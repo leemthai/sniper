@@ -185,89 +185,91 @@ impl TradingModel {
         let zone_count = cva.zone_count;
         let total_candles = cva.total_candles as f64;
 
-        // Helper closure
-        let process_layer = |raw_data: &[f64], params: ZoneParams, divisor: Option<f64>| {
-            // 1. Smooth
-            let smooth_window =
-                ((zone_count as f64 * params.smooth_pct).ceil() as usize).max(1) | 1;
-            let smoothed = smooth_data(raw_data, smooth_window);
+        crate::trace_time!("Classify & Cluster Zones", 1000, {
+            // Helper closure
+            let process_layer = |raw_data: &[f64], params: ZoneParams, divisor: Option<f64>| {
+                // 1. Smooth
+                let smooth_window =
+                    ((zone_count as f64 * params.smooth_pct).ceil() as usize).max(1) | 1;
+                let smoothed = smooth_data(raw_data, smooth_window);
 
-            // 2. Normalize
-            let normalized: Vec<f64> = if let Some(div) = divisor {
-                if div > 0.0 {
-                    smoothed.iter().map(|&s| s / div).collect()
+                // 2. Normalize
+                let normalized: Vec<f64> = if let Some(div) = divisor {
+                    if div > 0.0 {
+                        smoothed.iter().map(|&s| s / div).collect()
+                    } else {
+                        vec![0.0; smoothed.len()]
+                    }
                 } else {
-                    vec![0.0; smoothed.len()]
-                }
-            } else {
-                normalize_max(&smoothed)
+                    normalize_max(&smoothed)
+                };
+
+                // 3. Contrast
+                let sharpened: Vec<f64> = normalized.iter().map(|&s| s * s).collect();
+
+                // 4. Find Targets
+                let gap = (zone_count as f64 * params.gap_pct).ceil() as usize;
+                let targets = find_target_zones(&sharpened, params.threshold, gap);
+
+                // ... (Convert/Aggregate) ...
+                let zones: Vec<Zone> = targets
+                    .iter()
+                    .flat_map(|t| t.start_idx..=t.end_idx)
+                    .map(|idx| Zone::new(idx, price_min, price_max, zone_count))
+                    .collect();
+                let superzones = aggregate_zones(&zones);
+
+                (zones, superzones)
             };
 
-            // 3. Contrast
-            let sharpened: Vec<f64> = normalized.iter().map(|&s| s * s).collect();
+            // --- Sticky Zones ---
+            let (sticky, sticky_superzones) = process_layer(
+                cva.get_scores_ref(ScoreType::FullCandleTVW),
+                ANALYSIS.zones.sticky,
+                None,
+            );
 
-            // 4. Find Targets
-            let gap = (zone_count as f64 * params.gap_pct).ceil() as usize;
-            let targets = find_target_zones(&sharpened, params.threshold, gap);
+            // --- Reversal Zones ---
+            // 1. Low Wicks
+            let (low_wicks, low_wicks_superzones) = process_layer(
+                cva.get_scores_ref(ScoreType::LowWickCount),
+                ANALYSIS.zones.reversal,
+                Some(total_candles),
+            );
 
-            // ... (Convert/Aggregate) ...
-            let zones: Vec<Zone> = targets
-                .iter()
-                .flat_map(|t| t.start_idx..=t.end_idx)
-                .map(|idx| Zone::new(idx, price_min, price_max, zone_count))
-                .collect();
-            let superzones = aggregate_zones(&zones);
+            // 2. High Wicks
+            let (high_wicks, high_wicks_superzones) = process_layer(
+                cva.get_scores_ref(ScoreType::HighWickCount),
+                ANALYSIS.zones.reversal,
+                Some(total_candles),
+            );
 
-            (zones, superzones)
-        };
+            // --- Calculate Coverage Statistics ---
+            // Logic: Count unique indices / total zones * 100
+            let calc_coverage = |zones: &[Zone]| -> f64 {
+                if zone_count == 0 {
+                    return 0.0;
+                }
+                (zones.len() as f64 / zone_count as f64) * 100.0
+            };
 
-        // --- Sticky Zones ---
-        let (sticky, sticky_superzones) = process_layer(
-            cva.get_scores_ref(ScoreType::FullCandleTVW),
-            ANALYSIS.zones.sticky,
-            None,
-        );
+            let stats = ZoneCoverageStats {
+                sticky_pct: calc_coverage(&sticky),
+                support_pct: calc_coverage(&low_wicks),
+                resistance_pct: calc_coverage(&high_wicks),
+            };
 
-        // --- Reversal Zones ---
-        // 1. Low Wicks
-        let (low_wicks, low_wicks_superzones) = process_layer(
-            cva.get_scores_ref(ScoreType::LowWickCount),
-            ANALYSIS.zones.reversal,
-            Some(total_candles),
-        );
+            let classified = ClassifiedZones {
+                sticky,
+                low_wicks,
+                high_wicks,
+                sticky_superzones,
+                low_wicks_superzones,
+                high_wicks_superzones,
+            };
 
-        // 2. High Wicks
-        let (high_wicks, high_wicks_superzones) = process_layer(
-            cva.get_scores_ref(ScoreType::HighWickCount),
-            ANALYSIS.zones.reversal,
-            Some(total_candles),
-        );
-
-        // --- Calculate Coverage Statistics ---
-        // Logic: Count unique indices / total zones * 100
-        let calc_coverage = |zones: &[Zone]| -> f64 {
-            if zone_count == 0 {
-                return 0.0;
-            }
-            (zones.len() as f64 / zone_count as f64) * 100.0
-        };
-
-        let stats = ZoneCoverageStats {
-            sticky_pct: calc_coverage(&sticky),
-            support_pct: calc_coverage(&low_wicks),
-            resistance_pct: calc_coverage(&high_wicks),
-        };
-
-        let classified = ClassifiedZones {
-            sticky,
-            low_wicks,
-            high_wicks,
-            sticky_superzones,
-            low_wicks_superzones,
-            high_wicks_superzones,
-        };
-
-        (classified, stats)
+            (classified, stats)
+        })
     }
 
     /// Get all sticky zones (for potential S/R candidates)
@@ -276,18 +278,30 @@ impl TradingModel {
         &self.zones.sticky
     }
 
-/// Get nearest support superzone relative to a specific price
+    /// Get nearest support superzone relative to a specific price
     pub fn nearest_support_superzone(&self, price: f64) -> Option<&SuperZone> {
-        self.zones.sticky_superzones.iter()
+        self.zones
+            .sticky_superzones
+            .iter()
             .filter(|sz| sz.price_center < price)
-            .min_by(|a, b| a.distance_to(price).partial_cmp(&b.distance_to(price)).unwrap())
+            .min_by(|a, b| {
+                a.distance_to(price)
+                    .partial_cmp(&b.distance_to(price))
+                    .unwrap()
+            })
     }
 
     /// Get nearest resistance superzone relative to a specific price
     pub fn nearest_resistance_superzone(&self, price: f64) -> Option<&SuperZone> {
-        self.zones.sticky_superzones.iter()
+        self.zones
+            .sticky_superzones
+            .iter()
             .filter(|sz| sz.price_center > price)
-            .min_by(|a, b| a.distance_to(price).partial_cmp(&b.distance_to(price)).unwrap())
+            .min_by(|a, b| {
+                a.distance_to(price)
+                    .partial_cmp(&b.distance_to(price))
+                    .unwrap()
+            })
     }
 
     /// Find all superzones containing the given price

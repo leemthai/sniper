@@ -8,8 +8,8 @@ use crate::config::plot::PLOT_CONFIG;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::trading_view::TradingModel;
 use crate::ui::ui_text::UI_TEXT;
-use crate::utils::maths_utils;
 use crate::ui::utils::format_price;
+use crate::utils::maths_utils;
 
 // Import the new Layer System
 use crate::ui::plot_layers::{
@@ -213,63 +213,66 @@ impl PlotView {
             }
         }
 
-        let (y_min, y_max) = cva_results.price_range.min_max();
-        let bar_width = (y_max - y_min) / zone_count as f64;
+        crate::trace_time!("Rebuild Plot Cache", 500, {
+            let (y_min, y_max) = cva_results.price_range.min_max();
+            let bar_width = (y_max - y_min) / zone_count as f64;
 
-        // Raw Data (Raw Counts)
-        let raw_data_vec = cva_results.get_scores_ref(score_type).clone();
+            // Raw Data (Raw Counts)
+            let raw_data_vec = cva_results.get_scores_ref(score_type).clone();
 
-        // Apply Smoothing
-        let smoothing_window = ((zone_count as f64 * 0.02).ceil() as usize).max(1) | 1;
-        let smoothed_data = maths_utils::smooth_data(&raw_data_vec, smoothing_window);
+            // Apply Smoothing
+            let smoothing_window = ((zone_count as f64 * 0.02).ceil() as usize).max(1) | 1;
+            let smoothed_data = maths_utils::smooth_data(&raw_data_vec, smoothing_window);
 
-        // Normalize
-        let data_for_display = maths_utils::normalize_max(&smoothed_data);
+            // Normalize
+            let data_for_display = maths_utils::normalize_max(&smoothed_data);
 
-        let indices: Vec<usize> = (0..zone_count).collect();
+            let indices: Vec<usize> = (0..zone_count).collect();
 
-        let grad = colorgrad::GradientBuilder::new()
-            .html_colors(PLOT_CONFIG.zone_gradient_colors)
-            .build::<colorgrad::CatmullRomGradient>()
-            .expect("Failed to create color gradient");
+            let grad = colorgrad::GradientBuilder::new()
+                .html_colors(PLOT_CONFIG.zone_gradient_colors)
+                .build::<colorgrad::CatmullRomGradient>()
+                .expect("Failed to create color gradient");
 
-        // Generate BackgroundBars
-        let bars: Vec<BackgroundBar> = indices
-            .iter()
-            .map(|&original_index| {
-                let zone_score = data_for_display[original_index];
-                let (z_min, z_max) = cva_results.price_range.chunk_bounds(original_index);
-                let center_price = (z_min + z_max) / 2.0;
+            // Generate BackgroundBars
+            let bars: Vec<BackgroundBar> = indices
+                .iter()
+                .map(|&original_index| {
+                    let zone_score = data_for_display[original_index];
+                    let (z_min, z_max) = cva_results.price_range.chunk_bounds(original_index);
+                    let center_price = (z_min + z_max) / 2.0;
 
-                let color = to_egui_color(grad.at(zone_score as f32));
-                let dimmed_color = color.linear_multiply(PLOT_CONFIG.background_bar_intensity_pct);
+                    let color = to_egui_color(grad.at(zone_score as f32));
+                    let dimmed_color =
+                        color.linear_multiply(PLOT_CONFIG.background_bar_intensity_pct);
 
-                BackgroundBar {
-                    x_max: zone_score,
-                    y_center: center_price,
-                    height: bar_width * 0.9,
-                    color: dimmed_color,
-                }
-            })
-            .collect();
+                    BackgroundBar {
+                        x_max: zone_score,
+                        y_center: center_price,
+                        height: bar_width * 0.9,
+                        color: dimmed_color,
+                    }
+                })
+                .collect();
 
-        let cache = PlotCache {
-            cva_hash: current_hash,
-            bars,
-            y_min,
-            y_max,
-            x_min: 0.0,
-            x_max: 1.0,
-            bar_thickness: bar_width,
-            time_decay_factor,
-            score_type,
-            sticky_zone_indices: indices,
-            zone_scores: data_for_display,
-            total_width: 1.0,
-        };
+            let cache = PlotCache {
+                cva_hash: current_hash,
+                bars,
+                y_min,
+                y_max,
+                x_min: 0.0,
+                x_max: 1.0,
+                bar_thickness: bar_width,
+                time_decay_factor,
+                score_type,
+                sticky_zone_indices: indices,
+                zone_scores: data_for_display,
+                total_width: 1.0,
+            };
 
-        self.cache = Some(cache.clone());
-        cache
+            self.cache = Some(cache.clone());
+            cache
+        })
     }
 }
 
