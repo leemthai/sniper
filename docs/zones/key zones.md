@@ -70,3 +70,13 @@ We need to test this as well....
 
 # WASM mode
 make sure WASM mode works - might fail now with new price stream init?
+
+# Pairs
+Strict 100MB file limit on pushes.....
+But why do I push it anyway? It gets generated!!!
+
+# Trading pairs which are stablecoin -> stablecoin
+Inherently % movements are very small.......
+So even 1% is a lot.
+How to deal with these?
+They need a lower limit somehow.

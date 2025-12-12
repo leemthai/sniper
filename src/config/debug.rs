@@ -88,5 +88,5 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
 
     display_journey_status_lines: false,
 
-    print_binance: false,
+    print_binance: true,
 };

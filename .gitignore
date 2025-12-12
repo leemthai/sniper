@@ -6,4 +6,9 @@ repomix*.*
 zone_sniper.code-workspace
 /.continue/
 _private/
+# Ignore all .bin files in the /data folder
+/kline_data/*.bin
+# But not demo files
+!/kline_data/demo*.bin
+
 

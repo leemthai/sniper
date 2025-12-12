@@ -86,12 +86,12 @@ pub async fn timeseries_data_load(
 ) -> Result<Vec<OhlcvTimeSeries>> {
     let mut all_valid_klines_4_pairs: Vec<AllValidKlines4Pair> = Vec::new();
 
-    let pairs_file_content = fs::read_to_string("pairs.txt").await?; // On fail, return Err from this func.
+    let pairs_file_content = fs::read_to_string(BINANCE.pairs_filename).await?; // On fail, return Err from this func.
     // Create the Vec<String> from the file content - TEMP  - what if this fails?
     let supply_pairs: Vec<String> = pairs_file_content
         .lines()
         .map(|s| s.trim().to_uppercase()) // Trim whitespace and make uppercase
-        .filter(|s| !s.is_empty()) // Filter out empty lines
+        .filter(|s| !s.is_empty() && !s.starts_with('#')) // Filter out empty lines and comment lines.
         .take(BINANCE.max_pairs)
         .collect();
 

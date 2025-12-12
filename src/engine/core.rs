@@ -162,7 +162,7 @@ impl SniperEngine {
             self.queue.push_back((pair, None));
         }
 
-        log::info!("Global Invalidation: Queue Rebuilt ({} pairs).", self.queue.len());
+        // log::info!("Global Invalidation: Queue Rebuilt ({} pairs).", self.queue.len());
     }
 
     /// Force a single recalc with optional price override

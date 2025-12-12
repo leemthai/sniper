@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::utils::TimeUtils;
+use crate::config::BINANCE;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct PairInterval {
@@ -20,8 +21,7 @@ impl PairInterval {
     // Finds the trading quote at the end of the pair name and returns it.
     // Returns None if no matching quote is found.
     pub fn get_quote(text: &str) -> Option<&str> {
-        static PAIR_QUOTES: &[&str] = &["USDT", "USDC", "FDUSD", "BTC", "ETH"];
-        PAIR_QUOTES
+        BINANCE.quote_assets
             .iter()
             .find(|&&ext| text.ends_with(ext))
             .copied()

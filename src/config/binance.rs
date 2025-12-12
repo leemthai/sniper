@@ -63,6 +63,8 @@ pub struct BinanceConfig {
     /// Interval for debug prints in development
     pub debug_print_interval: u32,
     pub max_pairs: usize,
+    pub pairs_filename: &'static str,
+    pub quote_assets: &'static [&'static str],
 }
 
 pub const BINANCE: BinanceConfig = BinanceConfig {
@@ -88,5 +90,7 @@ pub const BINANCE: BinanceConfig = BinanceConfig {
         backoff_ms: 5000,
     },
     debug_print_interval: 10,
-    max_pairs: 20,
+    max_pairs: 100,
+    pairs_filename: "pairs.txt",
+    quote_assets: &["USDT", "USDC", "FDUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "JPY", "BRL"],
 };

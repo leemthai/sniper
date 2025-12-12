@@ -135,8 +135,8 @@ impl ZoneSniperApp {
     }
 
     /// Called when a global setting (like Price Horizon) changes.
-    pub fn invalidate_all_pairs_for_global_change(&mut self, reason: &str) {
-        log::info!("Global invalidation triggered: {}", reason);
+    pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
+        // log::info!("Global invalidation triggered: {}", _reason);
         if let Some(engine) = &mut self.engine {
             // 1. PUSH Config to Engine
             engine.update_config(self.app_config.clone());
