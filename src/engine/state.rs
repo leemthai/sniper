@@ -1,6 +1,7 @@
-use crate::models::trading_view::TradingModel;
 use std::sync::Arc;
-use std::time::Instant;
+
+use crate::models::trading_view::TradingModel;
+use crate::utils::app_time::AppInstant;
 
 /// Represents the state of a single pair in the engine.
 #[derive(Debug, Clone)]
@@ -12,7 +13,7 @@ pub struct PairState {
 
     /// Metadata for the trigger system
     pub last_update_price: f64,
-    pub last_update_time: Instant,
+    pub last_update_time: AppInstant,
 
     /// Is a worker currently crunching this pair?
     pub is_calculating: bool,
@@ -26,7 +27,7 @@ impl PairState {
         Self {
             model: None,
             last_update_price: 0.0,
-            last_update_time: Instant::now(),
+            last_update_time: AppInstant::now(),
             is_calculating: false,
             last_error: None,
         }
@@ -40,7 +41,7 @@ impl PairState {
         // It takes nanoseconds.
         self.model = Some(new_model);
         self.is_calculating = false;
-        self.last_update_time = Instant::now();
+        self.last_update_time = AppInstant::now();
         self.last_error = None;
     }
 }

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::Instant;
 
 // Only import thread on non-WASM targets
 #[cfg(not(target_arch = "wasm32"))]
@@ -9,6 +8,7 @@ use std::thread;
 use super::messages::{JobRequest, JobResult};
 use crate::analysis::pair_analysis;
 use crate::models::trading_view::TradingModel;
+use crate::utils::app_time::AppInstant;
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -31,7 +31,7 @@ pub fn spawn_worker_thread(_rx: Receiver<JobRequest>, _tx: Sender<JobResult>) {
 /// Called by thread loop (Native) or update loop (WASM)
 pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
     crate::trace_time!("Total Worker Job", 5000, {
-        let start = Instant::now();
+        let start = AppInstant::now();
 
         let result_cva = pair_analysis::pair_analysis_pure(
             req.pair_name.clone(),

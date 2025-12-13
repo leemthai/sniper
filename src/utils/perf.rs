@@ -4,7 +4,8 @@ macro_rules! trace_time {
     ($name:expr, $threshold_micros:expr, $block:block) => {{
         // Check the global flag
         if crate::config::DEBUG_FLAGS.enable_perf_logging {
-            let start = std::time::Instant::now();
+            // FIX: Use AppInstant instead of std::time::Instant
+            let start = crate::utils::app_time::AppInstant::now();
             let result = $block;
             let elapsed = start.elapsed();
             let micros = elapsed.as_micros();
@@ -22,7 +23,7 @@ macro_rules! trace_time {
             }
             result
         } else {
-            // No-op mode: Just run the code and return the value
+            // No-op mode
             $block
         }
     }};
