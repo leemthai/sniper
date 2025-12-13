@@ -4,10 +4,12 @@ use async_trait::async_trait;
 use crate::config::DEMO;
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_file::CacheFile};
 
-// TEMP very dodgy code here. Hard-coding the filename to load. Will fail as soon as we switch to a different interval
 const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/kline_data/demo_kd_30m_v4.bin"
+    "/",
+    crate::kline_data_dir!(),   // Expands to "kline_data"
+    "/",
+    crate::demo_cache_file!()   // Expands to "demo_kline_30m_v4.bin"
 ));
 
 pub struct WasmDemoData;

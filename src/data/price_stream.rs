@@ -21,7 +21,10 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 #[cfg(target_arch = "wasm32")]
 const DEMO_PRICES_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/kline_data/demo_prices.json"
+    "/",
+    crate::kline_data_dir!(),   // Expands to "kline_data"
+    "/",
+    crate::demo_prices_file!()  // Expands to "demo_prices.json"
 ));
 
 #[cfg(not(target_arch = "wasm32"))]

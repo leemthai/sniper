@@ -66,37 +66,8 @@ Soon I will need retest this as well......
 We need to test this as well....
         price_recalc_threshold_pct: 0.01,
 
-# WASM version not running rn.
-http://leemthai.github.io/sniper/
-zone-sniper-81a5c0fd4d43cb15.js:751 panicked at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/thread/mod.rs:731:29:
-failed to spawn thread: Error { kind: Unsupported, message: "operation not supported on this platform" }
-Stack:
-
-Error
-    at imports.wbg.__wbg_new_358bba68c164c0c7 (zone-sniper-eb14e317b50740a6.js:1226:21)
-    at zone_sniper-a8cd1f0fd9f35d5d.wasm.eframe::web::panic_handler::Error::new::__wbg_new_358bba68c164c0c7::h85c5d2c0dc73e10b externref shim (zone-sniper-eb14e317b50740a6_bg.wasm:0x65ef22)
-    at zone_sniper-a8cd1f0fd9f35d5d.wasm.eframe::web::panic_handler::Error::new::hf000dd9e39e74d0c (zone-sniper-eb14e317b50740a6_bg.wasm:0x5e8558)
-    at zone_sniper-a8cd1f0fd9f35d5d.wasm.eframe::web::panic_handler::PanicSummary::new::h6e2fb215abe07905 (zone-sniper-eb14e317b50740a6_bg.wasm:0x52137e)
-    at zone_sniper-a8cd1f0fd9f35d5d.wasm.eframe::web::panic_handler::PanicHandler::install::{{closure}}::h6846f31d7cf5f53c (zone-sniper-eb14e317b50740a6_bg.wasm:0x36baae)
-    at zone_sniper-a8cd1f0fd9f35d5d.wasm.std::panicking::panic_with_hook::h2f3f743d7642d6f0 (zone-sniper-eb14e317b50740a6_bg.wasm:0x4955a3)
-    at zone_sniper-a8cd1f0fd9f35d5d.wasm.std::panicking::panic_handler::{{closure}}::h4d243ab0bfd167e5 (zone-sniper-eb14e317b50740a6_bg.wasm:0x50a57e)
-    at zone_sniper-a8cd1f0fd9f35d5d.wasm.std::sys::backtrace::__rust_end_short_backtrace::hf9fb4031b9f27768 (zone-sniper-eb14e317b50740a6_bg.wasm:0x660606)
-    at zone_sniper-a8cd1f0fd9f35d5d.wasm.__rustc[eb8946e36839644a]::rust_begin_unwind (zone-sniper-eb14e317b50740a6_bg.wasm:0x62bdf5)
-    at zone_sniper-a8cd1f0fd9f35d5d.wasm.core::panicking::panic_fmt::h0ce8f0f8ae811b17 (zone-sniper-eb14e317b50740a6_bg.wasm:0x62be7e)
 
 
-My Thought: When you changed the startup code maybe  you run some code  in wasm mode that cant be run on wasm. Some kind of thread code it seems.... but its hard to seee from the stack trace above where the code is?
-
-# Plus this is shit in wasm_demo.rs
-// TEMP very dodgy code here. Hard-coding the filename to load. Will fail as soon as we switch to a different interval
-const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/kline_data/demo_kd_30m_v4.bin"
-));
-Needs to use config/binanace.rs or something
-for both 'kline_data' and 'demo_kd' etc
-Always use config/binance
-Search my code for kline_data etc
 
 
 # Info: New repo is called 'sniper'
