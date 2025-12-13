@@ -92,14 +92,6 @@ impl SniperEngine {
 
     // NEW: Helper to bulk update (for startup sync)
     pub fn set_all_overrides(&mut self, overrides: HashMap<String, PriceHorizonConfig>) {
-        if let Some(val) = overrides.get("XPLUSDC") {
-            log::info!(
-                ">>> Engine: Received Override for XPLUSDC: {:.1}%",
-                val.threshold_pct * 100.0
-            );
-        } else {
-            log::warn!(">>> Engine: set_all_overrides called, but XPLUSDC is MISSING!");
-        }
         self.config_overrides = overrides;
     }
 
@@ -325,19 +317,19 @@ impl SniperEngine {
             let pair_upper = pair.to_uppercase();
             if let Some(horizon) = self.config_overrides.get(&pair_upper) {
                 config.price_horizon = horizon.clone();
-                log::info!("[{}] Applied Override: {:.1}%", pair_upper, horizon.threshold_pct * 100.0);
+                // log::info!("[{}] Applied Override: {:.1}%", pair_upper, horizon.threshold_pct * 100.0);
             } else {
                 if let Some(horizon) = self.config_overrides.get(&pair) {
                     config.price_horizon = horizon.clone();
                 } else {
-                // DEBUG: Why did we miss?
-                    log::warn!(
-                        "[{}] NO OVERRIDE FOUND! Using Default {:.1}%. (Map has {} keys: {:?})",
-                        pair,
-                        config.price_horizon.threshold_pct * 100.0,
-                        self.config_overrides.len(),
-                        self.config_overrides.keys().take(5).collect::<Vec<_>>() // Print first 5 keys
-                    );
+                    // DEBUG: Why did we miss?
+                    // log::warn!(
+                    //     "[{}] NO OVERRIDE FOUND! Using Default {:.1}%. (Map has {} keys: {:?})",
+                    //     pair,
+                    //     config.price_horizon.threshold_pct * 100.0,
+                    //     self.config_overrides.len(),
+                    //     self.config_overrides.keys().take(5).collect::<Vec<_>>() // Print first 5 keys
+                    // );
                 }
             }
 
