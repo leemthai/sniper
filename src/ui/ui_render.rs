@@ -1,6 +1,6 @@
 use eframe::egui::{
-    CentralPanel, Color32, Context, Frame, Grid, Key, Margin, RichText, ScrollArea, SidePanel,
-    TopBottomPanel, Ui, Window, CursorIcon,
+    CentralPanel, Color32, Context, CursorIcon, Frame, Grid, Key, Margin, RichText, ScrollArea,
+    SidePanel, TopBottomPanel, Ui, Window,
 };
 
 use crate::config::ANALYSIS;
@@ -8,7 +8,8 @@ use crate::models::cva::ScoreType;
 use crate::ui::app_simulation::SimDirection;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
-use crate::ui::ui_panels::{DataGenerationEventChanged, Panel, SignalsPanel, DataGenerationPanel};
+use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
+use crate::utils::TimeUtils;
 
 use super::app::ZoneSniperApp;
 use crate::ui::utils::format_price;
@@ -109,7 +110,17 @@ impl ZoneSniperApp {
                 // we must show the error, even if we have an old cached model.
                 // The old model is valid for the OLD settings, not the CURRENT ones.
                 if let Some(err_msg) = last_error {
-                    render_fullscreen_message(ui, "Analysis Failed", &err_msg, true);
+                    // Use rich error format
+                    let body = if err_msg.contains("Insufficient data") {
+                        // Use our detailed help text
+                        format!(
+                            "{}\n\nTechnical Details: {}",
+                            UI_TEXT.error_insufficient_data_body, err_msg
+                        )
+                    } else {
+                        err_msg.to_string()
+                    };
+                    render_fullscreen_message(ui, "Analysis Failed", &body, true);
                 }
                 // PRIORITY 2: VALID MODEL
                 // If no error, and we have data, draw it.
@@ -301,7 +312,48 @@ impl ZoneSniperApp {
                             }
                         }
 
-                        // 5. System Status (RESTORED)
+                        // ... inside status panel, after coverage stats ...
+
+                        // 5. Candle & Volatility Stats
+                        if let Some(engine) = &self.engine {
+                            if let Some(pair) = &self.selected_pair {
+                                if let Some(model) = engine.get_model(pair) {
+                                    ui.separator();
+
+                                    // Candle Count: "129 / 3923 (14%) 30m"
+                                    let relevant = model.cva.relevant_candle_count;
+                                    let total = model.cva.total_candles;
+                                    let pct = if total > 0 {
+                                        (relevant as f64 / total as f64) * 100.0
+                                    } else {
+                                        0.0
+                                    };
+
+                                    let time_str =
+                                        TimeUtils::interval_to_string(model.cva.interval_ms);
+
+                                    ui.metric(
+                                        UI_TEXT.label_candle_count,
+                                        &format!(
+                                            "{}/{} ({:.1}%) {}",
+                                            relevant, total, pct, time_str
+                                        ),
+                                        Color32::LIGHT_GRAY,
+                                    );
+
+                                    ui.separator();
+
+                                    // Volatility
+                                    ui.metric(
+                                        UI_TEXT.label_volatility,
+                                        &format!("{:.3}%", model.cva.volatility_pct),
+                                        Color32::from_rgb(200, 200, 100), // Khaki/Gold
+                                    );
+                                }
+                            }
+                        }
+
+                        // 5. System Status
                         if let Some(engine) = &self.engine {
                             let total_pairs = engine.get_active_pair_count();
                             ui.metric("📊 Pairs", &format!("{}", total_pairs), Color32::LIGHT_GRAY);
@@ -458,10 +510,7 @@ impl ZoneSniperApp {
         panel.render(ui)
     }
 
-    fn data_generation_panel(
-        &mut self,
-        ui: &mut Ui,
-    ) -> Vec<DataGenerationEventChanged> {
+    fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
         // Use Engine or Config for available pairs
         let available_pairs = if let Some(engine) = &self.engine {
             engine.get_all_pair_names()

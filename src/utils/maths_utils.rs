@@ -112,21 +112,16 @@ pub fn get_min_max(vec: &[f64]) -> (f64, f64) {
 // Normalizes a vector of (positive) f64 to 0.0 to 1.0. Guarantees largest value is 1.0
 // Smallest output value will be 0.0 iff smallest input value = 0.0
 // Name: `Max normalization`, `Max-Abs normalization`, or `L∞ normalization`
-#[allow(dead_code)]
 pub fn normalize_max(vec: &[f64]) -> Vec<f64> {
     let max_value = get_max(vec);
 
     // If the largest value is 0 or non-positive, scaling may result in NaNs or -1.0
     // for all elements. For this example, we simply return.
-    // TEMP this won't happen ! so make debug only
-    #[cfg(debug_assertions)]
-    {
-        if max_value <= 0.0 {
-            // In a real application, you might panic here or log an error
-            // depending on your specific requirements.
-            log::warn!("Warning: max_value is <= 0.0. Returning original data.");
-            return vec.to_vec();
-        }
+    if max_value <= f64::EPSILON {
+        // In a real application, you might panic here or log an error
+        // depending on your specific requirements.
+        // log::warn!("Warning: max_value is <= 0.0. Returning original data.");
+        return vec.to_vec();
     }
 
     // Use a match expression to handle the non-positive case in release builds,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::analysis::MultiPairMonitor;
-use crate::config::{ANALYSIS, AnalysisConfig};
+use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::pair_context::PairContext;
@@ -42,6 +42,8 @@ pub struct SniperEngine {
 
     /// The Live Configuration State
     pub current_config: AnalysisConfig,
+
+    pub config_overrides: HashMap<String, PriceHorizonConfig>,
 }
 
 impl SniperEngine {
@@ -79,7 +81,26 @@ impl SniperEngine {
             result_tx,
             queue: VecDeque::new(),
             current_config: ANALYSIS.clone(),
+            config_overrides: HashMap::new(),
         }
+    }
+
+    // NEW: Helper to set an override
+    pub fn set_price_horizon_override(&mut self, pair: String, config: PriceHorizonConfig) {
+        self.config_overrides.insert(pair, config);
+    }
+
+    // NEW: Helper to bulk update (for startup sync)
+    pub fn set_all_overrides(&mut self, overrides: HashMap<String, PriceHorizonConfig>) {
+        if let Some(val) = overrides.get("XPLUSDC") {
+            log::info!(
+                ">>> Engine: Received Override for XPLUSDC: {:.1}%",
+                val.threshold_pct * 100.0
+            );
+        } else {
+            log::warn!(">>> Engine: set_all_overrides called, but XPLUSDC is MISSING!");
+        }
+        self.config_overrides = overrides;
     }
 
     /// THE GAME LOOP.
@@ -297,6 +318,28 @@ impl SniperEngine {
 
             state.is_calculating = true;
             state.last_update_price = price;
+
+            let mut config = self.current_config.clone();
+
+            // APPLY OVERRIDE
+            let pair_upper = pair.to_uppercase();
+            if let Some(horizon) = self.config_overrides.get(&pair_upper) {
+                config.price_horizon = horizon.clone();
+                log::info!("[{}] Applied Override: {:.1}%", pair_upper, horizon.threshold_pct * 100.0);
+            } else {
+                if let Some(horizon) = self.config_overrides.get(&pair) {
+                    config.price_horizon = horizon.clone();
+                } else {
+                // DEBUG: Why did we miss?
+                    log::warn!(
+                        "[{}] NO OVERRIDE FOUND! Using Default {:.1}%. (Map has {} keys: {:?})",
+                        pair,
+                        config.price_horizon.threshold_pct * 100.0,
+                        self.config_overrides.len(),
+                        self.config_overrides.keys().take(5).collect::<Vec<_>>() // Print first 5 keys
+                    );
+                }
+            }
 
             let req = JobRequest {
                 pair_name: pair,

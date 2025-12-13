@@ -20,7 +20,7 @@ pub fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult>) {
     });
 }
 
-/// WASM ONLY: No-op. 
+/// WASM ONLY: No-op.
 /// The Engine holds the receiver and processes jobs manually in the update loop.
 #[cfg(target_arch = "wasm32")]
 pub fn spawn_worker_thread(_rx: Receiver<JobRequest>, _tx: Sender<JobResult>) {
@@ -47,7 +47,7 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
                 let cva_arc = Arc::new(cva);
                 // The worker builds the data (the model)
                 let model = TradingModel::from_cva(cva_arc.clone());
-                
+
                 // The worker wraps it in Arc::new() and sends it down the channel (tx)
                 // We use if-let or ignore error to prevent panic if receiver (Engine) is dropped
                 let _ = tx.send(JobResult {
@@ -58,6 +58,14 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
                 });
             }
             Err(e) => {
+                if e.to_string().contains("Insufficient data") {
+                    log::error!(
+                        "Worker failed for {}: {}. (Horizon used: {:.1}%)",
+                        req.pair_name,
+                        e,
+                        req.config.price_horizon.threshold_pct * 100.0
+                    );
+                }
                 let _ = tx.send(JobResult {
                     pair_name: req.pair_name,
                     duration_ms: elapsed,

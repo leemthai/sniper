@@ -9,10 +9,10 @@ use crate::utils::maths_utils::RangeF64;
 pub struct CVACore {
     // Active metrics (volume-weighted)
     pub candle_bodies_vw: Vec<f64>, // Mapped to FullCandleTVW
-    
+
     pub low_wick_counts: Vec<f64>,  // Renamed from low_wicks_vw
     pub high_wick_counts: Vec<f64>, // Renamed from high_wicks_vw
-    
+
     pub quote_volumes: Vec<f64>, // Keep for legacy/debug
 
     pub total_candles: usize,
@@ -25,8 +25,12 @@ pub struct CVACore {
     // Metadata fields required by pair_analysis.rs and ui_plot_view.rs
     pub start_timestamp_ms: i64,
     pub end_timestamp_ms: i64,
-    pub time_decay_factor: f64, 
+    pub time_decay_factor: f64,
 
+    // NEW METRICS
+    pub relevant_candle_count: usize, // Number of candles inside the horizon
+    pub interval_ms: i64,             // e.g. 3600000 for 1h
+    pub volatility_pct: f64,          // Average (High-Low)/Close % for relevant candles
 }
 
 /// Score types for the lean CVA model
@@ -36,9 +40,9 @@ pub struct CVACore {
 pub enum ScoreType {
     #[default]
     FullCandleTVW, // Sticky (Volume * Time)
-    LowWickCount,    // Reversal (Count * Time) - Renamed from LowWickVW
-    HighWickCount,   // Reversal (Count * Time) - Renamed from HighWickVW
-    QuoteVolume,     // Keep for debug/legacy
+    LowWickCount,  // Reversal (Count * Time) - Renamed from LowWickVW
+    HighWickCount, // Reversal (Count * Time) - Renamed from HighWickVW
+    QuoteVolume,   // Keep for debug/legacy
 }
 
 impl fmt::Display for ScoreType {
@@ -81,7 +85,6 @@ impl CVACore {
             scores[index] += weight;
         }
     }
-
 
     pub fn increase_score_multi_zones_spread(
         &mut self,
@@ -129,6 +132,9 @@ impl CVACore {
         pair_name: String,
         time_decay_factor: f64,
         total_candles: usize,
+        relevant_candle_count: usize,
+        interval_ms: i64,
+        volatility_pct: f64,
     ) -> Self {
         let price_range = RangeF64::new(min_price, max_price, zone_count);
         let n_slices = price_range.n_chunks();
@@ -142,6 +148,9 @@ impl CVACore {
             price_range,
             zone_count,
             total_candles,
+            relevant_candle_count, 
+            interval_ms,           
+            volatility_pct,        
             start_timestamp_ms: 0,
             end_timestamp_ms: 0,
             time_decay_factor,

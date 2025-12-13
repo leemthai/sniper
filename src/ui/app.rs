@@ -67,6 +67,11 @@ pub struct ZoneSniperApp {
     pub sim_step_size: SimStepSize,
 
     pub app_config: AnalysisConfig,
+
+    // PERSISTED: Stores per-pair config.
+    // Serde handles HashMap<String, Config> automatically.
+    #[serde(default)]
+    pub price_horizon_overrides: HashMap<String, crate::config::PriceHorizonConfig>,
 }
 
 impl Default for ZoneSniperApp {
@@ -87,6 +92,8 @@ impl Default for ZoneSniperApp {
             simulated_prices: HashMap::new(),
             sim_direction: SimDirection::Up,
             sim_step_size: SimStepSize::Point1,
+
+            price_horizon_overrides: HashMap::new(),
         }
     }
 }
@@ -101,9 +108,18 @@ impl ZoneSniperApp {
             Self::default()
         };
 
+        // DEBUG: Check if we actually loaded any overrides
+        log::info!(
+            ">>> App Startup: Loaded {} pair overrides from disk.",
+            app.price_horizon_overrides.len()
+        );
+
         // 2. CRITICAL FIX: Sync the loaded config to the Engine immediately
         // This ensures the Engine uses the persisted "1%" setting, not the default "15%"
         engine.update_config(app.app_config.clone());
+
+        // 2. Sync Per-Pair Overrides (CRITICAL FIX)
+        engine.set_all_overrides(app.price_horizon_overrides.clone());
 
         // Optional: Force a rebuild of the queue based on this config?
         // Since the Engine handles its own startup queue, updating the config
@@ -121,29 +137,80 @@ impl ZoneSniperApp {
         app
     }
 
-    /// Called when the user selects a new pair in the side panel.
     pub fn handle_pair_selection(&mut self, new_pair: String) {
+        // 1. Save OLD pair config
+        if let Some(old_pair) = &self.selected_pair {
+            let old_config = self.app_config.price_horizon.clone();
+            self.price_horizon_overrides
+                .insert(old_pair.clone(), old_config.clone());
+
+            // Push to Engine so background workers remember it
+            if let Some(engine) = &mut self.engine {
+                engine.set_price_horizon_override(old_pair.clone(), old_config);
+            }
+        }
+
         self.selected_pair = Some(new_pair.clone());
 
-        // 1. Get the price FIRST (Immutable borrow of self)
-        let price = self.get_display_price(&new_pair);
+        // 2. Load NEW pair config
+        if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
+            self.app_config.price_horizon = saved_config.clone();
+            log::info!(
+                ">>> Select {}: Found override. Setting Horizon to {:.2}%",
+                new_pair,
+                saved_config.threshold_pct * 100.0
+            );
+        } else {
+            // Reset to global default if never visited
+            let default_val = ANALYSIS.price_horizon.threshold_pct;
+            self.app_config.price_horizon = ANALYSIS.price_horizon.clone();
+            log::info!(
+                ">>> Select {}: No override found. Resetting to Default {:.2}%",
+                new_pair,
+                default_val * 100.0
+            );
+        }
 
-        // 2. THEN borrow the engine mutably
+        // 3. Trigger
+        let price = self.get_display_price(&new_pair);
         if let Some(engine) = &mut self.engine {
+            // Push current config (which is now set to new_pair's preference)
+            // Note: We don't strictly need 'update_config' here if we use overrides,
+            // but it keeps the "Active" config in sync with the UI sliders.
+            engine.update_config(self.app_config.clone());
+
+            // Also ensure the override map is up to date for this pair
+            engine.set_price_horizon_override(
+                new_pair.clone(),
+                self.app_config.price_horizon.clone(),
+            );
+
             engine.force_recalc(&new_pair, price);
         }
     }
 
-    /// Called when a global setting (like Price Horizon) changes.
     pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
-        // log::info!("Global invalidation triggered: {}", _reason);
-        if let Some(engine) = &mut self.engine {
-            // 1. PUSH Config to Engine
-            engine.update_config(self.app_config.clone());
+        // log::info!("Price Horizon changed: {}", reason);
 
-            // 2. Trigger Global Recalc with Priority
-            // This clears the queue and puts selected_pair first.
-            engine.trigger_global_recalc(self.selected_pair.clone());
+        if let Some(pair) = self.selected_pair.clone() {
+            // 1. Get Price FIRST (Immutable Borrow of self)
+            // We must do this before borrowing self.engine mutably.
+            let price = self.get_display_price(&pair);
+
+            // 2. Prepare Config (Immutable borrow)
+            let new_config = self.app_config.price_horizon.clone();
+
+            // 3. Update Persistence (Mutable Borrow)
+            self.price_horizon_overrides
+                .insert(pair.clone(), new_config.clone());
+
+            // 4. Update Engine (Mutable Borrow of self.engine)
+            // Now we can use the pre-calculated 'price'
+            if let Some(engine) = &mut self.engine {
+                engine.set_price_horizon_override(pair.clone(), new_config);
+                engine.update_config(self.app_config.clone());
+                engine.force_recalc(&pair, price);
+            }
         }
     }
 

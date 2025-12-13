@@ -58,7 +58,6 @@ impl PairInterval {
     }
 }
 
-// This appears to be unused.... hard to show in Egui coz selected_pair is Option<String>. It does not include the Interval at all..... yet.
 impl std::fmt::Display for PairInterval {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let base = Self::get_base(&self.name).unwrap_or("UNKNOWN_BASE");

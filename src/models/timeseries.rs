@@ -191,13 +191,34 @@ impl TimeSeriesSlice<'_> {
         // Calculate total candles across all ranges
         let total_candles: usize = self.ranges.iter().map(|(start, end)| end - start).sum();
 
+        // NEW: Calculate Volatility here or pass it in?
+        // Let's calculate it here to keep pair_analysis cleaner,
+        // iterating the ranges we already have.
+        let mut volatility_sum = 0.0;
+        for (start, end) in &self.ranges {
+            for i in *start..*end {
+                let candle = self.series_data.get_candle(i);
+                if candle.close_price > f64::EPSILON {
+                    volatility_sum += (candle.high_price - candle.low_price) / candle.close_price;
+                }
+            }
+        }
+        let volatility_pct = if total_candles > 0 {
+            volatility_sum / total_candles as f64
+        } else {
+            0.0
+        };
+
         let mut cva_core = CVACore::new(
             min_price,
             max_price,
             n_chunks,
             pair_name,
             time_decay_factor,
+            self.series_data.open_prices.len(),
             total_candles,
+            self.series_data.pair_interval.interval_ms,
+            volatility_pct * 100.0,
         );
 
         // Process all candles across all ranges, maintaining temporal decay based on position

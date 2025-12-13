@@ -57,7 +57,6 @@ And then test this as well:
         price_recalc_threshold_pct: 0.01,
 Then we can audit cloning and see if anything to fix (though I don't want get into another massive debugging day. Just wanna check if we have massive clones going on we can avoid. Small clones are fine tbh.)
 
-
 # Price change triggers
 Retest with value very low value again here;
         price_recalc_threshold_pct: 0.01,
@@ -67,24 +66,11 @@ We need to test this as well....
         price_recalc_threshold_pct: 0.01,
 
 
-
-
-
 # Info: New repo is called 'sniper'
 Easy enough to rename if needed
 Pages is set up but app not running coz coding issues (see WASM Version not running)
 
 
-# Trading pairs which are stablecoin -> stablecoin
-Inherently % movements are very small.......
-So even 1% is a lot.
-How to deal with these?
-They need a lower limit somehow.
-Perhaps implies price range should be per-pair not global??????
-
-# Per pair price horizon settings
-As part of stablecoin thing.
-Why? Because a 0.1% change in stablecoin price is needed because 'volatility'
 
 # Up the intensity of the background bars
 But add key to allow it to be turned off as well.

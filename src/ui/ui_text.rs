@@ -48,7 +48,7 @@ pub struct UiText {
     pub label_reversal_support: &'static str,
     pub label_reversal_resistance: &'static str,
     pub label_lower_wick_count: &'static str,
-    pub label_upper_wick_count:&'static str,
+    pub label_upper_wick_count: &'static str,
     pub label_hvz: &'static str,
     pub label_lower_wick_zones: &'static str,
     pub label_upper_wick_zones: &'static str,
@@ -63,6 +63,13 @@ pub struct UiText {
     pub label_help_sim_jump_lower_wicks: &'static str,
     pub label_help_sim_jump_higher_wicks: &'static str,
 
+    // Status Bar Labels
+    pub label_candle_count: &'static str,
+    pub label_volatility: &'static str,
+
+    // Error Messages
+    pub error_insufficient_data_title: &'static str,
+    pub error_insufficient_data_body: &'static str,
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -110,7 +117,7 @@ pub const UI_TEXT: UiText = UiText {
     plot_x_axis: "Key Zone Strength (0 % of the strongest zone)",
     plot_strongest_zone: "of strongest zone",
     plot_this_zone_is: "This zone is",
-    
+
     label_volume: "Trading Volume",
     label_lower_wick_count: "Lower Wick Count",
     label_upper_wick_count: "Higher Wick Count",
@@ -126,9 +133,15 @@ pub const UI_TEXT: UiText = UiText {
     label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Count ,(3) Upper Wick Count",
     label_help_sim_toggle_direction: "Toggle direction (⬆️ UP / ⬇️ DOWN)",
     label_help_sim_step_size: "Cycle step size (0.1% → 1% → 5% → 10%)",
-    label_help_sim_activate_price_change:"Activate price change in current direction",
+    label_help_sim_activate_price_change: "Activate price change in current direction",
     label_help_sim_jump_hvz: "Jump to next high volume zone (HVZ)",
     label_help_sim_jump_lower_wicks: "Jump to next high lower wick count zone (HLWCZ)",
     label_help_sim_jump_higher_wicks: "Jump to next high upper wick count zone (HUWCZ)",
 
+    label_candle_count: "Candles",
+    label_volatility: "Volatility (Avg True Range)",
+
+    error_insufficient_data_title: "Analysis Failed: Insufficient Data",
+    error_insufficient_data_body: "Not enough candles exist within this Price Horizon to build a reliable model.\n\n\
+                                   Remedy: Increase the 'Price Horizon' percentage.",
 };
