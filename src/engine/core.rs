@@ -2,10 +2,13 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
+use crate::utils::app_time::AppInstant;
+
 use crate::analysis::MultiPairMonitor;
 use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
+use crate::models::horizon_profile::HorizonProfile;
 use crate::models::pair_context::PairContext;
 use crate::models::trading_view::TradingModel;
 
@@ -227,20 +230,51 @@ impl SniperEngine {
 
     fn handle_job_result(&mut self, result: JobResult) {
         if let Some(state) = self.pairs.get_mut(&result.pair_name) {
+            // 1. Always update profile if present (Success OR Failure)
+            if let Some(p) = result.profile {
+                state.profile = Some(p);
+            }
+
+            // 2. Always update the authoritative candle count
+            // This ensures the UI displays the correct number (e.g. "99 found")
+            // even if the analysis failed due to minimum requirements.
+            state.last_candle_count = result.candle_count;
+
             match result.result {
                 Ok(model) => {
-                    state.update_buffer(model.clone());
+                    // 3. Success: Update State
+                    state.model = Some(model.clone());
+                    state.is_calculating = false;
+                    state.last_update_time = AppInstant::now();
+                    state.last_error = None;
 
+                    // 4. Monitor Logic: Feed the result to the signal monitor
                     let ctx = PairContext::new((*model).clone(), state.last_update_price);
                     self.multi_pair_monitor.add_pair(ctx);
                 }
                 Err(e) => {
+                    // 5. Failure: Clear Model, Set Error
                     log::error!("Worker failed for {}: {}", result.pair_name, e);
                     state.last_error = Some(e);
                     state.is_calculating = false;
+
+                    // Critical: Clear old model so UI shows error screen, not ghost data
+                    state.model = None;
                 }
             }
         }
+    }
+
+    // Add Accessor
+    pub fn get_candle_count(&self, pair: &str) -> usize {
+        self.pairs
+            .get(pair)
+            .map(|s| s.last_candle_count)
+            .unwrap_or(0)
+    }
+
+    pub fn get_profile(&self, pair: &str) -> Option<HorizonProfile> {
+        self.pairs.get(pair).and_then(|state| state.profile.clone())
     }
 
     fn check_automatic_triggers(&mut self) {

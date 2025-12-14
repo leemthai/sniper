@@ -1,7 +1,5 @@
-
-use crate::models::OhlcvTimeSeries;
 use crate::config::PriceHorizonConfig;
-
+use crate::models::OhlcvTimeSeries;
 
 /// Automatically select discontinuous slice ranges based on price relevancy.
 /// Returns a tuple: (Vector of ranges [(start, end)], (price_min, price_max)).
@@ -14,10 +12,9 @@ pub fn auto_select_ranges(
     let (price_min, price_max) = calculate_price_range(current_price, config.threshold_pct);
 
     // 2. Find all ranges where price is relevant
-    let mut ranges = crate::trace_time!("Scan All Candles", 500, {find_relevant_ranges(timeseries, price_min, price_max)});
-
-    // 3. Apply minimum lookback constraint
-    ranges = apply_min_lookback_constraint(ranges, timeseries, config.min_lookback_days);
+    let ranges = crate::trace_time!("Scan All Candles", 500, {
+        find_relevant_ranges(timeseries, price_min, price_max)
+    });
 
     (ranges, (price_min, price_max))
 }
@@ -41,7 +38,7 @@ fn find_relevant_ranges(
 
     for i in 0..total_candles {
         let candle = timeseries.get_candle(i);
-        
+
         // Check if candle overlaps with relevant price range.
         // Overlap exists if candle_low <= range_max AND candle_high >= range_min.
         let is_relevant = candle.low_price <= price_max && candle.high_price >= price_min;
@@ -65,49 +62,15 @@ fn find_relevant_ranges(
         ranges.push((start, total_candles));
     }
 
-    ranges
-}
-
-/// Apply minimum lookback constraint to ranges.
-/// Ensures we have at least the minimum number of candles by extending backward.
-fn apply_min_lookback_constraint(
-    ranges: Vec<(usize, usize)>,
-    timeseries: &OhlcvTimeSeries,
-    min_lookback_days: usize,
-) -> Vec<(usize, usize)> {
+    // FIX: The Safety Anchor
+    // If we found NOTHING (price is totally out of range),
+    // grab the most recent candle so we have something to expand from.
     if ranges.is_empty() {
-        return ranges;
+        let last_idx = total_candles - 1;
+        ranges.push((last_idx, total_candles)); // Range of length 1
     }
 
-    // Calculate how many candles we currently have
-    let total_relevant_candles: usize = ranges.iter().map(|(start, end)| end - start).sum();
-    
-    // Calculate minimum candles needed based on time
-    // (min_days * 24 * 60 * 60 * 1000) / interval_ms
-    let interval_ms = timeseries.pair_interval.interval_ms;
-    if interval_ms == 0 { return ranges; } // Safety check
-
-    let ms_needed = min_lookback_days as u128 * 24 * 60 * 60 * 1000;
-    let min_candles_needed = (ms_needed / interval_ms as u128) as usize;
-
-    // If we already have enough, return as-is
-    if total_relevant_candles >= min_candles_needed {
-        return ranges;
-    }
-
-    // Otherwise, extend the earliest range backward to meet minimum
-    let deficit = min_candles_needed - total_relevant_candles;
-    
-    let mut extended_ranges = ranges.clone();
-    
-    // We extend the *first* range (chronologically earliest) backwards
-    if let Some(first_range) = extended_ranges.first_mut() {
-        // saturating_sub ensures we don't go below index 0
-        let new_start = first_range.0.saturating_sub(deficit);
-        first_range.0 = new_start;
-    }
-
-    extended_ranges
+    ranges
 }
 
 /// Calculate the earliest timestamp (in ms since epoch) where relevant data begins
@@ -117,7 +80,7 @@ pub fn calculate_relevant_start_timestamp(
     config: &PriceHorizonConfig,
 ) -> i64 {
     let (ranges, _) = auto_select_ranges(timeseries, current_price, config);
-    
+
     if let Some((start_idx, _)) = ranges.first() {
         // Calculate timestamp based on index and interval
         let start_offset = *start_idx as i64 * timeseries.pair_interval.interval_ms;

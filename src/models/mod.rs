@@ -5,6 +5,7 @@ pub mod cva;
 pub mod pair_context;
 pub mod timeseries;
 pub mod trading_view;
+pub mod horizon_profile;
 
 // Re-export key types for convenience
 pub use cva::CVACore;

@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use crate::analysis::zone_scoring::find_target_zones;
 use crate::config::ANALYSIS; // Import Config
-use crate::config::ZoneParams; // Would love this to just use crate::config::ZoneParams
+use crate::config::ZoneParams;
 use crate::models::cva::{CVACore, ScoreType};
+use crate::models::horizon_profile::HorizonProfile;
 use crate::utils::maths_utils::{normalize_max, smooth_data};
 
 /// A single price zone with its properties
@@ -153,8 +154,8 @@ pub struct TradingModel {
     pub pair_name: String,
     pub cva: Arc<CVACore>,
     pub zones: ClassifiedZones,
-    // pub current_price: Option<f64>,
     pub coverage: ZoneCoverageStats,
+    pub profile: HorizonProfile,
 }
 
 // New Struct for Stats
@@ -167,18 +168,17 @@ pub struct ZoneCoverageStats {
 
 impl TradingModel {
     /// Create a new trading model from CVA results and optional current price
-    pub fn from_cva(cva: Arc<CVACore>) -> Self {
+    pub fn from_cva(cva: Arc<CVACore>, profile: HorizonProfile) -> Self {
         let (zones, coverage) = Self::classify_zones(&cva);
 
-        Self {
+        TradingModel {
             pair_name: cva.pair_name.clone(),
             cva,
             zones,
             coverage,
+            profile,
         }
     }
-
-    // src/models/trading_view.rs
 
     fn classify_zones(cva: &CVACore) -> (ClassifiedZones, ZoneCoverageStats) {
         let (price_min, price_max) = cva.price_range.min_max();

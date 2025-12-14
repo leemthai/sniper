@@ -36,11 +36,15 @@ pub fn pair_analysis_pure(
 
     // 3. Validation
     let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();
+
     if total_candle_count < ANALYSIS.cva.min_candles_for_analysis {
+        let s = if total_candle_count == 1 { "" } else { "s" };
+
         bail!(
-            "Insufficient data: {} has only {} candles (minimum: {}).",
+            "Insufficient data: {} has only {} candle{} (minimum: {}).",
             pair_name,
             total_candle_count,
+            s,
             ANALYSIS.cva.min_candles_for_analysis
         );
     }

@@ -1,6 +1,44 @@
 use eframe::egui::{Context, RichText, Ui, Visuals};
 
+use crate::ui::ui_text::UI_TEXT;
 use crate::ui::config::UI_CONFIG;
+
+/// Returns "1 Candle" or "5 Candles" based on count.
+pub fn format_candle_count(count: usize) -> String {
+    let label = if count == 1 {
+        UI_TEXT.word_candle_singular
+    } else {
+        UI_TEXT.word_candle_plural
+    };
+    format!("{} {}", count, label)
+}
+
+
+
+pub fn format_duration_context(days: f64) -> String {
+    let total_minutes = (days * 24.0 * 60.0).round() as i64;
+    
+    if total_minutes < 60 {
+        format!("{}m", total_minutes)
+    } else if total_minutes < 24 * 60 {
+        let h = total_minutes / 60;
+        let m = total_minutes % 60;
+        if m > 0 {
+            format!("{}h {}m", h, m)
+        } else {
+            format!("{}h", h)
+        }
+    } else {
+        let d = total_minutes / (24 * 60);
+        let h = (total_minutes % (24 * 60)) / 60;
+        if h > 0 {
+            format!("{}d {}h", d, h)
+        } else {
+            format!("{}d", d)
+        }
+    }
+}
+
 
 /// Creates a colored heading with uppercase text and monospace font
 pub fn colored_heading(text: impl Into<String>) -> RichText {

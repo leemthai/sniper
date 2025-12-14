@@ -82,8 +82,6 @@ impl PlotView {
         background_score_type: ScoreType,
         visibility: &PlotVisibility,
     ) {
-        // let trading_model =
-        //     TradingModel::from_cva(Arc::new(cva_results.clone()), current_pair_price);
 
         let cache = self.calculate_plot_data(cva_results, background_score_type);
         let pair_name = &cva_results.pair_name;

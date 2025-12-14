@@ -1,16 +1,21 @@
-use eframe::egui::{ComboBox, ScrollArea, Ui, Slider, RichText, Color32};
+use eframe::egui::{
+    Align2, Color32, ComboBox, FontId, Rect, RichText, ScrollArea, Sense, Slider, Stroke,
+    StrokeKind, Ui, pos2, vec2,
+};
 use strum::IntoEnumIterator;
 
 use crate::config::ANALYSIS;
+use crate::config::PriceHorizonConfig;
 use crate::config::plot::PLOT_CONFIG;
+
 use crate::domain::pair_interval::PairInterval;
 
 use crate::models::cva::ScoreType;
+use crate::models::horizon_profile::HorizonProfile;
 use crate::models::{PairContext, ZoneType};
-use crate::config::PriceHorizonConfig;
 
 use crate::ui::config::UI_TEXT;
-use crate::ui::utils::{colored_subsection_heading, section_heading, spaced_separator};
+use crate::ui::utils::{colored_subsection_heading, section_heading, spaced_separator, format_duration_context, format_candle_count};
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
@@ -29,6 +34,8 @@ pub struct DataGenerationPanel<'a> {
     available_pairs: Vec<String>,
     price_horizon_config: &'a PriceHorizonConfig,
     time_horizon_days: u64,
+    profile: Option<&'a HorizonProfile>,
+    actual_candle_count: usize,
 }
 
 impl<'a> DataGenerationPanel<'a> {
@@ -38,6 +45,8 @@ impl<'a> DataGenerationPanel<'a> {
         available_pairs: Vec<String>,
         price_horizon_config: &'a PriceHorizonConfig,
         time_horizon_days: u64,
+        profile: Option<&'a HorizonProfile>,
+        actual_candle_count: usize,
     ) -> Self {
         Self {
             zone_count,
@@ -45,41 +54,171 @@ impl<'a> DataGenerationPanel<'a> {
             available_pairs,
             price_horizon_config,
             time_horizon_days,
+            profile,
+            actual_candle_count,
         }
     }
 
     fn render_price_horizon_display(&mut self, ui: &mut Ui) -> Option<f64> {
         let mut changed = None;
-
         ui.add_space(5.0);
         ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
 
-        let mut threshold_pct = self.price_horizon_config.threshold_pct * 100.0;
-        let min = ANALYSIS.price_horizon.min_threshold_pct * 100.0;
-        let max = ANALYSIS.price_horizon.max_threshold_pct * 100.0;
+        // 1. Setup Constants & Current Value
+        let min_pct = ANALYSIS.price_horizon.min_threshold_pct; // 0.01
+        let max_pct = ANALYSIS.price_horizon.max_threshold_pct; // 0.80
+        let range = max_pct - min_pct;
+        let mut current_pct = self.price_horizon_config.threshold_pct;
 
+        // 2. Decide: Custom Heatmap OR Standard Slider?
+        if let Some(profile) = self.profile {
+            // --- A. CUSTOM HEATMAP WIDGET ---
 
-        let response = ui.add(
-            Slider::new(&mut threshold_pct, min..=max)
-                .step_by(1.0)
-                .suffix("%"),
-        );
+            // Allocate 40px height for the bar
+            let (rect, response) =
+                ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click_and_drag());
 
-        if response.changed() {
-            changed = Some(threshold_pct / 100.0);
+            // Handle Input (Click or Drag)
+            if response.dragged() || response.clicked() {
+                if let Some(pointer_pos) = response.interact_pointer_pos() {
+                    // Map Mouse X -> Percentage
+                    let x_frac = ((pointer_pos.x - rect.min.x) / rect.width()) as f64;
+                    let new_val = min_pct + (x_frac * range);
+                    current_pct = new_val.clamp(min_pct, max_pct);
+                    changed = Some(current_pct);
+                }
+            }
+
+            // Draw Visuals
+            if ui.is_rect_visible(rect) {
+                let painter = ui.painter();
+
+                // Draw Track Background
+                painter.rect_filled(rect, 2.0, Color32::from_black_alpha(40));
+                // FIX 2: Add StrokeKind::Inside as 4th argument
+                painter.rect_stroke(
+                    rect,
+                    2.0,
+                    Stroke::new(1.0, Color32::from_gray(60)),
+                    StrokeKind::Inside,
+                );
+
+                // Draw Data Buckets (The Colored Slices)
+                // We calculate the X position for each bucket based on its threshold %
+                if !profile.buckets.is_empty() {
+                    let bucket_width = rect.width() / profile.buckets.len() as f32;
+
+                    for bucket in &profile.buckets {
+                        // Color Logic: Red (<100), Yellow (<500), Green (>500)
+                        let color = if bucket.candle_count < 100 {
+                            Color32::from_rgb(100, 30, 30) // Red
+                        } else if bucket.candle_count < 500 {
+                            Color32::from_rgb(100, 100, 30) // Yellow
+                        } else {
+                            Color32::from_rgb(30, 100, 30) // Green
+                        };
+
+                        // Map Bucket % to X position
+                        let frac = (bucket.threshold_pct - min_pct) / range;
+                        let x_start = rect.min.x + (frac as f32 * rect.width());
+
+                        let bar_rect = Rect::from_min_size(
+                            pos2(x_start, rect.min.y + 2.0),
+                            vec2(bucket_width + 1.0, rect.height() - 4.0), // +1 to overlap gaps
+                        );
+                        painter.rect_filled(bar_rect, 0.0, color);
+                    }
+                }
+
+                // Draw Handle (White Line at current val)
+                let handle_frac = (current_pct - min_pct) / range;
+                let handle_x = rect.min.x + (handle_frac as f32 * rect.width());
+                let handle_rect = Rect::from_center_size(
+                    pos2(handle_x, rect.center().y),
+                    vec2(4.0, rect.height()),
+                );
+                painter.rect_filled(handle_rect, 1.0, Color32::WHITE);
+            }
+
+            // ... inside the custom widget block ...
+
+            // 5. Text Feedback (Below slider)
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("{:.2}%", current_pct * 100.0)).strong());
+
+                if let Some(bucket) = profile.buckets.iter().min_by(|a, b| {
+                    (a.threshold_pct - current_pct)
+                        .abs()
+                        .partial_cmp(&(b.threshold_pct - current_pct).abs())
+                        .unwrap()
+                }) {
+                    // DECISION LOGIC: Map vs Territory
+                    // If the slider matches the current config (we aren't dragging/exploring),
+                    // show the REAL count from the engine. Otherwise show the MAP count.
+                    let is_current_config = (current_pct - self.price_horizon_config.threshold_pct)
+                        .abs()
+                        < f64::EPSILON;
+
+                    let display_count = if is_current_config {
+                        self.actual_candle_count // The Truth
+                    } else {
+                        bucket.candle_count // The Estimate
+                    };
+                    if display_count < 100 {
+                        ui.label(RichText::new(UI_TEXT.ph_status_insufficient).color(Color32::LIGHT_RED));
+                        
+                        // CLEAN: "only found 1 Candle" / "only found 0 Candles"
+                        // Note: You might want to tweak the phrasing of ph_warn_only_found in ui_text too
+                        // e.g. "only found" -> "found" 
+                        // Result: "(only found 99 Candles)"
+                        ui.label(format!("({} {})", UI_TEXT.ph_warn_only_found, format_candle_count(display_count))); 
+                        
+                    } else if display_count < 500 {
+                        ui.label(RichText::new(UI_TEXT.ph_status_low_def).color(Color32::from_rgb(255, 215, 0)));
+                        
+                        // CLEAN: "| 123 Candles"
+                        ui.label(format!("| {}", format_candle_count(display_count)));
+                        
+                        ui.label(format!("| {} {}", format_duration_context(bucket.duration_days), UI_TEXT.ph_label_context));
+                    } else {
+                        ui.label(RichText::new(UI_TEXT.ph_status_high_def).color(Color32::GREEN));
+                        
+                        // CLEAN: "| 501 Candles"
+                        ui.label(format!("| {}", format_candle_count(display_count)));
+                        
+                        ui.label(format!("| {} {}", format_duration_context(bucket.duration_days), UI_TEXT.ph_label_context));
+                    }
+                }
+            });
+        } else {
+            // --- B. FALLBACK: LOADING STATE ---
+            // Draw the same shape as the custom widget, but grayed out.
+            // This prevents the UI popping/shifting during initialization.
+
+            let desired_size = vec2(ui.available_width(), 40.0);
+            let (rect, _response) = ui.allocate_exact_size(desired_size, Sense::hover());
+
+            if ui.is_rect_visible(rect) {
+                let painter = ui.painter();
+                // Draw Empty Track
+                painter.rect_filled(rect, 2.0, Color32::from_black_alpha(40));
+                painter.rect_stroke(
+                    rect,
+                    2.0,
+                    Stroke::new(1.0, Color32::from_gray(60)),
+                    StrokeKind::Inside,
+                );
+
+                // Draw Loading Text
+                painter.text(
+                    rect.center(),
+                    Align2::CENTER_CENTER,
+                    UI_TEXT.ph_startup,
+                    FontId::proportional(12.0),
+                    Color32::GRAY,
+                );
+            }
         }
-
-        let helper_text = format!(
-            "{}{}{}",
-            UI_TEXT.price_horizon_helper_prefix,
-            threshold_pct.round(),
-            UI_TEXT.price_horizon_helper_suffix
-        );
-        ui.label(
-            RichText::new(helper_text)
-                .small()
-                .color(Color32::GRAY),
-        );
 
         changed
     }
@@ -111,11 +250,7 @@ impl<'a> DataGenerationPanel<'a> {
             "{}{}{}",
             UI_TEXT.time_horizon_helper_prefix, new_value, UI_TEXT.time_horizon_helper_suffix
         );
-        ui.label(
-            RichText::new(helper_text)
-                .small()
-                .color(Color32::GRAY),
-        );
+        ui.label(RichText::new(helper_text).small().color(Color32::GRAY));
 
         changed
     }

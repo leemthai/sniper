@@ -65,6 +65,13 @@ Soon I will need retest this as well......
 We need to test this as well....
         price_recalc_threshold_pct: 0.01,
 
+# Why have low wick and high wick zones largely disappeared?
+No idea. Maybe just the new pair collection? Nah
+OR they just tend to disappear as you reduce PH?
+
+# Can we now delete min_lookback_days from anaylsis?
+Piece of shit.
+
 
 # Info: New repo is called 'sniper'
 Easy enough to rename if needed

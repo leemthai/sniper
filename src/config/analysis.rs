@@ -15,8 +15,6 @@ pub struct PriceHorizonConfig {
     pub min_threshold_pct: f64,
     pub max_threshold_pct: f64,
 
-    /// Minimum lookback in days
-    pub min_lookback_days: usize,
 }
 
 /// Configuration for the Time Horizon UI Slider
@@ -138,8 +136,7 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     // NEW: Initialize Default AutoDuration
     price_horizon: PriceHorizonConfig {
         threshold_pct: 0.15,
-        min_threshold_pct: 0.01,
+        min_threshold_pct: 0.001,
         max_threshold_pct: 0.80,
-        min_lookback_days: 7,
     },
 };

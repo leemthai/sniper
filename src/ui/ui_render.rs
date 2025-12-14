@@ -113,10 +113,7 @@ impl ZoneSniperApp {
                     // Use rich error format
                     let body = if err_msg.contains("Insufficient data") {
                         // Use our detailed help text
-                        format!(
-                            "{}\n\nTechnical Details: {}",
-                            UI_TEXT.error_insufficient_data_body, err_msg
-                        )
+                        format!("{}\n\n{}", UI_TEXT.error_insufficient_data_body, err_msg)
                     } else {
                         err_msg.to_string()
                     };
@@ -511,22 +508,58 @@ impl ZoneSniperApp {
     }
 
     fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
-        // Use Engine or Config for available pairs
-        let available_pairs = if let Some(engine) = &self.engine {
-            engine.get_all_pair_names()
+        // 1. Get Data from Engine
+        // We clone the Profile to avoid holding an immutable borrow on 'engine'
+        // which would prevent us from passing 'self' fields (like auto_duration_config) to the panel.
+        let (available_pairs, profile, actual_count) = if let Some(engine) = &self.engine {
+            let pairs = engine.get_all_pair_names();
+
+            let (prof, count) = if let Some(pair) = &self.selected_pair {
+                (engine.get_profile(pair), engine.get_candle_count(pair))
+            } else {
+                (None, 0)
+            };
+
+            (pairs, prof, count)
         } else {
-            Vec::new()
+            (Vec::new(), None, 0)
         };
 
-        // Pass global constant zone_count from ANALYSIS
+        // 2. Render Panel
         let mut panel = DataGenerationPanel::new(
             ANALYSIS.zone_count,
             self.selected_pair.clone(),
             available_pairs,
             &self.app_config.price_horizon,
             self.app_config.time_horizon.default_days,
+            profile.as_ref(),
+            actual_count,
         );
-        panel.render(ui)
+
+        let events = panel.render(ui);
+
+        // 3. Handle Events
+        for event in &events {
+            match event {
+                DataGenerationEventChanged::PriceHorizonThreshold(val) => {
+                    // Update config if changed
+                    if (self.app_config.price_horizon.threshold_pct - val).abs() > f64::EPSILON {
+                        self.app_config.price_horizon.threshold_pct = *val;
+                        self.invalidate_all_pairs_for_global_change("Price Horizon Changed");
+                    }
+                }
+                DataGenerationEventChanged::TimeHorizonDays(days) => {
+                    if self.app_config.time_horizon.default_days != *days {
+                        self.app_config.time_horizon.default_days = *days;
+                        // Journeys are suspended, but if we had them, we'd invalidate here
+                    }
+                }
+                DataGenerationEventChanged::Pair(new_pair) => {
+                    self.handle_pair_selection(new_pair.clone());
+                }
+            }
+        }
+        events
     }
 
     pub(super) fn handle_global_shortcuts(&mut self, ctx: &Context) {

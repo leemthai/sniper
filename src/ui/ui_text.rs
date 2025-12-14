@@ -70,6 +70,19 @@ pub struct UiText {
     // Error Messages
     pub error_insufficient_data_title: &'static str,
     pub error_insufficient_data_body: &'static str,
+
+    // Add generic terms (reusable across Status Bar and Slider)
+    pub word_candle_singular: &'static str,
+    pub word_candle_plural: &'static str,
+
+    pub ph_label_context: &'static str,
+
+    // Status Levels
+    pub ph_status_insufficient: &'static str, // Red
+    pub ph_status_low_def: &'static str,      // Yellow
+    pub ph_status_high_def: &'static str,     // Green
+    pub ph_warn_only_found: &'static str,
+    pub ph_startup: &'static str,
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -141,7 +154,22 @@ pub const UI_TEXT: UiText = UiText {
     label_candle_count: "Candles",
     label_volatility: "Volatility (Avg True Range)",
 
-    error_insufficient_data_title: "Analysis Failed: Insufficient Data",
-    error_insufficient_data_body: "Not enough candles exist within this Price Horizon to build a reliable model.\n\n\
-                                   Remedy: Increase the 'Price Horizon' percentage.",
+        error_insufficient_data_title: "Analysis Paused: Range Too Narrow",
+
+    error_insufficient_data_body: "The current Price Horizon does not capture enough price history to identify reliable zones.\n\n\
+                                   👉 Action: Drag the Price Horizon slider to the right (aim for the Green zone).",
+
+    word_candle_singular: "Candle",
+    word_candle_plural: "Candles",
+
+    ph_label_context: "Context",
+
+    ph_status_insufficient: "[!] Insufficient Data",
+    ph_status_low_def: "[~] Low Resolution",
+    ph_status_high_def: "[+] High Definition",
+    ph_warn_only_found: "only found",
+
+    ph_startup: "Analyzing Price Structure...",
+
+    
 };

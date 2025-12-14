@@ -2,6 +2,7 @@ use std::sync::Arc;
 use crate::config::AnalysisConfig;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::cva::CVACore;
+use crate::models::horizon_profile::HorizonProfile;
 use crate::models::trading_view::TradingModel;
 
 /// A request to calculate a model for a specific pair
@@ -27,4 +28,7 @@ pub struct JobResult {
     // We pass back the CVACore too if needed for debugging/plots, 
     // though TradingModel usually wraps it.
     pub cva: Option<Arc<CVACore>>,
+    pub profile: Option<HorizonProfile>,
+    pub candle_count: usize,
+
 }
