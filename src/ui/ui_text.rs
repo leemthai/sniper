@@ -75,7 +75,11 @@ pub struct UiText {
     pub word_candle_singular: &'static str,
     pub word_candle_plural: &'static str,
 
-    pub ph_label_context: &'static str,
+    // pub ph_label_context: &'static str,
+
+    pub ph_label_evidence: &'static str,
+    pub ph_label_history: &'static str,
+    pub ph_label_density: &'static str,
 
     // Status Levels
     pub ph_status_insufficient: &'static str, // Red
@@ -154,7 +158,7 @@ pub const UI_TEXT: UiText = UiText {
     label_candle_count: "Candles",
     label_volatility: "Volatility (Avg True Range)",
 
-        error_insufficient_data_title: "Analysis Paused: Range Too Narrow",
+    error_insufficient_data_title: "Analysis Paused: Range Too Narrow",
 
     error_insufficient_data_body: "The current Price Horizon does not capture enough price history to identify reliable zones.\n\n\
                                    👉 Action: Drag the Price Horizon slider to the right (aim for the Green zone).",
@@ -162,7 +166,10 @@ pub const UI_TEXT: UiText = UiText {
     word_candle_singular: "Candle",
     word_candle_plural: "Candles",
 
-    ph_label_context: "Context",
+    // ph_label_context: "Context",
+    ph_label_evidence: "Evidence", // Active Duration
+    ph_label_history: "History",   // Span
+    ph_label_density: "Density",   // Quality
 
     ph_status_insufficient: "[!] Insufficient Data",
     ph_status_low_def: "[~] Low Resolution",
@@ -170,6 +177,4 @@ pub const UI_TEXT: UiText = UiText {
     ph_warn_only_found: "only found",
 
     ph_startup: "Analyzing Price Structure...",
-
-    
 };

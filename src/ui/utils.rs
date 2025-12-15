@@ -13,28 +13,50 @@ pub fn format_candle_count(count: usize) -> String {
     format!("{} {}", count, label)
 }
 
-
-
 pub fn format_duration_context(days: f64) -> String {
-    let total_minutes = (days * 24.0 * 60.0).round() as i64;
-    
-    if total_minutes < 60 {
-        format!("{}m", total_minutes)
-    } else if total_minutes < 24 * 60 {
-        let h = total_minutes / 60;
-        let m = total_minutes % 60;
+    let minutes_total = (days * 24.0 * 60.0).round() as i64;
+
+    if minutes_total < 60 {
+        // Example: "45m"
+        format!("{}m", minutes_total)
+    } else if minutes_total < 24 * 60 {
+        // Example: "14h 30m"
+        let h = minutes_total / 60;
+        let m = minutes_total % 60;
         if m > 0 {
             format!("{}h {}m", h, m)
         } else {
             format!("{}h", h)
         }
-    } else {
-        let d = total_minutes / (24 * 60);
-        let h = (total_minutes % (24 * 60)) / 60;
+    } else if days < 30.44 {
+        // Example: "9d 14h"
+        let d = minutes_total / (24 * 60);
+        let h = (minutes_total % (24 * 60)) / 60;
         if h > 0 {
             format!("{}d {}h", d, h)
         } else {
             format!("{}d", d)
+        }
+    } else if days < 365.25 {
+        // Example: "4M 12d" (Months + Days)
+        let months = (days / 30.44).floor() as i64;
+        let remaining_days = (days % 30.44).round() as i64;
+        
+        if remaining_days > 0 {
+            format!("{}M {}d", months, remaining_days)
+        } else {
+            format!("{} Months", months)
+        }
+    } else {
+        // Example: "2Y 3M" (Years + Months)
+        let years = (days / 365.25).floor() as i64;
+        let remaining_days = days % 365.25;
+        let months = (remaining_days / 30.44).round() as i64;
+        
+        if months > 0 {
+            format!("{}Y {}M", years, months)
+        } else {
+            format!("{} Years", years)
         }
     }
 }

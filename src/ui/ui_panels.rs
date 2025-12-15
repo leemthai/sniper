@@ -5,8 +5,8 @@ use eframe::egui::{
 use strum::IntoEnumIterator;
 
 use crate::config::ANALYSIS;
-use crate::config::PriceHorizonConfig;
 use crate::config::plot::PLOT_CONFIG;
+use crate::config::{AnalysisConfig, PriceHorizonConfig};
 
 use crate::domain::pair_interval::PairInterval;
 
@@ -15,7 +15,10 @@ use crate::models::horizon_profile::HorizonProfile;
 use crate::models::{PairContext, ZoneType};
 
 use crate::ui::config::UI_TEXT;
-use crate::ui::utils::{colored_subsection_heading, section_heading, spaced_separator, format_duration_context, format_candle_count};
+use crate::ui::utils::{
+    colored_subsection_heading, format_candle_count, format_duration_context, section_heading,
+    spaced_separator,
+};
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
@@ -70,6 +73,17 @@ impl<'a> DataGenerationPanel<'a> {
         let range = max_pct - min_pct;
         let mut current_pct = self.price_horizon_config.threshold_pct;
 
+        // Fetch Data-Driven Color Scale
+        let quality_zones = AnalysisConfig::get_quality_zones();
+        let get_color = |count: usize| -> Color32 {
+            for zone in &quality_zones {
+                if count <= zone.max_count {
+                    return Color32::from_rgb(zone.color_rgb.0, zone.color_rgb.1, zone.color_rgb.2);
+                }
+            }
+            Color32::from_rgb(200, 50, 255) // Fallback (Ultra)
+        };
+
         // 2. Decide: Custom Heatmap OR Standard Slider?
         if let Some(profile) = self.profile {
             // --- A. CUSTOM HEATMAP WIDGET ---
@@ -106,26 +120,17 @@ impl<'a> DataGenerationPanel<'a> {
                 // Draw Data Buckets (The Colored Slices)
                 // We calculate the X position for each bucket based on its threshold %
                 if !profile.buckets.is_empty() {
-                    let bucket_width = rect.width() / profile.buckets.len() as f32;
-
+                    let width_per_step = rect.width() / profile.buckets.len() as f32;
                     for bucket in &profile.buckets {
-                        // Color Logic: Red (<100), Yellow (<500), Green (>500)
-                        let color = if bucket.candle_count < 100 {
-                            Color32::from_rgb(100, 30, 30) // Red
-                        } else if bucket.candle_count < 500 {
-                            Color32::from_rgb(100, 100, 30) // Yellow
-                        } else {
-                            Color32::from_rgb(30, 100, 30) // Green
-                        };
-
-                        // Map Bucket % to X position
                         let frac = (bucket.threshold_pct - min_pct) / range;
                         let x_start = rect.min.x + (frac as f32 * rect.width());
 
                         let bar_rect = Rect::from_min_size(
                             pos2(x_start, rect.min.y + 2.0),
-                            vec2(bucket_width + 1.0, rect.height() - 4.0), // +1 to overlap gaps
+                            vec2(width_per_step + 1.0, rect.height() - 4.0),
                         );
+
+                        let color = get_color(bucket.candle_count);
                         painter.rect_filled(bar_rect, 0.0, color);
                     }
                 }
@@ -140,54 +145,93 @@ impl<'a> DataGenerationPanel<'a> {
                 painter.rect_filled(handle_rect, 1.0, Color32::WHITE);
             }
 
-            // ... inside the custom widget block ...
+            // --- THE REPORT (Feedback beneath slider) ---
+            ui.vertical(|ui| {
+                ui.add_space(4.0);
 
-            // 5. Text Feedback (Below slider)
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("{:.2}%", current_pct * 100.0)).strong());
+                // 1. Horizon Setting
+                ui.label(RichText::new(format!("Horizon: {:.2}%", current_pct * 100.0)).strong());
 
+                // Match Bucket
                 if let Some(bucket) = profile.buckets.iter().min_by(|a, b| {
                     (a.threshold_pct - current_pct)
                         .abs()
                         .partial_cmp(&(b.threshold_pct - current_pct).abs())
                         .unwrap()
                 }) {
-                    // DECISION LOGIC: Map vs Territory
-                    // If the slider matches the current config (we aren't dragging/exploring),
-                    // show the REAL count from the engine. Otherwise show the MAP count.
                     let is_current_config = (current_pct - self.price_horizon_config.threshold_pct)
                         .abs()
                         < f64::EPSILON;
 
-                    let display_count = if is_current_config {
-                        self.actual_candle_count // The Truth
+                    // Display Logic: Use Actual count if static, Bucket if dragging
+                    let count = if is_current_config {
+                        self.actual_candle_count
                     } else {
-                        bucket.candle_count // The Estimate
+                        bucket.candle_count
                     };
-                    if display_count < 100 {
-                        ui.label(RichText::new(UI_TEXT.ph_status_insufficient).color(Color32::LIGHT_RED));
-                        
-                        // CLEAN: "only found 1 Candle" / "only found 0 Candles"
-                        // Note: You might want to tweak the phrasing of ph_warn_only_found in ui_text too
-                        // e.g. "only found" -> "found" 
-                        // Result: "(only found 99 Candles)"
-                        ui.label(format!("({} {})", UI_TEXT.ph_warn_only_found, format_candle_count(display_count))); 
-                        
-                    } else if display_count < 500 {
-                        ui.label(RichText::new(UI_TEXT.ph_status_low_def).color(Color32::from_rgb(255, 215, 0)));
-                        
-                        // CLEAN: "| 123 Candles"
-                        ui.label(format!("| {}", format_candle_count(display_count)));
-                        
-                        ui.label(format!("| {} {}", format_duration_context(bucket.duration_days), UI_TEXT.ph_label_context));
+
+                    // Calc History & Density
+                    let span_ms = bucket.max_ts.saturating_sub(bucket.min_ts);
+                    let span_days = span_ms as f64 / (1000.0 * 60.0 * 60.0 * 24.0);
+
+                    let density_pct = if span_days > 0.001 {
+                        (bucket.duration_days / span_days) * 100.0
                     } else {
-                        ui.label(RichText::new(UI_TEXT.ph_status_high_def).color(Color32::GREEN));
-                        
-                        // CLEAN: "| 501 Candles"
-                        ui.label(format!("| {}", format_candle_count(display_count)));
-                        
-                        ui.label(format!("| {} {}", format_duration_context(bucket.duration_days), UI_TEXT.ph_label_context));
-                    }
+                        0.0
+                    };
+
+                    let color = get_color(count);
+
+                    // Row A: Evidence (Active)
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("{}:", UI_TEXT.ph_label_evidence))
+                                .small()
+                                .color(Color32::GRAY),
+                        );
+                        ui.label(
+                            RichText::new(format!(
+                                "{} ({})",
+                                format_duration_context(bucket.duration_days),
+                                format_candle_count(count)
+                            ))
+                            .color(color),
+                        );
+                    });
+
+                    // Row B: History (Span)
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("{}:", UI_TEXT.ph_label_history))
+                                .small()
+                                .color(Color32::GRAY),
+                        );
+                        ui.label(
+                            RichText::new(format_duration_context(span_days))
+                                .color(Color32::LIGHT_BLUE),
+                        );
+                    });
+
+                    // Row C: Density
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("{}:", UI_TEXT.ph_label_density))
+                                .small()
+                                .color(Color32::GRAY),
+                        );
+
+                        let density_color = if density_pct > 50.0 {
+                            Color32::GREEN
+                        } else if density_pct > 10.0 {
+                            Color32::YELLOW
+                        } else {
+                            Color32::LIGHT_RED
+                        };
+
+                        ui.label(
+                            RichText::new(format!("{:.1}%", density_pct)).color(density_color),
+                        );
+                    });
                 }
             });
         } else {

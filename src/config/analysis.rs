@@ -4,6 +4,14 @@ use serde::{Deserialize, Serialize}; // Add Import
 
 use crate::utils::TimeUtils;
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct QualityZone {
+    pub max_count: usize,       // Upper bound (e.g. 100)
+    pub label: String,          // "No Res"
+    pub color_rgb: (u8, u8, u8), // (255, 100, 100)
+}
+
+
 /// Configuration for the Price Horizon.
 /// Determines the vertical price range of interest relative to the current price.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +91,19 @@ pub struct AnalysisConfig {
     pub zones: ZoneClassificationConfig,
 
     pub price_horizon: PriceHorizonConfig,
+
+}
+
+impl AnalysisConfig {
+    pub fn get_quality_zones() -> Vec<QualityZone> {
+        vec![
+            QualityZone { max_count: 100,    label: "No-Res".to_string(),    color_rgb: (200, 50, 50) },   // Red
+            QualityZone { max_count: 1000,   label: "Low-Res".to_string(),   color_rgb: (200, 200, 50) },  // Yellow
+            QualityZone { max_count: 10000,  label: "Med-Res".to_string(),   color_rgb: (50, 200, 50) },   // Green
+            QualityZone { max_count: 100000, label: "Hi-Res".to_string(),    color_rgb: (50, 200, 255) },  // Blue
+            QualityZone { max_count: usize::MAX, label: "Ultra-Res".to_string(), color_rgb: (200, 50, 255) }, // Purple
+        ]
+    }
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {

@@ -77,8 +77,47 @@ Piece of shit.
 Easy enough to rename if needed
 Pages is set up but app not running coz coding issues (see WASM Version not running)
 
+# https://github.com/emilk/egui_plot/pull/221
+egui_plot API update. it's for 0.35 version right? We can't use it yet?
+Give him a choice to work on adaptive PH or resolution stuff (below)
 
 
 # Up the intensity of the background bars
 But add key to allow it to be turned off as well.
 Still hate using "B" to rotate meaning of background bar. It's so awkward.
+
+
+
+# The future of klines
+Loading candles is currently a vary long operation. Not something you can easily play aroind with on the fly
+Takes 2 mins to load 30m klines for 70 pairs. Coz we keep reloading from scratch all the time. need to learn  how to buffer them locally. Then we could do 5 mins
+5 mins 100 candles is 500 mins is 8 hrs. Need evaluate how much we slow various app operations if we go down to 5 min candles from 30 min candles..
+Store in local db. what are rust db options
+Re-loading all klines from API every day is dumb and very very slow. They should be added incrementally to a db in the background after one 'big load' when app first run (which writes db to local disk)
+Also eventually want to load in background then trigger zone recalcs etc. 
+5m klines else maths gets too slow maybe. Processing all the klines i mean.
+Don't forget this is for non-WASM only. WASM mode does not load klines from API at all. Though if we switch to DB, I guess we probably switch WASM-verison to local db as well?
+
+# Work with any kline interval
+For the ulitmate flexbility, have a global option to use any reasonable interval.
+Then, for slower machines, less local storage, or when a person is doing swing-trading / investing, they can pick a bigger interval
+For a person doing scalping, they could pick one minute
+This is 'big' global option though, would mean rebuilding the db etc. So a complete app relaunch.
+Definite good to keep it flexible like this though.
+If we pin it down to one particular interval, we are not writing an app that can adapt
+
+# Can we use 1m or 5m klines all the time
+And somehow aggregate them if we want to reduce the calc time etc
+Get the best of all worlds
+Then the user does not need to select a kline interval, or if he does, it does not trigger any kind of data reload from API, we just deal with it internally...
+
+# If we redo klines
+Note that Binance klines have holes in them. Some very big holes. Currently I attempt to 'fill in holes' in some way.
+Might it be an opportunity to turn instead to a bunch of kline ranges? Similar to how we store 'qualifying klines' in the app itself when calculating zones etc?
+Need to decide how to start-up the app ...... do we launch egui to start? or do a whole pre-egui section where we run some other kind of interface to load klines, and do whatever else might need doing?
+Investigate other binance crates. This one is fine, but maybe another is finer? I remember you saying that binance-sdk had an awkwared API and was auto-generated, or something like that. Maybe we can find a better one.
+
+# DB options (if we go redo klines)
+Polo db
+Native db
+These are 'no SQL' options
