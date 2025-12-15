@@ -141,43 +141,43 @@ impl ZoneSniperApp {
         app
     }
 
-    pub fn handle_pair_selection(&mut self, new_pair: String) {
-        // 1. Save OLD pair config
+pub fn handle_pair_selection(&mut self, new_pair: String) {
+        // 1. Save current config for the OLD pair
         if let Some(old_pair) = &self.selected_pair {
-            let old_config = self.app_config.price_horizon.clone();
-            self.price_horizon_overrides
-                .insert(old_pair.clone(), old_config.clone());
-
-            // Push to Engine so background workers remember it
-            if let Some(engine) = &mut self.engine {
-                engine.set_price_horizon_override(old_pair.clone(), old_config);
-            }
+             let old_config = self.app_config.price_horizon.clone();
+             self.price_horizon_overrides.insert(old_pair.clone(), old_config.clone());
+             
+             // Push to Engine
+             if let Some(engine) = &mut self.engine {
+                 engine.set_price_horizon_override(old_pair.clone(), old_config.clone());
+             }
         }
 
         self.selected_pair = Some(new_pair.clone());
-
-        // 2. Load NEW pair config
+        
+        // 2. Load config for the NEW pair (or default)
         if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
-            self.app_config.price_horizon = saved_config.clone();
+            // FIX: Mix saved preference with current system bounds
+            let mut config = saved_config.clone();
+            config.min_threshold_pct = ANALYSIS.price_horizon.min_threshold_pct;
+            config.max_threshold_pct = ANALYSIS.price_horizon.max_threshold_pct;
+            
+            // Safety: Ensure threshold is within new bounds
+            config.threshold_pct = config.threshold_pct.clamp(config.min_threshold_pct, config.max_threshold_pct);
+
+            self.app_config.price_horizon = config;
+            
+            log::info!(">>> Select {}: Found override. Setting Horizon to {:.2}% (Bounds synced)", new_pair, self.app_config.price_horizon.threshold_pct * 100.0);
         } else {
-            // Reset to global default if never visited
+            // Reset to global default
             self.app_config.price_horizon = ANALYSIS.price_horizon.clone();
         }
 
-        // 3. Trigger
+        // 3. Trigger Engine
         let price = self.get_display_price(&new_pair);
         if let Some(engine) = &mut self.engine {
-            // Push current config (which is now set to new_pair's preference)
-            // Note: We don't strictly need 'update_config' here if we use overrides,
-            // but it keeps the "Active" config in sync with the UI sliders.
             engine.update_config(self.app_config.clone());
-
-            // Also ensure the override map is up to date for this pair
-            engine.set_price_horizon_override(
-                new_pair.clone(),
-                self.app_config.price_horizon.clone(),
-            );
-
+            engine.set_price_horizon_override(new_pair.clone(), self.app_config.price_horizon.clone());
             engine.force_recalc(&new_pair, price);
         }
     }

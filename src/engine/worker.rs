@@ -67,30 +67,12 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
         );
 
         // 3. Run Profiler
-        let mut profile = generate_profile(
+        let profile = generate_profile(
             &req.pair_name,
             &req.timeseries,
             req.current_price,
             &req.config.price_horizon,
         );
-
-        // --- THE FIX: PATCH THE PROFILE ---
-        // Find the bucket corresponding to the current configuration and force it
-        // to match the exact count we just calculated.
-        // This ensures the "Map" perfectly matches the "Territory" at the current location.
-        let current_pct = req.config.price_horizon.threshold_pct;
-
-        if let Some(bucket) = profile.buckets.iter_mut().min_by(|a, b| {
-            (a.threshold_pct - current_pct)
-                .abs()
-                .partial_cmp(&(b.threshold_pct - current_pct).abs())
-                .unwrap()
-        }) {
-            // Overwrite with the Truth
-            bucket.candle_count = exact_candle_count;
-            // Optionally update duration_days too for consistency, but count is the critical one.
-        }
-        // ----------------------------------
 
         let elapsed = start.elapsed().as_millis();
 

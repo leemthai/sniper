@@ -1,6 +1,6 @@
 use eframe::egui::{
     Align2, Color32, ComboBox, Context, FontId, Grid, Rect, RichText, ScrollArea, Sense, Slider,
-    Stroke, StrokeKind, Ui, Window, pos2, vec2,
+    Stroke, StrokeKind, Ui, Window, pos2, vec2, CursorIcon,
 };
 use strum::IntoEnumIterator;
 
@@ -22,6 +22,40 @@ use crate::ui::utils::{
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
+
+// --- HELPER STRUCT FOR LOGARITHMIC SLIDER ---
+struct LogMapper {
+    min_log: f64,
+    log_range: f64,
+    min_val: f64,
+    max_val: f64,
+}
+
+impl LogMapper {
+    fn new(min_val: f64, max_val: f64) -> Self {
+        // Ensure min_val > 0.0 for log calculation to prevent NaN
+        let safe_min = min_val.max(0.0001);
+        let min_log = safe_min.ln();
+        let max_log = max_val.ln();
+        Self {
+            min_log,
+            log_range: max_log - min_log,
+            min_val: safe_min,
+            max_val,
+        }
+    }
+
+    /// Map Value (Price %) -> Screen Fraction (0.0 to 1.0)
+    fn value_to_frac(&self, val: f64) -> f64 {
+        let val_clamped = val.clamp(self.min_val, self.max_val);
+        (val_clamped.ln() - self.min_log) / self.log_range
+    }
+
+    /// Map Screen Fraction (0.0 to 1.0) -> Value (Price %)
+    fn frac_to_value(&self, frac: f64) -> f64 {
+        (self.min_log + (frac * self.log_range)).exp()
+    }
+}
 
 /// Trait for UI panels that can be rendered
 pub trait Panel {
@@ -163,21 +197,27 @@ impl<'a> DataGenerationPanel<'a> {
         let mut changed = None;
         ui.add_space(5.0);
 
-        // Header Row with Help Button
+        // Header
         ui.horizontal(|ui| {
             ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
-            if ui.button("(?)").clicked() {
+             // Chain .on_hover_cursor() before checking .clicked()
+            if ui.button("(?)")
+                .on_hover_cursor(CursorIcon::Help) 
+                .clicked() 
+            {
                 *show_help = !*show_help;
             }
         });
 
-        // 1. Setup Constants & Current Value
-        let min_pct = ANALYSIS.price_horizon.min_threshold_pct; // 0.01
-        let max_pct = ANALYSIS.price_horizon.max_threshold_pct; // 0.80
-        let range = max_pct - min_pct;
+        // 1. Setup Constants
+        let min_pct = ANALYSIS.price_horizon.min_threshold_pct;
+        let max_pct = ANALYSIS.price_horizon.max_threshold_pct;
         let mut current_pct = self.price_horizon_config.threshold_pct;
 
-        // Fetch Data-Driven Color Scale
+        // NEW: Initialize Log Mapper
+        let mapper = LogMapper::new(min_pct, max_pct);
+
+        // Fetch Colors
         let quality_zones = AnalysisConfig::get_quality_zones();
         let get_color = |count: usize| -> Color32 {
             for zone in &quality_zones {
@@ -185,23 +225,20 @@ impl<'a> DataGenerationPanel<'a> {
                     return Color32::from_rgb(zone.color_rgb.0, zone.color_rgb.1, zone.color_rgb.2);
                 }
             }
-            Color32::from_rgb(200, 50, 255) // Fallback (Ultra)
+            Color32::from_rgb(200, 50, 255)
         };
 
-        // 2. Decide: Custom Heatmap OR Standard Slider?
         if let Some(profile) = self.profile {
             // --- A. CUSTOM HEATMAP WIDGET ---
-
-            // Allocate 40px height for the bar
             let (rect, response) =
                 ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click_and_drag());
 
-            // Handle Input (Click or Drag)
+            // Handle Input (Logarithmic)
             if response.dragged() || response.clicked() {
                 if let Some(pointer_pos) = response.interact_pointer_pos() {
-                    // Map Mouse X -> Percentage
                     let x_frac = ((pointer_pos.x - rect.min.x) / rect.width()) as f64;
-                    let new_val = min_pct + (x_frac * range);
+                    // FIX: Use Mapper to convert Fraction -> Value
+                    let new_val = mapper.frac_to_value(x_frac);
                     current_pct = new_val.clamp(min_pct, max_pct);
                     changed = Some(current_pct);
                 }
@@ -210,10 +247,7 @@ impl<'a> DataGenerationPanel<'a> {
             // Draw Visuals
             if ui.is_rect_visible(rect) {
                 let painter = ui.painter();
-
-                // Draw Track Background
                 painter.rect_filled(rect, 2.0, Color32::from_black_alpha(40));
-                // FIX 2: Add StrokeKind::Inside as 4th argument
                 painter.rect_stroke(
                     rect,
                     2.0,
@@ -221,27 +255,40 @@ impl<'a> DataGenerationPanel<'a> {
                     StrokeKind::Inside,
                 );
 
-                // Draw Data Buckets (The Colored Slices)
-                // We calculate the X position for each bucket based on its threshold %
+                // Draw Buckets (Logarithmically Scaled)
                 if !profile.buckets.is_empty() {
-                    let width_per_step = rect.width() / profile.buckets.len() as f32;
-                    for bucket in &profile.buckets {
-                        let frac = (bucket.threshold_pct - min_pct) / range;
-                        let x_start = rect.min.x + (frac as f32 * rect.width());
+                    let count = profile.buckets.len();
+                    for (i, bucket) in profile.buckets.iter().enumerate() {
+                        let val_start = bucket.threshold_pct;
+                        // Determine end value (next bucket or max)
+                        let val_end = if i + 1 < count {
+                            profile.buckets[i + 1].threshold_pct
+                        } else {
+                            max_pct
+                        };
 
-                        let bar_rect = Rect::from_min_size(
-                            pos2(x_start, rect.min.y + 2.0),
-                            vec2(width_per_step + 1.0, rect.height() - 4.0),
-                        );
+                        // FIX: Use Mapper to convert Value -> Fraction
+                        let x_start_frac = mapper.value_to_frac(val_start);
+                        let x_end_frac = mapper.value_to_frac(val_end);
 
-                        let color = get_color(bucket.candle_count);
-                        painter.rect_filled(bar_rect, 0.0, color);
+                        let x_start_px = rect.min.x + (x_start_frac as f32 * rect.width());
+                        let width_px = (x_end_frac - x_start_frac) as f32 * rect.width();
+
+                        if width_px > 0.5 {
+                            let bar_rect = Rect::from_min_size(
+                                pos2(x_start_px, rect.min.y + 2.0),
+                                vec2(width_px + 0.5, rect.height() - 4.0),
+                            );
+                            let color = get_color(bucket.candle_count);
+                            painter.rect_filled(bar_rect, 0.0, color);
+                        }
                     }
                 }
 
-                // Draw Handle (White Line at current val)
-                let handle_frac = (current_pct - min_pct) / range;
-                let handle_x = rect.min.x + (handle_frac as f32 * rect.width());
+                // Draw Handle (Logarithmic Position)
+                // FIX: Use Mapper
+                let handle_frac = mapper.value_to_frac(current_pct) as f32;
+                let handle_x = rect.min.x + (handle_frac * rect.width());
                 let handle_rect = Rect::from_center_size(
                     pos2(handle_x, rect.center().y),
                     vec2(4.0, rect.height()),
@@ -249,133 +296,128 @@ impl<'a> DataGenerationPanel<'a> {
                 painter.rect_filled(handle_rect, 1.0, Color32::WHITE);
             }
 
-            // --- THE REPORT (Feedback beneath slider) ---
-            ui.vertical(|ui| {
-                ui.add_space(4.0);
-
-                // 1. Horizon Setting
-                ui.label(
-                    RichText::new(format!(
-                        "{} {:.2}%",
-                        UI_TEXT.ph_label_horizon_prefix,
-                        current_pct * 100.0
-                    ))
-                    .strong(),
-                );
-
-                // Match Bucket
-                if let Some(bucket) = profile.buckets.iter().min_by(|a, b| {
-                    (a.threshold_pct - current_pct)
-                        .abs()
-                        .partial_cmp(&(b.threshold_pct - current_pct).abs())
-                        .unwrap()
-                }) {
-                    let is_current_config = (current_pct - self.price_horizon_config.threshold_pct)
-                        .abs()
-                        < f64::EPSILON;
-
-                    // Display Logic: Use Actual count if static, Bucket if dragging
-                    let count = if is_current_config {
-                        self.actual_candle_count
-                    } else {
-                        bucket.candle_count
-                    };
-
-                    // Calc History & Density
-                    let span_ms = bucket.max_ts.saturating_sub(bucket.min_ts);
-                    let span_days = span_ms as f64 / (1000.0 * 60.0 * 60.0 * 24.0);
-
-                    let density_pct = if span_days > 0.001 {
-                        (bucket.duration_days / span_days) * 100.0
-                    } else {
-                        0.0
-                    };
-
-                    let color = get_color(count);
-
-                    // Row A: Evidence (Active)
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(format!("{}:", UI_TEXT.ph_label_evidence))
-                                .small()
-                                .color(Color32::GRAY),
-                        );
-                        ui.label(
-                            RichText::new(format!(
-                                "{} ({})",
-                                format_duration_context(bucket.duration_days),
-                                format_candle_count(count)
-                            ))
-                            .color(color),
-                        );
-                    });
-
-                    // Row B: History (Span)
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(format!("{}:", UI_TEXT.ph_label_history))
-                                .small()
-                                .color(Color32::GRAY),
-                        );
-                        ui.label(
-                            RichText::new(format_duration_context(span_days))
-                                .color(Color32::LIGHT_BLUE),
-                        );
-                    });
-
-                    // Row C: Density
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(format!("{}:", UI_TEXT.ph_label_density))
-                                .small()
-                                .color(Color32::GRAY),
-                        );
-
-                        let density_color = if density_pct > 50.0 {
-                            Color32::GREEN
-                        } else if density_pct > 10.0 {
-                            Color32::YELLOW
-                        } else {
-                            Color32::LIGHT_RED
-                        };
-
-                        ui.label(
-                            RichText::new(format!("{:.1}%", density_pct)).color(density_color),
-                        );
-                    });
-                }
-            });
+            // --- THE REPORT (Feedback) ---
+            // (This logic remains identical to your existing code, just copy it back in)
+            self.render_horizon_report(ui, current_pct, profile, get_color);
         } else {
-            // --- B. FALLBACK: LOADING STATE ---
-            // Draw the same shape as the custom widget, but grayed out.
-            // This prevents the UI popping/shifting during initialization.
-
-            let desired_size = vec2(ui.available_width(), 40.0);
-            let (rect, _response) = ui.allocate_exact_size(desired_size, Sense::hover());
-
-            if ui.is_rect_visible(rect) {
-                let painter = ui.painter();
-                // Draw Empty Track
-                painter.rect_filled(rect, 2.0, Color32::from_black_alpha(40));
-                painter.rect_stroke(
-                    rect,
-                    2.0,
-                    Stroke::new(1.0, Color32::from_gray(60)),
-                    StrokeKind::Inside,
-                );
-
-                // Draw Loading Text
-                painter.text(
-                    rect.center(),
-                    Align2::CENTER_CENTER,
-                    UI_TEXT.ph_startup,
-                    FontId::proportional(12.0),
-                    Color32::GRAY,
-                );
-            }
+            // (Loading State remains identical)
+            self.render_loading_state(ui);
         }
 
         changed
+    }
+
+    fn render_loading_state(&self, ui: &mut Ui) {
+        let desired_size = vec2(ui.available_width(), 40.0);
+        let (rect, _response) = ui.allocate_exact_size(desired_size, Sense::hover());
+
+        if ui.is_rect_visible(rect) {
+            let painter = ui.painter();
+            painter.rect_filled(rect, 2.0, Color32::from_black_alpha(40));
+            painter.rect_stroke(
+                rect,
+                2.0,
+                Stroke::new(1.0, Color32::from_gray(60)),
+                StrokeKind::Inside,
+            );
+            painter.text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                UI_TEXT.ph_startup,
+                FontId::proportional(12.0),
+                Color32::GRAY,
+            );
+        }
+    }
+
+    fn render_horizon_report(
+        &self,
+        ui: &mut Ui,
+        current_pct: f64,
+        profile: &HorizonProfile,
+        get_color: impl Fn(usize) -> Color32,
+    ) {
+        ui.vertical(|ui| {
+            ui.add_space(4.0);
+
+            ui.label(
+                RichText::new(format!(
+                    "{} {:.2}%",
+                    UI_TEXT.ph_label_horizon_prefix,
+                    current_pct * 100.0
+                ))
+                .strong(),
+            );
+
+            if let Some(bucket) = profile.buckets.iter().min_by(|a, b| {
+                (a.threshold_pct - current_pct)
+                    .abs()
+                    .partial_cmp(&(b.threshold_pct - current_pct).abs())
+                    .unwrap()
+            }) {
+                let is_current_config =
+                    (current_pct - self.price_horizon_config.threshold_pct).abs() < f64::EPSILON;
+                let count = if is_current_config {
+                    self.actual_candle_count
+                } else {
+                    bucket.candle_count
+                };
+
+                let span_ms = bucket.max_ts.saturating_sub(bucket.min_ts);
+                let span_days = span_ms as f64 / (1000.0 * 60.0 * 60.0 * 24.0);
+                let density_pct = if span_days > 0.001 {
+                    (bucket.duration_days / span_days) * 100.0
+                } else {
+                    0.0
+                };
+                let color = get_color(count);
+
+                // Row A: Evidence
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("{}:", UI_TEXT.ph_label_evidence))
+                            .small()
+                            .color(Color32::GRAY),
+                    );
+                    ui.label(
+                        RichText::new(format!(
+                            "{} ({})",
+                            format_duration_context(bucket.duration_days),
+                            format_candle_count(count)
+                        ))
+                        .color(color),
+                    );
+                });
+                // Row B: History
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("{}:", UI_TEXT.ph_label_history))
+                            .small()
+                            .color(Color32::GRAY),
+                    );
+                    ui.label(
+                        RichText::new(format_duration_context(span_days))
+                            .color(Color32::LIGHT_BLUE),
+                    );
+                });
+                // Row C: Density
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("{}:", UI_TEXT.ph_label_density))
+                            .small()
+                            .color(Color32::GRAY),
+                    );
+                    let density_color = if density_pct > 50.0 {
+                        Color32::GREEN
+                    } else if density_pct > 10.0 {
+                        Color32::YELLOW
+                    } else {
+                        Color32::LIGHT_RED
+                    };
+                    ui.label(RichText::new(format!("{:.1}%", density_pct)).color(density_color));
+                });
+            }
+        });
     }
 
     fn render_time_horizon_slider(&mut self, ui: &mut Ui) -> Option<u64> {

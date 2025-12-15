@@ -1,6 +1,6 @@
 use eframe::egui::{
-    CentralPanel, Color32, Context, CursorIcon, Frame, Grid, Key, Margin, RichText, ScrollArea,
-    SidePanel, TopBottomPanel, Ui, Window,
+    CentralPanel, Color32, Context, Frame, Grid, Key, Margin, RichText, ScrollArea, SidePanel,
+    TopBottomPanel, Ui, Window,
 };
 
 use crate::config::ANALYSIS;
@@ -131,10 +131,10 @@ impl ZoneSniperApp {
                         &self.plot_visibility,
                     );
 
-                    // Optional: Small loading indicator overlay if updating in background
-                    if is_calculating {
-                        ui.ctx().set_cursor_icon(CursorIcon::Progress);
-                    }
+                    // // Optional: Small loading indicator overlay if updating in background
+                    // if is_calculating {
+                    //     ui.ctx().set_cursor_icon(CursorIcon::Progress);
+                    // }
                 }
                 // PRIORITY 3: CALCULATING (Initial Load)
                 else if is_calculating {
@@ -415,15 +415,16 @@ impl ZoneSniperApp {
             .collapsible(false)
             .default_width(400.0)
             .show(ctx, |ui| {
-                ui.heading("Keyboard Shortcuts");
+                ui.heading("Keyboard Shortcuts (Press key to execute commands listed)");
                 ui.add_space(10.0);
 
-                ui.label("Press any key to execute the command:");
-                ui.add_space(5.0);
+                // ui.label("Press any key to execute the command:");
+                // ui.add_space(5.0);
 
                 let general_shortcuts = [
                     ("H", "Toggle this help panel"),
                     ("S", "Toggle Simulation Mode"),
+                    ("ESC", "Close all open Help Windows"),
                     ("B", UI_TEXT.label_help_background),
                     ("1", &("Toggle ".to_owned() + &UI_TEXT.label_hvz)),
                     (
@@ -537,7 +538,7 @@ impl ZoneSniperApp {
         );
 
         let events = panel.render(ui, &mut self.show_ph_help);
-                // Render the window (it handles its own "if open" check internally via .open())
+        // Render the window (it handles its own "if open" check internally via .open())
         if self.show_ph_help {
             DataGenerationPanel::render_ph_help_window(ui.ctx(), &mut self.show_ph_help);
         }
@@ -583,8 +584,10 @@ impl ZoneSniperApp {
                 self.show_debug_help = !self.show_debug_help;
             }
 
-            if i.key_pressed(Key::Escape) && self.show_debug_help {
+            // "Global Close" - pressing ESC shuts all help windows
+            if i.key_pressed(Key::Escape) {
                 self.show_debug_help = false;
+                self.show_ph_help = false;
             }
 
             // 'B'ackground plot type toggle
