@@ -35,13 +35,15 @@ Seems fine then.
     - How does it affect BTC / SOL etc.
 
 
-# Notes: Don't forget any time we print prices, use format_price() instead of just ${:.2} or whatever.
-Fixed via format_price()
+# Note: Don't forget any time we print prices, use format_price() instead of just ${:.2} or whatever.
+Fixed via format_price(), always
 
 # 0.35
 See when 0.35 version is due out and what features it will offer. Might help guide decision making
 Appears like quite a big API change (sigh)
 https://github.com/emilk/egui_plot/issues/200
+# https://github.com/emilk/egui_plot/pull/221
+egui_plot API update. it's for 0.35 version right? We can't use it yet?
 
 
 # Are we serializing too much? (vague guess)
@@ -77,14 +79,6 @@ Piece of shit.
 Easy enough to rename if needed
 Pages is set up but app not running coz coding issues (see WASM Version not running)
 
-# https://github.com/emilk/egui_plot/pull/221
-egui_plot API update. it's for 0.35 version right? We can't use it yet?
-Give him a choice to work on adaptive PH or resolution stuff (below)
-
-
-# Up the intensity of the background bars
-But add key to allow it to be turned off as well.
-Still hate using "B" to rotate meaning of background bar. It's so awkward.
 
 
 

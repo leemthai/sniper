@@ -72,6 +72,9 @@ pub struct ZoneSniperApp {
     // Serde handles HashMap<String, Config> automatically.
     #[serde(default)]
     pub price_horizon_overrides: HashMap<String, crate::config::PriceHorizonConfig>,
+
+    #[serde(skip)]
+    pub show_ph_help: bool,
 }
 
 impl Default for ZoneSniperApp {
@@ -94,6 +97,7 @@ impl Default for ZoneSniperApp {
             sim_step_size: SimStepSize::Point1,
 
             price_horizon_overrides: HashMap::new(),
+            show_ph_help: false,
         }
     }
 }
@@ -155,20 +159,9 @@ impl ZoneSniperApp {
         // 2. Load NEW pair config
         if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
             self.app_config.price_horizon = saved_config.clone();
-            // log::info!(
-            //     ">>> Select {}: Found override. Setting Horizon to {:.2}%",
-            //     new_pair,
-            //     saved_config.threshold_pct * 100.0
-            // );
         } else {
             // Reset to global default if never visited
             self.app_config.price_horizon = ANALYSIS.price_horizon.clone();
-            // let default_val = ANALYSIS.price_horizon.threshold_pct;
-            // log::info!(
-            //     ">>> Select {}: No override found. Resetting to Default {:.2}%",
-            //     new_pair,
-            //     default_val * 100.0
-            // );
         }
 
         // 3. Trigger

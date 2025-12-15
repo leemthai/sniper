@@ -1,6 +1,6 @@
 use eframe::egui::{
-    Align2, Color32, ComboBox, FontId, Rect, RichText, ScrollArea, Sense, Slider, Stroke,
-    StrokeKind, Ui, pos2, vec2,
+    Align2, Color32, ComboBox, Context, FontId, Grid, Rect, RichText, ScrollArea, Sense, Slider,
+    Stroke, StrokeKind, Ui, Window, pos2, vec2,
 };
 use strum::IntoEnumIterator;
 
@@ -26,7 +26,7 @@ use crate::config::DEBUG_FLAGS;
 /// Trait for UI panels that can be rendered
 pub trait Panel {
     type Event;
-    fn render(&mut self, ui: &mut Ui) -> Vec<Self::Event>;
+    fn render(&mut self, ui: &mut Ui, show_help: &mut bool) -> Vec<Self::Event>;
 }
 
 /// Panel for data generation options
@@ -62,10 +62,114 @@ impl<'a> DataGenerationPanel<'a> {
         }
     }
 
-    fn render_price_horizon_display(&mut self, ui: &mut Ui) -> Option<f64> {
+    pub fn render_ph_help_window(ctx: &Context, open: &mut bool) {
+        Window::new(UI_TEXT.ph_help_title)
+            .open(open)
+            .resizable(false)
+            .collapsible(true)
+            .show(ctx, |ui| {
+                ui.set_max_width(500.0);
+
+                // 1. Metrics Section
+                ui.label(RichText::new(UI_TEXT.ph_help_metrics_title).strong());
+                for (term, def) in UI_TEXT.ph_help_definitions {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(format!("• {}:", term)).strong());
+                        ui.label(*def);
+                    });
+                }
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
+
+                // 2. Signal Quality Section (Colors)
+                ui.label(RichText::new(UI_TEXT.ph_help_colors_title).strong());
+
+                Grid::new("ph_colors_grid")
+                    .striped(true)
+                    .spacing([20.0, 8.0])
+                    .show(ui, |ui| {
+                        // Header
+                        let (h1, h2, h3) = UI_TEXT.ph_help_colors_headers;
+                        ui.label(RichText::new(h1).underline());
+                        ui.label(RichText::new(h2).underline());
+                        ui.label(RichText::new(h3).underline());
+                        ui.end_row();
+
+                        // Dynamic Rows from Config
+                        let zones = AnalysisConfig::get_quality_zones();
+                        let mut prev_max = 0;
+
+                        for zone in zones {
+                            // Column 1: Colored Name
+                            let color = Color32::from_rgb(
+                                zone.color_rgb.0,
+                                zone.color_rgb.1,
+                                zone.color_rgb.2,
+                            );
+                            ui.label(RichText::new(&zone.label).strong().color(color));
+
+                            // Column 2: Range (Prev - Max)
+                            let range_text = if zone.max_count == usize::MAX {
+                                format!("> {}", prev_max)
+                            } else if prev_max == 0 {
+                                format!("< {}", zone.max_count)
+                            } else {
+                                format!("{} - {}", prev_max, zone.max_count)
+                            };
+                            ui.label(range_text);
+
+                            // Column 3: Description
+                            ui.label(&zone.description);
+
+                            ui.end_row();
+
+                            // Update tracker
+                            prev_max = zone.max_count;
+                        }
+                    });
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
+
+                // 3. Tuning Guide Section
+                ui.label(RichText::new(UI_TEXT.ph_help_tuning_title).strong());
+
+                Grid::new("ph_tuning_grid")
+                    .striped(true)
+                    .spacing([20.0, 8.0])
+                    .show(ui, |ui| {
+                        // Header
+                        let (h1, h2, h3) = UI_TEXT.ph_help_table_headers;
+                        ui.label(RichText::new(h1).underline());
+                        ui.label(RichText::new(h2).underline());
+                        ui.label(RichText::new(h3).underline());
+                        ui.end_row();
+
+                        // Rows
+                        for (c1, c2, c3) in UI_TEXT.ph_help_table_rows {
+                            ui.label(*c1);
+                            ui.label(*c2);
+                            ui.label(*c3);
+                            ui.end_row();
+                        }
+                    });
+            });
+    }
+
+    fn render_price_horizon_display(&mut self, ui: &mut Ui, show_help: &mut bool) -> Option<f64> {
         let mut changed = None;
         ui.add_space(5.0);
-        ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
+
+        // Header Row with Help Button
+        ui.horizontal(|ui| {
+            ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
+            if ui.button("(?)").clicked() {
+                *show_help = !*show_help;
+            }
+        });
 
         // 1. Setup Constants & Current Value
         let min_pct = ANALYSIS.price_horizon.min_threshold_pct; // 0.01
@@ -150,7 +254,14 @@ impl<'a> DataGenerationPanel<'a> {
                 ui.add_space(4.0);
 
                 // 1. Horizon Setting
-                ui.label(RichText::new(format!("Horizon: {:.2}%", current_pct * 100.0)).strong());
+                ui.label(
+                    RichText::new(format!(
+                        "{} {:.2}%",
+                        UI_TEXT.ph_label_horizon_prefix,
+                        current_pct * 100.0
+                    ))
+                    .strong(),
+                );
 
                 // Match Bucket
                 if let Some(bucket) = profile.buckets.iter().min_by(|a, b| {
@@ -340,12 +451,12 @@ pub enum DataGenerationEventChanged {
 
 impl<'a> Panel for DataGenerationPanel<'a> {
     type Event = DataGenerationEventChanged;
-    fn render(&mut self, ui: &mut Ui) -> Vec<Self::Event> {
+    fn render(&mut self, ui: &mut Ui, show_help: &mut bool) -> Vec<Self::Event> {
         let mut events = Vec::new();
         section_heading(ui, UI_TEXT.data_generation_heading);
 
         // Price Horizon display (always enabled)
-        if let Some(threshold) = self.render_price_horizon_display(ui) {
+        if let Some(threshold) = self.render_price_horizon_display(ui, show_help) {
             events.push(DataGenerationEventChanged::PriceHorizonThreshold(threshold));
         }
         spaced_separator(ui);
@@ -384,7 +495,7 @@ impl ViewPanel {
 
 impl Panel for ViewPanel {
     type Event = ScoreType;
-    fn render(&mut self, ui: &mut Ui) -> Vec<Self::Event> {
+    fn render(&mut self, ui: &mut Ui, _show_help: &mut bool) -> Vec<Self::Event> {
         let mut events = Vec::new();
         section_heading(ui, UI_TEXT.view_options_heading);
 
@@ -425,7 +536,7 @@ impl<'a> SignalsPanel<'a> {
 impl<'a> Panel for SignalsPanel<'a> {
     type Event = String; // Returns pair name if clicked
 
-    fn render(&mut self, ui: &mut Ui) -> Vec<Self::Event> {
+    fn render(&mut self, ui: &mut Ui, _show_help: &mut bool) -> Vec<Self::Event> {
         let mut events = Vec::new();
         section_heading(ui, UI_TEXT.signals_heading);
 

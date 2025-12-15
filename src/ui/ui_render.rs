@@ -504,7 +504,7 @@ impl ZoneSniperApp {
         // Use the wrapper method we added to App
         let signals = self.get_signals();
         let mut panel = SignalsPanel::new(signals);
-        panel.render(ui)
+        panel.render(ui, &mut false)
     }
 
     fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
@@ -536,7 +536,11 @@ impl ZoneSniperApp {
             actual_count,
         );
 
-        let events = panel.render(ui);
+        let events = panel.render(ui, &mut self.show_ph_help);
+                // Render the window (it handles its own "if open" check internally via .open())
+        if self.show_ph_help {
+            DataGenerationPanel::render_ph_help_window(ui.ctx(), &mut self.show_ph_help);
+        }
 
         // 3. Handle Events
         for event in &events {

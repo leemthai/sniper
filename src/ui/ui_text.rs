@@ -10,35 +10,7 @@ pub struct UiText {
     pub price_horizon_helper_suffix: &'static str,
     pub time_horizon_helper_prefix: &'static str,
     pub time_horizon_helper_suffix: &'static str,
-    pub journey_status_heading: &'static str,
-    pub journey_status_waiting: &'static str,
-    pub journey_status_no_data: &'static str,
-    pub journey_status_no_zones: &'static str,
-    pub journey_status_no_executions: &'static str,
-    pub journey_status_failed: &'static str,
-    pub journey_status_error_prefix: &'static str,
-    pub journey_status_current_prefix: &'static str,
-    pub journey_status_aggregate_prefix: &'static str,
-    pub journey_status_pairs_label: &'static str,
-    pub journey_status_zones_label: &'static str,
-    pub journey_status_attempts_label: &'static str,
-    pub journey_status_success_label: &'static str,
-    pub journey_status_timeout_label: &'static str,
-    pub journey_status_stopped_label: &'static str,
-    pub journey_status_success_rate_label: &'static str,
-    pub journey_status_elapsed_label: &'static str,
-    pub journey_status_last_run_label: &'static str,
-    pub journey_status_ago_suffix: &'static str,
-    pub journey_zone_line_prefix: &'static str,
-    pub journey_zone_label_attempts_short: &'static str,
-    pub journey_zone_label_successes_short: &'static str,
-    pub journey_zone_label_timeouts_short: &'static str,
-    pub journey_zone_label_stops_short: &'static str,
-    pub journey_zone_label_success_rate_short: &'static str,
-    pub journey_zone_label_ev_annual_short: &'static str,
-    pub journey_zone_label_kelly_short: &'static str,
-    pub journey_zone_label_worst_loss_short: &'static str,
-    pub journey_zone_label_avg_drawdown_short: &'static str,
+
     pub plot_x_axis: &'static str,
     pub plot_y_axis: &'static str,
     pub plot_strongest_zone: &'static str,
@@ -76,17 +48,24 @@ pub struct UiText {
     pub word_candle_plural: &'static str,
 
     // pub ph_label_context: &'static str,
-
     pub ph_label_evidence: &'static str,
     pub ph_label_history: &'static str,
     pub ph_label_density: &'static str,
 
-    // Status Levels
-    pub ph_status_insufficient: &'static str, // Red
-    pub ph_status_low_def: &'static str,      // Yellow
-    pub ph_status_high_def: &'static str,     // Green
-    pub ph_warn_only_found: &'static str,
+    pub ph_label_horizon_prefix: &'static str,
+
     pub ph_startup: &'static str,
+
+    pub ph_help_title: &'static str,
+    pub ph_help_metrics_title: &'static str,
+    pub ph_help_colors_title: &'static str,
+    pub ph_help_tuning_title: &'static str,
+
+    pub ph_help_colors_headers: (&'static str, &'static str, &'static str),
+
+    pub ph_help_definitions: &'static [(&'static str, &'static str)], // (Term, Def)
+    pub ph_help_table_headers: (&'static str, &'static str, &'static str), // (Factor, Effect, Action)
+    pub ph_help_table_rows: &'static [(&'static str, &'static str, &'static str)],
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -97,39 +76,12 @@ pub const UI_TEXT: UiText = UiText {
     view_options_heading: "View Options",
     view_data_source_heading: "Data Source",
     signals_heading: "🎯 Signals",
+
     price_horizon_helper_prefix: "Focus on price action within ±",
     price_horizon_helper_suffix: "% of current price",
     time_horizon_helper_prefix: "Focus on trades that complete within ",
     time_horizon_helper_suffix: " days",
-    journey_status_heading: "🎯 Journey Outcomes",
-    journey_status_waiting: "Waiting for journey results…",
-    journey_status_no_data: "No journey data",
-    journey_status_no_zones: "No sticky zones",
-    journey_status_no_executions: "No journeys completed",
-    journey_status_failed: "Journey run failed",
-    journey_status_error_prefix: "Error",
-    journey_status_current_prefix: "Current pair",
-    journey_status_aggregate_prefix: "Across pairs",
-    journey_status_pairs_label: "pairs",
-    journey_status_zones_label: "key-zones",
-    journey_status_attempts_label: "attempts",
-    journey_status_success_label: "successes",
-    journey_status_timeout_label: "timeouts",
-    journey_status_stopped_label: "stops",
-    journey_status_success_rate_label: "success rate",
-    journey_status_elapsed_label: "elapsed",
-    journey_status_last_run_label: "last run",
-    journey_status_ago_suffix: "ago",
-    journey_zone_line_prefix: "[Journey]",
-    journey_zone_label_attempts_short: "attempts",
-    journey_zone_label_successes_short: "successes",
-    journey_zone_label_timeouts_short: "timeouts",
-    journey_zone_label_stops_short: "stops",
-    journey_zone_label_success_rate_short: "SR",
-    journey_zone_label_ev_annual_short: "EVA",
-    journey_zone_label_kelly_short: "Kelly",
-    journey_zone_label_worst_loss_short: "worst loss",
-    journey_zone_label_avg_drawdown_short: "avg drawdown",
+
     plot_y_axis: "Price",
     plot_x_axis: "Key Zone Strength (0 % of the strongest zone)",
     plot_strongest_zone: "of strongest zone",
@@ -166,15 +118,57 @@ pub const UI_TEXT: UiText = UiText {
     word_candle_singular: "Candle",
     word_candle_plural: "Candles",
 
-    // ph_label_context: "Context",
     ph_label_evidence: "Evidence", // Active Duration
     ph_label_history: "History",   // Span
     ph_label_density: "Density",   // Quality
 
-    ph_status_insufficient: "[!] Insufficient Data",
-    ph_status_low_def: "[~] Low Resolution",
-    ph_status_high_def: "[+] High Definition",
-    ph_warn_only_found: "only found",
+    ph_label_horizon_prefix: "Horizon: ±",
 
     ph_startup: "Analyzing Price Structure...",
+
+    ph_help_title: "Price Horizon Guide",
+    ph_help_metrics_title: "Metrics",
+    ph_help_colors_title: "Signal Quality",
+    ph_help_tuning_title: "Tuning Guide",
+
+    ph_help_colors_headers: ("Zone Color", "Candle Count", "Reliability"),
+    ph_help_definitions: &[
+        (
+            "Price Horizon",
+            "The vertical percentage range (±%) around the current price used for analysis.",
+        ),
+        (
+            "Evidence",
+            "The total time the price actually spent within this horizon (Active Duration).",
+        ),
+        (
+            "History",
+            "The calendar time elapsed between the first and last matching candle (Span).",
+        ),
+        (
+            "Density",
+            "The ratio of Evidence to History. High density = Sticky / Consolidation. Low density = Volatile / Rejection.",
+        ),
+    ],
+
+    ph_help_table_headers: ("Market Factor", "Candle Count", "Suggested Action"),
+
+    ph_help_table_rows: &[
+        (
+            "High Volatility",
+            "Low (Price moves fast)",
+            "Increase Horizon %",
+        ),
+        (
+            "Stablecoin / Low Vol",
+            "High (Price grinds)",
+            "Decrease Horizon %",
+        ),
+        ("New Listing", "Low (No history)", "Increase Horizon %"),
+        (
+            "Historical Structure",
+            "High (Previous visits)",
+            "Keep Steady",
+        ),
+    ],
 };
