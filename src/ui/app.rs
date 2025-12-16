@@ -153,19 +153,6 @@ impl ZoneSniperApp {
                         Some(prog_tx)
                     ).await;
 
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                         let data_for_cache = data.clone();
-                         let sig_for_cache = sig;
-                         tokio::spawn(async move {
-                            let _ = crate::data::timeseries::serde_version::write_timeseries_data_async(
-                                sig_for_cache,
-                                data_for_cache, 
-                                crate::config::ANALYSIS.interval_width_ms
-                            ).await;
-                         });
-                    }
-
                     let _ = data_tx.send((data, sig));
                 });
             });

@@ -17,18 +17,13 @@ use binance_sdk::spot::{
 use binance_sdk::{errors, errors::ConnectorError as connection_error};
 // use tokio::time::{Duration, sleep};
 
-
 // Local crates
 use crate::config::{BINANCE, BinanceApiConfig};
 use crate::data::rate_limiter::GlobalRateLimiter; // Import
 
-
-#[cfg(debug_assertions)]
-use crate::config::DEBUG_FLAGS;
-
+use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 use crate::utils::TimeUtils;
-use crate::domain::candle::Candle;
 
 pub trait IntervalToMs {
     fn to_ms(&self) -> i64;
@@ -208,80 +203,6 @@ async fn configure_binance_client() -> Result<RestApi, anyhow::Error> {
     Ok(rest_client)
 }
 
-// Helper: set this alias to whatever concrete response type `rest_client.klines(params).await` returns
-// Example guess: binance_sdk::spot::rest_api::RestApiResponse<Vec<KlinesItemInner>>
-// If the compiler complains about the alias, replace the right-hand path with the concrete type shown in the error.
-// type KlinesApiResponse = binance_sdk::spot::rest_api::RestApiResponse<Vec<KlinesItemInner>>;
-
-// async fn handle_rate_limits(
-//     rate_limits: &Option<Vec<RestApiRateLimit>>,
-//     _pair_interval: &PairInterval,
-//     concurrent_kline_call_weight: u32,
-//     #[cfg(debug_assertions)] loop_count: u32,
-//     bn_weight_limit_minute: u32,
-// ) -> Result<(), anyhow::Error> {
-//     #[cfg(not(debug_assertions))]
-//     let _ = &_pair_interval;
-
-//     if let Some(value) = rate_limits {
-//         for rate_limit in value {
-//             if rate_limit.interval_num == 1 && rate_limit.interval == binance_interval::Minute {
-//                 let current_weight = rate_limit.count;
-//                 let required_headroom =
-//                     bn_weight_limit_minute.saturating_sub(concurrent_kline_call_weight);
-//                 #[cfg(debug_assertions)]
-//                 if DEBUG_FLAGS.print_binance {
-//                     if loop_count.is_multiple_of(BINANCE.debug_print_interval) {
-//                         log::info!(
-//                             "Binance min-weight: {} (headroom: {})",
-//                             current_weight,
-//                             required_headroom
-//                         );
-//                     }
-//                 }
-//                 if current_weight > required_headroom {
-//                     #[cfg(debug_assertions)]
-//                     if DEBUG_FLAGS.print_binance {
-//                         log::info!(
-//                             "{} Current weight ({}) > required headroom ({}) — sleeping until start of next minute",
-//                             _pair_interval,
-//                             current_weight,
-//                             required_headroom,
-//                         );
-//                     }
-
-//                     // Compute time until start of next minute
-//                     let time_now = SystemTime::now();
-//                     let duration_since_epoch = time_now
-//                         .duration_since(SystemTime::UNIX_EPOCH)
-//                         .expect("Time went backwards");
-//                     let secs_into_min = duration_since_epoch.as_secs() % 60;
-//                     let sleep_duration = if secs_into_min == 0 {
-//                         Duration::from_secs(60)
-//                     } else {
-//                         Duration::from_secs(60 - secs_into_min)
-//                     };
-
-//                     #[cfg(debug_assertions)]
-//                     if DEBUG_FLAGS.print_binance {
-//                         log::info!(
-//                             "{} Sleeping for {:?} to reach start of next minute",
-//                             _pair_interval,
-//                             sleep_duration
-//                         );
-//                     }
-//                     sleep(sleep_duration).await;
-//                     #[cfg(debug_assertions)]
-//                     if DEBUG_FLAGS.print_binance {
-//                         log::info!("Awake at start of a new minute");
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//     Ok(())
-// }
-
 fn process_new_klines(
     new_klines: Vec<Vec<KlinesItemInner>>,
     limit_klines_returned: i32,
@@ -323,13 +244,10 @@ fn process_new_klines(
     bn_klines.pop();
     if bn_klines.is_empty() {
         // Rare case: the batch had a single item prior to duplicate removal.
-        #[cfg(debug_assertions)]
-        if DEBUG_FLAGS.print_binance {
-            log::info!(
-                "Rare case where new klines was single item before duplicate removal for {}.",
-                pair_interval
-            );
-        }
+        log::debug!(
+            "Rare case where new klines was single item before duplicate removal for {}.",
+            pair_interval
+        );
         // We return true to indicate "batch caused immediate completion"
         all_klines.splice(0..0, Vec::<BNKline>::new());
         return Ok((end_time, true));
@@ -430,7 +348,6 @@ async fn fetch_binance_klines_with_limits(
     }
 }
 
-
 // Required parameters: PairInterval, Limiter
 pub async fn load_klines(
     pair_interval: PairInterval,
@@ -443,7 +360,7 @@ pub async fn load_klines(
     let limit_klines_returned: i32 = 1000;
     let mut end_time: Option<i64> = None;
     let mut all_klines: Vec<BNKline> = Vec::new();
-    
+
     // We use the configured weight (usually 2 for klines)
     let call_weight = BINANCE.limits.kline_call_weight;
 
@@ -476,9 +393,9 @@ pub async fn load_klines(
             &mut all_klines,
             &pair_interval,
         )?;
-        
+
         end_time = new_end_time;
-        
+
         if batch_read_all {
             break;
         }

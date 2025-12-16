@@ -3,21 +3,23 @@
 use crate::Cli;
 use crate::data::timeseries::TimeSeriesCollection;
 use std::sync::mpsc::Sender;
-use crate::models::ProgressEvent; // Shared type (used in signature)
+use crate::models::ProgressEvent;
 
 // --- IMPORTS FOR WASM ONLY ---
 #[cfg(target_arch = "wasm32")]
 use crate::config::DEMO;
 #[cfg(target_arch = "wasm32")]
-use crate::data::timeseries::{get_timeseries_data_async, wasm_demo::WasmDemoData, CreateTimeSeriesData};
+use crate::data::timeseries::wasm_demo::WasmDemoData;
 
 // --- IMPORTS FOR NATIVE ONLY ---
 #[cfg(not(target_arch = "wasm32"))]
-use anyhow::Result; // Only needed for sync_pair return type
+use anyhow::Result;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::models::SyncStatus; // Only used in sync loop
+use crate::models::SyncStatus;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::ANALYSIS;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::BINANCE; // <--- Restored
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::provider::{BinanceProvider, MarketDataProvider};
 #[cfg(not(target_arch = "wasm32"))]
@@ -30,8 +32,6 @@ use crate::models::OhlcvTimeSeries;
 use futures::stream::{self, StreamExt}; 
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::config::BINANCE;
 
 
 // ----------------------------------------------------------------------------
@@ -86,12 +86,10 @@ pub async fn fetch_pair_data(
     {
         let _ = klines_acceptable_age_secs;
         let _ = args;
-        let _ = progress_tx; 
+        let _ = progress_tx;
 
-        let providers: Vec<Box<dyn CreateTimeSeriesData>> = vec![Box::new(WasmDemoData)];
-        
-        let (mut timeseries_data, timeseries_signature) = get_timeseries_data_async(&providers)
-            .await
+        // Use WasmDemoData directly (it is imported now)
+        let mut timeseries_data = WasmDemoData::load()
             .expect("failed to retrieve time series data for WASM");
 
         let original_len = timeseries_data.series_data.len();
@@ -99,7 +97,7 @@ pub async fn fetch_pair_data(
             timeseries_data.series_data.truncate(DEMO.max_pairs);
         }
 
-        return (timeseries_data, timeseries_signature);
+        return (timeseries_data, "WASM Static Cache");
     }
 
     // --- NATIVE IMPLEMENTATION ---
@@ -118,6 +116,7 @@ pub async fn fetch_pair_data(
         let limiter = GlobalRateLimiter::new(safe_limit);
 
         let provider = Arc::new(BinanceProvider::new(limiter));
+        let config = crate::config::BINANCE;
 
         // 2. Get Pairs
         let supply_pairs: Vec<String> = match std::fs::read_to_string("pairs.txt") {
@@ -125,6 +124,7 @@ pub async fn fetch_pair_data(
                 .lines()
                 .map(|s| s.trim().to_uppercase())
                 .filter(|s| !s.is_empty() && !s.starts_with('#'))
+                .take(config.max_pairs)
                 .collect(),
             Err(_) => vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()]
         };

@@ -5,10 +5,6 @@ use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::{CVACore, ScoreType};
 
-#[cfg(not(target_arch = "wasm32"))]
-use crate::data::timeseries::bnapi_version::OhlcvTimeSeriesTemp;
-#[cfg(not(target_arch = "wasm32"))]
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -32,34 +28,6 @@ pub struct OhlcvTimeSeries {
 
     // Stats
     pub pct_gaps: f64,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-macro_rules! convert_ohlcv_field {
-    ($old_struct:expr, $field:ident) => {
-        $old_struct
-            .$field
-            .into_par_iter()
-            .map(|val| val.expect(concat!("Missing ", stringify!($field), " data")))
-            .collect()
-    };
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl From<OhlcvTimeSeriesTemp> for OhlcvTimeSeries {
-    fn from(old_struct: OhlcvTimeSeriesTemp) -> Self {
-        OhlcvTimeSeries {
-            open_prices: convert_ohlcv_field!(old_struct, open_prices),
-            high_prices: convert_ohlcv_field!(old_struct, high_prices),
-            low_prices: convert_ohlcv_field!(old_struct, low_prices),
-            close_prices: convert_ohlcv_field!(old_struct, close_prices),
-            base_asset_volumes: convert_ohlcv_field!(old_struct, base_asset_volumes),
-            quote_asset_volumes: convert_ohlcv_field!(old_struct, quote_asset_volumes),
-            pair_interval: old_struct.pair_interval,
-            first_kline_timestamp_ms: old_struct.first_kline_timestamp_ms,
-            pct_gaps: old_struct.pct_gaps.unwrap_or(0.0),
-        }
-    }
 }
 
 pub fn find_matching_ohlcv<'a>(

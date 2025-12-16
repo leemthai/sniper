@@ -1,7 +1,6 @@
 //! Binance-specific configuration constants and types.
 
 /// Configuration for Binance REST API client
-/// (This is the runtime struct used by your Http Client)
 pub struct BinanceApiConfig {
     pub timeout_ms: u64,
     pub retries: u32,
@@ -18,24 +17,16 @@ impl Default for BinanceApiConfig {
     }
 }
 
-// Binance-specific configuration constants and types.
-
 /// Configuration for REST API Limits and Weights
 pub struct RestLimits {
-    /// Default limit for number of klines returned in a single request
+    /// Default limit for number of klines returned in a single request (1000 is max)
     pub klines_limit: i32,
-    /// Maximum number of simultaneous Binance API calls allowed per batch
-    pub simultaneous_calls_ceiling: usize,
-    /// Maximum total number of pair/interval combinations to query
-    pub max_lookups_total: usize,
     /// Weight limit per minute as specified in Binance FAQ
     pub weight_limit_minute: u32,
     /// Weight cost for a single kline API call
     pub kline_call_weight: u32,
-    /// Maximum age of cached kline data (seconds)
-    pub kline_acceptable_age_sec: i64,
+    /// Number of parallel threads running delta syncs
     pub concurrent_sync_tasks: usize,
-
 }
 
 /// Configuration for WebSocket Connections
@@ -62,22 +53,19 @@ pub struct BinanceConfig {
     pub limits: RestLimits,
     pub ws: WsConfig,
     pub client: ClientDefaults,
-    /// Interval for debug prints in development
-    pub debug_print_interval: u32,
+    /// Maximum number of pairs to load from the file
     pub max_pairs: usize,
+    /// Name of the file containing the list of pairs
     pub pairs_filename: &'static str,
+    /// List of valid quote assets (used for parsing pair names)
     pub quote_assets: &'static [&'static str],
 }
 
 pub const BINANCE: BinanceConfig = BinanceConfig {
     limits: RestLimits {
         klines_limit: 1000,
-        // Theoretical limit is 1000, but 500 is safer for rate limiting
-        simultaneous_calls_ceiling: 500,
-        max_lookups_total: 1000,
         weight_limit_minute: 6000,
         kline_call_weight: 2,
-        kline_acceptable_age_sec: 86_400, // 24 hours (60 * 60 * 24)
         concurrent_sync_tasks: 10,
     },
     ws: WsConfig {
@@ -91,7 +79,6 @@ pub const BINANCE: BinanceConfig = BinanceConfig {
         retries: 5,
         backoff_ms: 5000,
     },
-    debug_print_interval: 10,
     max_pairs: 100,
     pairs_filename: "pairs.txt",
     quote_assets: &["USDT", "USDC", "FDUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "JPY", "BRL"],

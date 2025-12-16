@@ -1,61 +1,34 @@
 use anyhow::{Context, Result};
-use async_trait::async_trait;
-
 use crate::config::DEMO;
-use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection, cache_file::CacheFile};
+use crate::data::timeseries::cache_file::CacheFile;
+use crate::data::timeseries::TimeSeriesCollection;
 
+// Embed the demo data binary
 const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    crate::kline_data_dir!(),   // Expands to "kline_data"
+    crate::kline_data_dir!(),
     "/",
-    crate::demo_cache_file!()   // Expands to "demo_kline_30m_v4.bin"
+    crate::demo_cache_file!()
 ));
 
 pub struct WasmDemoData;
 
-#[async_trait]
-impl CreateTimeSeriesData for WasmDemoData {
-    fn signature(&self) -> &'static str {
-        "WASM Demo Cache"
-    }
+impl WasmDemoData {
+    pub fn load() -> Result<TimeSeriesCollection> {
+        #[cfg(debug_assertions)]
+        log::info!("Loading embedded WASM demo cache...");
 
-    async fn create_timeseries_data(&self) -> Result<TimeSeriesCollection> {
         let cache: CacheFile = bincode::deserialize(DEMO_CACHE_BYTES)
             .context("Failed to deserialize embedded demo cache")?;
 
-        // Log based on cache.data *before* we move it out
-        #[cfg(debug_assertions)]
-        {
-            let series_count = cache.data.series_data.len();
-            log::info!(
-                "WASM demo cache deserialized: interval_ms={} version={} series_count={}",
-                cache.interval_ms,
-                cache.version,
-                series_count
-            );
-            let names: Vec<String> = cache
-                .data
-                .series_data
-                .iter()
-                .map(|ts| ts.pair_interval.name().to_string())
-                .collect();
-            log::info!("WASM demo cache pairs: {:?}", names);
+        let mut data = cache.data;
+
+        // Enforce the WASM pair limit
+        if data.series_data.len() > DEMO.max_pairs {
+            data.series_data.truncate(DEMO.max_pairs);
         }
 
-        // Now move the data out
-        let mut data = cache.data;
-        if data.series_data.len() > DEMO.max_pairs {
-            #[cfg(debug_assertions)]
-            let original_len = data.series_data.len();
-            data.series_data.truncate(DEMO.max_pairs);
-            #[cfg(debug_assertions)]
-            log::info!(
-                "WASM demo build limited to {} pairs (from {}).",
-                DEMO.max_pairs,
-                original_len
-            );
-        }
         Ok(data)
     }
 }

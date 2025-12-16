@@ -108,19 +108,3 @@ Is that correct number of candles for 8Y for 5M candles?
 
 - Updating DB in background when app is running
 Do we do that yet? If so on what schedule?
-
-- get rid of allow(unused_imports) as directive
-It needs to specify exactly under which build circumstance we need the allow...
-pre_main_async.rs
-#[allow(unused_imports)] // Bit shitty this
-use anyhow::Result;
-So i guess that will be non WASM version we need it?
-
-# make_demo_cache
-will need rewriting, right? Coz no idea what it does rn but bound to be wrong.....
-investigate. then can dump a load of old code like create_timeseries_data, serde_version etc.
-We don't have serde_version anymore
-
-# create_timeseries_data
-called by serde_version.
-but wtf is serde_version anymore.
