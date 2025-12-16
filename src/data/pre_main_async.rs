@@ -35,6 +35,8 @@ use crate::models::OhlcvTimeSeries;
 use futures::stream::{self, StreamExt};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc; // For parallel processing
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::BINANCE;
 
 
 // ----------------------------------------------------------------------------
@@ -190,7 +192,7 @@ pub async fn fetch_pair_data(
                     }
                 }
             })        
-            .buffer_unordered(10) // Parallelism Limit
+            .buffer_unordered(BINANCE.limits.concurrent_sync_tasks) // Parallelism Limit
             .collect::<Vec<_>>()
             .await;
 

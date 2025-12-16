@@ -30,16 +30,16 @@ pub trait MarketDataStorage: Send + Sync {
 // ============================================================================
 
 #[cfg(not(target_arch = "wasm32"))]
+use sqlx::ConnectOptions;
+#[cfg(not(target_arch = "wasm32"))]
 use sqlx::{
-    Pool, Row, Sqlite,
+    Pool, QueryBuilder, Row, Sqlite,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::str::FromStr;
 #[cfg(not(target_arch = "wasm32"))]
-use std::time::Duration;
-#[cfg(not(target_arch = "wasm32"))]
-use sqlx::ConnectOptions; // <--- ADD THIS
+use std::time::Duration; // <--- ADD THIS
 #[cfg(not(target_arch = "wasm32"))]
 pub struct SqliteStorage {
     pool: Pool<Sqlite>,
@@ -119,35 +119,34 @@ impl MarketDataStorage for SqliteStorage {
             return Ok(0);
         }
 
-        // We use a Transaction for speed (batch insert)
-        let mut tx = self.pool.begin().await?;
+        // Use QueryBuilder for massive speedup (Single Query vs 500 Queries)
+        // SQLite limit is usually 32k params, so we batch in chunks of ~3000 candles to be safe.
+        // Each candle has 9 params. 3000 * 9 = 27000 < 32000.
 
-        for c in candles {
-            // "INSERT OR IGNORE" handles overlaps gracefully (if we re-download an existing candle)
-            sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO klines 
-                (symbol, interval, open_time, open, high, low, close, base_vol, quote_vol)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                "#,
-            )
-            .bind(pair)
-            .bind(interval)
-            .bind(c.timestamp_ms)
-            .bind(c.open_price)
-            .bind(c.high_price)
-            .bind(c.low_price)
-            .bind(c.close_price)
-            .bind(c.base_asset_volume)
-            .bind(c.quote_asset_volume)
-            .execute(&mut *tx)
-            .await?;
+        for chunk in candles.chunks(3000) {
+            let mut query_builder = QueryBuilder::new(
+                "INSERT OR IGNORE INTO klines (symbol, interval, open_time, open, high, low, close, base_vol, quote_vol) ",
+            );
+
+            query_builder.push_values(chunk, |mut b, c| {
+                b.push_bind(pair)
+                    .push_bind(interval)
+                    .push_bind(c.timestamp_ms)
+                    .push_bind(c.open_price)
+                    .push_bind(c.high_price)
+                    .push_bind(c.low_price)
+                    .push_bind(c.close_price)
+                    .push_bind(c.base_asset_volume)
+                    .push_bind(c.quote_asset_volume);
+            });
+
+            let query = query_builder.build();
+            query.execute(&self.pool).await?;
         }
 
-        tx.commit().await?;
         Ok(candles.len() as u64)
     }
-
+    
     async fn load_candles(
         &self,
         pair: &str,

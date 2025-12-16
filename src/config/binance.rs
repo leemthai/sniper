@@ -34,6 +34,8 @@ pub struct RestLimits {
     pub kline_call_weight: u32,
     /// Maximum age of cached kline data (seconds)
     pub kline_acceptable_age_sec: i64,
+    pub concurrent_sync_tasks: usize,
+
 }
 
 /// Configuration for WebSocket Connections
@@ -75,8 +77,8 @@ pub const BINANCE: BinanceConfig = BinanceConfig {
         max_lookups_total: 1000,
         weight_limit_minute: 6000,
         kline_call_weight: 2,
-        // 24 hours (60 * 60 * 24)
-        kline_acceptable_age_sec: 86_400,
+        kline_acceptable_age_sec: 86_400, // 24 hours (60 * 60 * 24)
+        concurrent_sync_tasks: 10,
     },
     ws: WsConfig {
         base_url: "wss://stream.binance.com:9443/ws",

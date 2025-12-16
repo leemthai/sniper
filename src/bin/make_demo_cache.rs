@@ -1,153 +1,96 @@
-use anyhow::{Context, Result, anyhow};
-use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::thread;
-use std::time::{Duration, Instant};
-use zone_sniper::config::ANALYSIS;
-use zone_sniper::config::DEMO;
-use zone_sniper::config::{PERSISTENCE, kline_cache_filename};
-use zone_sniper::data::price_stream::PriceStreamManager;
-use zone_sniper::data::timeseries::TimeSeriesCollection;
+use zone_sniper::config::{ANALYSIS, DEMO, PERSISTENCE};
+use zone_sniper::data::storage::{MarketDataStorage, SqliteStorage};
 use zone_sniper::data::timeseries::cache_file::CacheFile;
+use zone_sniper::data::timeseries::TimeSeriesCollection;
+use zone_sniper::domain::pair_interval::PairInterval;
+use zone_sniper::models::OhlcvTimeSeries;
+use zone_sniper::utils::TimeUtils;
 
-fn main() -> Result<()> {
-    build_demo_cache()
-}
+// Limit demo data to keep WASM binary small (Github limit < 100MB)
+// 15,000 candles @ 5m = ~52 days of history.
+// 15,000 candles * 50 bytes * 5 pairs = ~3.75 MB total file size. Very safe.
+const DEMO_CANDLE_LIMIT: usize = 15_000;
 
-fn build_demo_cache() -> Result<()> {
-    let source_filename = kline_cache_filename(ANALYSIS.interval_width_ms);
-    let source_path = PathBuf::from(PERSISTENCE.kline.directory).join(&source_filename);
-    let cache = CacheFile::load_from_path(&source_path)
-        .with_context(|| format!("Failed to load source cache {:?}", source_path))?;
+#[tokio::main]
+async fn main() -> Result<()> {
+    // 1. Setup Logging
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    println!(
-        "Loaded {} pairs from {:?}",
-        cache.data.series_data.len(),
-        source_path
-    );
+    // 2. Configuration from demo.rs
+    let demo_pairs = DEMO.resources.pairs;
+    
+    let interval_ms = ANALYSIS.interval_width_ms;
+    let interval_str = TimeUtils::interval_to_string(interval_ms);
+    let db_path = "klines.sqlite";
 
-    let demo_pairs: HashSet<String> = DEMO
-        .resources
-        .pairs
-        .iter()
-        .map(|p| p.to_uppercase())
-        .collect();
+    log::info!("🚀 Building WASM Demo Cache from local DB: {}", db_path);
+    log::info!("Target Interval: {}", interval_str);
+    log::info!("Selected Pairs (from demo.rs): {:?}", demo_pairs);
 
-    let filtered = filter_pairs(cache.data.clone(), &demo_pairs);
-    let mut filtered_collection = filtered;
+    // 3. Connect to DB
+    let storage = SqliteStorage::new(db_path).await
+        .context("Failed to connect to SQLite DB. Run the Native App first to populate data!")?;
 
-    if filtered_collection.series_data.len() > DEMO.max_pairs {
-        filtered_collection.series_data.truncate(DEMO.max_pairs);
+    let mut series_list = Vec::new();
+
+    // 4. Extract Data
+    for &pair in demo_pairs {
+        log::info!("Extracting {}...", pair);
+        
+        // Load ALL data first
+        let mut candles = storage.load_candles(pair, interval_str, None).await?;
+        
+        if candles.is_empty() {
+            log::warn!("⚠ No data found for {}. Skipping.", pair);
+            continue;
+        }
+
+        // TRUNCATE DATA FOR DEMO SIZE LIMITS
+        if candles.len() > DEMO_CANDLE_LIMIT {
+            let start = candles.len() - DEMO_CANDLE_LIMIT;
+            candles = candles.drain(start..).collect();
+            log::info!("   ✂ Truncated to last {} candles for file size safety.", DEMO_CANDLE_LIMIT);
+        }
+
+        let pair_interval = PairInterval {
+            name: pair.to_string(),
+            interval_ms,
+        };
+
+        let ts = OhlcvTimeSeries::from_candles(pair_interval, candles);
+        series_list.push(ts);
     }
 
-    let output_cache = CacheFile::new(
-        ANALYSIS.interval_width_ms,
-        filtered_collection,
-        cache.version,
-    );
+    if series_list.is_empty() {
+        log::error!("No data extracted! Aborting.");
+        return Ok(());
+    }
 
-    let demo_filename = format!("demo_{}", source_filename);
+    // 5. Build Collection
+    let collection = TimeSeriesCollection {
+        name: "WASM Demo Collection".to_string(),
+        version: 1.0,
+        series_data: series_list,
+    };
+
+    // 6. Generate Filename matching persistence.rs conventions
+    // Format: demo_kd_5m_v4.bin (Prefixing 'demo_' to the standard name)
+    let standard_name = zone_sniper::config::kline_cache_filename(interval_ms);
+    let demo_filename = format!("demo_{}", standard_name);
+    
     let output_path = PathBuf::from(PERSISTENCE.kline.directory).join(&demo_filename);
-    output_cache.save_to_path(&output_path)?;
 
-    println!(
-        "✅ Demo cache written to {:?} with {} pairs.",
-        output_path,
-        output_cache.data.series_data.len()
-    );
+    log::info!("📦 Serializing to {:?}", output_path);
+    
+    // Save
+    let cache_file = CacheFile::new(interval_ms, collection, PERSISTENCE.kline.version);
+    cache_file.save_to_path(&output_path)?;
 
-    // After building the demo cache, also snapshot a single current price per
-    // WASM demo pair so the WASM build can run without live networking.
-    let prices = fetch_current_prices_for_demo_pairs(&demo_pairs)?;
-    write_demo_prices_json(&prices)?;
-
-    Ok(())
-}
-
-fn filter_pairs(data: TimeSeriesCollection, whitelist: &HashSet<String>) -> TimeSeriesCollection {
-    let mut filtered = data.clone();
-    filtered
-        .series_data
-        .retain(|ts| whitelist.contains(&ts.pair_interval.name().to_uppercase()));
-    filtered
-}
-
-fn fetch_current_prices_for_demo_pairs(
-    demo_pairs: &HashSet<String>,
-) -> Result<HashMap<String, f64>> {
-    let stream = PriceStreamManager::new();
-
-    let symbols: Vec<String> = demo_pairs.iter().cloned().collect();
-    if symbols.is_empty() {
-        return Err(anyhow!("No WASM demo pairs configured"));
-    }
-
-    stream.subscribe_all(symbols.clone());
-
-    let timeout = Duration::from_secs(15);
-    let poll_interval = Duration::from_millis(200);
-    let start = Instant::now();
-
-    loop {
-        let mut prices: HashMap<String, f64> = HashMap::new();
-
-        for symbol in &symbols {
-            if let Some(price) = stream.get_price(symbol) {
-                prices.insert(symbol.clone(), price);
-            }
-        }
-
-        if prices.len() == symbols.len() {
-            println!("✅ Collected live prices for {} demo pairs.", prices.len());
-            return Ok(prices);
-        }
-
-        if start.elapsed() >= timeout {
-            return Err(anyhow!(
-                "Timed out after {:?} waiting for live prices (got {}/{}).",
-                timeout,
-                prices.len(),
-                symbols.len()
-            ));
-        }
-
-        thread::sleep(poll_interval);
-    }
-}
-
-fn write_demo_prices_json(prices: &HashMap<String, f64>) -> Result<()> {
-    let output_path = PathBuf::from(PERSISTENCE.kline.directory).join("demo_prices.json");
-
-    if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "Failed to create directory for demo prices: {}",
-                parent.display()
-            )
-        })?;
-    }
-
-    let mut json_map: HashMap<String, Value> = HashMap::new();
-    for (pair, price) in prices {
-        json_map.insert(pair.to_uppercase(), Value::from(*price));
-    }
-
-    let json = serde_json::to_string_pretty(&json_map)
-        .context("Failed to serialize demo prices to JSON")?;
-
-    std::fs::write(&output_path, json).with_context(|| {
-        format!(
-            "Failed to write demo prices JSON to {}",
-            output_path.display()
-        )
-    })?;
-
-    println!(
-        "✅ Demo prices written to {:?} ({} pairs).",
-        output_path,
-        prices.len()
-    );
+    log::info!("✅ Success!");
+    log::info!("IMPORTANT: Update src/config/persistence.rs macro if the filename changed:");
+    log::info!("   macro_rules! demo_cache_file {{ () => {{ \"{}\" }}; }}", demo_filename);
 
     Ok(())
 }

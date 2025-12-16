@@ -68,5 +68,5 @@ macro_rules! demo_prices_file {
 #[macro_export]
 macro_rules! demo_cache_file {
     // You must update this string manually if you change the interval constant
-    () => { "demo_kd_30m_v4.bin" };
+    () => { "demo_kd_5m_v4.bin" };
 }
