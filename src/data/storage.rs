@@ -3,6 +3,18 @@ use async_trait::async_trait;
 
 use crate::domain::candle::Candle;
 
+// WASM imports
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    sqlx::ConnectOptions,
+    sqlx::{
+        Pool, QueryBuilder, Row, Sqlite,
+        sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
+    },
+    std::str::FromStr,
+    std::time::Duration,
+};
+
 // --- 1. THE INTERFACE ---
 
 /// The contract that any storage engine (SQLite or Memory) must obey.
@@ -30,17 +42,6 @@ pub trait MarketDataStorage: Send + Sync {
 // 2. NATIVE IMPLEMENTATION (SQLite)
 // ============================================================================
 
-#[cfg(not(target_arch = "wasm32"))]
-use sqlx::ConnectOptions;
-#[cfg(not(target_arch = "wasm32"))]
-use sqlx::{
-    Pool, QueryBuilder, Row, Sqlite,
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
-};
-#[cfg(not(target_arch = "wasm32"))]
-use std::str::FromStr;
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Duration; // <--- ADD THIS
 #[cfg(not(target_arch = "wasm32"))]
 pub struct SqliteStorage {
     pool: Pool<Sqlite>,
@@ -147,7 +148,7 @@ impl MarketDataStorage for SqliteStorage {
 
         Ok(candles.len() as u64)
     }
-    
+
     async fn load_candles(
         &self,
         pair: &str,

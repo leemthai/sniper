@@ -9,7 +9,6 @@ pub struct PairContext {
     pub current_price: f64,
     pub current_zones: Vec<(usize, ZoneType)>,
     pub trading_model: TradingModel,
-    // #[cfg(not(target_arch = "wasm32"))]
     pub last_updated: AppInstant,
     pub signals: Vec<TradingSignal>,
 }
@@ -24,7 +23,6 @@ impl PairContext {
             current_price: initial_price,
             current_zones,
             trading_model,
-            // #[cfg(not(target_arch = "wasm32"))]
             last_updated: now(),
             signals: Vec::new(),
         }

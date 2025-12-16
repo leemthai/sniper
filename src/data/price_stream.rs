@@ -1,39 +1,30 @@
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]
-use futures::StreamExt;
-#[cfg(not(target_arch = "wasm32"))]
-use serde::Deserialize;
-#[cfg(not(target_arch = "wasm32"))]
-use std::collections::HashMap;
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::{Arc, Mutex};
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Duration;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio_tungstenite::{connect_async, tungstenite::Message};
-#[cfg(not(target_arch = "wasm32"))]
-use binance_sdk::spot::SpotRestApi;
-#[cfg(not(target_arch = "wasm32"))]
-use binance_sdk::config::ConfigurationRestApi;
-#[cfg(not(target_arch = "wasm32"))]
-use std::collections::HashSet;
-#[cfg(not(target_arch = "wasm32"))]
-use binance_sdk::spot::rest_api::{TickerPriceParams, TickerPriceResponse};
-
-#[cfg(not(target_arch = "wasm32"))]
-use crate::config::BINANCE;
-#[cfg(all(debug_assertions, not(target_arch = "wasm32")))] // Not needed for WASM
-use crate::config::DEBUG_FLAGS;
-
+use {
+    futures::StreamExt,
+    serde::Deserialize,
+    std::collections::{HashMap, HashSet},
+    std::sync::{Arc, Mutex},
+    std::time::Duration,
+    tokio_tungstenite::{connect_async, tungstenite::Message},
+    binance_sdk::spot::SpotRestApi,
+    binance_sdk::config::ConfigurationRestApi,
+    binance_sdk::spot::rest_api::{TickerPriceParams, TickerPriceResponse},
+    crate::config::BinanceApiConfig,
+    crate::config::BINANCE,
+};
 
 
 // WASM imports
 #[cfg(target_arch = "wasm32")]
-use serde_json;
-#[cfg(target_arch = "wasm32")]
-use std::collections::HashMap;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::config::BinanceApiConfig;
+use {
+    serde_json,
+    std::collections::HashMap,
+};
+
+// WASM + debug imports
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+use crate::config::DEBUG_FLAGS;
 
 
 #[cfg(target_arch = "wasm32")]

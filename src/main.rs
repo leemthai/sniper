@@ -1,24 +1,25 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+// Native imports
 #[cfg(not(target_arch = "wasm32"))]
-use clap::Parser;
-#[cfg(not(target_arch = "wasm32"))]
-use eframe::NativeOptions;
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::PathBuf;
-#[cfg(not(target_arch = "wasm32"))]
-use zone_sniper::config::PERSISTENCE;
+use {
+    clap::Parser,
+    eframe::NativeOptions,
+    std::path::PathBuf,
+    zone_sniper::config::PERSISTENCE,
+};
 
 use zone_sniper::{
     Cli,      // re-export lib.rs
     run_app,  // The function from lib.rs
 };
 
-// --- 2. WASM SPECIFIC CODE ---
+// WASM imports
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
+use {
+    wasm_bindgen::JsCast,
+    wasm_bindgen::prelude::*,
+};
 
 // This keeps the WASM memory allocator from being stripped
 #[cfg(target_arch = "wasm32")]

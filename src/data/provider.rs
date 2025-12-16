@@ -4,11 +4,11 @@ use crate::domain::candle::Candle;
 
 // Native-only imports
 #[cfg(not(target_arch = "wasm32"))]
-use crate::data::rate_limiter::GlobalRateLimiter;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::domain::pair_interval::PairInterval;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::data::timeseries::bn_kline;
+use {
+    crate::data::rate_limiter::GlobalRateLimiter,
+    crate::domain::pair_interval::PairInterval,
+    crate::data::timeseries::bn_kline,
+};
 
 /// Abstract interface for fetching market data.
 #[async_trait]

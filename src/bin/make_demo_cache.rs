@@ -2,23 +2,17 @@
 // For WASM, this file becomes effectively empty (just a dummy main).
 
 #[cfg(not(target_arch = "wasm32"))]
-use anyhow::{Context, Result};
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::PathBuf;
-#[cfg(not(target_arch = "wasm32"))]
-use zone_sniper::config::{ANALYSIS, DEMO, PERSISTENCE};
-#[cfg(not(target_arch = "wasm32"))]
-use zone_sniper::data::storage::{MarketDataStorage, SqliteStorage};
-#[cfg(not(target_arch = "wasm32"))]
-use zone_sniper::data::timeseries::cache_file::CacheFile;
-#[cfg(not(target_arch = "wasm32"))]
-use zone_sniper::data::timeseries::TimeSeriesCollection;
-#[cfg(not(target_arch = "wasm32"))]
-use zone_sniper::domain::pair_interval::PairInterval;
-#[cfg(not(target_arch = "wasm32"))]
-use zone_sniper::models::OhlcvTimeSeries;
-#[cfg(not(target_arch = "wasm32"))]
-use zone_sniper::utils::TimeUtils;
+use {
+    anyhow::{Context, Result},
+    std::path::PathBuf,
+    zone_sniper::config::{ANALYSIS, DEMO, PERSISTENCE},
+    zone_sniper::data::storage::{MarketDataStorage, SqliteStorage},
+    zone_sniper::data::timeseries::cache_file::CacheFile,
+    zone_sniper::data::timeseries::TimeSeriesCollection,
+    zone_sniper::domain::pair_interval::PairInterval,
+    zone_sniper::models::OhlcvTimeSeries,
+    zone_sniper::utils::TimeUtils,
+};
 
 // Limit demo data to keep WASM binary small (Github limit < 100MB)
 #[cfg(not(target_arch = "wasm32"))]

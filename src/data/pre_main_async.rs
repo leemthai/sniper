@@ -1,4 +1,3 @@
-
 // Shared imports
 use std::sync::mpsc::Sender;
 
@@ -6,38 +5,23 @@ use crate::Cli;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::ProgressEvent;
 
-// --- WASM imports ---
 #[cfg(target_arch = "wasm32")]
-use crate::config::DEMO;
-#[cfg(target_arch = "wasm32")]
-use crate::data::timeseries::wasm_demo::WasmDemoData;
-
-// --- Native imports ---
-#[cfg(not(target_arch = "wasm32"))]
-use anyhow::Result;
-#[cfg(not(target_arch = "wasm32"))]
-use futures::stream::{self, StreamExt}; 
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::Arc;
+use {crate::config::DEMO, crate::data::timeseries::wasm_demo::WasmDemoData};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::models::SyncStatus;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::config::ANALYSIS;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::config::BINANCE;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::data::provider::{BinanceProvider, MarketDataProvider};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::data::storage::{MarketDataStorage, SqliteStorage};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::domain::pair_interval::PairInterval;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::models::OhlcvTimeSeries;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::data::rate_limiter::GlobalRateLimiter;
-
-
+use {
+    crate::config::ANALYSIS,
+    crate::config::BINANCE,
+    crate::data::provider::{BinanceProvider, MarketDataProvider},
+    crate::data::rate_limiter::GlobalRateLimiter,
+    crate::data::storage::{MarketDataStorage, SqliteStorage},
+    crate::domain::pair_interval::PairInterval,
+    crate::models::OhlcvTimeSeries,
+    crate::models::SyncStatus,
+    anyhow::Result,
+    futures::stream::{self, StreamExt},
+    std::sync::Arc,
+};
 
 // ----------------------------------------------------------------------------
 // NATIVE: Helper function
@@ -48,7 +32,8 @@ async fn sync_pair(
     interval_ms: i64,
     storage: Arc<SqliteStorage>,
     provider: Arc<BinanceProvider>,
-) -> Result<(OhlcvTimeSeries, usize)> { // Return count of new candles
+) -> Result<(OhlcvTimeSeries, usize)> {
+    // Return count of new candles
     let interval_str = crate::utils::TimeUtils::interval_to_string(interval_ms);
 
     // 1. Check DB
@@ -63,7 +48,9 @@ async fn sync_pair(
     let count = new_candles.len();
 
     if !new_candles.is_empty() {
-        storage.insert_candles(&pair, interval_str, &new_candles).await?;
+        storage
+            .insert_candles(&pair, interval_str, &new_candles)
+            .await?;
     }
 
     // 3. Load from DB
@@ -74,7 +61,10 @@ async fn sync_pair(
         interval_ms,
     };
 
-    Ok((OhlcvTimeSeries::from_candles(pair_interval, full_history), count))
+    Ok((
+        OhlcvTimeSeries::from_candles(pair_interval, full_history),
+        count,
+    ))
 }
 
 // ----------------------------------------------------------------------------
@@ -85,7 +75,6 @@ pub async fn fetch_pair_data(
     args: &Cli,
     progress_tx: Option<Sender<ProgressEvent>>, // <--- CHANGED TYPE
 ) -> (TimeSeriesCollection, &'static str) {
-    
     // --- WASM IMPLEMENTATION ---
     #[cfg(target_arch = "wasm32")]
     {
@@ -94,8 +83,8 @@ pub async fn fetch_pair_data(
         let _ = progress_tx;
 
         // Use WasmDemoData directly (it is imported now)
-        let mut timeseries_data = WasmDemoData::load()
-            .expect("failed to retrieve time series data for WASM");
+        let mut timeseries_data =
+            WasmDemoData::load().expect("failed to retrieve time series data for WASM");
 
         let original_len = timeseries_data.series_data.len();
         if original_len > DEMO.max_pairs {
@@ -108,13 +97,19 @@ pub async fn fetch_pair_data(
     // --- NATIVE IMPLEMENTATION ---
     #[cfg(not(target_arch = "wasm32"))]
     {
-
-        let _ = klines_acceptable_age_secs; 
-        let _ = args; 
+        let _ = klines_acceptable_age_secs;
+        let _ = args;
 
         let db_path = "klines.sqlite";
-        let storage = Arc::new(SqliteStorage::new(db_path).await.expect("Failed to init DB"));
-        storage.initialize().await.expect("Failed to init DB schema");
+        let storage = Arc::new(
+            SqliteStorage::new(db_path)
+                .await
+                .expect("Failed to init DB"),
+        );
+        storage
+            .initialize()
+            .await
+            .expect("Failed to init DB schema");
 
         let safe_limit = (BINANCE.limits.weight_limit_minute as f32 * 0.8) as u32;
         let limiter = GlobalRateLimiter::new(safe_limit);
@@ -130,7 +125,7 @@ pub async fn fetch_pair_data(
                 .filter(|s| !s.is_empty() && !s.starts_with('#'))
                 .take(config.max_pairs)
                 .collect(),
-            Err(_) => vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()]
+            Err(_) => vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()],
         };
 
         log::info!("Starting Delta Sync for {} pairs...", supply_pairs.len());
@@ -150,13 +145,14 @@ pub async fn fetch_pair_data(
         // 3. Run in Parallel
         let interval = ANALYSIS.interval_width_ms;
 
-                let results = stream::iter(supply_pairs)
+        let results = stream::iter(supply_pairs)
             .enumerate()
-            .map(|(i, pair)| { // Capture 'i' here
+            .map(|(i, pair)| {
+                // Capture 'i' here
                 let s = storage.clone();
                 let p = provider.clone();
                 let tx = progress_tx.clone();
-                
+
                 async move {
                     if let Some(ref tx) = tx {
                         let _ = tx.send(ProgressEvent {
@@ -165,7 +161,7 @@ pub async fn fetch_pair_data(
                             status: SyncStatus::Syncing,
                         });
                     }
-                    
+
                     match sync_pair(pair.clone(), interval, s, p).await {
                         Ok((ts, new_count)) => {
                             if let Some(ref tx) = tx {
@@ -176,7 +172,7 @@ pub async fn fetch_pair_data(
                                 });
                             }
                             Some(ts)
-                        },
+                        }
                         Err(e) => {
                             log::error!("Failed to sync {}: {}", pair, e);
                             if let Some(ref tx) = tx {
@@ -190,7 +186,7 @@ pub async fn fetch_pair_data(
                         }
                     }
                 }
-            })        
+            })
             .buffer_unordered(BINANCE.limits.concurrent_sync_tasks) // Parallelism Limit
             .collect::<Vec<_>>()
             .await;
