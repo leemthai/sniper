@@ -1,11 +1,11 @@
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::{CVACore, ScoreType};
 
-use serde::{Deserialize, Serialize};
 
 // ============================================================================
 // OhlcvTimeSeries: Raw time series data for a trading pair
@@ -112,46 +112,8 @@ impl OhlcvTimeSeries {
         Candle::new(timestamp, open, high, low, close, base_vol, quote_vol)
     }
 
-    #[allow(dead_code)]
     pub fn klines(&self) -> usize {
         self.open_prices.len()
-    }
-
-    #[allow(dead_code)]
-    pub fn last_kline_timestamp_ms(&self) -> i64 {
-        self.first_kline_timestamp_ms
-            + (((self.high_prices.len() - 1) as i64) * self.pair_interval.interval_ms)
-    }
-
-    #[allow(dead_code)]
-    pub fn get_indices_by_time_range(
-        &self,
-        start_date: impl Into<DateTimeInput>,
-        end_date: Option<impl Into<DateTimeInput>>,
-    ) -> Option<(usize, usize)> {
-        let start_ts_ms = start_date.into().to_milliseconds();
-        let end_ts_ms = end_date.map(|d| d.into().to_milliseconds());
-
-        let start_index_f64 = (start_ts_ms - self.first_kline_timestamp_ms) as f64
-            / self.pair_interval.interval_ms as f64;
-        let start_index = start_index_f64.ceil() as usize;
-
-        let end_index = if let Some(end_ts_ms) = end_ts_ms {
-            let end_index_f64 = (end_ts_ms - self.first_kline_timestamp_ms) as f64
-                / self.pair_interval.interval_ms as f64;
-            end_index_f64.floor() as usize + 1
-        } else {
-            self.open_prices.len()
-        };
-
-        if start_index >= self.open_prices.len() || start_index >= end_index {
-            return None;
-        }
-        if end_index > self.open_prices.len() {
-            return Some((start_index, self.open_prices.len()));
-        }
-
-        Some((start_index, end_index))
     }
 
     pub fn get_all_indices(&self) -> (usize, usize) {

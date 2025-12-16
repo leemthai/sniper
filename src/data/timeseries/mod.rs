@@ -10,9 +10,11 @@ pub mod cache_file;
 pub mod wasm_demo;
 
 // --- SHARED DATA STRUCTURES ---
-use crate::models::OhlcvTimeSeries;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+
+use crate::models::OhlcvTimeSeries;
+
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct TimeSeriesCollection {

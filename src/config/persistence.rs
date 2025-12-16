@@ -1,9 +1,4 @@
 //! File persistence and serialization configuration
-
-// // App state persistence
-// /// Path for saving/loading application UI state
-// pub const APP_STATE_PATH: &str = ".states.json";
-
 use crate::utils::TimeUtils;
 
 /// Configuration for Kline Data Persistence

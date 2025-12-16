@@ -47,12 +47,6 @@ impl Zone {
         }
     }
 
-    /// Check if a price is within this zone
-    #[allow(dead_code)] // Useful for trading logic
-    pub fn contains(&self, price: f64) -> bool {
-        price >= self.price_bottom && price <= self.price_top
-    }
-
     /// Distance from price to zone center
     pub fn distance_to(&self, price: f64) -> f64 {
         (self.price_center - price).abs()
@@ -149,7 +143,6 @@ pub struct ClassifiedZones {
 /// Complete trading model for a pair containing CVA and classified zones
 /// This is the domain model independent of UI/plotting concerns
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Will be used for trading strategies
 pub struct TradingModel {
     pub pair_name: String,
     pub cva: Arc<CVACore>,
@@ -270,12 +263,6 @@ impl TradingModel {
 
             (classified, stats)
         })
-    }
-
-    /// Get all sticky zones (for potential S/R candidates)
-    #[allow(dead_code)] // For trading strategies
-    pub fn sticky_zones(&self) -> &[Zone] {
-        &self.zones.sticky
     }
 
     /// Get nearest support superzone relative to a specific price

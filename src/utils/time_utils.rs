@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, TimeZone, Utc};
+use chrono::{DateTime, Local};
 
 pub struct TimeUtils;
 
@@ -20,7 +20,6 @@ impl TimeUtils {
     pub const MS_IN_W: i64 = Self::MS_IN_D * 7;
     pub const MS_IN_1_M: i64 = Self::MS_IN_D * 30;
     pub const STANDARD_TIME_FORMAT: &str = "%Y-%m-%d";
-    // const STANDARD_TIME_FORMAT: &str = "%d/%m/%Y";
 
     /// Convert interval in milliseconds to a Binance-style shorthand (e.g. `30m`, `1h`).
     pub fn interval_to_string(interval_ms: i64) -> &'static str {
@@ -44,24 +43,6 @@ impl TimeUtils {
             _ => "unknown",
         }
     }
-}
-
-#[allow(dead_code)]
-pub fn epoch_sec_to_local(epoch_sec: i64) -> String {
-    // local time not UTC time. Useful for display purposes
-    // Utc.timestamp_opt() safely handles the conversion.
-    if let chrono::LocalResult::Single(datetime) = Utc.timestamp_opt(epoch_sec, 0) {
-        // Format the DateTime object into the desired string
-        datetime.format(TimeUtils::STANDARD_TIME_FORMAT).to_string()
-    } else {
-        // Handle invalid timestamp values
-        String::new()
-    }
-}
-#[allow(dead_code)]
-pub fn epoch_ms_to_utc(epoch_ms: i64) -> String {
-    // Used for display purposes
-    epoch_sec_to_utc(epoch_ms / 1000)
 }
 
 pub fn epoch_sec_to_utc(epoch_sec: i64) -> String {

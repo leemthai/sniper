@@ -95,9 +95,11 @@ Number of candles jumps around in PH when you drag the bar. In a weird way. not 
 Yeah, all screwed up again. move into red zone and still shows map. Need debug
 
 - Gaps in data
-Are we handling gaps at all yet?
-If so, how?
-Because some pairs have *severe* gaps of years.
+Note: some pairs have *severe* gaps i.e. years. Not about the platform being down, about pairs just being rejected by the platform for whatever reason.
+My issue with hole filling is that it is fine for a few minutes, but if you do it for big swathes of data, you are skewing all the data, corrupting it, faking it. We do not want to be inventing data. That does not help *anyone* analyse the truth of the data.
+Surely the more elegant solution is to instead adopt the accordion-style time system we already use in analysis and plan to display very soon on-screen? So we don't fake data, we just accept the data that is given to us. no, gaps, small gaps, big gaps, we don't care. we just convert to a series of time-based ranges?
+It's not only technologically the right thing, it is also a point of difference. Whilst other tools discard pairs with gaps or fake data that is missing, we never do! Let's lean into our accordion technology, dude.
+
 
 - In-app calculations
 Are we calculating everything correctly still?
@@ -108,3 +110,9 @@ Is that correct number of candles for 8Y for 5M candles?
 
 - Updating DB in background when app is running
 Do we do that yet? If so on what schedule?
+
+# DB Stuff
+test from scratch building again, in both debug and release modes
+
+# Search for dead_code
+plus search for unused_imports directives

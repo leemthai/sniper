@@ -1,6 +1,6 @@
-use colorgrad::Gradient;
 use std::hash::{Hash, Hasher};
 
+use colorgrad::Gradient;
 use eframe::egui::{Color32, Ui};
 use egui_plot::{AxisHints, Corner, HPlacement, Legend, Plot};
 

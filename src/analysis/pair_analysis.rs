@@ -1,10 +1,11 @@
+use anyhow::{Context, Result, bail};
+
 use crate::config::ANALYSIS; // Use global config for defaults, or passed config
 use crate::config::PriceHorizonConfig;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
 use crate::models::cva::CVACore;
 use crate::models::timeseries::{TimeSeriesSlice, find_matching_ohlcv};
-use anyhow::{Context, Result, bail};
 
 // --- NEW PURE FUNCTION FOR THE ENGINE ---
 

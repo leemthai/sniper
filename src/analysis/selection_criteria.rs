@@ -1,9 +1,10 @@
 // Define the structure to hold the data, specifically for f64
-use crate::models::cva::{CVACore, ScoreType};
-use crate::utils::maths_utils;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt;
+
+use crate::models::cva::{CVACore, ScoreType};
+use crate::utils::maths_utils;
 
 #[derive(Debug)]
 pub struct SelectionResults {

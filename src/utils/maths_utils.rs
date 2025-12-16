@@ -23,7 +23,6 @@ impl RangeF64 {
         }
     }
 
-    #[allow(dead_code)]
     pub fn min_max(&self) -> (f64, f64) {
         (self.start_range, self.end_range)
     }
@@ -71,7 +70,6 @@ impl RangeF64 {
         chunk_index.min(self.n_chunks - 1)
     }
 
-    #[allow(dead_code)]
     pub fn chunk_bounds(&self, chunk_index: usize) -> (f64, f64) {
         debug_assert!(chunk_index < self.n_chunks);
         let lower_bound = self.start_range + chunk_index as f64 * self.chunk_size();
@@ -104,11 +102,6 @@ pub fn get_min(vec: &[f64]) -> f64 {
     vec[max_index]
 }
 
-#[allow(dead_code)]
-pub fn get_min_max(vec: &[f64]) -> (f64, f64) {
-    (get_min(vec), get_max(vec))
-}
-
 // Normalizes a vector of (positive) f64 to 0.0 to 1.0. Guarantees largest value is 1.0
 // Smallest output value will be 0.0 iff smallest input value = 0.0
 // Name: `Max normalization`, `Max-Abs normalization`, or `L∞ normalization`
@@ -129,46 +122,6 @@ pub fn normalize_max(vec: &[f64]) -> Vec<f64> {
     match max_value {
         val if val <= 0.0 => vec.to_vec(),
         val => vec.iter().map(|&x| x / val).collect(),
-    }
-}
-
-/// Normalizes a vector in-place using the L1 norm (Manhattan norm),
-/// so that the sum of the absolute values of its components is 1.0.
-#[allow(dead_code)]
-pub fn normalize_manhattan(vec: &[f64]) -> Vec<f64> {
-    let mut sum_of_absolute_values = 0.0;
-
-    // Calculate the sum of absolute values (the L1 norm)
-    for x in vec.iter() {
-        sum_of_absolute_values += x.abs();
-    }
-
-    // Handle the edge case where the L1 norm is 0 to avoid division by zero.
-    if sum_of_absolute_values == 0.0 {
-        return vec.to_vec();
-    }
-
-    // Divide each element by the L1 norm
-    // Divide each element by the L1 norm using iteration and collect into a new Vec
-    vec.iter().map(|&x| x / sum_of_absolute_values).collect()
-}
-
-// Euclidean normalization or L2 norm.
-#[allow(dead_code)]
-fn euclidean_normalization(vec: &mut [f64]) {
-    // Probably won't use this because it ensures the sum of squares of all the values add up to 1
-    // 1. Calculate the sum of squares.
-    let sum_of_squares = vec.iter().map(|x| x * x).sum::<f64>();
-
-    // 2. Take the square root of the sum of squares to get the Euclidean norm.
-    let euclidean_norm = sum_of_squares.sqrt();
-
-    // 3. Divide each element by the Euclidean norm.
-    // We must handle the case where the norm is zero to avoid division by zero.
-    if euclidean_norm > 0.0 {
-        for x in vec.iter_mut() {
-            *x /= euclidean_norm;
-        }
     }
 }
 

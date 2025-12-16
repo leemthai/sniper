@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
-use std::collections::BTreeMap; // Use BTreeMap to keep pairs sorted
+use std::collections::BTreeMap;
 
 use eframe::egui::{Context, CentralPanel, RichText};
 use eframe::{Frame, Storage};
@@ -18,7 +18,6 @@ use crate::ui::utils::setup_custom_visuals;
 use crate::ui::app_simulation::SimStepSize;
 use crate::ui::app_simulation::SimDirection;
 use crate::models::cva::ScoreType;
-
 use crate::models::{SyncStatus, ProgressEvent};
 
 

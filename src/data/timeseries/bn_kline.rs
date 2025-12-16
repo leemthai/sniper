@@ -3,11 +3,9 @@ use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt;
-// use std::time::SystemTime;
 
 // External crates
 use anyhow::{Result, bail};
-// use binance_sdk::common::models::Interval as binance_interval;
 use binance_sdk::config::ConfigurationRestApi;
 use binance_sdk::models::RestApiRateLimit;
 use binance_sdk::spot::{
@@ -20,7 +18,6 @@ use binance_sdk::{errors, errors::ConnectorError as connection_error};
 // Local crates
 use crate::config::{BINANCE, BinanceApiConfig};
 use crate::data::rate_limiter::GlobalRateLimiter; // Import
-
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 use crate::utils::TimeUtils;
@@ -103,7 +100,6 @@ impl AllValidKlines4Pair {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 #[derive(PartialOrd, PartialEq)]
 pub struct BNKline {
     pub open_timestamp_ms: i64, // only necessary field. All others are optional

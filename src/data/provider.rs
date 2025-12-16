@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use crate::domain::candle::Candle;
 
-// CRITICAL: Gate these native-only imports
+// Native-only imports
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::rate_limiter::GlobalRateLimiter;
 #[cfg(not(target_arch = "wasm32"))]

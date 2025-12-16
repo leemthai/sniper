@@ -1,6 +1,7 @@
-use crate::domain::candle::Candle;
 use anyhow::Result;
 use async_trait::async_trait;
+
+use crate::domain::candle::Candle;
 
 // --- 1. THE INTERFACE ---
 

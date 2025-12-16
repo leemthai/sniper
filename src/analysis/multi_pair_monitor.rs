@@ -1,5 +1,6 @@
-use crate::models::pair_context::{PairContext, TradingSignal};
 use std::collections::HashMap;
+
+use crate::models::pair_context::{PairContext, TradingSignal};
 
 /// Multi-pair monitoring system for signal detection
 /// Tracks all pairs and detects interesting trading signals
@@ -95,15 +96,4 @@ impl Default for MultiPairMonitor {
     fn default() -> Self {
         Self::new()
     }
-}
-
-#[cfg(test)]
-mod tests {
-    // use super::*;
-    // use crate::models::CVACore;
-    // use crate::models::trading_view::{TradingModel, ZoneType};
-    // use std::sync::Arc;
-
-    // Note: Full tests would require creating mock CVACore and TradingModel
-    // This is a placeholder showing the test structure
 }

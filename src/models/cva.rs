@@ -75,17 +75,6 @@ impl CVACore {
         }
     }
 
-    // Updated helper to use new enum variants
-    #[allow(dead_code)]
-    pub fn increase_score_one_zone_weighted(&mut self, st: ScoreType, price: f64, weight: f64) {
-        let range_copy = self.price_range.clone();
-        let index = range_copy.chunk_index(price);
-        let scores = self.get_scores_mut_ref(st);
-        if index < scores.len() {
-            scores[index] += weight;
-        }
-    }
-
     pub fn increase_score_multi_zones_spread(
         &mut self,
         st: ScoreType,

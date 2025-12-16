@@ -355,16 +355,7 @@ impl SniperEngine {
             } else {
                 if let Some(horizon) = self.config_overrides.get(&pair) {
                     config.price_horizon = horizon.clone();
-                } else {
-                    // DEBUG: Why did we miss?
-                    // log::warn!(
-                    //     "[{}] NO OVERRIDE FOUND! Using Default {:.1}%. (Map has {} keys: {:?})",
-                    //     pair,
-                    //     config.price_horizon.threshold_pct * 100.0,
-                    //     self.config_overrides.len(),
-                    //     self.config_overrides.keys().take(5).collect::<Vec<_>>() // Print first 5 keys
-                    // );
-                }
+                } 
             }
 
             let req = JobRequest {

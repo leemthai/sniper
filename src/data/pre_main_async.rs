@@ -1,25 +1,31 @@
-// Async code to run in main before egui starts up
+
+// Shared imports
+use std::sync::mpsc::Sender;
 
 use crate::Cli;
 use crate::data::timeseries::TimeSeriesCollection;
-use std::sync::mpsc::Sender;
 use crate::models::ProgressEvent;
 
-// --- IMPORTS FOR WASM ONLY ---
+// --- WASM imports ---
 #[cfg(target_arch = "wasm32")]
 use crate::config::DEMO;
 #[cfg(target_arch = "wasm32")]
 use crate::data::timeseries::wasm_demo::WasmDemoData;
 
-// --- IMPORTS FOR NATIVE ONLY ---
+// --- Native imports ---
 #[cfg(not(target_arch = "wasm32"))]
 use anyhow::Result;
+#[cfg(not(target_arch = "wasm32"))]
+use futures::stream::{self, StreamExt}; 
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Arc;
+
 #[cfg(not(target_arch = "wasm32"))]
 use crate::models::SyncStatus;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::ANALYSIS;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::config::BINANCE; // <--- Restored
+use crate::config::BINANCE;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::provider::{BinanceProvider, MarketDataProvider};
 #[cfg(not(target_arch = "wasm32"))]
@@ -29,9 +35,8 @@ use crate::domain::pair_interval::PairInterval;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::models::OhlcvTimeSeries;
 #[cfg(not(target_arch = "wasm32"))]
-use futures::stream::{self, StreamExt}; 
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::Arc;
+use crate::data::rate_limiter::GlobalRateLimiter;
+
 
 
 // ----------------------------------------------------------------------------
@@ -103,7 +108,6 @@ pub async fn fetch_pair_data(
     // --- NATIVE IMPLEMENTATION ---
     #[cfg(not(target_arch = "wasm32"))]
     {
-        use crate::data::rate_limiter::GlobalRateLimiter;
 
         let _ = klines_acceptable_age_secs; 
         let _ = args; 

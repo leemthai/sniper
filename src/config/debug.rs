@@ -33,17 +33,7 @@ pub struct DebugFlags {
     /// Emit simulation-mode state changes (enter/exit, price adjustments, etc.).
     pub print_simulation_events: bool,
 
-    /// When debugging journeys, emit a detailed, step-by-step walkthrough for a
-    /// single historical attempt. This is intended for developers only and is
-    /// further gated inside the journey engine by `cfg(debug_assertions)`.
-    ///
-    /// - `print_journey_for_pair` must match the pair under analysis.
-    /// - `print_trigger_updates` should be enabled to see the logs.
-    /// - `debug_journey_attempt_index` selects which attempt (0-based) to trace.
-    ///
-    /// Set `debug_journey_attempt_index` to -1 to disable.
     pub debug_journey_attempt_index: i32,
-    /// Emit journey/trigger status updates (e.g., marking journeys stale, queued follow-ups).
     pub print_trigger_updates: bool,
     /// If non-empty, emit detailed journey analysis output only for this pair.
     /// Example: "PAXGUSDT". Use "" to disable.
