@@ -3,24 +3,19 @@
 use crate::Cli;
 use crate::data::timeseries::TimeSeriesCollection;
 use std::sync::mpsc::Sender;
-use crate::models::{SyncStatus, ProgressEvent};
-
-
-// Shared imports (Available on both Native and WASM)
-#[cfg(target_arch = "wasm32")]
-use crate::data::timeseries::{CreateTimeSeriesData,get_timeseries_data_async };
-
-
-#[allow(unused_imports)] // Bit shitty this
-use anyhow::Result;
+use crate::models::ProgressEvent; // Shared type (used in signature)
 
 // --- IMPORTS FOR WASM ONLY ---
 #[cfg(target_arch = "wasm32")]
 use crate::config::DEMO;
 #[cfg(target_arch = "wasm32")]
-use crate::data::timeseries::wasm_demo::WasmDemoData;
+use crate::data::timeseries::{get_timeseries_data_async, wasm_demo::WasmDemoData, CreateTimeSeriesData};
 
 // --- IMPORTS FOR NATIVE ONLY ---
+#[cfg(not(target_arch = "wasm32"))]
+use anyhow::Result; // Only needed for sync_pair return type
+#[cfg(not(target_arch = "wasm32"))]
+use crate::models::SyncStatus; // Only used in sync loop
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::ANALYSIS;
 #[cfg(not(target_arch = "wasm32"))]
@@ -32,9 +27,9 @@ use crate::domain::pair_interval::PairInterval;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::models::OhlcvTimeSeries;
 #[cfg(not(target_arch = "wasm32"))]
-use futures::stream::{self, StreamExt};
+use futures::stream::{self, StreamExt}; 
 #[cfg(not(target_arch = "wasm32"))]
-use std::sync::Arc; // For parallel processing
+use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::BINANCE;
 
@@ -119,7 +114,7 @@ pub async fn fetch_pair_data(
         let storage = Arc::new(SqliteStorage::new(db_path).await.expect("Failed to init DB"));
         storage.initialize().await.expect("Failed to init DB schema");
 
-        let safe_limit = (crate::config::BINANCE.limits.weight_limit_minute as f32 * 0.8) as u32;
+        let safe_limit = (BINANCE.limits.weight_limit_minute as f32 * 0.8) as u32;
         let limiter = GlobalRateLimiter::new(safe_limit);
 
         let provider = Arc::new(BinanceProvider::new(limiter));

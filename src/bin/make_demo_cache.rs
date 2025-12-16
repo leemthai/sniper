@@ -1,18 +1,31 @@
+// Only compile the logic for NATIVE builds.
+// For WASM, this file becomes effectively empty (just a dummy main).
+
+#[cfg(not(target_arch = "wasm32"))]
 use anyhow::{Context, Result};
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
 use zone_sniper::config::{ANALYSIS, DEMO, PERSISTENCE};
+#[cfg(not(target_arch = "wasm32"))]
 use zone_sniper::data::storage::{MarketDataStorage, SqliteStorage};
+#[cfg(not(target_arch = "wasm32"))]
 use zone_sniper::data::timeseries::cache_file::CacheFile;
+#[cfg(not(target_arch = "wasm32"))]
 use zone_sniper::data::timeseries::TimeSeriesCollection;
+#[cfg(not(target_arch = "wasm32"))]
 use zone_sniper::domain::pair_interval::PairInterval;
+#[cfg(not(target_arch = "wasm32"))]
 use zone_sniper::models::OhlcvTimeSeries;
+#[cfg(not(target_arch = "wasm32"))]
 use zone_sniper::utils::TimeUtils;
 
 // Limit demo data to keep WASM binary small (Github limit < 100MB)
-// 15,000 candles @ 5m = ~52 days of history.
-// 15,000 candles * 50 bytes * 5 pairs = ~3.75 MB total file size. Very safe.
+#[cfg(not(target_arch = "wasm32"))]
 const DEMO_CANDLE_LIMIT: usize = 15_000;
 
+// --- NATIVE IMPLEMENTATION ---
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> Result<()> {
     // 1. Setup Logging
@@ -39,7 +52,6 @@ async fn main() -> Result<()> {
     for &pair in demo_pairs {
         log::info!("Extracting {}...", pair);
         
-        // Load ALL data first
         let mut candles = storage.load_candles(pair, interval_str, None).await?;
         
         if candles.is_empty() {
@@ -75,8 +87,8 @@ async fn main() -> Result<()> {
         series_data: series_list,
     };
 
-    // 6. Generate Filename matching persistence.rs conventions
-    // Format: demo_kd_5m_v4.bin (Prefixing 'demo_' to the standard name)
+    // 6. Generate Filename
+    // Use the public re-export from config
     let standard_name = zone_sniper::config::kline_cache_filename(interval_ms);
     let demo_filename = format!("demo_{}", standard_name);
     
@@ -84,7 +96,6 @@ async fn main() -> Result<()> {
 
     log::info!("📦 Serializing to {:?}", output_path);
     
-    // Save
     let cache_file = CacheFile::new(interval_ms, collection, PERSISTENCE.kline.version);
     cache_file.save_to_path(&output_path)?;
 
@@ -94,3 +105,8 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+// --- WASM STUB ---
+// This allows the file to 'compile' (into nothing) when building for WASM
+#[cfg(target_arch = "wasm32")]
+fn main() {}

@@ -4,6 +4,8 @@ pub mod price_stream;
 pub mod timeseries;
 pub mod storage;
 pub mod provider;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub mod rate_limiter;
 
 // Re-export commonly used types
