@@ -71,47 +71,56 @@ We need to test this as well....
 No idea. Maybe just the new pair collection? Nah
 OR they just tend to disappear as you reduce PH?
 
-# Can we now delete min_lookback_days from anaylsis?
-Piece of shit.
-
-
 # Info: New repo is called 'sniper'
 Easy enough to rename if needed
 Pages is set up but app not running coz coding issues (see WASM Version not running)
 
+  
+# Tuesday
+Completey get rid of crate:: calls from app.rs coz I pasted that all in again.... and main.rs and anywhere else....
+Do this once app is running.... don't do yet coz I will probably paste his code in again, and he wrill overwrite my overwrites.
+app_simulation.rs too
+WASM version - what is it loading from? json or ... must be coz we don't have DB in WASM, lol.
+
+# Note - to remove db files
+cd rust/wherever lol
+rm klines.sqlite*
 
 
+# For later when we have basic DB system working better
 
-# The future of klines
-Loading candles is currently a vary long operation. Not something you can easily play aroind with on the fly
-Takes 2 mins to load 30m klines for 70 pairs. Coz we keep reloading from scratch all the time. need to learn  how to buffer them locally. Then we could do 5 mins
-5 mins 100 candles is 500 mins is 8 hrs. Need evaluate how much we slow various app operations if we go down to 5 min candles from 30 min candles..
-Store in local db. what are rust db options
-Re-loading all klines from API every day is dumb and very very slow. They should be added incrementally to a db in the background after one 'big load' when app first run (which writes db to local disk)
-Also eventually want to load in background then trigger zone recalcs etc. 
-5m klines else maths gets too slow maybe. Processing all the klines i mean.
-Don't forget this is for non-WASM only. WASM mode does not load klines from API at all. Though if we switch to DB, I guess we probably switch WASM-verison to local db as well?
+- PH Report when app is running
+I haven't played with the app much 
+Number of candles jumps around in PH when you drag the bar. In a weird way. not a good way. So for LUNATRY it can go from 32672 candles to 306 candles but then you release the mouse, and it goes back to 32672. Very weird
+Yeah, all screwed up again. move into red zone and still shows map. Need debug
 
-# Work with any kline interval
-For the ulitmate flexbility, have a global option to use any reasonable interval.
-Then, for slower machines, less local storage, or when a person is doing swing-trading / investing, they can pick a bigger interval
-For a person doing scalping, they could pick one minute
-This is 'big' global option though, would mean rebuilding the db etc. So a complete app relaunch.
-Definite good to keep it flexible like this though.
-If we pin it down to one particular interval, we are not writing an app that can adapt
+- Gaps in data
+Are we handling gaps at all yet?
+If so, how?
+Because some pairs have *severe* gaps of years.
 
-# Can we use 1m or 5m klines all the time
-And somehow aggregate them if we want to reduce the calc time etc
-Get the best of all worlds
-Then the user does not need to select a kline interval, or if he does, it does not trigger any kind of data reload from API, we just deal with it internally...
+- In-app calculations
+Are we calculating everything correctly still?
+For BTCUSDT it says:
+Evidence: 8Y 4M (52673 Candles)
+History: 8Y 4M
+Is that correct number of candles for 8Y for 5M candles?
 
-# If we redo klines
-Note that Binance klines have holes in them. Some very big holes. Currently I attempt to 'fill in holes' in some way.
-Might it be an opportunity to turn instead to a bunch of kline ranges? Similar to how we store 'qualifying klines' in the app itself when calculating zones etc?
-Need to decide how to start-up the app ...... do we launch egui to start? or do a whole pre-egui section where we run some other kind of interface to load klines, and do whatever else might need doing?
-Investigate other binance crates. This one is fine, but maybe another is finer? I remember you saying that binance-sdk had an awkwared API and was auto-generated, or something like that. Maybe we can find a better one.
+- Updating DB in background when app is running
+Do we do that yet? If so on what schedule?
 
-# DB options (if we go redo klines)
-Polo db
-Native db
-These are 'no SQL' options
+- get rid of allow(unused_imports) as directive
+It needs to specify exactly under which build circumstance we need the allow...
+pre_main_async.rs
+#[allow(unused_imports)] // Bit shitty this
+use anyhow::Result;
+So i guess that will be non WASM version we need it?
+
+# make_demo_cache
+will need rewriting, right? Coz no idea what it does rn but bound to be wrong.....
+investigate. then can dump a load of old code like create_timeseries_data, serde_version etc.
+We don't have serde_version anymore
+
+# create_timeseries_data
+called by serde_version.
+but wtf is serde_version anymore.

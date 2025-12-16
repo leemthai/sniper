@@ -2,6 +2,9 @@
 pub mod pre_main_async;
 pub mod price_stream;
 pub mod timeseries;
+pub mod storage;
+pub mod provider;
+pub mod rate_limiter;
 
 // Re-export commonly used types
 pub use pre_main_async::fetch_pair_data;

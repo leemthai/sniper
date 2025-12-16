@@ -7,34 +7,37 @@ pub enum CandleType {
 
 // Define the Candle struct with all its properties
 pub struct Candle {
+    pub timestamp_ms: i64,
+
     pub open_price: f64,
     pub high_price: f64,
     pub low_price: f64,
     pub close_price: f64,
 
-    pub base_volume: f64,
-    #[allow(dead_code)] // May be useful for future analysis
-    pub quote_volume: f64,
+    pub base_asset_volume: f64,
+    pub quote_asset_volume: f64,
 }
 
 // Implement methods for the Candle struct
 impl Candle {
     // A constructor for convenience
     pub fn new(
-        open_price: f64,
-        close_price: f64,
-        low_price: f64,
-        high_price: f64,
-        base_volume: f64,
-        quote_volume: f64,
+        timestamp_ms: i64,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+        base_vol: f64,
+        quote_vol: f64,
     ) -> Self {
         Candle {
-            open_price,
-            high_price,
-            low_price,
-            close_price,
-            base_volume,
-            quote_volume,
+            timestamp_ms,
+            open_price: open,
+            high_price: high,
+            low_price: low,
+            close_price: close,
+            base_asset_volume: base_vol,
+            quote_asset_volume: quote_vol,
         }
     }
 

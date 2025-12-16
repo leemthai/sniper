@@ -1,11 +1,10 @@
 use eframe::egui::{
-    CentralPanel, Color32, Context, Frame, Grid, Key, Margin, RichText, ScrollArea, SidePanel,
+    CentralPanel, Color32, Context, Frame, Grid, Margin, RichText, ScrollArea, SidePanel,
     TopBottomPanel, Ui, Window,
 };
 
 use crate::config::ANALYSIS;
 use crate::models::cva::ScoreType;
-use crate::ui::app_simulation::SimDirection;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
 use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
@@ -101,7 +100,7 @@ impl ZoneSniperApp {
                 let (is_calculating, last_error) = engine.get_pair_status(&pair);
 
                 // Debug log to confirm what the UI is sending to the plot
-                if self.is_simulation_mode {
+                if self.is_simulation_mode() {
                     //  log::info!("UI sending price to plot: {:?}", current_price);
                 }
 
@@ -177,7 +176,7 @@ impl ZoneSniperApp {
                     ui.horizontal(|ui| {
                         // 2. Simulation Mode / Live Price Logic
                         if let Some(pair) = &self.selected_pair.clone() {
-                            if self.is_simulation_mode {
+                            if self.is_simulation_mode() {
                                 // --- SIMULATION MODE UI ---
                                 ui.label(
                                     RichText::new("SIMULATION MODE")
@@ -409,6 +408,9 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn render_help_panel(&mut self, ctx: &Context) {
+
+        let is_sim_mode = self.is_simulation_mode();
+
         Window::new("⌨️ Keyboard Shortcuts")
             .open(&mut self.show_debug_help)
             .resizable(false)
@@ -445,7 +447,7 @@ impl ZoneSniperApp {
                         Self::render_shortcut_rows(ui, &general_shortcuts);
                     });
 
-                if self.is_simulation_mode {
+                if is_sim_mode {
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(5.0);
@@ -565,81 +567,6 @@ impl ZoneSniperApp {
             }
         }
         events
-    }
-
-    pub(super) fn handle_global_shortcuts(&mut self, ctx: &Context) {
-        ctx.input(|i| {
-            // Use 1/2/3 keys to toggle plot visibility
-            if i.key_pressed(Key::Num1) {
-                self.plot_visibility.sticky = !self.plot_visibility.sticky;
-            }
-            if i.key_pressed(Key::Num2) {
-                self.plot_visibility.low_wicks = !self.plot_visibility.low_wicks;
-            }
-            if i.key_pressed(Key::Num3) {
-                self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks;
-            }
-
-            if i.key_pressed(Key::H) {
-                self.show_debug_help = !self.show_debug_help;
-            }
-
-            // "Global Close" - pressing ESC shuts all help windows
-            if i.key_pressed(Key::Escape) {
-                self.show_debug_help = false;
-                self.show_ph_help = false;
-            }
-
-            // 'B'ackground plot type toggle
-            if i.key_pressed(Key::B) {
-                // Cycle: Sticky -> LowWick -> HighWick -> Sticky
-                self.debug_background_mode = match self.debug_background_mode {
-                    ScoreType::FullCandleTVW => ScoreType::LowWickCount,
-                    ScoreType::LowWickCount => ScoreType::HighWickCount,
-                    _ => ScoreType::FullCandleTVW,
-                };
-            }
-
-            if i.key_pressed(Key::S) {
-                self.toggle_simulation_mode();
-            }
-
-            if self.is_simulation_mode {
-                if i.key_pressed(Key::Num4) {
-                    self.jump_to_next_zone("sticky");
-                }
-                if i.key_pressed(Key::Num5) {
-                    self.jump_to_next_zone("low-wick");
-                }
-                if i.key_pressed(Key::Num6) {
-                    self.jump_to_next_zone("high-wick");
-                }
-
-                if i.key_pressed(Key::D) {
-                    self.sim_direction = match self.sim_direction {
-                        SimDirection::Up => SimDirection::Down,
-                        SimDirection::Down => SimDirection::Up,
-                    };
-                    #[cfg(debug_assertions)]
-                    log::info!("🔄 Direction: {}", self.sim_direction);
-                }
-
-                if i.key_pressed(Key::X) {
-                    self.sim_step_size.cycle();
-                    #[cfg(debug_assertions)]
-                    log::info!("📏 Step size: {}", self.sim_step_size);
-                }
-
-                if i.key_pressed(Key::A) {
-                    let percent = self.sim_step_size.as_percentage();
-                    let adjusted_percent = match self.sim_direction {
-                        SimDirection::Up => percent,
-                        SimDirection::Down => -percent,
-                    };
-                    self.adjust_simulated_price_by_percent(adjusted_percent);
-                }
-            }
-        });
     }
 }
 

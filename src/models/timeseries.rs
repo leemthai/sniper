@@ -82,15 +82,66 @@ pub fn find_matching_ohlcv<'a>(
 }
 
 impl OhlcvTimeSeries {
+    // In impl OhlcvTimeSeries ...
+
+    /// Create a TimeSeries from a list of Candles (Loaded from DB)
+    pub fn from_candles(pair_interval: PairInterval, candles: Vec<Candle>) -> Self {
+        if candles.is_empty() {
+            return Self {
+                pair_interval,
+                first_kline_timestamp_ms: 0,
+                open_prices: vec![],
+                high_prices: vec![],
+                low_prices: vec![],
+                close_prices: vec![],
+                base_asset_volumes: vec![],
+                quote_asset_volumes: vec![],
+                pct_gaps: 0.0,
+            };
+        }
+
+        let first_ts = candles[0].timestamp_ms;
+        let len = candles.len();
+
+        let mut ts = Self {
+            pair_interval,
+            first_kline_timestamp_ms: first_ts,
+            open_prices: Vec::with_capacity(len),
+            high_prices: Vec::with_capacity(len),
+            low_prices: Vec::with_capacity(len),
+            close_prices: Vec::with_capacity(len),
+            base_asset_volumes: Vec::with_capacity(len),
+            quote_asset_volumes: Vec::with_capacity(len),
+            pct_gaps: 0.0, // DB data is assumed contiguous or pre-processed
+        };
+
+        for c in candles {
+            ts.open_prices.push(c.open_price);
+            ts.high_prices.push(c.high_price);
+            ts.low_prices.push(c.low_price);
+            ts.close_prices.push(c.close_price);
+            ts.base_asset_volumes.push(c.base_asset_volume);
+            ts.quote_asset_volumes.push(c.quote_asset_volume);
+        }
+
+        ts
+    }
+
     pub fn get_candle(&self, idx: usize) -> Candle {
-        Candle::new(
-            self.open_prices[idx],
-            self.high_prices[idx],
-            self.low_prices[idx],
-            self.close_prices[idx],
-            self.base_asset_volumes[idx],
-            self.quote_asset_volumes[idx],
-        )
+        // Direct access since the vectors are already f64
+        let open = self.open_prices[idx];
+        let high = self.high_prices[idx];
+        let low = self.low_prices[idx];
+        let close = self.close_prices[idx];
+        let base_vol = self.base_asset_volumes[idx];
+        let quote_vol = self.quote_asset_volumes[idx];
+
+        // CALCULATE TIMESTAMP
+        // Start Time + (Index * Interval)
+        let timestamp =
+            self.first_kline_timestamp_ms + (idx as i64 * self.pair_interval.interval_ms);
+
+        Candle::new(timestamp, open, high, low, close, base_vol, quote_vol)
     }
 
     #[allow(dead_code)]
@@ -278,7 +329,7 @@ impl TimeSeriesSlice<'_> {
             ScoreType::FullCandleTVW,
             candle_low,
             candle_high,
-            candle.base_volume * temporal_weight,
+            candle.base_asset_volume * temporal_weight,
         );
 
         // 2. LOW WICK (Reversal Support) - Count Only (Volume Removed)
@@ -309,7 +360,7 @@ impl TimeSeriesSlice<'_> {
             ScoreType::QuoteVolume,
             candle_low,
             candle_high,
-            candle.quote_volume,
+            candle.quote_asset_volume,
         );
     }
 }

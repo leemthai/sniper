@@ -36,14 +36,10 @@ pub struct Cli {
 
 /// Main application entry point - creates the GUI app
 /// This is the public API for the binary to call
+// Change signature:
 pub fn run_app(
-    cc: &eframe::CreationContext,
-    timeseries_data: TimeSeriesCollection,
-) -> Box<dyn eframe::App> {
-
-    // 1. Initialize the Engine (The Brain)
-    let engine = crate::engine::SniperEngine::new(timeseries_data);
-
-    let app = ui::ZoneSniperApp::new(cc, engine);
-    Box::new(app)
+    cc: &eframe::CreationContext<'_>,
+    args: Cli, // Was TimeSeriesCollection
+) -> ZoneSniperApp {
+    ZoneSniperApp::new(cc, args)
 }

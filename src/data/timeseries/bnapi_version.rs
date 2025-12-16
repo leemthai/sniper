@@ -8,13 +8,14 @@ use futures::future::join_all;
 use itertools::iproduct;
 use rayon::prelude::*;
 
-use tokio::{fs, task::JoinError, task::JoinHandle,};
 #[cfg(debug_assertions)]
-use tokio::{time::Instant};
+use tokio::time::Instant;
+use tokio::{fs, task::JoinError, task::JoinHandle};
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
 use crate::config::{ANALYSIS, BINANCE, PERSISTENCE};
+use crate::data::rate_limiter::GlobalRateLimiter;
 use crate::data::timeseries::{CreateTimeSeriesData, TimeSeriesCollection};
 use crate::domain::pair_interval::PairInterval;
 use crate::models::OhlcvTimeSeries;
@@ -78,12 +79,8 @@ impl CreateTimeSeriesData for BNAPIVersion {
     }
 }
 
-pub async fn timeseries_data_load(
-    // supply_base_asset: &[&str],
-    // supply_quote_asset: &[&str],
-    // supply_name: &[&str],
-    supply_interval_asset: &[i64],
-) -> Result<Vec<OhlcvTimeSeries>> {
+pub async fn timeseries_data_load(supply_interval_asset: &[i64]) -> Result<Vec<OhlcvTimeSeries>> {
+    // Not used in main app now (but might be used in make_demo_cache or something....)
     let mut all_valid_klines_4_pairs: Vec<AllValidKlines4Pair> = Vec::new();
 
     let pairs_file_content = fs::read_to_string(BINANCE.pairs_filename).await?; // On fail, return Err from this func.
@@ -104,6 +101,9 @@ pub async fn timeseries_data_load(
 
     // Collect all_permutations into an owned collection so data can be safely sent to other threads
     let all_permutations_vec: Vec<_> = all_permutations.collect();
+    // NEW: Use Config + Safety Margin
+    let safe_limit = (crate::config::BINANCE.limits.weight_limit_minute as f32 * 0.8) as u32;
+    let limiter = GlobalRateLimiter::new(safe_limit);
     for batch in all_permutations_vec.chunks(BINANCE.limits.simultaneous_calls_ceiling) {
         // `batch` is a new iterator for each chunk.
         let batch_vec: Vec<_> = batch.iter().collect();
@@ -118,7 +118,9 @@ pub async fn timeseries_data_load(
         let start_tasks_time = Instant::now(); // Record the start time
 
         let mut handles: Vec<JoinHandle<Result<AllValidKlines4Pair>>> = Vec::new();
+
         for pair_interval in batch_vec {
+            let limiter_ref = limiter.clone();
             #[cfg(debug_assertions)]
             if DEBUG_FLAGS.print_binance {
                 log::info!(
@@ -128,7 +130,12 @@ pub async fn timeseries_data_load(
                 );
             }
             // Here you can make your API call for each item in the batch
-            let handle = tokio::spawn(bn_kline::load_klines(pair_interval.clone(), batch_size));
+            let handle = tokio::spawn(bn_kline::load_klines(
+                pair_interval.clone(),
+                batch_size,
+                None,
+                limiter_ref,
+            ));
             handles.push(handle);
         }
 

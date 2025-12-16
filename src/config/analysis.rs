@@ -132,7 +132,7 @@ impl AnalysisConfig {
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
-    interval_width_ms: TimeUtils::MS_IN_30_MIN,
+    interval_width_ms: TimeUtils::MS_IN_5_MIN,
     zone_count: 256, // Goldilocks number (see private project-3eed40f.md for explanation)
     time_decay_factor: 1.0,
 
@@ -179,10 +179,11 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         min_candles_for_analysis: 100,
     },
 
-    // NEW: Initialize Default AutoDuration
+    // NEW: Initialize Default PriceHorizon
     price_horizon: PriceHorizonConfig {
         threshold_pct: 0.15,
         min_threshold_pct: 0.001,
-        max_threshold_pct: 0.80,
+        // max_threshold_pct: 0.80,
+        max_threshold_pct: 2.0, // This could easily be 5.0 to get 500%
     },
 };

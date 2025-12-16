@@ -3,11 +3,11 @@ use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt;
-use std::time::SystemTime;
+// use std::time::SystemTime;
 
 // External crates
 use anyhow::{Result, bail};
-use binance_sdk::common::models::Interval as binance_interval;
+// use binance_sdk::common::models::Interval as binance_interval;
 use binance_sdk::config::ConfigurationRestApi;
 use binance_sdk::models::RestApiRateLimit;
 use binance_sdk::spot::{
@@ -15,16 +15,20 @@ use binance_sdk::spot::{
     rest_api::{KlinesIntervalEnum, KlinesItemInner, KlinesParams, RestApi},
 };
 use binance_sdk::{errors, errors::ConnectorError as connection_error};
-use tokio::time::{Duration, sleep};
+// use tokio::time::{Duration, sleep};
+
 
 // Local crates
 use crate::config::{BINANCE, BinanceApiConfig};
+use crate::data::rate_limiter::GlobalRateLimiter; // Import
+
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
 
 use crate::domain::pair_interval::PairInterval;
 use crate::utils::TimeUtils;
+use crate::domain::candle::Candle;
 
 pub trait IntervalToMs {
     fn to_ms(&self) -> i64;
@@ -209,74 +213,74 @@ async fn configure_binance_client() -> Result<RestApi, anyhow::Error> {
 // If the compiler complains about the alias, replace the right-hand path with the concrete type shown in the error.
 // type KlinesApiResponse = binance_sdk::spot::rest_api::RestApiResponse<Vec<KlinesItemInner>>;
 
-async fn handle_rate_limits(
-    rate_limits: &Option<Vec<RestApiRateLimit>>,
-    _pair_interval: &PairInterval,
-    concurrent_kline_call_weight: u32,
-    #[cfg(debug_assertions)] loop_count: u32,
-    bn_weight_limit_minute: u32,
-) -> Result<(), anyhow::Error> {
-    #[cfg(not(debug_assertions))]
-    let _ = &_pair_interval;
+// async fn handle_rate_limits(
+//     rate_limits: &Option<Vec<RestApiRateLimit>>,
+//     _pair_interval: &PairInterval,
+//     concurrent_kline_call_weight: u32,
+//     #[cfg(debug_assertions)] loop_count: u32,
+//     bn_weight_limit_minute: u32,
+// ) -> Result<(), anyhow::Error> {
+//     #[cfg(not(debug_assertions))]
+//     let _ = &_pair_interval;
 
-    if let Some(value) = rate_limits {
-        for rate_limit in value {
-            if rate_limit.interval_num == 1 && rate_limit.interval == binance_interval::Minute {
-                let current_weight = rate_limit.count;
-                let required_headroom =
-                    bn_weight_limit_minute.saturating_sub(concurrent_kline_call_weight);
-                #[cfg(debug_assertions)]
-                if DEBUG_FLAGS.print_binance {
-                    if loop_count.is_multiple_of(BINANCE.debug_print_interval) {
-                        log::info!(
-                            "Binance min-weight: {} (headroom: {})",
-                            current_weight,
-                            required_headroom
-                        );
-                    }
-                }
-                if current_weight > required_headroom {
-                    #[cfg(debug_assertions)]
-                    if DEBUG_FLAGS.print_binance {
-                        log::info!(
-                            "{} Current weight ({}) > required headroom ({}) — sleeping until start of next minute",
-                            _pair_interval,
-                            current_weight,
-                            required_headroom,
-                        );
-                    }
+//     if let Some(value) = rate_limits {
+//         for rate_limit in value {
+//             if rate_limit.interval_num == 1 && rate_limit.interval == binance_interval::Minute {
+//                 let current_weight = rate_limit.count;
+//                 let required_headroom =
+//                     bn_weight_limit_minute.saturating_sub(concurrent_kline_call_weight);
+//                 #[cfg(debug_assertions)]
+//                 if DEBUG_FLAGS.print_binance {
+//                     if loop_count.is_multiple_of(BINANCE.debug_print_interval) {
+//                         log::info!(
+//                             "Binance min-weight: {} (headroom: {})",
+//                             current_weight,
+//                             required_headroom
+//                         );
+//                     }
+//                 }
+//                 if current_weight > required_headroom {
+//                     #[cfg(debug_assertions)]
+//                     if DEBUG_FLAGS.print_binance {
+//                         log::info!(
+//                             "{} Current weight ({}) > required headroom ({}) — sleeping until start of next minute",
+//                             _pair_interval,
+//                             current_weight,
+//                             required_headroom,
+//                         );
+//                     }
 
-                    // Compute time until start of next minute
-                    let time_now = SystemTime::now();
-                    let duration_since_epoch = time_now
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .expect("Time went backwards");
-                    let secs_into_min = duration_since_epoch.as_secs() % 60;
-                    let sleep_duration = if secs_into_min == 0 {
-                        Duration::from_secs(60)
-                    } else {
-                        Duration::from_secs(60 - secs_into_min)
-                    };
+//                     // Compute time until start of next minute
+//                     let time_now = SystemTime::now();
+//                     let duration_since_epoch = time_now
+//                         .duration_since(SystemTime::UNIX_EPOCH)
+//                         .expect("Time went backwards");
+//                     let secs_into_min = duration_since_epoch.as_secs() % 60;
+//                     let sleep_duration = if secs_into_min == 0 {
+//                         Duration::from_secs(60)
+//                     } else {
+//                         Duration::from_secs(60 - secs_into_min)
+//                     };
 
-                    #[cfg(debug_assertions)]
-                    if DEBUG_FLAGS.print_binance {
-                        log::info!(
-                            "{} Sleeping for {:?} to reach start of next minute",
-                            _pair_interval,
-                            sleep_duration
-                        );
-                    }
-                    sleep(sleep_duration).await;
-                    #[cfg(debug_assertions)]
-                    if DEBUG_FLAGS.print_binance {
-                        log::info!("Awake at start of a new minute");
-                    }
-                }
-            }
-        }
-    }
-    Ok(())
-}
+//                     #[cfg(debug_assertions)]
+//                     if DEBUG_FLAGS.print_binance {
+//                         log::info!(
+//                             "{} Sleeping for {:?} to reach start of next minute",
+//                             _pair_interval,
+//                             sleep_duration
+//                         );
+//                     }
+//                     sleep(sleep_duration).await;
+//                     #[cfg(debug_assertions)]
+//                     if DEBUG_FLAGS.print_binance {
+//                         log::info!("Awake at start of a new minute");
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     Ok(())
+// }
 
 fn process_new_klines(
     new_klines: Vec<Vec<KlinesItemInner>>,
@@ -426,70 +430,61 @@ async fn fetch_binance_klines_with_limits(
     }
 }
 
-// Required parameters: PairInterval
+
+// Required parameters: PairInterval, Limiter
 pub async fn load_klines(
     pair_interval: PairInterval,
-    max_simultaneous_kline_calls: u32,
+    _max_simultaneous_kline_calls: u32, // Unused now, but kept for signature if needed, or remove.
+    start_time: Option<i64>,
+    limiter: GlobalRateLimiter, // <--- NEW ARGUMENT
 ) -> Result<AllValidKlines4Pair, anyhow::Error> {
     let rest_client = configure_binance_client().await?;
 
-    let limit_klines_returned: i32 = 1000; // This can be anywhere from 1 to 1000. My setting though, should be a config.
+    let limit_klines_returned: i32 = 1000;
     let mut end_time: Option<i64> = None;
-    const START_TIME: Option<i64> = None;
-    let concurrent_kline_call_weight: u32 =
-        BINANCE.limits.kline_call_weight * max_simultaneous_kline_calls;
     let mut all_klines: Vec<BNKline> = Vec::new();
-    #[cfg(debug_assertions)]
-    let mut loop_count = 0;
+    
+    // We use the configured weight (usually 2 for klines)
+    let call_weight = BINANCE.limits.kline_call_weight;
+
+    let pair_name = pair_interval.bn_name().to_string();
 
     loop {
+        // 1. GLOBAL RATE LIMIT CHECK
+        // This will sleep automatically if the bucket is empty.
+        // It coordinates across ALL threads.
+        limiter.acquire(call_weight, &pair_name).await;
+
         let params = KlinesParams::builder(
             pair_interval.bn_name().to_string(),
-            // We use .expect() here to replicate the old behavior
-            // (crashing if the interval is invalid), but now it's explicit.
             try_interval_from_ms(pair_interval.interval_ms)
                 .expect("Invalid Binance interval configuration"),
         )
-        .limit(BINANCE.limits.klines_limit) // If not passed in, 500 is used as `limit`
+        .limit(BINANCE.limits.klines_limit)
         .end_time(end_time)
-        .start_time(START_TIME)
+        .start_time(start_time)
         .build()?;
 
-        // Fetch rate limits + inner kline data in one helper
-        let (rate_limits, new_klines) =
+        // 2. FETCH (Ignore headers, we track locally)
+        let (_rate_limits, new_klines) =
             fetch_binance_klines_with_limits(&rest_client, params, &pair_interval).await?;
 
-        // Handle rate-limits (may await/sleep)
-        handle_rate_limits(
-            &rate_limits,
-            &pair_interval,
-            concurrent_kline_call_weight,
-            #[cfg(debug_assertions)]
-            loop_count,
-            BINANCE.limits.weight_limit_minute,
-        )
-        .await?;
-
-        // Convert & splice the new klines into all_klines
+        // 3. PROCESS
         let (new_end_time, batch_read_all) = process_new_klines(
             new_klines,
             limit_klines_returned,
             &mut all_klines,
             &pair_interval,
         )?;
+        
         end_time = new_end_time;
+        
         if batch_read_all {
             break;
-        }
-
-        #[cfg(debug_assertions)]
-        {
-            loop_count += 1;
         }
     }
 
     if has_duplicate_kline_open_time(&all_klines) {
-        // return Err(anyhow!("Duplicte issue"));
         bail!(
             "has_duplicate_kline_open_time() failed for {} so bailing load_klines()!",
             pair_interval
@@ -510,4 +505,18 @@ fn has_duplicate_kline_open_time(klines: &[BNKline]) -> bool {
         }
     }
     false
+}
+
+impl From<BNKline> for Candle {
+    fn from(bn: BNKline) -> Self {
+        Candle::new(
+            bn.open_timestamp_ms,
+            bn.open_price.unwrap_or(0.0),
+            bn.high_price.unwrap_or(0.0),
+            bn.low_price.unwrap_or(0.0),
+            bn.close_price.unwrap_or(0.0),
+            bn.base_asset_volume.unwrap_or(0.0),
+            bn.quote_asset_volume.unwrap_or(0.0),
+        )
+    }
 }
