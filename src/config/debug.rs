@@ -7,7 +7,6 @@ pub struct DebugFlags {
     /// Emit detailed zone-scoring debug output for all pairs.
     pub print_zone_scoring_for_all_pairs: &'static str,
 
-
     /// If non-empty, emit detailed zone-scoring debug output only for this pair.
     /// Example: "PAXGUSDT". Use "" to disable.
     pub print_zone_scoring_for_pair: &'static str,
@@ -52,7 +51,11 @@ pub struct DebugFlags {
     pub display_journey_status_lines: bool,
 
     /// Activate trace_time macro
-    pub enable_perf_logging: bool, 
+    pub enable_perf_logging: bool,
+
+    // NEW: Limit how many pairs are loaded in Debug mode.
+    // Set to 1000 to load everything. Set to 2 for instant startup.
+    pub max_pairs_load: usize,
 }
 
 pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
@@ -73,11 +76,13 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
 
     print_serde: false,
     print_state_serde: false,
-    
     print_shutdown: false,
 
     display_journey_status_lines: false,
-
-
     enable_perf_logging: false, // Turn this back on for cool scope-level timings..... set via trace_time! macro.
+
+    // Default to a small number for quick UI testing.
+    // Change this to 100 when you want to stress-test the model.
+    // To remove all limits, just set a huge number like 10000
+    max_pairs_load: 20,
 };

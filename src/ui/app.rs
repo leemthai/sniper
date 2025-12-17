@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::collections::BTreeMap;
 
-use eframe::egui::{Context, CentralPanel, RichText};
+use eframe::egui::{Context, CentralPanel, RichText, Key};
 use eframe::{Frame, Storage};
 use serde::{Deserialize, Serialize};
 
@@ -215,6 +215,7 @@ impl ZoneSniperApp {
         if let Some(pair) = self.selected_pair.clone() {
             let price = self.get_display_price(&pair);
             let new_config = self.app_config.price_horizon.clone();
+            // log::info!("APP >> Sending Override to Engine for {}: {:.4}", pair, new_config.threshold_pct);
             self.price_horizon_overrides.insert(pair.clone(), new_config.clone());
             
             if let Some(engine) = &mut self.engine {
@@ -313,21 +314,37 @@ impl ZoneSniperApp {
     
     pub(super) fn handle_global_shortcuts(&mut self, ctx: &Context) {
         ctx.input(|i| {
-            if i.key_pressed(eframe::egui::Key::Num1) { self.plot_visibility.sticky = !self.plot_visibility.sticky; }
-            if i.key_pressed(eframe::egui::Key::Num2) { self.plot_visibility.support = !self.plot_visibility.support; self.plot_visibility.resistance = !self.plot_visibility.resistance; }
-            if i.key_pressed(eframe::egui::Key::Num3) { self.plot_visibility.low_wicks = !self.plot_visibility.low_wicks; self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks; }
-            if i.key_pressed(eframe::egui::Key::H) { self.show_debug_help = !self.show_debug_help; }
-            if i.key_pressed(eframe::egui::Key::Escape) { self.show_debug_help = false; self.show_ph_help = false; }
-            if i.key_pressed(eframe::egui::Key::B) { self.plot_visibility.background = !self.plot_visibility.background; }
-            if i.key_pressed(eframe::egui::Key::S) { self.toggle_simulation_mode(); }
-            if i.key_pressed(eframe::egui::Key::Num4) { self.jump_to_next_zone("sticky"); }
-            if i.key_pressed(eframe::egui::Key::Num5) { self.jump_to_next_zone("low-wick"); }
-            if i.key_pressed(eframe::egui::Key::Num6) { self.jump_to_next_zone("high-wick"); }
-            if i.key_pressed(eframe::egui::Key::D) { 
+            if i.key_pressed(Key::Num1) { self.plot_visibility.sticky = !self.plot_visibility.sticky; }
+            if i.key_pressed(Key::Num2) { self.plot_visibility.support = !self.plot_visibility.support; self.plot_visibility.resistance = !self.plot_visibility.resistance; }
+            if i.key_pressed(Key::Num3) { self.plot_visibility.low_wicks = !self.plot_visibility.low_wicks; self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks; }
+            if i.key_pressed(Key::H) { self.show_debug_help = !self.show_debug_help; }
+            if i.key_pressed(Key::Escape) { self.show_debug_help = false; self.show_ph_help = false; }
+            if i.key_pressed(Key::B) {
+                if !self.plot_visibility.background {
+                    self.plot_visibility.background = true;
+                    self.debug_background_mode = ScoreType::FullCandleTVW;
+                } else {
+                    // Was ON -> Cycle Modes
+                    match self.debug_background_mode {
+                        ScoreType::FullCandleTVW => self.debug_background_mode = ScoreType::LowWickCount,
+                        ScoreType::LowWickCount => self.debug_background_mode = ScoreType::HighWickCount,
+                        ScoreType::HighWickCount => {
+                            // End of cycle -> Turn OFF
+                            self.plot_visibility.background = false;
+                        }
+                        _ => self.debug_background_mode = ScoreType::FullCandleTVW,
+                    }
+                }
+            }
+            if i.key_pressed(Key::S) { self.toggle_simulation_mode(); }
+            if i.key_pressed(Key::Num4) { self.jump_to_next_zone("sticky"); }
+            if i.key_pressed(Key::Num5) { self.jump_to_next_zone("low-wick"); }
+            if i.key_pressed(Key::Num6) { self.jump_to_next_zone("high-wick"); }
+            if i.key_pressed(Key::D) { 
                  self.sim_direction = match self.sim_direction { SimDirection::Up => SimDirection::Down, SimDirection::Down => SimDirection::Up };
             }
-            if i.key_pressed(eframe::egui::Key::X) { self.sim_step_size.cycle(); }
-            if i.key_pressed(eframe::egui::Key::A) { 
+            if i.key_pressed(Key::X) { self.sim_step_size.cycle(); }
+            if i.key_pressed(Key::A) { 
                  let percent = self.sim_step_size.as_percentage();
                  let adj = match self.sim_direction { SimDirection::Up => percent, SimDirection::Down => -percent };
                  self.adjust_simulated_price_by_percent(adj);

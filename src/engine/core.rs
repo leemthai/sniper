@@ -254,7 +254,7 @@ impl SniperEngine {
                 }
                 Err(e) => {
                     // 5. Failure: Clear Model, Set Error
-                    log::error!("Worker failed for {}: {}", result.pair_name, e);
+                    log::info!("Worker failed for {}: {}", result.pair_name, e);
                     state.last_error = Some(e);
                     state.is_calculating = false;
 
@@ -332,40 +332,44 @@ impl SniperEngine {
 
     fn dispatch_job(&mut self, pair: String, price_override: Option<f64>) {
         if let Some(state) = self.pairs.get_mut(&pair) {
-            // Priority: Override -> Live Stream -> Fail
-            let price = if let Some(p) = price_override {
-                p
-            } else if let Some(p) = self.price_stream.get_price(&pair) {
-                p
-            } else {
-                // No price. Do nothing.
-                return;
-            };
+            // 1. Resolve Price
+            // Priority: Override -> Live Stream -> None (Worker will fetch from DB)
+            let live_price = self.price_stream.get_price(&pair);
+            let final_price_opt = price_override.or(live_price);
 
+            // Update State Metadata
             state.is_calculating = true;
-            state.last_update_price = price;
+            if let Some(p) = final_price_opt {
+                state.last_update_price = p;
+            }
 
+            // 2. Capture Cache (Smart Profiling Optimization)
+            let existing_profile = state.profile.clone();
+
+            // 3. Prepare Config
             let mut config = self.current_config.clone();
 
-            // APPLY OVERRIDE
+            // APPLY OVERRIDE i.e. use per-pair setting, not global default
             let pair_upper = pair.to_uppercase();
             if let Some(horizon) = self.config_overrides.get(&pair_upper) {
                 config.price_horizon = horizon.clone();
-                // log::info!("[{}] Applied Override: {:.1}%", pair_upper, horizon.threshold_pct * 100.0);
             } else {
                 if let Some(horizon) = self.config_overrides.get(&pair) {
                     config.price_horizon = horizon.clone();
                 } 
             }
 
+            // 4. Send Request
             let req = JobRequest {
                 pair_name: pair,
-                current_price: price,
-                config: self.current_config.clone(),
+                current_price: final_price_opt, // Pass Option<f64>
+                config, // <--- CRITICAL FIX: Use the local 'config' with overrides applied
                 timeseries: self.timeseries.clone(),
+                existing_profile, // <--- NEW: Pass cached profile
             };
 
             let _ = self.job_tx.send(req);
         }
     }
+
 }

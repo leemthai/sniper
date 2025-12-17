@@ -9,10 +9,17 @@ use crate::models::trading_view::TradingModel;
 #[derive(Debug, Clone)]
 pub struct JobRequest {
     pub pair_name: String,
-    pub current_price: f64,
+    
+    // CHANGED: f64 -> Option<f64> 
+    // This allows the worker to handle "No Live Price" scenarios gracefully.
+    pub current_price: Option<f64>,
+    
     pub config: AnalysisConfig,
-    // We pass a reference to the immutable timeseries data
     pub timeseries: Arc<TimeSeriesCollection>,
+
+    // NEW: The Input Cache
+    // We send the profile we currently have. The worker checks if it's still valid.
+    pub existing_profile: Option<HorizonProfile>, 
 }
 
 /// The result returned by the worker
@@ -21,14 +28,12 @@ pub struct JobResult {
     pub pair_name: String,
     pub duration_ms: u128,
     
-    // Success: The new Front Buffer
-    // Failure: The error string
     pub result: Result<Arc<TradingModel>, String>,
     
-    // We pass back the CVACore too if needed for debugging/plots, 
-    // though TradingModel usually wraps it.
     pub cva: Option<Arc<CVACore>>,
+    
+    // This is the Output (New or Reused profile)
     pub profile: Option<HorizonProfile>,
+    
     pub candle_count: usize,
-
 }

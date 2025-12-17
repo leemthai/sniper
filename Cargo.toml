@@ -67,7 +67,11 @@ sqlx = { version = "0.8", features = ["runtime-tokio-native-tls", "sqlite"] }
 
 [profile.release]
 panic = "unwind"
+
 # Enable LTO `thin` (least gain, but compiles quickest) for release builds
 # lto = "thin" # Turned off coz too slow for dev work
 lto = "off" # Disables LTO completely
 # lto = false # Performs “thin local LTO” which performs “thin” LTO on the local crate only across its codegen units.
+
+[profile.dev.package."*"]
+opt-level = 3 # 3 is maximum level optimization, so very slow to compile external libraries. but quick.

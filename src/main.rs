@@ -2,24 +2,16 @@
 
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]
-use {
-    clap::Parser,
-    eframe::NativeOptions,
-    std::path::PathBuf,
-    zone_sniper::config::PERSISTENCE,
-};
+use {clap::Parser, eframe::NativeOptions, std::path::PathBuf, zone_sniper::config::PERSISTENCE};
 
 use zone_sniper::{
-    Cli,      // re-export lib.rs
-    run_app,  // The function from lib.rs
+    Cli,     // re-export lib.rs
+    run_app, // The function from lib.rs
 };
 
 // WASM imports
 #[cfg(target_arch = "wasm32")]
-use {
-    wasm_bindgen::JsCast,
-    wasm_bindgen::prelude::*,
-};
+use {wasm_bindgen::JsCast, wasm_bindgen::prelude::*};
 
 // This keeps the WASM memory allocator from being stripped
 #[cfg(target_arch = "wasm32")]
@@ -99,10 +91,21 @@ fn main() -> eframe::Result {
     } else {
         (log::LevelFilter::Error, log::LevelFilter::Error)
     };
-    
-    env_logger::Builder::from_default_env()
-        .filter_level(global_level)
-        .filter(Some("zone_sniper"), my_code_level)
+
+    let mut builder = env_logger::Builder::new();
+
+    builder
+        .filter(None, global_level) // Default for everyone
+        .filter(Some("zone_sniper"), my_code_level) // Override for us
+        
+        // NUCLEAR OPTION: Explicitly silence the noisy neighbors
+        .filter_module("reqwest", log::LevelFilter::Error) 
+        .filter_module("hyper", log::LevelFilter::Error)
+        .filter_module("tungstenite", log::LevelFilter::Error)
+        .filter_module("tokio_tungstenite", log::LevelFilter::Error)
+        .filter_module("sqlx", log::LevelFilter::Error)
+        .filter_module("binance_sdk", log::LevelFilter::Error)
+        
         .init();
 
     // B. Parse Args

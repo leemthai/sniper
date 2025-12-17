@@ -253,17 +253,18 @@ impl ZoneSniperApp {
 
                         // 4. Background View Mode
                         ui.label_subdued("Background plot view:");
-                        let mode_text = match self.debug_background_mode {
-                            ScoreType::FullCandleTVW => UI_TEXT.label_volume,
-                            ScoreType::LowWickCount => UI_TEXT.label_lower_wick_count,
-                            ScoreType::HighWickCount => UI_TEXT.label_upper_wick_count,
-                            _ => "Unknown",
+                        let (text, color) = if self.plot_visibility.background {
+                            let t = match self.debug_background_mode {
+                                ScoreType::FullCandleTVW => UI_TEXT.label_volume,
+                                ScoreType::LowWickCount => UI_TEXT.label_lower_wick_count,
+                                ScoreType::HighWickCount => UI_TEXT.label_upper_wick_count,
+                                _ => "Unknown",
+                            };
+                            (t, Color32::from_rgb(0, 255, 255)) // Cyan
+                        } else {
+                            ("HIDDEN", Color32::DARK_GRAY)
                         };
-                        ui.label(
-                            RichText::new(mode_text)
-                                .small()
-                                .color(Color32::from_rgb(0, 255, 255)),
-                        );
+                        ui.label(RichText::new(text).small().color(color));
                         ui.separator();
 
                         // Coverage Statistics
@@ -549,6 +550,7 @@ impl ZoneSniperApp {
         for event in &events {
             match event {
                 DataGenerationEventChanged::PriceHorizonThreshold(val) => {
+                    // log::info!("UI EVENT >> Slider Changed to {:.4} ({}%)", val, val * 100.0);
                     // Update config if changed
                     if (self.app_config.price_horizon.threshold_pct - val).abs() > f64::EPSILON {
                         self.app_config.price_horizon.threshold_pct = *val;

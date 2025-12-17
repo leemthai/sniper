@@ -80,26 +80,10 @@ Pages is set up but app not running coz coding issues (see WASM Version not runn
 Completey get rid of crate:: calls from app.rs coz I pasted that all in again.... and main.rs and anywhere else....
 Do this once app is running.... don't do yet coz I will probably paste his code in again, and he wrill overwrite my overwrites.
 app_simulation.rs too
-WASM version - what is it loading from? json or ... must be coz we don't have DB in WASM, lol.
 
-# Note - to remove db files
+# Note - to remove db files if we want to test from fresh
 cd rust/wherever lol
 rm klines.sqlite*
-
-
-# For later when we have basic DB system working better
-
-- PH Report when app is running
-I haven't played with the app much 
-Number of candles jumps around in PH when you drag the bar. In a weird way. not a good way. So for LUNATRY it can go from 32672 candles to 306 candles but then you release the mouse, and it goes back to 32672. Very weird
-Yeah, all screwed up again. move into red zone and still shows map. Need debug
-
-- Gaps in data
-Note: some pairs have *severe* gaps i.e. years. Not about the platform being down, about pairs just being rejected by the platform for whatever reason.
-My issue with hole filling is that it is fine for a few minutes, but if you do it for big swathes of data, you are skewing all the data, corrupting it, faking it. We do not want to be inventing data. That does not help *anyone* analyse the truth of the data.
-Surely the more elegant solution is to instead adopt the accordion-style time system we already use in analysis and plan to display very soon on-screen? So we don't fake data, we just accept the data that is given to us. no, gaps, small gaps, big gaps, we don't care. we just convert to a series of time-based ranges?
-It's not only technologically the right thing, it is also a point of difference. Whilst other tools discard pairs with gaps or fake data that is missing, we never do! Let's lean into our accordion technology, dude.
-
 
 - In-app calculations
 Are we calculating everything correctly still?
@@ -114,5 +98,11 @@ Do we do that yet? If so on what schedule?
 # DB Stuff
 test from scratch building again, in both debug and release modes
 
-# Search for dead_code
-plus search for unused_imports directives
+# ideas to ask AI
+ask him to improve the project; either coding-based (features, coding style,  DRY, project organization, rayon for easy paralllelization, whatever u can think of) or front-end software (ui), or actual trading features (which are very underfeatured so far. We have hardly get started yet on this...)
+Why do I ask? Because when we make an improvement, you always say "this improvement has upgraded your code from amateur to professional level" but you never tell me in advance "you should really upgrade this part of the system.... so I was hoping maybe you could suggest a thing or two I have never thought of...."
+other binance APi services?
+other public crypto services that might be useful?
+
+# Random AI Advice
+"Check `src/main.rs` for idiomatic Rust patterns and refactor imports."

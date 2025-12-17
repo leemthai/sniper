@@ -33,14 +33,13 @@ async fn sync_pair(
     storage: Arc<SqliteStorage>,
     provider: Arc<BinanceProvider>,
 ) -> Result<(OhlcvTimeSeries, usize)> {
-    // Return count of new candles
     let interval_str = crate::utils::TimeUtils::interval_to_string(interval_ms);
 
-    // 1. Check DB
+    // 1. Check DB for last candle
     let last_time = storage.get_last_candle_time(&pair, interval_str).await?;
     let start_fetch = last_time.map(|t| t + 1);
 
-    // 2. Fetch API
+    // 2. Fetch API (Real Delta Sync)
     let new_candles = provider
         .fetch_candles(&pair, interval_ms, start_fetch)
         .await?;
@@ -117,18 +116,43 @@ pub async fn fetch_pair_data(
         let provider = Arc::new(BinanceProvider::new(limiter));
         let config = crate::config::BINANCE;
 
-        // 2. Get Pairs
-        let supply_pairs: Vec<String> = match std::fs::read_to_string("pairs.txt") {
+        // Read ALL pairs from file first
+        let mut supply_pairs: Vec<String> = match std::fs::read_to_string(config.pairs_filename) {
             Ok(content) => content
                 .lines()
                 .map(|s| s.trim().to_uppercase())
                 .filter(|s| !s.is_empty() && !s.starts_with('#'))
-                .take(config.max_pairs)
                 .collect(),
-            Err(_) => vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()],
+            Err(_) => {
+                log::warn!("{} not found, using default BTC/ETH", config.pairs_filename);
+                vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()]
+            }
         };
 
-        log::info!("Starting Delta Sync for {} pairs...", supply_pairs.len());
+        // --- APPLY LIMITS ---
+
+        // 1. Production Limit (from binance.rs)
+        if supply_pairs.len() > config.max_pairs {
+            supply_pairs.truncate(config.max_pairs);
+        }
+
+        // 2. Debug Limit (from debug.rs)
+        #[cfg(debug_assertions)]
+        {
+            let debug_limit = crate::config::DEBUG_FLAGS.max_pairs_load;
+            // If the flag is smaller than the current list, truncate it.
+            // (If you set debug_limit to 1000, it effectively loads 'all')
+            if supply_pairs.len() > debug_limit {
+                log::warn!(
+                    "⚡ DEBUG FAST START: Limiting load to {} pairs (Configured in src/config/debug.rs)",
+                    debug_limit
+                );
+                supply_pairs.truncate(debug_limit);
+            }
+        }
+        // --------------------
+
+        // log::info!("Starting Delta Sync for {} pairs...", supply_pairs.len());
 
         // 3. INITIALIZE UI LIST
         // Tell the UI about all pairs immediately so they appear as "Pending"

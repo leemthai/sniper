@@ -24,6 +24,9 @@ pub struct PriceHorizonConfig {
     // UI Bounds
     pub min_threshold_pct: f64,
     pub max_threshold_pct: f64,
+
+    // Configurable Resolution
+    pub profiler_steps: usize,
 }
 
 /// Configuration for the Time Horizon UI Slider
@@ -134,7 +137,8 @@ impl AnalysisConfig {
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     interval_width_ms: TimeUtils::MS_IN_5_MIN,
     zone_count: 256, // Goldilocks number (see private project-3eed40f.md for explanation)
-    time_decay_factor: 1.0,
+    // time_decay_factor: 1.0, // With 1.0: A consolidation zone from 3 years ago looks just as "tall" as a consolidation zone from yesterday (if they had the same volume/duration).
+    time_decay_factor: 2.0, // With 2.0, the zone from yesterday will be 2x taller/brighter than the one from 3 years ago.
 
     zones: ZoneClassificationConfig {
         // STICKY ZONES (Volume Weighted)
@@ -183,7 +187,7 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     price_horizon: PriceHorizonConfig {
         threshold_pct: 0.15,
         min_threshold_pct: 0.001,
-        // max_threshold_pct: 0.80,
-        max_threshold_pct: 2.0, // This could easily be 5.0 to get 500%
+        max_threshold_pct: 1.0, // 1.0 = 100% Range (From 0 to 2x Current Price. Can increase this if we want to set range higher than 2x current price).
+        profiler_steps: 1000,   // With 50% range, this is 0.05% per bucket
     },
 };

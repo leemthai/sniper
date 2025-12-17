@@ -1,6 +1,6 @@
 use eframe::egui::{
-    Align2, Color32, ComboBox, Context, FontId, Grid, Rect, RichText, ScrollArea, Sense, Slider,
-    Stroke, StrokeKind, Ui, Window, pos2, vec2, CursorIcon,
+    Align2, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Rect, RichText, ScrollArea,
+    Sense, Slider, Stroke, StrokeKind, Ui, Window, pos2, vec2,
 };
 use strum::IntoEnumIterator;
 
@@ -200,11 +200,8 @@ impl<'a> DataGenerationPanel<'a> {
         // Header
         ui.horizontal(|ui| {
             ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
-             // Chain .on_hover_cursor() before checking .clicked()
-            if ui.button("(?)")
-                .on_hover_cursor(CursorIcon::Help) 
-                .clicked() 
-            {
+            // Chain .on_hover_cursor() before checking .clicked()
+            if ui.button("(?)").on_hover_cursor(CursorIcon::Help).clicked() {
                 *show_help = !*show_help;
             }
         });
@@ -258,8 +255,10 @@ impl<'a> DataGenerationPanel<'a> {
                 // Draw Buckets (Logarithmically Scaled)
                 if !profile.buckets.is_empty() {
                     let count = profile.buckets.len();
+
                     for (i, bucket) in profile.buckets.iter().enumerate() {
                         let val_start = bucket.threshold_pct;
+
                         // Determine end value (next bucket or max)
                         let val_end = if i + 1 < count {
                             profile.buckets[i + 1].threshold_pct
@@ -267,26 +266,35 @@ impl<'a> DataGenerationPanel<'a> {
                             max_pct
                         };
 
-                        // FIX: Use Mapper to convert Value -> Fraction
+                        // Calculate Pixel Coordinates
                         let x_start_frac = mapper.value_to_frac(val_start);
                         let x_end_frac = mapper.value_to_frac(val_end);
 
                         let x_start_px = rect.min.x + (x_start_frac as f32 * rect.width());
-                        let width_px = (x_end_frac - x_start_frac) as f32 * rect.width();
+                        let x_end_px = rect.min.x + (x_end_frac as f32 * rect.width());
 
-                        if width_px > 0.5 {
-                            let bar_rect = Rect::from_min_size(
-                                pos2(x_start_px, rect.min.y + 2.0),
-                                vec2(width_px + 0.5, rect.height() - 4.0),
-                            );
-                            let color = get_color(bucket.candle_count);
-                            painter.rect_filled(bar_rect, 0.0, color);
-                        }
+                        // FIX: Calculate width contiguously + overlap for AA
+                        // 1. Calculate pure geometric width
+                        // 2. Add 1.0 to overlap the next bar slightly (fixes sub-pixel black lines)
+                        // 3. Ensure min width 1.0 so tiny buckets are visible
+                        let width_px = (x_end_px - x_start_px).max(0.0) + 1.0;
+
+                        // FIX Y: Pixel Snap vertical coordinates to prevent bottom-edge artifacts
+                        // We round the start and the height to ensure we land on integer pixel boundaries.
+                        let y_start = (rect.min.y + 2.0).round();
+                        let bar_height = (rect.height() - 4.0).round();
+
+                        let bar_rect = Rect::from_min_size(
+                            pos2(x_start_px, y_start),
+                            vec2(width_px, bar_height),
+                        );
+
+                        let color = get_color(bucket.candle_count);
+                        painter.rect_filled(bar_rect, 0.0, color);
                     }
                 }
 
                 // Draw Handle (Logarithmic Position)
-                // FIX: Use Mapper
                 let handle_frac = mapper.value_to_frac(current_pct) as f32;
                 let handle_x = rect.min.x + (handle_frac * rect.width());
                 let handle_rect = Rect::from_center_size(
@@ -296,11 +304,8 @@ impl<'a> DataGenerationPanel<'a> {
                 painter.rect_filled(handle_rect, 1.0, Color32::WHITE);
             }
 
-            // --- THE REPORT (Feedback) ---
-            // (This logic remains identical to your existing code, just copy it back in)
             self.render_horizon_report(ui, current_pct, profile, get_color);
         } else {
-            // (Loading State remains identical)
             self.render_loading_state(ui);
         }
 

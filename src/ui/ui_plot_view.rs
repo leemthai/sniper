@@ -73,7 +73,7 @@ impl PlotView {
         self.cache.is_some()
     }
 
-    pub fn show_my_plot(
+pub fn show_my_plot(
         &mut self,
         ui: &mut Ui,
         cva_results: &CVACore,
@@ -82,7 +82,7 @@ impl PlotView {
         background_score_type: ScoreType,
         visibility: &PlotVisibility,
     ) {
-
+        // 1. Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
         let pair_name = &cva_results.pair_name;
         let (y_min, y_max) = cva_results.price_range.min_max();
@@ -91,11 +91,9 @@ impl PlotView {
         let _legend = Legend::default().position(Corner::RightTop);
 
         Plot::new("my_plot")
-            // .view_aspect(PLOT_CONFIG.plot_aspect_ratio)
             .legend(_legend)
             .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_y_axes(vec![create_y_axis(pair_name)])
-            // Suppress Defaults
             .label_formatter(|_, _| String::new())
             .x_grid_spacer(move |_input| {
                 let mut marks = Vec::new();
@@ -112,34 +110,19 @@ impl PlotView {
                 }
                 marks
             })
-            // NEW: Force Y-Axis Labels at Start/End
             .y_grid_spacer(move |_input| {
                 let mut marks = Vec::new();
+                // 1. Mandatory Start/End
+                marks.push(egui_plot::GridMark { value: y_min, step_size: total_y_range });
+                marks.push(egui_plot::GridMark { value: y_max, step_size: total_y_range });
 
-                // 1. Mandatory Start (Min Price)
-                marks.push(egui_plot::GridMark {
-                    value: y_min,
-                    step_size: total_y_range,
-                });
-
-                // 2. Mandatory End (Max Price)
-                marks.push(egui_plot::GridMark {
-                    value: y_max,
-                    step_size: total_y_range,
-                });
-
-                // 3. Fill in the middle (e.g. 5 even steps) to keep it readable
-                // We use a slightly different step_size so egui knows they are secondary
+                // 2. Middle steps
                 let divisions = 5;
                 let step = total_y_range / divisions as f64;
                 for i in 1..divisions {
                     let value = y_min + (step * i as f64);
-                    marks.push(egui_plot::GridMark {
-                        value,
-                        step_size: step,
-                    });
+                    marks.push(egui_plot::GridMark { value, step_size: step });
                 }
-
                 marks
             })
             .allow_scroll(false)
@@ -159,7 +142,7 @@ impl PlotView {
 
                 // 1. Create Context
                 let ctx = LayerContext {
-                    trading_model: &trading_model,
+                    trading_model: trading_model, 
                     cache: &cache,
                     visibility,
                     background_score_type,
@@ -168,13 +151,30 @@ impl PlotView {
                     current_price: current_pair_price,
                 };
 
-                // 2. Define Layer Stack (Back to Front)
-                let layers: Vec<Box<dyn PlotLayer>> = vec![
-                    Box::new(BackgroundLayer),
-                    Box::new(StickyZoneLayer),
-                    Box::new(ReversalZoneLayer),
-                    Box::new(PriceLineLayer),
-                ];
+                // 2. Define Layer Stack (Dynamic)
+                let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(4);
+
+                // Layer 1: Background (Controlled by 'B')
+                if visibility.background {
+                    layers.push(Box::new(BackgroundLayer));
+                }
+
+                // Layer 2: Sticky Zones (Controlled by '1' or '2')
+                // Note: StickyZoneLayer internally checks support/resistance flags to decide coloring,
+                // but we must add the layer if ANY relevant flag is on.
+                if visibility.sticky || visibility.support || visibility.resistance {
+                    layers.push(Box::new(StickyZoneLayer));
+                }
+
+                // Layer 3: Reversal/Wick Zones (Controlled by '3')
+                if visibility.low_wicks || visibility.high_wicks {
+                    layers.push(Box::new(ReversalZoneLayer));
+                }
+
+                // Layer 4: Price Line
+                if visibility.price_line {
+                    layers.push(Box::new(PriceLineLayer));
+                }
 
                 // 3. Render Loop
                 for layer in layers {

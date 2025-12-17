@@ -6,7 +6,6 @@ use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::{CVACore, ScoreType};
 
-
 // ============================================================================
 // OhlcvTimeSeries: Raw time series data for a trading pair
 // ============================================================================
@@ -15,6 +14,8 @@ use crate::models::cva::{CVACore, ScoreType};
 pub struct OhlcvTimeSeries {
     pub pair_interval: PairInterval,
     pub first_kline_timestamp_ms: i64,
+
+    pub timestamps: Vec<i64>,
 
     // Prices
     pub open_prices: Vec<f64>,
@@ -26,8 +27,6 @@ pub struct OhlcvTimeSeries {
     pub base_asset_volumes: Vec<f64>,
     pub quote_asset_volumes: Vec<f64>,
 
-    // Stats
-    pub pct_gaps: f64,
 }
 
 pub fn find_matching_ohlcv<'a>(
@@ -58,41 +57,81 @@ impl OhlcvTimeSeries {
             return Self {
                 pair_interval,
                 first_kline_timestamp_ms: 0,
+                timestamps: vec![],
                 open_prices: vec![],
                 high_prices: vec![],
                 low_prices: vec![],
                 close_prices: vec![],
                 base_asset_volumes: vec![],
                 quote_asset_volumes: vec![],
-                pct_gaps: 0.0,
             };
         }
 
         let first_ts = candles[0].timestamp_ms;
         let len = candles.len();
 
-        let mut ts = Self {
-            pair_interval,
-            first_kline_timestamp_ms: first_ts,
-            open_prices: Vec::with_capacity(len),
-            high_prices: Vec::with_capacity(len),
-            low_prices: Vec::with_capacity(len),
-            close_prices: Vec::with_capacity(len),
-            base_asset_volumes: Vec::with_capacity(len),
-            quote_asset_volumes: Vec::with_capacity(len),
-            pct_gaps: 0.0, // DB data is assumed contiguous or pre-processed
-        };
+        // Pre-allocate everything
+        let mut ts_vec = Vec::with_capacity(len);
+        let mut open_vec = Vec::with_capacity(len);
+        let mut high_vec = Vec::with_capacity(len);
+        let mut low_vec = Vec::with_capacity(len);
+        let mut close_vec = Vec::with_capacity(len);
+        let mut base_vec = Vec::with_capacity(len);
+        let mut quote_vec = Vec::with_capacity(len);
 
         for c in candles {
-            ts.open_prices.push(c.open_price);
-            ts.high_prices.push(c.high_price);
-            ts.low_prices.push(c.low_price);
-            ts.close_prices.push(c.close_price);
-            ts.base_asset_volumes.push(c.base_asset_volume);
-            ts.quote_asset_volumes.push(c.quote_asset_volume);
+            ts_vec.push(c.timestamp_ms); // Store the REAL timestamp
+            open_vec.push(c.open_price);
+            high_vec.push(c.high_price);
+            low_vec.push(c.low_price);
+            close_vec.push(c.close_price);
+            base_vec.push(c.base_asset_volume);
+            quote_vec.push(c.quote_asset_volume);
         }
 
-        ts
+      // --- GAP DETECTION (DEBUG LOGGING ONLY) ---
+        // This block runs only in debug builds to inform you about data quality.
+        // It does not affect the struct or production performance.
+        #[cfg(debug_assertions)]
+        {
+            let last_ts = ts_vec.last().copied().unwrap_or(first_ts);
+            let duration_ms = last_ts - first_ts;
+            
+            let expected_count = if pair_interval.interval_ms > 0 {
+                (duration_ms / pair_interval.interval_ms) as usize + 1
+            } else {
+                len
+            };
+
+            let gap_pct = if expected_count > len {
+                let missing = expected_count - len;
+                (missing as f64 / expected_count as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            if gap_pct > 1.0 {
+                log::info!(
+                    "📉 Gap Report [{}]: {:.2}% Missing. (Has {} candles, Timeframe implies {})", 
+                    pair_interval.name(), 
+                    gap_pct, 
+                    len, 
+                    expected_count
+                );
+            }
+        }
+
+        Self {
+            pair_interval,
+            first_kline_timestamp_ms: first_ts,
+            timestamps: ts_vec,
+            open_prices: open_vec,
+            high_prices: high_vec,
+            low_prices: low_vec,
+            close_prices: close_vec,
+            base_asset_volumes: base_vec,
+            quote_asset_volumes: quote_vec,
+        }
     }
 
     pub fn get_candle(&self, idx: usize) -> Candle {
@@ -104,10 +143,7 @@ impl OhlcvTimeSeries {
         let base_vol = self.base_asset_volumes[idx];
         let quote_vol = self.quote_asset_volumes[idx];
 
-        // CALCULATE TIMESTAMP
-        // Start Time + (Index * Interval)
-        let timestamp =
-            self.first_kline_timestamp_ms + (idx as i64 * self.pair_interval.interval_ms);
+        let timestamp = self.timestamps[idx];
 
         Candle::new(timestamp, open, high, low, close, base_vol, quote_vol)
     }
@@ -118,34 +154,6 @@ impl OhlcvTimeSeries {
 
     pub fn get_all_indices(&self) -> (usize, usize) {
         (0, self.open_prices.len())
-    }
-
-    /// Returns total duration covered by this timeseries in hours
-    pub fn total_duration_hours(&self) -> usize {
-        let num_candles = self.open_prices.len();
-        let interval_hours = self.pair_interval.interval_ms / (1000 * 60 * 60);
-        (num_candles as i64 * interval_hours) as usize
-    }
-
-    pub fn get_indices_most_recent(
-        &self,
-        most_recent_intervals: MostRecentIntervals,
-    ) -> (usize, usize) {
-        let final_num_intervals: usize = match most_recent_intervals {
-            MostRecentIntervals::Count(n) => n,
-            MostRecentIntervals::Duration(duration) => {
-                let duration_ms = duration.num_milliseconds();
-                let interval_ms = self.pair_interval.interval_ms;
-                assert!(interval_ms > 0, "Interval interva ms must be positive");
-                (duration_ms / self.pair_interval.interval_ms) as usize
-            }
-        };
-
-        let total_intervals = self.open_prices.len();
-        let start_index = total_intervals.saturating_sub(final_num_intervals);
-        let end_index = total_intervals;
-
-        (start_index, end_index)
     }
 }
 

@@ -50,22 +50,34 @@ pub fn pair_analysis_pure(
         );
     }
 
-    // 4. Dynamic Decay Logic (Annualized)
-    let start_idx = slice_ranges.first().map(|r| r.0).unwrap_or(0);
-    let end_idx = slice_ranges.last().map(|r| r.1).unwrap_or(0);
-
-    let duration_years = if end_idx > start_idx {
-        let duration_ms = (end_idx - start_idx) as f64 * ANALYSIS.interval_width_ms as f64;
-        let millis_per_year = 31_536_000_000.0;
-        duration_ms / millis_per_year
-    } else {
-        0.0
-    };
-
-    let dynamic_decay_factor = if duration_years > 0.0 {
-        time_decay_factor.powf(duration_years).max(1.0)
-    } else {
+    // 4. Dynamic Decay Logic (Optimized & Accordion-Aware)
+    let dynamic_decay_factor = if (time_decay_factor - 1.0).abs() < f64::EPSILON {
+        // Optimization: If decay is 1.0, multiplier is 1.0. Skip math.
         1.0
+    } else {
+        let start_idx = slice_ranges.first().map(|r| r.0).unwrap_or(0);
+        let end_idx = slice_ranges.last().map(|r| r.1).unwrap_or(0);
+
+        // Safeguard indices
+        let max_idx = ohlcv_time_series.klines().saturating_sub(1);
+        let actual_start_idx = start_idx.min(max_idx);
+        let actual_end_idx = end_idx.saturating_sub(1).min(max_idx);
+
+        // FIX: Use Real Timestamps from the DB (Accordion Fix)
+        let start_ts = ohlcv_time_series.get_candle(actual_start_idx).timestamp_ms;
+        let end_ts = ohlcv_time_series.get_candle(actual_end_idx).timestamp_ms;
+
+        let duration_ms = end_ts.saturating_sub(start_ts);
+        let millis_per_year = 31_536_000_000.0;
+        let duration_years = duration_ms as f64 / millis_per_year;
+
+        if duration_years > 0.0 {
+            let factor = time_decay_factor.powf(duration_years).max(1.0);
+            log::info!("pair_analysis_pure(): time_decay_factor is not 1.0. It gets generated from duration_years being {:.2} therefore time_decay_factor is {:.2}", duration_years, factor);
+            factor
+        } else {
+            1.0
+        }
     };
 
     // 5. Generate CVA
