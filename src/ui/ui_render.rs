@@ -54,16 +54,7 @@ impl ZoneSniperApp {
                                 if (self.app_config.time_decay_factor - new_decay).abs()
                                     > f64::EPSILON
                                 {
-                                    // #[cfg(debug_assertions)]
-                                    log::info!(
-                                        "🎯 ADAPTIVE SCOPE: PH {:.1}% -> TDF {:.1}",
-                                        new_threshold * 100.0,
-                                        new_decay
-                                    );
                                     self.app_config.time_decay_factor = new_decay;
-                                }
-                                else {
-                                    log::info!("Values are TDF {} and new_decay is {}", self.app_config.time_decay_factor, new_decay);
                                 }
                                 // -----------------------------
                                 self.invalidate_all_pairs_for_global_change(
@@ -565,29 +556,6 @@ impl ZoneSniperApp {
         if self.show_ph_help {
             DataGenerationPanel::render_ph_help_window(ui.ctx(), &mut self.show_ph_help);
         }
-
-        // 3. Handle Events
-        // for event in &events {
-        //     match event {
-        //         DataGenerationEventChanged::PriceHorizonThreshold(val) => {
-        //             // log::info!("UI EVENT >> Slider Changed to {:.4} ({}%)", val, val * 100.0);
-        //             // Update config if changed
-        //             if (self.app_config.price_horizon.threshold_pct - val).abs() > f64::EPSILON {
-        //                 self.app_config.price_horizon.threshold_pct = *val;
-        //                 self.invalidate_all_pairs_for_global_change("Price Horizon Changed");
-        //             }
-        //         }
-        //         DataGenerationEventChanged::TimeHorizonDays(days) => {
-        //             if self.app_config.time_horizon.default_days != *days {
-        //                 self.app_config.time_horizon.default_days = *days;
-        //                 // Journeys are suspended, but if we had them, we'd invalidate here
-        //             }
-        //         }
-        //         DataGenerationEventChanged::Pair(new_pair) => {
-        //             self.handle_pair_selection(new_pair.clone());
-        //         }
-        //     }
-        // }
         events
     }
 }

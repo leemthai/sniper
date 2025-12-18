@@ -349,10 +349,6 @@ impl SniperEngine {
             // 3. Prepare Config
             let mut config = self.current_config.clone();
 
-            // LOG HERE
-            #[cfg(debug_assertions)]
-            log::warn!("DISPATCH CHECK: Global TDF is {}", config.time_decay_factor);
-
             // APPLY OVERRIDE i.e. use per-pair setting, not global default
             let pair_upper = pair.to_uppercase();
             if let Some(horizon) = self.config_overrides.get(&pair_upper) {

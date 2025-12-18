@@ -176,11 +176,11 @@ impl TradingModel {
     fn classify_zones(cva: &CVACore) -> (ClassifiedZones, ZoneCoverageStats) {
         let (price_min, price_max) = cva.price_range.min_max();
         let zone_count = cva.zone_count;
-        let total_candles = cva.total_candles as f64;
+        // let total_candles = cva.total_candles as f64;
 
         crate::trace_time!("Classify & Cluster Zones", 1000, {
             // Helper closure
-            let process_layer = |raw_data: &[f64], params: ZoneParams, divisor: Option<f64>| {
+            let process_layer = |raw_data: &[f64], params: ZoneParams, divisor: Option<f64>, sharpen_power: i32| {
                 // 1. Smooth
                 let smooth_window =
                     ((zone_count as f64 * params.smooth_pct).ceil() as usize).max(1) | 1;
@@ -197,8 +197,52 @@ impl TradingModel {
                     normalize_max(&smoothed)
                 };
 
-                // 3. Contrast
-                let sharpened: Vec<f64> = normalized.iter().map(|&s| s * s).collect();
+                // 3. Contrast (UPDATED)
+                // Use higher power for Wicks to suppress the high noise floor
+                let sharpened: Vec<f64> =
+                    normalized.iter().map(|&s| s.powi(sharpen_power)).collect();
+
+                // --- DEBUG INSERT START ---
+                #[cfg(debug_assertions)]
+                {
+                    // We identify Wick layers by their distinctively low threshold (< 0.01)
+                    let layer_type = if params.threshold < 0.01 {
+                        "WICKS"
+                    } else {
+                        "STICKY"
+                    };
+
+                    let count = sharpened.len();
+                    let above_thresh = sharpened.iter().filter(|&&v| v >= params.threshold).count();
+                    let max_val = crate::utils::maths_utils::get_max(&sharpened);
+                    let avg_val = sharpened.iter().sum::<f64>() / count.max(1) as f64;
+                    let pct_passing = (above_thresh as f64 / count as f64) * 100.0;
+
+                    // Only log if it looks suspicious (e.g. > 80% coverage) OR it is a Wick layer
+                    if pct_passing > 80.0 || params.threshold < 0.01 {
+                        log::warn!(
+                            "ZONE AUDIT [{}] for {}: Passing {}/{} ({:.1}%)",
+                            layer_type,
+                            cva.pair_name,
+                            above_thresh,
+                            count,
+                            pct_passing
+                        );
+                        log::warn!(
+                            "   -> Threshold: {:.8} | Max: {:.6} | Avg: {:.6}",
+                            params.threshold,
+                            max_val,
+                            avg_val
+                        );
+
+                        if pct_passing > 95.0 {
+                            log::error!(
+                                "   🚨 SATURATION DETECTED: Threshold is too low for this data normalization."
+                            );
+                        }
+                    }
+                }
+                // --- DEBUG INSERT END ---
 
                 // 4. Find Targets
                 let gap = (zone_count as f64 * params.gap_pct).ceil() as usize;
@@ -215,26 +259,29 @@ impl TradingModel {
                 (zones, superzones)
             };
 
-            // --- Sticky Zones ---
+            // --- Sticky Zones (Standard Contrast) ---
             let (sticky, sticky_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::FullCandleTVW),
                 ANALYSIS.zones.sticky,
                 None,
+                2, // Power of 2 (Standard)
             );
 
-            // --- Reversal Zones ---
+            // --- Reversal Zones (High Contrast) ---
             // 1. Low Wicks
             let (low_wicks, low_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::LowWickCount),
                 ANALYSIS.zones.reversal,
-                Some(total_candles),
+                None, // Max Normalize
+                4,    // Power of 4 (Aggressive Contrast)
             );
 
             // 2. High Wicks
             let (high_wicks, high_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::HighWickCount),
                 ANALYSIS.zones.reversal,
-                Some(total_candles),
+                None, // Max Normalize
+                4,    // Power of 4 (Aggressive Contrast)
             );
 
             // --- Calculate Coverage Statistics ---

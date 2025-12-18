@@ -1,7 +1,6 @@
 use anyhow::{Context, Result, bail};
 
-use crate::config::ANALYSIS; use crate::config::AnalysisConfig;
-// Use global config for defaults, or passed config
+use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
 use crate::models::cva::CVACore;
@@ -73,9 +72,7 @@ pub fn pair_analysis_pure(
         let duration_years = duration_ms as f64 / millis_per_year;
 
         if duration_years > 0.0 {
-            let factor = time_decay_factor.powf(duration_years).max(1.0);
-            log::info!("pair_analysis_pure(): time_decay_factor is not 1.0. It gets generated from duration_years being {:.2} therefore time_decay_factor is {:.2}", duration_years, factor);
-            factor
+            time_decay_factor.powf(duration_years).max(1.0)
         } else {
             1.0
         }

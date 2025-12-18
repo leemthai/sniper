@@ -263,43 +263,43 @@ impl TimeSeriesSlice<'_> {
         // 1. FULL CANDLE (Sticky Zones) - Keep Volume Weighting
         let candle_low = clamp(candle.low_price);
         let candle_high = clamp(candle.high_price);
-        cva_core.increase_score_multi_zones_spread(
+        cva_core.distribute_conserved_volume(
             ScoreType::FullCandleTVW,
             candle_low,
             candle_high,
             candle.base_asset_volume * temporal_weight,
         );
 
-        // 2. LOW WICK (Reversal Support) - Count Only (Volume Removed)
-        // We use temporal_weight as the "Count" (1.0 if no decay)
+        // 2. LOW WICK - USE FLAT LOGIC
         let low_wick_start = clamp(candle.low_wick_low());
         let low_wick_end = clamp(candle.low_wick_high());
 
-        cva_core.increase_score_multi_zones_spread(
+        cva_core.apply_rejection_impact( 
             ScoreType::LowWickCount,
             low_wick_start,
             low_wick_end,
-            temporal_weight, // Just the count/time factor
+            temporal_weight, 
         );
 
-        // 3. HIGH WICK (Reversal Resistance) - Count Only (Volume Removed)
+        // 3. HIGH WICK - USE FLAT LOGIC
         let high_wick_start = clamp(candle.high_wick_low());
         let high_wick_end = clamp(candle.high_wick_high());
 
-        cva_core.increase_score_multi_zones_spread(
+        cva_core.apply_rejection_impact( 
             ScoreType::HighWickCount,
             high_wick_start,
             high_wick_end,
             temporal_weight,
         );
 
-        // 5. Quote Volume (Legacy/Debug) - Keep if you want
-        cva_core.increase_score_multi_zones_spread(
+        // 5. Quote Volume - Keep Spread
+        cva_core.distribute_conserved_volume(
             ScoreType::QuoteVolume,
             candle_low,
             candle_high,
             candle.quote_asset_volume,
         );
+
     }
 }
 

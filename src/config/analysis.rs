@@ -104,15 +104,27 @@ impl AnalysisConfig {
     /// The Source of Truth for the "Adaptive Decay" curve.
     /// Maps Price Horizon % -> Time Decay Factor.
     /// Used by both Config Initialization and UI Runtime updates.
-    pub fn calculate_time_decay(ph_threshold: f64) -> f64 {
+pub fn calculate_time_decay(ph_threshold: f64) -> f64 {
+        // Helper for linear mapping
+        let remap = |val: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64| -> f64 {
+            let t = (val - in_min) / (in_max - in_min);
+            out_min + t * (out_max - out_min)
+        };
+
         if ph_threshold >= 0.50 {
-            1.0 // Macro
+            // Macro Mode: Pure History
+            1.0
         } else if ph_threshold >= 0.15 {
-            1.5 // Swing
+            // Transition: Swing (1.5) -> Macro (1.0)
+            // As PH gets larger (0.15 -> 0.50), Decay gets smaller (1.5 -> 1.0)
+            remap(ph_threshold, 0.15, 0.50, 1.5, 1.0)
         } else if ph_threshold >= 0.05 {
-            2.0 // Aggressive
+            // Transition: Aggressive (2.0) -> Swing (1.5)
+            remap(ph_threshold, 0.05, 0.15, 2.0, 1.5)
         } else {
-            5.0 // Sniper
+            // Transition: Sniper (5.0) -> Aggressive (2.0)
+            // We clamp the lower PH bound at 0.0 for math safety
+            remap(ph_threshold, 0.0, 0.05, 5.0, 2.0)
         }
     }
 
@@ -173,12 +185,9 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
             smooth_pct: 0.005, // 0.5% (Low) - Keep wicks sharp
             gap_pct: 0.0,      // 0.0% - Strict separation. Don't create ghost zones.
 
-            // THRESHOLD TUNING GUIDE:
-            // 0.000400 = Requires ~2.0% Wick Density (Very Strict, few zones)
-            // 0.000100 = Requires ~1.0% Wick Density
-            // 0.000025 = Requires ~0.5% Wick Density
-            // 0.000010 = Requires ~0.3% Wick Density (Noisier)
-            threshold: 0.000025, // Defaulting to 0.5% based on your "too much coverage" feedback
+            // Old Logic: Divided by total candles -> Tiny threshold needed.
+            // New Logic: Max Normalized (0.0-1.0) -> Standard threshold needed.
+            threshold: 0.25, // 0.000025, 
         },
     },
 

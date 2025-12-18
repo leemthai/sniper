@@ -75,7 +75,52 @@ impl CVACore {
         }
     }
 
-    pub fn increase_score_multi_zones_spread(
+    /// Applies a score to a range of zones WITHOUT diluting it.
+    /// Used for: Wicks / Rejection / Presence.
+    /// If a wick covers 5 zones, all 5 zones get the full rejection score.
+    pub fn apply_rejection_impact(
+        &mut self,
+        st: ScoreType,
+        start_range: f64,
+        end_range: f64,
+        score_to_apply: f64,
+    ) {
+        // Safety: Zero width implies no range to score
+        if (start_range - end_range).abs() < f64::EPSILON {
+            return;
+        }
+
+        let range_copy = self.price_range.clone();
+        let num_chunks = range_copy.count_intersecting_chunks(start_range, end_range);
+
+        if num_chunks == 0 {
+            // Log at debug level to avoid spamming warn if price is just slightly out of bounds
+            #[cfg(debug_assertions)]
+            log::debug!(
+                "Flat Score: num_chunks is 0 for range [{:.2}, {:.2}]. Skipping.",
+                start_range,
+                end_range
+            );
+            return;
+        }
+
+        // FLAT LOGIC: Do NOT divide by num_chunks.
+        // We apply the full 'score_to_apply' to every bin touched.
+        let start_chunk = range_copy.chunk_index(start_range);
+        let scores = self.get_scores_mut_ref(st);
+
+        scores
+            .iter_mut()
+            .enumerate()
+            .skip(start_chunk)
+            .take(num_chunks)
+            .for_each(|(_, score)| {
+                *score += score_to_apply;
+            });
+    }
+
+
+    pub fn distribute_conserved_volume(
         &mut self,
         st: ScoreType,
         start_range: f64,
