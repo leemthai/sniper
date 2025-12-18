@@ -59,7 +59,7 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     current_price_outer_width: 8.0,
     plot_axis_divisions: 20,
     zone_fill_opacity_pct: 0.40,
-    background_bar_intensity_pct: 0.2, // 0.001, // 0.75,
+    background_bar_intensity_pct: 0.5, // 0.001, // 0.75,
 
     // I recommend Gold/Yellow for visibility against dark backgrounds
     active_zone_stroke_color: Color32::from_rgb(200, 185, 0), // Gold

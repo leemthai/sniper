@@ -70,7 +70,7 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
             req.pair_name.clone(),
             &req.timeseries,
             price_for_analysis,
-            &req.config.price_horizon,
+            &req.config,
         );
 
         // 3. Run Profiler (SMART CACHING OPTIMIZATION)

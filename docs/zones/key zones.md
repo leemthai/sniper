@@ -45,11 +45,6 @@ https://github.com/emilk/egui_plot/issues/200
 # https://github.com/emilk/egui_plot/pull/221
 egui_plot API update. it's for 0.35 version right? We can't use it yet?
 
-
-# Are we serializing too much? (vague guess)
-Have a look at state file soon in my spare time
-Get AI to have a look at state.json file. He can analyse
-
 # AI Question X (random stuff. not posted yet)
 ok that feels much better. I will test SIM more tmr (how to test if model is working when we sim price.... dunno. the model doesn't care much about live price does it)
 Just out of curiosity, where does the trading model actually use the current price? It's not used much is it, coz the model is mostly about zones rn rather than relationships with price.
@@ -59,22 +54,9 @@ And then test this as well:
         price_recalc_threshold_pct: 0.01,
 Then we can audit cloning and see if anything to fix (though I don't want get into another massive debugging day. Just wanna check if we have massive clones going on we can avoid. Small clones are fine tbh.)
 
-# Price change triggers
-Retest with value very low value again here;
-        price_recalc_threshold_pct: 0.01,
-Just to be sure
-Soon I will need retest this as well......
-We need to test this as well....
-        price_recalc_threshold_pct: 0.01,
-
-# Why have low wick and high wick zones largely disappeared?
-No idea. Maybe just the new pair collection? Nah
-OR they just tend to disappear as you reduce PH?
-
 # Info: New repo is called 'sniper'
 Easy enough to rename if needed
 Pages is set up but app not running coz coding issues (see WASM Version not running)
-
   
 # Tuesday
 Completey get rid of crate:: calls from app.rs coz I pasted that all in again.... and main.rs and anywhere else....
@@ -84,19 +66,6 @@ app_simulation.rs too
 # Note - to remove db files if we want to test from fresh
 cd rust/wherever lol
 rm klines.sqlite*
-
-- In-app calculations
-Are we calculating everything correctly still?
-For BTCUSDT it says:
-Evidence: 8Y 4M (52673 Candles)
-History: 8Y 4M
-Is that correct number of candles for 8Y for 5M candles?
-
-- Updating DB in background when app is running
-Do we do that yet? If so on what schedule?
-
-# DB Stuff
-test from scratch building again, in both debug and release modes
 
 # ideas to ask AI
 ask him to improve the project; either coding-based (features, coding style,  DRY, project organization, rayon for easy paralllelization, whatever u can think of) or front-end software (ui), or actual trading features (which are very underfeatured so far. We have hardly get started yet on this...)

@@ -215,10 +215,10 @@ impl ZoneSniperApp {
         if let Some(pair) = self.selected_pair.clone() {
             let price = self.get_display_price(&pair);
             let new_config = self.app_config.price_horizon.clone();
-            // log::info!("APP >> Sending Override to Engine for {}: {:.4}", pair, new_config.threshold_pct);
             self.price_horizon_overrides.insert(pair.clone(), new_config.clone());
             
             if let Some(engine) = &mut self.engine {
+                engine.update_config(self.app_config.clone()); // TEMP is this ok or extremely dangerous? Have we tried it before?
                 engine.set_price_horizon_override(pair.clone(), new_config);
                 engine.force_recalc(&pair, price);
             }

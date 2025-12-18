@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 
-use crate::config::ANALYSIS; // Use global config for defaults, or passed config
-use crate::config::PriceHorizonConfig;
+use crate::config::ANALYSIS; use crate::config::AnalysisConfig;
+// Use global config for defaults, or passed config
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
 use crate::models::cva::CVACore;
@@ -15,11 +15,12 @@ pub fn pair_analysis_pure(
     pair_name: String,
     timeseries_data: &TimeSeriesCollection,
     current_price: f64,
-    price_horizon_config: &PriceHorizonConfig,
+    config: &AnalysisConfig,
+    // price_horizon_config: &PriceHorizonConfig,
 ) -> Result<CVACore> {
     // Use Constants from Config
     let zone_count = ANALYSIS.zone_count;
-    let time_decay_factor = ANALYSIS.time_decay_factor;
+    let time_decay_factor = config.time_decay_factor;
 
     // 1. Find the Data
     // find_matching_ohlcv returns Result, so we use with_context to add the error message
@@ -33,7 +34,7 @@ pub fn pair_analysis_pure(
     // 2. Price Horizon: Calculate relevant slices based on price
     // Note: The Engine calculates this fresh every time. No "Slice Caching".
     let (slice_ranges, price_range) =
-        price_horizon::auto_select_ranges(ohlcv_time_series, current_price, price_horizon_config);
+        price_horizon::auto_select_ranges(ohlcv_time_series, current_price, &config.price_horizon);
 
     // 3. Validation
     let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();

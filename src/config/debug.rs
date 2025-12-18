@@ -84,5 +84,5 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
     // Default to a small number for quick UI testing.
     // Change this to 100 when you want to stress-test the model.
     // To remove all limits, just set a huge number like 10000
-    max_pairs_load: 20,
+    max_pairs_load: 8,
 };

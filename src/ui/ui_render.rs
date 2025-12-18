@@ -3,7 +3,7 @@ use eframe::egui::{
     TopBottomPanel, Ui, Window,
 };
 
-use crate::config::ANALYSIS;
+use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::models::cva::ScoreType;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
@@ -45,6 +45,27 @@ impl ZoneSniperApp {
                             let prev = self.app_config.price_horizon.threshold_pct;
                             if (prev - new_threshold).abs() > f64::EPSILON {
                                 self.app_config.price_horizon.threshold_pct = new_threshold;
+
+                                // --- ADAPTIVE DECAY LOGIC ---
+                                // "Drag left to Snipe (High Decay), Drag right to Invest (Low Decay)"
+                                let new_decay = AnalysisConfig::calculate_time_decay(new_threshold);
+
+                                // Apply only if changed (prevents log spam if dragging within same band)
+                                if (self.app_config.time_decay_factor - new_decay).abs()
+                                    > f64::EPSILON
+                                {
+                                    // #[cfg(debug_assertions)]
+                                    log::info!(
+                                        "🎯 ADAPTIVE SCOPE: PH {:.1}% -> TDF {:.1}",
+                                        new_threshold * 100.0,
+                                        new_decay
+                                    );
+                                    self.app_config.time_decay_factor = new_decay;
+                                }
+                                else {
+                                    log::info!("Values are TDF {} and new_decay is {}", self.app_config.time_decay_factor, new_decay);
+                                }
+                                // -----------------------------
                                 self.invalidate_all_pairs_for_global_change(
                                     "price horizon threshold changed",
                                 );
@@ -409,7 +430,6 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn render_help_panel(&mut self, ctx: &Context) {
-
         let is_sim_mode = self.is_simulation_mode();
 
         Window::new("⌨️ Keyboard Shortcuts")
@@ -547,27 +567,27 @@ impl ZoneSniperApp {
         }
 
         // 3. Handle Events
-        for event in &events {
-            match event {
-                DataGenerationEventChanged::PriceHorizonThreshold(val) => {
-                    // log::info!("UI EVENT >> Slider Changed to {:.4} ({}%)", val, val * 100.0);
-                    // Update config if changed
-                    if (self.app_config.price_horizon.threshold_pct - val).abs() > f64::EPSILON {
-                        self.app_config.price_horizon.threshold_pct = *val;
-                        self.invalidate_all_pairs_for_global_change("Price Horizon Changed");
-                    }
-                }
-                DataGenerationEventChanged::TimeHorizonDays(days) => {
-                    if self.app_config.time_horizon.default_days != *days {
-                        self.app_config.time_horizon.default_days = *days;
-                        // Journeys are suspended, but if we had them, we'd invalidate here
-                    }
-                }
-                DataGenerationEventChanged::Pair(new_pair) => {
-                    self.handle_pair_selection(new_pair.clone());
-                }
-            }
-        }
+        // for event in &events {
+        //     match event {
+        //         DataGenerationEventChanged::PriceHorizonThreshold(val) => {
+        //             // log::info!("UI EVENT >> Slider Changed to {:.4} ({}%)", val, val * 100.0);
+        //             // Update config if changed
+        //             if (self.app_config.price_horizon.threshold_pct - val).abs() > f64::EPSILON {
+        //                 self.app_config.price_horizon.threshold_pct = *val;
+        //                 self.invalidate_all_pairs_for_global_change("Price Horizon Changed");
+        //             }
+        //         }
+        //         DataGenerationEventChanged::TimeHorizonDays(days) => {
+        //             if self.app_config.time_horizon.default_days != *days {
+        //                 self.app_config.time_horizon.default_days = *days;
+        //                 // Journeys are suspended, but if we had them, we'd invalidate here
+        //             }
+        //         }
+        //         DataGenerationEventChanged::Pair(new_pair) => {
+        //             self.handle_pair_selection(new_pair.clone());
+        //         }
+        //     }
+        // }
         events
     }
 }

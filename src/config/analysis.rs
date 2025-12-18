@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize}; // Add Import
 
 use crate::utils::TimeUtils;
 
+pub const DEFAULT_PH_THRESHOLD: f64 = 0.15;
+pub const DEFAULT_TIME_DECAY: f64 = 1.5; // Manually synced to match 0.15 logic
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QualityZone {
     pub max_count: usize,        // Upper bound (e.g. 100)
@@ -98,6 +101,21 @@ pub struct AnalysisConfig {
 }
 
 impl AnalysisConfig {
+    /// The Source of Truth for the "Adaptive Decay" curve.
+    /// Maps Price Horizon % -> Time Decay Factor.
+    /// Used by both Config Initialization and UI Runtime updates.
+    pub fn calculate_time_decay(ph_threshold: f64) -> f64 {
+        if ph_threshold >= 0.50 {
+            1.0 // Macro
+        } else if ph_threshold >= 0.15 {
+            1.5 // Swing
+        } else if ph_threshold >= 0.05 {
+            2.0 // Aggressive
+        } else {
+            5.0 // Sniper
+        }
+    }
+
     pub fn get_quality_zones() -> Vec<QualityZone> {
         vec![
             QualityZone {
@@ -137,8 +155,10 @@ impl AnalysisConfig {
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     interval_width_ms: TimeUtils::MS_IN_5_MIN,
     zone_count: 256, // Goldilocks number (see private project-3eed40f.md for explanation)
-    // time_decay_factor: 1.0, // With 1.0: A consolidation zone from 3 years ago looks just as "tall" as a consolidation zone from yesterday (if they had the same volume/duration).
-    time_decay_factor: 2.0, // With 2.0, the zone from yesterday will be 2x taller/brighter than the one from 3 years ago.
+
+    // 2. Derive the default automatically
+    // 2. Use the Constant
+    time_decay_factor: DEFAULT_TIME_DECAY,
 
     zones: ZoneClassificationConfig {
         // STICKY ZONES (Volume Weighted)
@@ -185,7 +205,7 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
 
     // NEW: Initialize Default PriceHorizon
     price_horizon: PriceHorizonConfig {
-        threshold_pct: 0.15,
+        threshold_pct: DEFAULT_PH_THRESHOLD,
         min_threshold_pct: 0.001,
         max_threshold_pct: 1.0, // 1.0 = 100% Range (From 0 to 2x Current Price. Can increase this if we want to set range higher than 2x current price).
         profiler_steps: 1000,   // With 50% range, this is 0.05% per bucket
