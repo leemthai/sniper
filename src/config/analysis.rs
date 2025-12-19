@@ -133,41 +133,6 @@ impl AnalysisConfig {
             remap(ph_threshold, 0.0, 0.05, 5.0, 2.0)
         }
     }
-
-    // pub fn get_quality_zones() -> Vec<QualityZone> {
-    //     vec![
-    //         QualityZone {
-    //             max_count: 100,
-    //             label: "No-Res".to_string(),
-    //             color_rgb: (200, 50, 50),
-    //             description: "Insufficient Data (Noise)".to_string(),
-    //         },
-    //         QualityZone {
-    //             max_count: 1000,
-    //             label: "Low-Res".to_string(),
-    //             color_rgb: (200, 200, 50),
-    //             description: "Low Definition (Scalp)".to_string(),
-    //         },
-    //         QualityZone {
-    //             max_count: 10000,
-    //             label: "Med-Res".to_string(),
-    //             color_rgb: (50, 200, 50),
-    //             description: "Medium Definition (Swing)".to_string(),
-    //         },
-    //         QualityZone {
-    //             max_count: 100000,
-    //             label: "Hi-Res".to_string(),
-    //             color_rgb: (50, 200, 255),
-    //             description: "High Definition (Macro)".to_string(),
-    //         },
-    //         QualityZone {
-    //             max_count: usize::MAX,
-    //             label: "Ultra-Res".to_string(),
-    //             color_rgb: (200, 50, 255),
-    //             description: "Deep History".to_string(),
-    //         },
-    //     ]
-    // }
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
