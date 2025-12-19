@@ -194,14 +194,14 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         // This makes the model 20x more sensitive for testing.
         // TESTING ONLY CHANGE .... change back when not testing to 0.01
         // price_recalc_threshold_pct: 0.000003,
-        price_recalc_threshold_pct: 0.01,
+        price_recalc_threshold_pct: 0.0001,
         min_candles_for_analysis: 100,
     },
 
     // NEW: Initialize Default PriceHorizon
     price_horizon: PriceHorizonConfig {
         threshold_pct: DEFAULT_PH_THRESHOLD,
-        min_threshold_pct: 0.001,
+        min_threshold_pct: 0.001, // = 0.10% minimum - seems fine for stablecoins even, let's see
         max_threshold_pct: 1.0, // 1.0 = 100% Range (From 0 to 2x Current Price. Can increase this if we want to set range higher than 2x current price).
         profiler_steps: 1000,   // With 50% range, this is 0.05% per bucket
     },

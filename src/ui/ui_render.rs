@@ -141,11 +141,6 @@ impl ZoneSniperApp {
                         self.debug_background_mode,
                         &self.plot_visibility,
                     );
-
-                    // // Optional: Small loading indicator overlay if updating in background
-                    // if is_calculating {
-                    //     ui.ctx().set_cursor_icon(CursorIcon::Progress);
-                    // }
                 }
                 // PRIORITY 3: CALCULATING (Initial Load)
                 else if is_calculating {

@@ -212,7 +212,8 @@ impl TradingModel {
                 let adaptive_threshold = (mean + (params.sigma * std_dev)).clamp(0.05, 0.95);
 
                 // --- DIAGNOSTIC LOGGING ---
-                #[cfg(debug_assertions)]
+                // #[cfg(debug_assertions)]
+                if false
                 {
                     let count = normalized.len();
                     let above = normalized.iter().filter(|&&v| v >= adaptive_threshold).count();
