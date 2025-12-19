@@ -209,7 +209,7 @@ impl<'a> DataGenerationPanel<'a> {
                 *show_help = !*show_help;
             }
             ui.with_layout(
-                eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                Layout::right_to_left(Align::Center),
                 |ui| {
                     ui.label("%");
 
@@ -230,10 +230,10 @@ impl<'a> DataGenerationPanel<'a> {
                     };
 
                     let response = ui.add(
-                        eframe::egui::TextEdit::singleline(&mut text_buf)
+                        TextEdit::singleline(&mut text_buf)
                             .id(id)
                             .desired_width(50.0)
-                            .horizontal_align(eframe::egui::Align::RIGHT),
+                            .horizontal_align(Align::RIGHT),
                     );
 
                     // Save changes while typing
@@ -244,7 +244,7 @@ impl<'a> DataGenerationPanel<'a> {
                     // Commit changes
                     if response.lost_focus()
                         || (response.changed()
-                            && ui.input(|i| i.key_pressed(eframe::egui::Key::Enter)))
+                            && ui.input(|i| i.key_pressed(Key::Enter)))
                     {
                         if let Ok(val) = text_buf.parse::<f64>() {
                             let val_clamped = val.clamp(min_pct * 100.0, max_pct * 100.0);
