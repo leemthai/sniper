@@ -61,11 +61,13 @@ pub struct UiText {
     pub ph_help_colors_title: &'static str,
     pub ph_help_tuning_title: &'static str,
 
-    pub ph_help_colors_headers: (&'static str, &'static str, &'static str),
+    pub ph_help_density_header: (&'static str, &'static str, &'static str),
+    pub ph_help_density_rows: &'static [(&'static str, &'static str, &'static str)],
 
-    pub ph_help_definitions: &'static [(&'static str, &'static str)], // (Term, Def)
-    pub ph_help_table_headers: (&'static str, &'static str, &'static str), // (Factor, Effect, Action)
-    pub ph_help_table_rows: &'static [(&'static str, &'static str, &'static str)],
+    pub ph_help_scope_header: (&'static str, &'static str, &'static str),
+    pub ph_help_scope_rows: &'static [(&'static str, &'static str, &'static str)],
+
+    pub ph_help_definitions: &'static [(&'static str, &'static str)],
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -93,19 +95,19 @@ pub const UI_TEXT: UiText = UiText {
     label_hvz: "High Volume Zones",
     label_lower_wick_zones: "Lower Wick Zones",
     label_upper_wick_zones: "Upper Wick Zones",
-    label_reversal_support: "`High Lower Wick Count Zone` (HLWCZ)  (reversal likely) ",
-    label_reversal_resistance: "`High Upper Wick Count Zone` (HUWCZ)  (reversal likely)",
-    label_hvz_above: "`High Volume Zone` (HVZ) is above (if bullish, acts as future target price)",
-    label_hvz_beneath: "`High Volume Zone` (HVZ) is below (if bearish, acts as future target price)",
-    label_hvz_within: "Inside `High Volume Zone` (HVZ) now (consolidating...)",
+    label_reversal_support: "Demand Zone (Buyers Here)",
+    label_reversal_resistance: "Supply Zone (Sellers Here)",
+    label_hvz_above: "`High Volume Zone` is above (if bullish, acts as future target price)",
+    label_hvz_beneath: "`High Volume Zone` is below (if bearish, acts as future target price)",
+    label_hvz_within: "Inside `High Volume Zone` now (consolidating...)",
 
-    label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Count ,(3) Upper Wick Count",
+    label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Count (Find Demand Zones) ,(3) Upper Wick Count (Find Supply Zones)",
     label_help_sim_toggle_direction: "Toggle direction (⬆️ UP / ⬇️ DOWN)",
     label_help_sim_step_size: "Cycle step size (0.1% → 1% → 5% → 10%)",
     label_help_sim_activate_price_change: "Activate price change in current direction",
-    label_help_sim_jump_hvz: "Jump to next high volume zone (HVZ)",
-    label_help_sim_jump_lower_wicks: "Jump to next high lower wick count zone (HLWCZ)",
-    label_help_sim_jump_higher_wicks: "Jump to next high upper wick count zone (HUWCZ)",
+    label_help_sim_jump_hvz: "Jump to next High Volume Zone",
+    label_help_sim_jump_lower_wicks: "Jump to next Demand Zone",
+    label_help_sim_jump_higher_wicks: "Jump to next Supply Zone",
 
     label_candle_count: "Candles",
     label_volatility: "Volatility (Avg True Range)",
@@ -113,7 +115,7 @@ pub const UI_TEXT: UiText = UiText {
     error_insufficient_data_title: "Analysis Paused: Range Too Narrow",
 
     error_insufficient_data_body: "The current Price Horizon does not capture enough price history to identify reliable zones.\n\n\
-                                   👉 Action: Drag the Price Horizon slider to the right (aim for the Green zone if possible).",
+                                   👉 Action: Drag the Price Horizon slider to the right (aim for High Density / Yellow areas).",
 
     word_candle_singular: "Candle",
     word_candle_plural: "Candles",
@@ -131,44 +133,54 @@ pub const UI_TEXT: UiText = UiText {
     ph_help_colors_title: "Signal Quality",
     ph_help_tuning_title: "Tuning Guide",
 
-    ph_help_colors_headers: ("Zone Color", "Candle Count", "Reliability"),
-    ph_help_definitions: &[
+    // Table 1: HEATMAP (Density)
+    ph_help_density_header: ("Color", "Density", "Significance"),
+    ph_help_density_rows: &[
         (
-            "Price Horizon",
-            "The vertical percentage range (±%) around the current price used for analysis.",
+            "Deep Purple",
+            "Low (< 10%)",
+            "Statistically Insignificant (Noise)",
         ),
+        ("Orange/Red", "Medium", "Standard Statistical Confidence"),
         (
-            "Evidence",
-            "The total time the price actually spent within this horizon (Active Duration).",
-        ),
-        (
-            "History",
-            "The calendar time elapsed between the first and last matching candle (Span).",
-        ),
-        (
-            "Density",
-            "The ratio of Evidence to History. High density = Sticky / Consolidation. Low density = Volatile / Rejection.",
+            "Bright Yellow",
+            "High (> 80%)",
+            "High Statistical Significance",
         ),
     ],
 
-    ph_help_table_headers: ("Market Factor", "Candle Count", "Suggested Action"),
+    // Table 2: SCOPE (Trade Style)
+    ph_help_scope_header: ("Horizon %", "Style", "Focus"),
+    ph_help_scope_rows: &[
+        (
+            "< 5%",
+            "Sniper / Scalp",
+            "Immediate price action (High Decay)",
+        ),
+        (
+            "5% - 15%",
+            "Swing Trade",
+            "Balanced recent history (Med Decay)",
+        ),
+        (
+            "> 15%",
+            "Macro / Invest",
+            "Deep historical structure (Low Decay)",
+        ),
+    ],
 
-    ph_help_table_rows: &[
+    ph_help_definitions: &[
         (
-            "High Volatility",
-            "Low (Price moves fast)",
-            "Increase Horizon %",
+            "Evidence",
+            "Total duration of actual data (candle count x interval).",
         ),
         (
-            "Stablecoin / Low Vol",
-            "High (Price grinds)",
-            "Decrease Horizon %",
+            "History",
+            "Calendar time elapsed between the first and last candle.",
         ),
-        ("New Listing", "Low (No history)", "Increase Horizon %"),
         (
-            "Historical Structure",
-            "High (Previous visits)",
-            "Keep Steady",
+            "Density",
+            "Ratio of Evidence to History. (Yellow = High Data Quality).",
         ),
     ],
 };

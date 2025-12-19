@@ -110,7 +110,7 @@ impl OhlcvTimeSeries {
                 0.0
             };
 
-            if gap_pct > 1.0 {
+            if gap_pct > 0.2 {
                 log::info!(
                     "📉 Gap Report [{}]: {:.2}% Missing. (Has {} candles, Timeframe implies {})", 
                     pair_interval.name(), 

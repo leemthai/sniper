@@ -130,7 +130,7 @@ impl PlotLayer for ReversalZoneLayer {
                 //     .map(|p| superzone.contains(p) || superzone.price_center < p)
                 //     .unwrap_or(false);
 
-                let color = get_zone_status_color(superzone, current_price);
+                let color = PLOT_CONFIG.low_wicks_zone_color;
                 let label = UI_TEXT.label_reversal_support;
                 let stroke = get_stroke(superzone, current_price, color);
 
@@ -157,7 +157,7 @@ impl PlotLayer for ReversalZoneLayer {
                 //     .unwrap_or(false);
 
                 // if is_relevant {
-                let color = get_zone_status_color(superzone, current_price);
+                let color = PLOT_CONFIG.high_wicks_zone_color;
                 let label = UI_TEXT.label_reversal_resistance;
                 let stroke = get_stroke(superzone, current_price, color);
 
@@ -216,19 +216,19 @@ enum ZoneShape {
     TriangleDown,
 }
 
-fn get_zone_status_color(zone: &SuperZone, current_price: Option<f64>) -> Color32 {
-    if let Some(price) = current_price {
-        if zone.contains(price) {
-            PLOT_CONFIG.sticky_zone_color // Purple (Active)
-        } else if zone.price_center < price {
-            PLOT_CONFIG.support_zone_color // Green
-        } else {
-            PLOT_CONFIG.resistance_zone_color // Red
-        }
-    } else {
-        PLOT_CONFIG.sticky_zone_color
-    }
-}
+// fn get_zone_status_color(zone: &SuperZone, current_price: Option<f64>) -> Color32 {
+//     if let Some(price) = current_price {
+//         if zone.contains(price) {
+//             PLOT_CONFIG.sticky_zone_color // Purple (Active)
+//         } else if zone.price_center < price {
+//             PLOT_CONFIG.support_zone_color // Green
+//         } else {
+//             PLOT_CONFIG.resistance_zone_color // Red
+//         }
+//     } else {
+//         PLOT_CONFIG.sticky_zone_color
+//     }
+// }
 
 fn get_stroke(zone: &SuperZone, current_price: Option<f64>, base_color: Color32) -> Stroke {
     let is_active = current_price.map(|p| zone.contains(p)).unwrap_or(false);

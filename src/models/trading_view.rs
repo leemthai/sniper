@@ -180,7 +180,7 @@ impl TradingModel {
 
         crate::trace_time!("Classify & Cluster Zones", 1000, {
             // Helper closure
-            let process_layer = |raw_data: &[f64], params: ZoneParams, resource_total: f64, layer_name: &str| {
+            let process_layer = |raw_data: &[f64], params: ZoneParams, resource_total: f64, _layer_name: &str| {
                 
                 // STEP 1: VIABILITY GATE (Absolute)
                 // Filter out bins that represent insignificant noise relative to the total.
@@ -224,7 +224,7 @@ impl TradingModel {
 
                     log::info!(
                         "STATS [{}] for {}: TotalRes={:.1}  | Viable Threshold={:.1} | Mean={:.3} | StdDev={:.3} | Sigma={:.1}",
-                        layer_name, cva.pair_name, resource_total, resource_total * params.viability_pct, mean, std_dev, params.sigma
+                        _layer_name, cva.pair_name, resource_total, resource_total * params.viability_pct, mean, std_dev, params.sigma
                     );
                     
                     if killed_by_gate > 0 {

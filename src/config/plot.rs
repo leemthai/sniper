@@ -35,15 +35,31 @@ pub struct PlotConfig {
 }
 
 pub const PLOT_CONFIG: PlotConfig = PlotConfig {
-    support_zone_color: Color32::from_rgb(0, 200, 0), // Green
-    resistance_zone_color: Color32::from_rgb(200, 0, 0), // Red
-    sticky_zone_color: Color32::from_rgb(148, 0, 211), // Dark Violet
-    price_within_any_zone_color: Color32::from_rgb(255, 165, 0), // Orange (Active)
+    // STICKY ZONES ("The Terrain" - Earthy/Solid)
+    // Darker Green for Support below
+    support_zone_color: Color32::from_rgb(34, 139, 34),    // Forest Green
+    // Darker Red for Resistance above
+    resistance_zone_color: Color32::from_rgb(178, 34, 34), // Firebrick Red
+    
+    // Generic sticky (fallback)
+    sticky_zone_color: Color32::from_rgb(148, 0, 211),
+
+    // ACTIVE ZONE ("The Battlefield" - Highlight)
+    // Changed to Gold to denote the current engagement area
+    price_within_any_zone_color: Color32::from_rgb(255, 215, 0), // Gold
+
+    // PRICE LINE
     current_price_color: Color32::from_rgb(255, 215, 0), // Gold
     current_price_outer_color: Color32::from_rgb(255, 0, 0), // Red border
-    low_wicks_zone_color: Color32::from_rgb(0, 255, 255), // Cyan
-    high_wicks_zone_color: Color32::from_rgb(255, 20, 147), // Deep Pink ((To distinguish from Orange Active zones))
+
+    // REVERSAL/WICK ZONES ("The Forces" - Neon/Bright)
+    // Cyan = Buyers (Demand)
+    low_wicks_zone_color: Color32::from_rgb(0, 255, 255),   // Cyan / Electric Blue
+    // Magenta = Sellers (Supply)
+    high_wicks_zone_color: Color32::from_rgb(255, 0, 255),  // Magenta / Fuchsia
+
     default_bar_color: Color32::from_rgb(255, 165, 0),
+    
     // From low importance (navy blue) to high importance (dark red)
     zone_gradient_colors: &[
         "#000080", // Navy blue
@@ -54,14 +70,19 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
         "#b22222", // Firebrick
         "#8b0000", // Dark red
     ],
+    
     zone_boundary_line_width: 2.0,
     current_price_line_width: 4.0,
     current_price_outer_width: 8.0,
     plot_axis_divisions: 20,
+    
+    // 40% Opacity allows the "Neon" wicks to blend with the "Earthy" walls
+    // producing unique colors (e.g. Cyan + Red = Purple Conflict Zone)
     zone_fill_opacity_pct: 0.40,
-    background_bar_intensity_pct: 0.5, // 0.001, // 0.75,
+    
+    background_bar_intensity_pct: 0.5,
 
-    // I recommend Gold/Yellow for visibility against dark backgrounds
-    active_zone_stroke_color: Color32::from_rgb(200, 185, 0), // Gold
-    active_zone_stroke_width: 1.5, 
+    // Highlight stroke for active zones
+    active_zone_stroke_color: Color32::from_rgb(255, 255, 255), // White for max contrast on Gold
+    active_zone_stroke_width: 1.5,
 };

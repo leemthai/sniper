@@ -7,15 +7,15 @@ use crate::utils::TimeUtils;
 pub const DEFAULT_PH_THRESHOLD: f64 = 0.15;
 pub const DEFAULT_TIME_DECAY: f64 = 1.5; // Manually synced to match 0.15 logic
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct QualityZone {
-    pub max_count: usize,        // Upper bound (e.g. 100)
-    pub label: String,           // "No Res"
-    pub color_rgb: (u8, u8, u8), // (255, 100, 100)
+// #[derive(Clone, Debug, Serialize, Deserialize)]
+// pub struct QualityZone {
+//     pub max_count: usize,        // Upper bound (e.g. 100)
+//     pub label: String,           // "No Res"
+//     pub color_rgb: (u8, u8, u8), // (255, 100, 100)
 
-    #[serde(default)]
-    pub description: String,
-}
+//     #[serde(default)]
+//     pub description: String,
+// }
 
 /// Configuration for the Price Horizon.
 /// Determines the vertical price range of interest relative to the current price.
@@ -134,40 +134,40 @@ impl AnalysisConfig {
         }
     }
 
-    pub fn get_quality_zones() -> Vec<QualityZone> {
-        vec![
-            QualityZone {
-                max_count: 100,
-                label: "No-Res".to_string(),
-                color_rgb: (200, 50, 50),
-                description: "Insufficient Data (Noise)".to_string(),
-            },
-            QualityZone {
-                max_count: 1000,
-                label: "Low-Res".to_string(),
-                color_rgb: (200, 200, 50),
-                description: "Low Definition (Scalp)".to_string(),
-            },
-            QualityZone {
-                max_count: 10000,
-                label: "Med-Res".to_string(),
-                color_rgb: (50, 200, 50),
-                description: "Medium Definition (Swing)".to_string(),
-            },
-            QualityZone {
-                max_count: 100000,
-                label: "Hi-Res".to_string(),
-                color_rgb: (50, 200, 255),
-                description: "High Definition (Macro)".to_string(),
-            },
-            QualityZone {
-                max_count: usize::MAX,
-                label: "Ultra-Res".to_string(),
-                color_rgb: (200, 50, 255),
-                description: "Deep History".to_string(),
-            },
-        ]
-    }
+    // pub fn get_quality_zones() -> Vec<QualityZone> {
+    //     vec![
+    //         QualityZone {
+    //             max_count: 100,
+    //             label: "No-Res".to_string(),
+    //             color_rgb: (200, 50, 50),
+    //             description: "Insufficient Data (Noise)".to_string(),
+    //         },
+    //         QualityZone {
+    //             max_count: 1000,
+    //             label: "Low-Res".to_string(),
+    //             color_rgb: (200, 200, 50),
+    //             description: "Low Definition (Scalp)".to_string(),
+    //         },
+    //         QualityZone {
+    //             max_count: 10000,
+    //             label: "Med-Res".to_string(),
+    //             color_rgb: (50, 200, 50),
+    //             description: "Medium Definition (Swing)".to_string(),
+    //         },
+    //         QualityZone {
+    //             max_count: 100000,
+    //             label: "Hi-Res".to_string(),
+    //             color_rgb: (50, 200, 255),
+    //             description: "High Definition (Macro)".to_string(),
+    //         },
+    //         QualityZone {
+    //             max_count: usize::MAX,
+    //             label: "Ultra-Res".to_string(),
+    //             color_rgb: (200, 50, 255),
+    //             description: "Deep History".to_string(),
+    //         },
+    //     ]
+    // }
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
@@ -186,7 +186,13 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
 
             // Absolute: Bin must hold > 0.1% of Total Volume
             viability_pct: 0.001,
-            // Relative: Keep peaks > 0.5 StdDev above mean (Broad definition of structure)
+
+            // Sigma 0.5 (Broad Acceptance):
+            // Volume is "Fat". Market structure isn't just the single highest peak;
+            // it is the broad shoulders of activity around it.
+            // We use a low Sigma to capture the "Bulk" of the volume profile,
+            // ensuring we see the full context of where trading has occurred,
+            // not just the extreme outliers.
             sigma: 0.5,
         },
 
@@ -195,9 +201,13 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
             smooth_pct: 0.005, // 0.5% (Low) - Keep wicks sharp
             gap_pct: 0.0,      // 0.0% - Strict separation. Don't create ghost zones.
 
-            // viability_pct: 0.002, // Absolute: Bin must be hit by > 0.2% of Total Candles (e.g. 2 candles per 1000)
-            viability_pct: 0.0005, // 0.05% 
-            // Relative: Keep peaks > 1.5 StdDev above mean (Only sharp rejections)
+            viability_pct: 0.0005, //  // Absolute: Bin must be hit by > 0.05% of Total Candles (this used to be 0.05% but that was considered too constrictive)
+            // Sigma 1.5 (Strict Filtering):
+            // Wicks are "Sharp". Price wicks constantly due to noise.
+            // A Rejection Zone is only valid if it represents a statistical anomaly
+            // (a coordinated rejection at a specific level).
+            // We use a high Sigma to filter out the background noise of random wicks
+            // and only highlight areas with significant, repeated rejection intensity.
             sigma: 1.5,
         },
     },

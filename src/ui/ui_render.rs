@@ -548,6 +548,7 @@ impl ZoneSniperApp {
             self.app_config.time_horizon.default_days,
             profile.as_ref(),
             actual_count,
+            self.app_config.interval_width_ms,
         );
 
         let events = panel.render(ui, &mut self.show_ph_help);

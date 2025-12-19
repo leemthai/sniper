@@ -1,3 +1,4 @@
+use colorgrad::Gradient;
 use eframe::egui::{
     Align, Align2, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
     RichText, ScrollArea, Sense, Slider, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2,
@@ -6,7 +7,7 @@ use strum::IntoEnumIterator;
 
 use crate::config::ANALYSIS;
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{AnalysisConfig, PriceHorizonConfig};
+use crate::config::{PriceHorizonConfig};
 
 use crate::domain::pair_interval::PairInterval;
 
@@ -73,6 +74,7 @@ pub struct DataGenerationPanel<'a> {
     time_horizon_days: u64,
     profile: Option<&'a HorizonProfile>,
     actual_candle_count: usize,
+    interval_ms: i64,
 }
 
 impl<'a> DataGenerationPanel<'a> {
@@ -84,6 +86,7 @@ impl<'a> DataGenerationPanel<'a> {
         time_horizon_days: u64,
         profile: Option<&'a HorizonProfile>,
         actual_candle_count: usize,
+        interval_ms: i64,
     ) -> Self {
         Self {
             zone_count,
@@ -93,6 +96,7 @@ impl<'a> DataGenerationPanel<'a> {
             time_horizon_days,
             profile,
             actual_candle_count,
+            interval_ms,
         }
     }
 
@@ -102,91 +106,65 @@ impl<'a> DataGenerationPanel<'a> {
             .resizable(false)
             .collapsible(true)
             .show(ctx, |ui| {
-                ui.set_max_width(500.0);
+                ui.set_max_width(600.0);
 
-                // 1. Metrics Section
-                ui.label(RichText::new(UI_TEXT.ph_help_metrics_title).strong());
+                // 1. METRICS DEFINITIONS
+                ui.label(RichText::new("Definitions").strong());
                 for (term, def) in UI_TEXT.ph_help_definitions {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(format!("• {}:", term)).strong());
                         ui.label(*def);
                     });
                 }
-
                 ui.add_space(10.0);
                 ui.separator();
-                ui.add_space(10.0);
 
-                // 2. Signal Quality Section (Colors)
-                ui.label(RichText::new(UI_TEXT.ph_help_colors_title).strong());
-
-                Grid::new("ph_colors_grid")
+                // 2. HEATMAP LEGEND (Colors)
+                ui.label(RichText::new("1. Reading the Heatmap (Data Density)").strong());
+                Grid::new("ph_help_density")
                     .striped(true)
                     .spacing([20.0, 8.0])
                     .show(ui, |ui| {
-                        // Header
-                        let (h1, h2, h3) = UI_TEXT.ph_help_colors_headers;
+                        let (h1, h2, h3) = UI_TEXT.ph_help_density_header;
                         ui.label(RichText::new(h1).underline());
                         ui.label(RichText::new(h2).underline());
                         ui.label(RichText::new(h3).underline());
                         ui.end_row();
 
-                        // Dynamic Rows from Config
-                        let zones = AnalysisConfig::get_quality_zones();
-                        let mut prev_max = 0;
-
-                        for zone in zones {
-                            // Column 1: Colored Name
-                            let color = Color32::from_rgb(
-                                zone.color_rgb.0,
-                                zone.color_rgb.1,
-                                zone.color_rgb.2,
-                            );
-                            ui.label(RichText::new(&zone.label).strong().color(color));
-
-                            // Column 2: Range (Prev - Max)
-                            let range_text = if zone.max_count == usize::MAX {
-                                format!("> {}", prev_max)
-                            } else if prev_max == 0 {
-                                format!("< {}", zone.max_count)
-                            } else {
-                                format!("{} - {}", prev_max, zone.max_count)
+                        for (col_name, density, sig) in UI_TEXT.ph_help_density_rows {
+                            // Manual coloring for the help text to match the gradient approx
+                            let color = match *col_name {
+                                "Deep Purple" => Color32::from_rgb(45, 11, 89),
+                                "Orange/Red" => Color32::from_rgb(237, 105, 37),
+                                "Bright Yellow" => Color32::from_rgb(251, 180, 26),
+                                _ => Color32::GRAY,
                             };
-                            ui.label(range_text);
 
-                            // Column 3: Description
-                            ui.label(&zone.description);
-
+                            ui.label(RichText::new(*col_name).color(color));
+                            ui.label(*density);
+                            ui.label(*sig);
                             ui.end_row();
-
-                            // Update tracker
-                            prev_max = zone.max_count;
                         }
                     });
 
                 ui.add_space(10.0);
                 ui.separator();
-                ui.add_space(10.0);
-
-                // 3. Tuning Guide Section
-                ui.label(RichText::new(UI_TEXT.ph_help_tuning_title).strong());
-
-                Grid::new("ph_tuning_grid")
+                // 3. SCOPE LEGEND (Trade Styles)
+                ui.label(RichText::new("2. Selecting your Scope (Trade Style)").strong());
+                Grid::new("ph_help_scope")
                     .striped(true)
                     .spacing([20.0, 8.0])
                     .show(ui, |ui| {
-                        // Header
-                        let (h1, h2, h3) = UI_TEXT.ph_help_table_headers;
+                        let (h1, h2, h3) = UI_TEXT.ph_help_scope_header;
                         ui.label(RichText::new(h1).underline());
                         ui.label(RichText::new(h2).underline());
                         ui.label(RichText::new(h3).underline());
                         ui.end_row();
 
-                        // Rows
-                        for (c1, c2, c3) in UI_TEXT.ph_help_table_rows {
-                            ui.label(*c1);
-                            ui.label(*c2);
-                            ui.label(*c3);
+                        for (range, style, focus) in UI_TEXT.ph_help_scope_rows {
+                            ui.label(*range); // <--- Added *
+                            ui.label(RichText::new(*style).strong().color(Color32::LIGHT_BLUE));
+                            ui.label(*focus);
                             ui.end_row();
                         }
                     });
@@ -208,72 +186,99 @@ impl<'a> DataGenerationPanel<'a> {
             if ui.button("(?)").on_hover_cursor(CursorIcon::Help).clicked() {
                 *show_help = !*show_help;
             }
-            ui.with_layout(
-                Layout::right_to_left(Align::Center),
-                |ui| {
-                    ui.label("%");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label("%");
 
-                    let id = ui.make_persistent_id("ph_input_box");
-                    let has_focus = ui.memory(|m| m.has_focus(id));
+                let id = ui.make_persistent_id("ph_input_box");
+                let has_focus = ui.memory(|m| m.has_focus(id));
 
-                    // LOGIC:
-                    // 1. If Focused: Read from Temp (User is typing)
-                    // 2. If Not Focused: Read from Variable (Source of Truth) AND update Temp (Sync)
-                    let mut text_buf = if has_focus {
-                        ui.data(|d| d.get_temp(id))
-                            .unwrap_or_else(|| format!("{:.3}", current_pct * 100.0))
-                    } else {
-                        let s = format!("{:.3}", current_pct * 100.0);
-                        // Keep temp synchronized so it's ready the moment we click
-                        ui.data_mut(|d| d.insert_temp(id, s.clone()));
-                        s
-                    };
+                // LOGIC:
+                // 1. If Focused: Read from Temp (User is typing)
+                // 2. If Not Focused: Read from Variable (Source of Truth) AND update Temp (Sync)
+                let mut text_buf = if has_focus {
+                    ui.data(|d| d.get_temp(id))
+                        .unwrap_or_else(|| format!("{:.3}", current_pct * 100.0))
+                } else {
+                    let s = format!("{:.3}", current_pct * 100.0);
+                    // Keep temp synchronized so it's ready the moment we click
+                    ui.data_mut(|d| d.insert_temp(id, s.clone()));
+                    s
+                };
 
-                    let response = ui.add(
-                        TextEdit::singleline(&mut text_buf)
-                            .id(id)
-                            .desired_width(50.0)
-                            .horizontal_align(Align::RIGHT),
-                    );
+                let response = ui.add(
+                    TextEdit::singleline(&mut text_buf)
+                        .id(id)
+                        .desired_width(50.0)
+                        .horizontal_align(Align::RIGHT),
+                );
 
-                    // Save changes while typing
-                    if response.changed() {
-                        ui.data_mut(|d| d.insert_temp(id, text_buf.clone()));
+                // Save changes while typing
+                if response.changed() {
+                    ui.data_mut(|d| d.insert_temp(id, text_buf.clone()));
+                }
+
+                // Commit changes
+                if response.lost_focus()
+                    || (response.changed() && ui.input(|i| i.key_pressed(Key::Enter)))
+                {
+                    if let Ok(val) = text_buf.parse::<f64>() {
+                        let val_clamped = val.clamp(min_pct * 100.0, max_pct * 100.0);
+                        let new_val = val_clamped / 100.0;
+
+                        current_pct = new_val;
+                        changed = Some(new_val);
+
+                        // Update buffer to show the clamped/committed value
+                        let clean_text = format!("{:.3}", val_clamped);
+                        ui.data_mut(|d| d.insert_temp(id, clean_text));
                     }
-
-                    // Commit changes
-                    if response.lost_focus()
-                        || (response.changed()
-                            && ui.input(|i| i.key_pressed(Key::Enter)))
-                    {
-                        if let Ok(val) = text_buf.parse::<f64>() {
-                            let val_clamped = val.clamp(min_pct * 100.0, max_pct * 100.0);
-                            let new_val = val_clamped / 100.0;
-
-                            current_pct = new_val;
-                            changed = Some(new_val);
-
-                            // Update buffer to show the clamped/committed value
-                            let clean_text = format!("{:.3}", val_clamped);
-                            ui.data_mut(|d| d.insert_temp(id, clean_text));
-                        }
-                    }
-                },
-            );
+                }
+            });
         });
 
         // NEW: Initialize Log Mapper
         let mapper = LogMapper::new(min_pct, max_pct);
 
-        // Fetch Colors
-        let quality_zones = AnalysisConfig::get_quality_zones();
-        let get_color = |count: usize| -> Color32 {
-            for zone in &quality_zones {
-                if count <= zone.max_count {
-                    return Color32::from_rgb(zone.color_rgb.0, zone.color_rgb.1, zone.color_rgb.2);
-                }
+        // --- VISUALIZATION STRATEGY: INFERNO HEATMAP ---
+        // Instead of using discrete 'QualityZone' buckets (Red/Green/Blue),
+        // we use a continuous gradient. This distinguishes "Data Density" (PH Bar)
+        // from "Trade Signals" (Cyan/Magenta Wicks) on the main chart.
+
+        let max_count = if let Some(p) = self.profile {
+            p.max_candle_count
+        } else {
+            0
+        };
+
+        // Define Gradient (Deep Purple -> Orange -> Yellow)
+        // FIXED: Use GradientBuilder and preset module
+        let gradient = colorgrad::GradientBuilder::new()
+            .colors(&[
+                colorgrad::Color::from_html("#2d0b59").unwrap(), // Deep Purple
+                colorgrad::Color::from_html("#781c6d").unwrap(), // Purple
+                colorgrad::Color::from_html("#bc3754").unwrap(), // Red-Pink
+                colorgrad::Color::from_html("#ed6925").unwrap(), // Orange
+                colorgrad::Color::from_html("#fbb41a").unwrap(), // Gold/Yellow
+                colorgrad::Color::from_html("#fcffa4").unwrap(), // Pale Yellow
+            ])
+            .build::<colorgrad::LinearGradient>() // Explicit linear interpolation
+            .expect("Failed to build Price Horizon Gradient");
+
+        // Define Color Function
+        let get_color = move |count: usize| -> Color32 {
+            if max_count == 0 || count == 0 {
+                return Color32::TRANSPARENT; // Or Color32::from_rgb(45, 11, 89) for solid background
             }
-            Color32::from_rgb(200, 50, 255)
+
+            // Normalize current bucket against the profile's max
+            let val = count as f64;
+            let max = max_count as f64;
+
+            // Use sqrt curve so lower-mid values don't disappear into the dark
+            let t = (val / max).sqrt();
+
+            let rgba = gradient.at(t as f32).to_rgba8();
+            Color32::from_rgb(rgba[0], rgba[1], rgba[2])
         };
 
         if let Some(profile) = self.profile {
@@ -355,7 +360,7 @@ impl<'a> DataGenerationPanel<'a> {
                 painter.rect_filled(handle_rect, 1.0, Color32::WHITE);
             }
 
-            self.render_horizon_report(ui, current_pct, profile, get_color);
+            self.render_horizon_report(ui, current_pct, profile);
         } else {
             self.render_loading_state(ui);
         }
@@ -391,7 +396,6 @@ impl<'a> DataGenerationPanel<'a> {
         ui: &mut Ui,
         current_pct: f64,
         profile: &HorizonProfile,
-        get_color: impl Fn(usize) -> Color32,
     ) {
         ui.vertical(|ui| {
             ui.add_space(4.0);
@@ -413,22 +417,33 @@ impl<'a> DataGenerationPanel<'a> {
             }) {
                 let is_current_config =
                     (current_pct - self.price_horizon_config.threshold_pct).abs() < f64::EPSILON;
+
+                // 1. Get Authoritative Count
                 let count = if is_current_config {
                     self.actual_candle_count
                 } else {
                     bucket.candle_count
                 };
 
+                // 2. Calculate History (Span of Time)
+                // "How long is the calendar period covered by this range?"
                 let span_ms = bucket.max_ts.saturating_sub(bucket.min_ts);
-                let span_days = span_ms as f64 / (1000.0 * 60.0 * 60.0 * 24.0);
-                let density_pct = if span_days > 0.001 {
-                    (bucket.duration_days / span_days) * 100.0
+                let history_days = span_ms as f64 / (1000.0 * 60.0 * 60.0 * 24.0);
+
+                // 3. Calculate Evidence (Mass of Data)
+                // "How much actual data do we have?" (Count * 5mins)
+                let interval_ms = self.interval_ms as f64;
+                let evidence_ms = count as f64 * interval_ms;
+                let evidence_days = evidence_ms / (1000.0 * 60.0 * 60.0 * 24.0);
+
+                // 4. Calculate Density
+                let density_pct = if history_days > 0.001 {
+                    (evidence_days / history_days) * 100.0
                 } else {
                     0.0
                 };
-                let color = get_color(count);
 
-                // Row A: Evidence
+                // Row A: Evidence (Actual Data Duration)
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(format!("{}:", UI_TEXT.ph_label_evidence))
@@ -438,13 +453,15 @@ impl<'a> DataGenerationPanel<'a> {
                     ui.label(
                         RichText::new(format!(
                             "{} ({})",
-                            format_duration_context(bucket.duration_days),
+                            format_duration_context(evidence_days), // Use calculated evidence
                             format_candle_count(count)
                         ))
-                        .color(color),
+                        .strong()
+                        .color(Color32::LIGHT_GRAY),
                     );
                 });
-                // Row B: History
+
+                // Row B: History (Calendar Span)
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(format!("{}:", UI_TEXT.ph_label_history))
@@ -452,20 +469,21 @@ impl<'a> DataGenerationPanel<'a> {
                             .color(Color32::GRAY),
                     );
                     ui.label(
-                        RichText::new(format_duration_context(span_days))
+                        RichText::new(format_duration_context(history_days))
                             .color(Color32::LIGHT_BLUE),
                     );
                 });
-                // Row C: Density
+
+                // Row C: Density (Quality)
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(format!("{}:", UI_TEXT.ph_label_density))
                             .small()
                             .color(Color32::GRAY),
                     );
-                    let density_color = if density_pct > 50.0 {
+                    let density_color = if density_pct > 90.0 {
                         Color32::GREEN
-                    } else if density_pct > 10.0 {
+                    } else if density_pct > 50.0 {
                         Color32::YELLOW
                     } else {
                         Color32::LIGHT_RED
