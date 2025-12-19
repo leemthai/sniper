@@ -47,8 +47,6 @@ pub struct LoadingState {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PlotVisibility {
     pub sticky: bool,
-    pub support: bool,
-    pub resistance: bool,
     pub low_wicks: bool,
     pub high_wicks: bool,
     pub pivot_lines: bool,
@@ -60,8 +58,6 @@ impl Default for PlotVisibility {
     fn default() -> Self {
         Self {
             sticky: true,
-            support: true,
-            resistance: true,
             low_wicks: false,
             high_wicks: false,
             pivot_lines: false,
@@ -313,10 +309,18 @@ impl ZoneSniperApp {
     }
     
     pub(super) fn handle_global_shortcuts(&mut self, ctx: &Context) {
+
+        // FIX: If the user is typing in a text box (wants_keyboard_input), 
+        // do NOT trigger global hotkeys.
+        if ctx.wants_keyboard_input() {
+            return;
+        }
+
+
         ctx.input(|i| {
             if i.key_pressed(Key::Num1) { self.plot_visibility.sticky = !self.plot_visibility.sticky; }
-            if i.key_pressed(Key::Num2) { self.plot_visibility.support = !self.plot_visibility.support; self.plot_visibility.resistance = !self.plot_visibility.resistance; }
-            if i.key_pressed(Key::Num3) { self.plot_visibility.low_wicks = !self.plot_visibility.low_wicks; self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks; }
+            if i.key_pressed(Key::Num2) { self.plot_visibility.low_wicks = !self.plot_visibility.low_wicks; }
+            if i.key_pressed(Key::Num3) { self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks; }
             if i.key_pressed(Key::H) { self.show_debug_help = !self.show_debug_help; }
             if i.key_pressed(Key::Escape) { self.show_debug_help = false; self.show_ph_help = false; }
             if i.key_pressed(Key::B) {
@@ -332,7 +336,6 @@ impl ZoneSniperApp {
                             // End of cycle -> Turn OFF
                             self.plot_visibility.background = false;
                         }
-                        _ => self.debug_background_mode = ScoreType::FullCandleTVW,
                     }
                 }
             }

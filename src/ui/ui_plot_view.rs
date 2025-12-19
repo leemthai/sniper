@@ -159,10 +159,8 @@ pub fn show_my_plot(
                     layers.push(Box::new(BackgroundLayer));
                 }
 
-                // Layer 2: Sticky Zones (Controlled by '1' or '2')
-                // Note: StickyZoneLayer internally checks support/resistance flags to decide coloring,
-                // but we must add the layer if ANY relevant flag is on.
-                if visibility.sticky || visibility.support || visibility.resistance {
+                // Layer 2: Sticky Zones (Controlled by '1')
+                if visibility.sticky {
                     layers.push(Box::new(StickyZoneLayer));
                 }
 

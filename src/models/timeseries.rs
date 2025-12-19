@@ -292,13 +292,13 @@ impl TimeSeriesSlice<'_> {
             temporal_weight,
         );
 
-        // 5. Quote Volume - Keep Spread
-        cva_core.distribute_conserved_volume(
-            ScoreType::QuoteVolume,
-            candle_low,
-            candle_high,
-            candle.quote_asset_volume,
-        );
+        // // 5. Quote Volume - Keep Spread
+        // cva_core.distribute_conserved_volume(
+        //     ScoreType::QuoteVolume,
+        //     candle_low,
+        //     candle_high,
+        //     candle.quote_asset_volume,
+        // );
 
     }
 }

@@ -113,7 +113,7 @@ pub const UI_TEXT: UiText = UiText {
     error_insufficient_data_title: "Analysis Paused: Range Too Narrow",
 
     error_insufficient_data_body: "The current Price Horizon does not capture enough price history to identify reliable zones.\n\n\
-                                   👉 Action: Drag the Price Horizon slider to the right (aim for the Green zone).",
+                                   👉 Action: Drag the Price Horizon slider to the right (aim for the Green zone if possible).",
 
     word_candle_singular: "Candle",
     word_candle_plural: "Candles",

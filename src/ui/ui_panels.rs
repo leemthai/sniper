@@ -1,6 +1,6 @@
 use eframe::egui::{
-    Align2, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Rect, RichText, ScrollArea,
-    Sense, Slider, Stroke, StrokeKind, Ui, Window, pos2, vec2,
+    Align, Align2, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
+    RichText, ScrollArea, Sense, Slider, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2,
 };
 use strum::IntoEnumIterator;
 
@@ -194,22 +194,73 @@ impl<'a> DataGenerationPanel<'a> {
     }
 
     fn render_price_horizon_display(&mut self, ui: &mut Ui, show_help: &mut bool) -> Option<f64> {
-        let mut changed = None;
-        ui.add_space(5.0);
-
-        // Header
-        ui.horizontal(|ui| {
-            ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
-            // Chain .on_hover_cursor() before checking .clicked()
-            if ui.button("(?)").on_hover_cursor(CursorIcon::Help).clicked() {
-                *show_help = !*show_help;
-            }
-        });
-
         // 1. Setup Constants
         let min_pct = ANALYSIS.price_horizon.min_threshold_pct;
         let max_pct = ANALYSIS.price_horizon.max_threshold_pct;
         let mut current_pct = self.price_horizon_config.threshold_pct;
+        let mut changed = None;
+
+        ui.add_space(5.0);
+
+        ui.horizontal(|ui| {
+            ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
+
+            if ui.button("(?)").on_hover_cursor(CursorIcon::Help).clicked() {
+                *show_help = !*show_help;
+            }
+            ui.with_layout(
+                eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                |ui| {
+                    ui.label("%");
+
+                    let id = ui.make_persistent_id("ph_input_box");
+                    let has_focus = ui.memory(|m| m.has_focus(id));
+
+                    // LOGIC:
+                    // 1. If Focused: Read from Temp (User is typing)
+                    // 2. If Not Focused: Read from Variable (Source of Truth) AND update Temp (Sync)
+                    let mut text_buf = if has_focus {
+                        ui.data(|d| d.get_temp(id))
+                            .unwrap_or_else(|| format!("{:.3}", current_pct * 100.0))
+                    } else {
+                        let s = format!("{:.3}", current_pct * 100.0);
+                        // Keep temp synchronized so it's ready the moment we click
+                        ui.data_mut(|d| d.insert_temp(id, s.clone()));
+                        s
+                    };
+
+                    let response = ui.add(
+                        eframe::egui::TextEdit::singleline(&mut text_buf)
+                            .id(id)
+                            .desired_width(50.0)
+                            .horizontal_align(eframe::egui::Align::RIGHT),
+                    );
+
+                    // Save changes while typing
+                    if response.changed() {
+                        ui.data_mut(|d| d.insert_temp(id, text_buf.clone()));
+                    }
+
+                    // Commit changes
+                    if response.lost_focus()
+                        || (response.changed()
+                            && ui.input(|i| i.key_pressed(eframe::egui::Key::Enter)))
+                    {
+                        if let Ok(val) = text_buf.parse::<f64>() {
+                            let val_clamped = val.clamp(min_pct * 100.0, max_pct * 100.0);
+                            let new_val = val_clamped / 100.0;
+
+                            current_pct = new_val;
+                            changed = Some(new_val);
+
+                            // Update buffer to show the clamped/committed value
+                            let clean_text = format!("{:.3}", val_clamped);
+                            ui.data_mut(|d| d.insert_temp(id, clean_text));
+                        }
+                    }
+                },
+            );
+        });
 
         // NEW: Initialize Log Mapper
         let mapper = LogMapper::new(min_pct, max_pct);

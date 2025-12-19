@@ -5,7 +5,7 @@ use crate::config::ANALYSIS; // Import Config
 use crate::config::ZoneParams;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::horizon_profile::HorizonProfile;
-use crate::utils::maths_utils::{normalize_max, smooth_data};
+use crate::utils::maths_utils::{normalize_max, smooth_data, calculate_stats};
 
 /// A single price zone with its properties
 #[derive(Debug, Clone)]
@@ -176,79 +176,74 @@ impl TradingModel {
     fn classify_zones(cva: &CVACore) -> (ClassifiedZones, ZoneCoverageStats) {
         let (price_min, price_max) = cva.price_range.min_max();
         let zone_count = cva.zone_count;
-        // let total_candles = cva.total_candles as f64;
+        let total_candles = cva.total_candles as f64;
 
         crate::trace_time!("Classify & Cluster Zones", 1000, {
             // Helper closure
-            let process_layer = |raw_data: &[f64], params: ZoneParams, divisor: Option<f64>, sharpen_power: i32| {
-                // 1. Smooth
-                let smooth_window =
-                    ((zone_count as f64 * params.smooth_pct).ceil() as usize).max(1) | 1;
-                let smoothed = smooth_data(raw_data, smooth_window);
-
-                // 2. Normalize
-                let normalized: Vec<f64> = if let Some(div) = divisor {
-                    if div > 0.0 {
-                        smoothed.iter().map(|&s| s / div).collect()
-                    } else {
-                        vec![0.0; smoothed.len()]
-                    }
+            let process_layer = |raw_data: &[f64], params: ZoneParams, resource_total: f64, layer_name: &str| {
+                
+                // STEP 1: VIABILITY GATE (Absolute)
+                // Filter out bins that represent insignificant noise relative to the total.
+                let viable_data: Vec<f64> = if resource_total > 0.0 {
+                    raw_data.iter().map(|&x| {
+                        if (x / resource_total) >= params.viability_pct {
+                            x
+                        } else {
+                            0.0
+                        }
+                    }).collect()
                 } else {
-                    normalize_max(&smoothed)
+                    raw_data.to_vec()
                 };
 
-                // 3. Contrast (UPDATED)
-                // Use higher power for Wicks to suppress the high noise floor
-                let sharpened: Vec<f64> =
-                    normalized.iter().map(|&s| s.powi(sharpen_power)).collect();
+                // STEP 2: SMOOTH
+                let smooth_window = ((zone_count as f64 * params.smooth_pct).ceil() as usize).max(1) | 1;
+                let smoothed = smooth_data(&viable_data, smooth_window);
 
-                // --- DEBUG INSERT START ---
+                // STEP 3: NORMALIZE (Max)
+                let normalized = normalize_max(&smoothed);
+
+                // STEP 4: ADAPTIVE THRESHOLD (Relative)
+                let (mean, std_dev) = calculate_stats(&normalized);
+                
+                // Threshold = Mean + (Sigma * StdDev)
+                // We clamp it between 0.05 and 0.95 to prevent 
+                // "Selecting Everything" (if flat) or "Selecting Nothing" (if extreme outliers).
+                let adaptive_threshold = (mean + (params.sigma * std_dev)).clamp(0.05, 0.95);
+
+                // --- DIAGNOSTIC LOGGING ---
                 #[cfg(debug_assertions)]
                 {
-                    // We identify Wick layers by their distinctively low threshold (< 0.01)
-                    let layer_type = if params.threshold < 0.01 {
-                        "WICKS"
-                    } else {
-                        "STICKY"
-                    };
+                    let count = normalized.len();
+                    let above = normalized.iter().filter(|&&v| v >= adaptive_threshold).count();
+                    
+                    // Count how many bins survived the Viability Gate
+                    let pre_gate_nonzero = raw_data.iter().filter(|&&x| x > 0.0).count();
+                    let post_gate_nonzero = viable_data.iter().filter(|&&x| x > 0.0).count();
+                    let killed_by_gate = pre_gate_nonzero.saturating_sub(post_gate_nonzero);
 
-                    let count = sharpened.len();
-                    let above_thresh = sharpened.iter().filter(|&&v| v >= params.threshold).count();
-                    let max_val = crate::utils::maths_utils::get_max(&sharpened);
-                    let avg_val = sharpened.iter().sum::<f64>() / count.max(1) as f64;
-                    let pct_passing = (above_thresh as f64 / count as f64) * 100.0;
-
-                    // Only log if it looks suspicious (e.g. > 80% coverage) OR it is a Wick layer
-                    if pct_passing > 80.0 || params.threshold < 0.01 {
-                        log::warn!(
-                            "ZONE AUDIT [{}] for {}: Passing {}/{} ({:.1}%)",
-                            layer_type,
-                            cva.pair_name,
-                            above_thresh,
-                            count,
-                            pct_passing
-                        );
-                        log::warn!(
-                            "   -> Threshold: {:.8} | Max: {:.6} | Avg: {:.6}",
-                            params.threshold,
-                            max_val,
-                            avg_val
-                        );
-
-                        if pct_passing > 95.0 {
-                            log::error!(
-                                "   🚨 SATURATION DETECTED: Threshold is too low for this data normalization."
-                            );
-                        }
+                    log::info!(
+                        "STATS [{}] for {}: TotalRes={:.1}  | Viable Threshold={:.1} | Mean={:.3} | StdDev={:.3} | Sigma={:.1}",
+                        layer_name, cva.pair_name, resource_total, resource_total * params.viability_pct, mean, std_dev, params.sigma
+                    );
+                    
+                    if killed_by_gate > 0 {
+                        log::warn!("   🛑 VIABILITY GATE: Killed {} bins (Noise below {:.4})", killed_by_gate, params.viability_pct);
                     }
+
+                    log::info!(
+                        "   -> Adaptive Cutoff: {:.4} | Passing: {}/{} ({:.1}%)",
+                        adaptive_threshold, above, count, (above as f64 / count as f64) * 100.0
+                    );
                 }
-                // --- DEBUG INSERT END ---
+                // --------------------------
 
-                // 4. Find Targets
+                // STEP 5: FIND TARGETS
                 let gap = (zone_count as f64 * params.gap_pct).ceil() as usize;
-                let targets = find_target_zones(&sharpened, params.threshold, gap);
+                // Note: We use 'normalized' data against the adaptive threshold.
+                // We SKIP the 'Sharpening/Contrast' step because Z-Score handles the filtering statistically.
+                let targets = find_target_zones(&normalized, adaptive_threshold, gap);
 
-                // ... (Convert/Aggregate) ...
                 let zones: Vec<Zone> = targets
                     .iter()
                     .flat_map(|t| t.start_idx..=t.end_idx)
@@ -259,37 +254,40 @@ impl TradingModel {
                 (zones, superzones)
             };
 
-            // --- Sticky Zones (Standard Contrast) ---
+            // --- Sticky Zones ---
+            // Resource: Total Volume in this range
+            let total_volume: f64 = cva.get_scores_ref(ScoreType::FullCandleTVW).iter().sum();
+            
             let (sticky, sticky_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::FullCandleTVW),
                 ANALYSIS.zones.sticky,
-                None,
-                2, // Power of 2 (Standard)
+                total_volume,
+                "STICKY"
             );
 
-            // --- Reversal Zones (High Contrast) ---
+            // --- Reversal Zones ---
+            // Resource: Total Candles (Opportunity count)
+            // Note: Use total_candles, NOT sum of scores (which is inflated by width)
+            
             // 1. Low Wicks
             let (low_wicks, low_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::LowWickCount),
                 ANALYSIS.zones.reversal,
-                None, // Max Normalize
-                4,    // Power of 4 (Aggressive Contrast)
+                total_candles,
+                "LOW WICKS"
             );
 
             // 2. High Wicks
             let (high_wicks, high_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::HighWickCount),
                 ANALYSIS.zones.reversal,
-                None, // Max Normalize
-                4,    // Power of 4 (Aggressive Contrast)
+                total_candles,
+                "HIGH WICKS"
             );
 
             // --- Calculate Coverage Statistics ---
-            // Logic: Count unique indices / total zones * 100
             let calc_coverage = |zones: &[Zone]| -> f64 {
-                if zone_count == 0 {
-                    return 0.0;
-                }
+                if zone_count == 0 { return 0.0; }
                 (zones.len() as f64 / zone_count as f64) * 100.0
             };
 

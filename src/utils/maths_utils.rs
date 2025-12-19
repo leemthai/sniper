@@ -149,3 +149,22 @@ pub fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
 
     smoothed
 }
+
+pub fn calculate_stats(data: &[f64]) -> (f64, f64) {
+    let count = data.len();
+    if count == 0 {
+        return (0.0, 0.0);
+    }
+
+    let sum: f64 = data.iter().sum();
+    let mean = sum / count as f64;
+
+    let variance: f64 = data.iter()
+        .map(|value| {
+            let diff = mean - *value;
+            diff * diff
+        })
+        .sum::<f64>() / count as f64;
+
+    (mean, variance.sqrt())
+}

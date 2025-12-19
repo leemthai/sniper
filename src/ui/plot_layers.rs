@@ -44,7 +44,6 @@ impl PlotLayer for BackgroundLayer {
             ScoreType::FullCandleTVW => "Trading Volume",
             ScoreType::LowWickCount => "Lower Wick Count",
             ScoreType::HighWickCount => "Upper Wick Count",
-            _ => "Unknown",
         };
 
         // 2. Create Group Name (Appears in Legend)
@@ -127,56 +126,53 @@ impl PlotLayer for ReversalZoneLayer {
         // A. Low Wicks (Support)
         if ctx.visibility.low_wicks {
             for superzone in &ctx.trading_model.zones.low_wicks_superzones {
-                let is_relevant = current_price
-                    .map(|p| superzone.contains(p) || superzone.price_center < p)
-                    .unwrap_or(false);
+                // let is_relevant = current_price
+                //     .map(|p| superzone.contains(p) || superzone.price_center < p)
+                //     .unwrap_or(false);
 
-                if is_relevant {
-                    let color = get_zone_status_color(superzone, current_price);
-                    let label = UI_TEXT.label_reversal_support;
-                    let stroke = get_stroke(superzone, current_price, color);
+                let color = get_zone_status_color(superzone, current_price);
+                let label = UI_TEXT.label_reversal_support;
+                let stroke = get_stroke(superzone, current_price, color);
 
-                    draw_superzone(
-                        plot_ui,
-                        superzone,
-                        ctx.x_min,
-                        ctx.x_max,
-                        label,
-                        color,
-                        stroke,
-                        0.5,
-                        1.5,
-                        ZoneShape::TriangleUp,
-                    );
-                }
+                draw_superzone(
+                    plot_ui,
+                    superzone,
+                    ctx.x_min,
+                    ctx.x_max,
+                    label,
+                    color,
+                    stroke,
+                    0.5,
+                    1.5,
+                    ZoneShape::TriangleUp,
+                );
             }
         }
 
         // B. High Wicks (Resistance)
         if ctx.visibility.high_wicks {
             for superzone in &ctx.trading_model.zones.high_wicks_superzones {
-                let is_relevant = current_price
-                    .map(|p| superzone.contains(p) || superzone.price_center > p)
-                    .unwrap_or(false);
+                // let is_relevant = current_price
+                //     .map(|p| superzone.contains(p) || superzone.price_center > p)
+                //     .unwrap_or(false);
 
-                if is_relevant {
-                    let color = get_zone_status_color(superzone, current_price);
-                    let label = UI_TEXT.label_reversal_resistance;
-                    let stroke = get_stroke(superzone, current_price, color);
+                // if is_relevant {
+                let color = get_zone_status_color(superzone, current_price);
+                let label = UI_TEXT.label_reversal_resistance;
+                let stroke = get_stroke(superzone, current_price, color);
 
-                    draw_superzone(
-                        plot_ui,
-                        superzone,
-                        ctx.x_min,
-                        ctx.x_max,
-                        label,
-                        color,
-                        stroke,
-                        0.5,
-                        1.5,
-                        ZoneShape::TriangleDown,
-                    );
-                }
+                draw_superzone(
+                    plot_ui,
+                    superzone,
+                    ctx.x_min,
+                    ctx.x_max,
+                    label,
+                    color,
+                    stroke,
+                    0.5,
+                    1.5,
+                    ZoneShape::TriangleDown,
+                );
             }
         }
     }

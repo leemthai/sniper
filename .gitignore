@@ -4,6 +4,7 @@
 .states.json
 repomix*.*
 zone_sniper.code-workspace
+fresh_start*
 /.continue/
 _private/
 klines.sql*

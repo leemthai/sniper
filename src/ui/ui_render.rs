@@ -270,7 +270,6 @@ impl ZoneSniperApp {
                                 ScoreType::FullCandleTVW => UI_TEXT.label_volume,
                                 ScoreType::LowWickCount => UI_TEXT.label_lower_wick_count,
                                 ScoreType::HighWickCount => UI_TEXT.label_upper_wick_count,
-                                _ => "Unknown",
                             };
                             (t, Color32::from_rgb(0, 255, 255)) // Cyan
                         } else {

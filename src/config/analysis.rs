@@ -70,9 +70,15 @@ pub struct ZoneParams {
     /// Turn UP to bridge gaps and create larger "continents". Turn DOWN (or to 0.0) to keep islands separated.
     pub gap_pct: f64,
 
-    /// Intensity Threshold.
-    /// Turn UP to reduce coverage (only show strong zones). Turn DOWN to see fainter zones.
-    pub threshold: f64,
+    // NEW: Absolute Gate.
+    // A bin must contain at least this % of the total resource (Volume or Candles) to be valid.
+    pub viability_pct: f64,
+
+    // NEW: Relative Gate (Standard Deviations).
+    // 0.0 = Above Average.
+    // 1.0 = Significantly High.
+    // 2.0 = Rare Peak.
+    pub sigma: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
@@ -104,7 +110,7 @@ impl AnalysisConfig {
     /// The Source of Truth for the "Adaptive Decay" curve.
     /// Maps Price Horizon % -> Time Decay Factor.
     /// Used by both Config Initialization and UI Runtime updates.
-pub fn calculate_time_decay(ph_threshold: f64) -> f64 {
+    pub fn calculate_time_decay(ph_threshold: f64) -> f64 {
         // Helper for linear mapping
         let remap = |val: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64| -> f64 {
             let t = (val - in_min) / (in_max - in_min);
@@ -177,7 +183,11 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         sticky: ZoneParams {
             smooth_pct: 0.02, // 2% smoothing makes hills out of spikes
             gap_pct: 0.01,    // 1% gap bridging merges nearby structures
-            threshold: 0.25,  // (Squared). Only top 50% volume areas qualify.
+
+            // Absolute: Bin must hold > 0.1% of Total Volume
+            viability_pct: 0.001,
+            // Relative: Keep peaks > 0.5 StdDev above mean (Broad definition of structure)
+            sigma: 0.5,
         },
 
         // REVERSAL ZONES (Wick Counts)
@@ -185,9 +195,10 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
             smooth_pct: 0.005, // 0.5% (Low) - Keep wicks sharp
             gap_pct: 0.0,      // 0.0% - Strict separation. Don't create ghost zones.
 
-            // Old Logic: Divided by total candles -> Tiny threshold needed.
-            // New Logic: Max Normalized (0.0-1.0) -> Standard threshold needed.
-            threshold: 0.25, // 0.000025, 
+            // viability_pct: 0.002, // Absolute: Bin must be hit by > 0.2% of Total Candles (e.g. 2 candles per 1000)
+            viability_pct: 0.0005, // 0.05% 
+            // Relative: Keep peaks > 1.5 StdDev above mean (Only sharp rejections)
+            sigma: 1.5,
         },
     },
 

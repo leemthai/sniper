@@ -42,7 +42,7 @@ pub enum ScoreType {
     FullCandleTVW, // Sticky (Volume * Time)
     LowWickCount,  // Reversal (Count * Time) - Renamed from LowWickVW
     HighWickCount, // Reversal (Count * Time) - Renamed from HighWickVW
-    QuoteVolume,   // Keep for debug/legacy
+    // QuoteVolume,   // Keep for debug/legacy
 }
 
 impl fmt::Display for ScoreType {
@@ -51,7 +51,7 @@ impl fmt::Display for ScoreType {
             ScoreType::FullCandleTVW => write!(f, "Full Candle Temporal-Volume Weighted"),
             ScoreType::LowWickCount => write!(f, "Low Wick Count (Rejection Prob. Numerator)"),
             ScoreType::HighWickCount => write!(f, "High Wick Count (Rejection Prob. Numerator)"),
-            ScoreType::QuoteVolume => write!(f, "Quote Volume (transitions)"),
+            // ScoreType::QuoteVolume => write!(f, "Quote Volume (transitions)"),
         }
     }
 }
@@ -62,7 +62,6 @@ impl CVACore {
             ScoreType::FullCandleTVW => &self.candle_bodies_vw,
             ScoreType::LowWickCount => &self.low_wick_counts,
             ScoreType::HighWickCount => &self.high_wick_counts,
-            ScoreType::QuoteVolume => &self.quote_volumes,
         }
     }
 
@@ -71,7 +70,6 @@ impl CVACore {
             ScoreType::FullCandleTVW => &mut self.candle_bodies_vw,
             ScoreType::LowWickCount => &mut self.low_wick_counts,
             ScoreType::HighWickCount => &mut self.high_wick_counts,
-            ScoreType::QuoteVolume => &mut self.quote_volumes,
         }
     }
 
