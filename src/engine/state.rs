@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::models::trading_view::TradingModel;
 use crate::models::horizon_profile::HorizonProfile;
+
 use crate::utils::app_time::AppInstant;
 
 /// Represents the state of a single pair in the engine.

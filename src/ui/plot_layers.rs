@@ -6,8 +6,10 @@ use eframe::egui::show_tooltip_at_pointer;
 use egui_plot::{HLine, PlotPoints, PlotUi, Polygon};
 
 use crate::config::plot::PLOT_CONFIG;
+
 use crate::models::cva::ScoreType;
 use crate::models::trading_view::{SuperZone, TradingModel};
+
 use crate::ui::app::PlotVisibility;
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;

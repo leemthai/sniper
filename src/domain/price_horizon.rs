@@ -1,4 +1,5 @@
 use crate::config::PriceHorizonConfig;
+
 use crate::models::OhlcvTimeSeries;
 
 /// Automatically select discontinuous slice ranges based on price relevancy.

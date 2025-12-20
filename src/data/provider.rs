@@ -6,8 +6,8 @@ use crate::domain::candle::Candle;
 #[cfg(not(target_arch = "wasm32"))]
 use {
     crate::data::rate_limiter::GlobalRateLimiter,
-    crate::domain::pair_interval::PairInterval,
     crate::data::timeseries::bn_kline,
+    crate::domain::pair_interval::PairInterval,
 };
 
 /// Abstract interface for fetching market data.

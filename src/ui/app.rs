@@ -1,24 +1,28 @@
 use std::collections::HashMap;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, self};
 use std::collections::BTreeMap;
 
-use eframe::egui::{Context, CentralPanel, RichText, Key};
+use eframe::egui::{Context, CentralPanel, RichText, Key, Grid, ScrollArea, Color32, Align, Layout, ProgressBar};
 use eframe::{Frame, Storage};
 use serde::{Deserialize, Serialize};
 
 use crate::Cli;
-use crate::config::ANALYSIS;
-use crate::config::AnalysisConfig;
-use crate::config::PriceHorizonConfig;
-use crate::engine::SniperEngine;
-use crate::models::pair_context::PairContext;
+
+use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
+
 use crate::data::timeseries::TimeSeriesCollection;
-use crate::ui::ui_plot_view::PlotView;
-use crate::ui::utils::setup_custom_visuals;
-use crate::ui::app_simulation::SimStepSize;
-use crate::ui::app_simulation::SimDirection;
+
+use crate::engine::SniperEngine;
+
+use crate::models::pair_context::PairContext;
 use crate::models::cva::ScoreType;
 use crate::models::{SyncStatus, ProgressEvent};
+
+use crate::ui::ui_plot_view::PlotView;
+use crate::ui::utils::setup_custom_visuals;
+use crate::ui::app_simulation::{SimStepSize, SimDirection};
+
+use crate::utils::TimeUtils;
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -130,8 +134,8 @@ impl ZoneSniperApp {
         app.simulated_prices = HashMap::new();
         app.state = AppState::Loading(LoadingState::default());
 
-        let (data_tx, data_rx) = std::sync::mpsc::channel();
-        let (prog_tx, prog_rx) = std::sync::mpsc::channel();
+        let (data_tx, data_rx) = mpsc::channel();
+        let (prog_tx, prog_rx) = mpsc::channel();
         
         app.data_rx = Some(data_rx);
         app.progress_rx = Some(prog_rx);
@@ -411,13 +415,13 @@ impl eframe::App for ZoneSniperApp {
             CentralPanel::default().show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(20.0);
-                    ui.heading(RichText::new("ZONE SNIPER INITIALIZATION").size(24.0).strong().color(eframe::egui::Color32::from_rgb(255, 215, 0))); // Gold title
+                    ui.heading(RichText::new("ZONE SNIPER INITIALIZATION").size(24.0).strong().color(Color32::from_rgb(255, 215, 0))); // Gold title
                     // NEW: Sub-header with Interval Context
-                    let interval_str = crate::utils::TimeUtils::interval_to_string(ANALYSIS.interval_width_ms);
+                    let interval_str = TimeUtils::interval_to_string(ANALYSIS.interval_width_ms);
                     ui.label(RichText::new(format!(
                         "Syncing {} klines from Binance Public API. Please be patient. This may take some time if it hasn't been run for a while or you are collecting many pairs. Subsequent runs will complete much quicker.", 
                         interval_str
-                    )).italics().color(eframe::egui::Color32::LIGHT_GRAY));
+                    )).italics().color(Color32::LIGHT_GRAY));
 
                     ui.add_space(20.0);
 
@@ -428,7 +432,7 @@ impl eframe::App for ZoneSniperApp {
                     let progress = if total > 0 { done as f32 / total as f32 } else { 0.0 };
                     
                     ui.add_space(20.0);
-                    ui.add(eframe::egui::ProgressBar::new(progress)
+                    ui.add(ProgressBar::new(progress)
                         .show_percentage()
                         .animate(true)
                         .text(format!("Processed {}/{}", done, total))
@@ -436,16 +440,15 @@ impl eframe::App for ZoneSniperApp {
                     
                     if state.failed > 0 {
                         ui.add_space(5.0);
-                        ui.label(RichText::new(format!("⚠ {} Failures", state.failed)).color(eframe::egui::Color32::RED));
+                        ui.label(RichText::new(format!("⚠ {} Failures", state.failed)).color(Color32::RED));
                     }
                     
                     ui.add_space(20.0);
                 });
 
                 // 3-COLUMN GRID LAYOUT
-// 3-COLUMN GRID LAYOUT
-                eframe::egui::ScrollArea::vertical().show(ui, |ui| {
-                    eframe::egui::Grid::new("loading_grid_multi_col")
+                ScrollArea::vertical().show(ui, |ui| {
+                    Grid::new("loading_grid_multi_col")
                         .striped(true)
                         .spacing([20.0, 10.0])
                         .min_col_width(250.0) 
@@ -455,25 +458,25 @@ impl eframe::App for ZoneSniperApp {
                                 
                                 // Determine Color based on Status
                                 let (color, status_text, status_color) = match status {
-                                    crate::models::SyncStatus::Pending => (
-                                        eframe::egui::Color32::from_gray(80), // Dimmed Gray for Queue
+                                    SyncStatus::Pending => (
+                                        Color32::from_gray(80), // Dimmed Gray for Queue
                                         "-".to_string(), 
-                                        eframe::egui::Color32::from_gray(80)
+                                        Color32::from_gray(80)
                                     ),
-                                    crate::models::SyncStatus::Syncing => (
-                                        eframe::egui::Color32::YELLOW, // Bright for Active
+                                    SyncStatus::Syncing => (
+                                        Color32::YELLOW, // Bright for Active
                                         "Syncing".to_string(), 
-                                        eframe::egui::Color32::YELLOW
+                                        Color32::YELLOW
                                     ),
-                                    crate::models::SyncStatus::Completed(n) => (
-                                        eframe::egui::Color32::WHITE, // Normal for Done
+                                    SyncStatus::Completed(n) => (
+                                        Color32::WHITE, // Normal for Done
                                         format!("+{}", n),
-                                        eframe::egui::Color32::GREEN
+                                        Color32::GREEN
                                     ),
-                                    crate::models::SyncStatus::Failed(_) => (
-                                        eframe::egui::Color32::RED, 
+                                    SyncStatus::Failed(_) => (
+                                        Color32::RED, 
                                         "FAILED".to_string(), 
-                                        eframe::egui::Color32::RED
+                                        Color32::RED
                                     ),
                                 };
 
@@ -482,10 +485,10 @@ impl eframe::App for ZoneSniperApp {
                                     ui.set_min_width(240.0);
                                     ui.label(RichText::new(pair).monospace().strong().color(color));
                                     
-                                    ui.with_layout(eframe::egui::Layout::right_to_left(eframe::egui::Align::Center), |ui| {
+                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         match status {
-                                            crate::models::SyncStatus::Syncing => { ui.spinner(); },
-                                            crate::models::SyncStatus::Completed(n) => { 
+                                            SyncStatus::Syncing => { ui.spinner(); },
+                                            SyncStatus::Completed(n) => { 
                                                 ui.label(RichText::new(format!("✔ (+{})", n)).color(status_color)); 
                                             },
                                             _ => { 
@@ -511,8 +514,10 @@ impl eframe::App for ZoneSniperApp {
         }
 
         self.handle_global_shortcuts(ctx);
+        // 1. RENDER SIDES FIRST (They claim space)
         self.render_side_panel(ctx);
         self.render_right_panel(ctx);
+        // 2. RENDER CENTER LAST (Fills whatever space is left)
         self.render_central_panel(ctx);
         self.render_status_panel(ctx);
         self.render_help_panel(ctx);

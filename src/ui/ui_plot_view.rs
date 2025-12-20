@@ -10,9 +10,9 @@ use crate::models::cva::{CVACore, ScoreType};
 use crate::models::trading_view::TradingModel;
 
 use crate::ui::ui_text::UI_TEXT;
-use crate::ui::utils::format_price;
 use crate::ui::app::PlotVisibility;
 
+use crate::ui::utils::format_price;
 use crate::utils::maths_utils;
 
 // Import the new Layer System

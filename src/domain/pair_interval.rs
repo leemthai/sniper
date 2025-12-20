@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::utils::TimeUtils;
 use crate::config::BINANCE;
+
+use crate::utils::TimeUtils;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct PairInterval {

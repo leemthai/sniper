@@ -5,8 +5,9 @@ use eframe::egui::{
 };
 use strum::IntoEnumIterator;
 
-use crate::config::ANALYSIS;
-use crate::config::PriceHorizonConfig;
+use crate::analysis::range_gap_finder::{DisplaySegment, GapReason};
+
+use crate::config::{ANALYSIS, PriceHorizonConfig};
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::domain::pair_interval::PairInterval;
@@ -20,8 +21,6 @@ use crate::ui::utils::{
     colored_subsection_heading, format_candle_count, format_duration_context, section_heading,
     spaced_separator,
 };
-
-use crate::analysis::range_gap_finder::{DisplaySegment, GapReason};
 
 use crate::utils::time_utils;
 

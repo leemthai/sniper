@@ -2,7 +2,7 @@
 name = "zone-sniper"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.91"
+rust-version = "1.92"
 autobins = false # Disable automatic binary discovery (so need list bins explicitly below)
 
 # Set default bin name

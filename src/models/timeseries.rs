@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
+
 use crate::models::cva::{CVACore, ScoreType};
 
 // ============================================================================

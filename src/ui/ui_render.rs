@@ -5,15 +5,16 @@ use eframe::egui::{
 
 use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::models::cva::ScoreType;
+
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
-use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel};
+use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel, CandleRangePanel};
+use crate::ui::utils::format_price;
+
 use crate::utils::TimeUtils;
 
 use super::app::ZoneSniperApp;
-use crate::ui::utils::format_price;
 
-use crate::ui::ui_panels::CandleRangePanel;
 
 
 impl ZoneSniperApp {
