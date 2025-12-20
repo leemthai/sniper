@@ -91,7 +91,7 @@ pub const UI_TEXT: UiText = UiText {
 
     label_volume: "Trading Volume",
     label_lower_wick_count: "Lower Wick Strength",
-    label_upper_wick_count: "Higher Wick Strength",
+    label_upper_wick_count: "Upper Wick Strength",
     label_hvz: "High Volume Zones",
     label_lower_wick_zones: "Lower Wick Zones",
     label_upper_wick_zones: "Upper Wick Zones",

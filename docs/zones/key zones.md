@@ -1,14 +1,4 @@
 
-# API Stats (no idea how often these update rn)
-Find out API stats..... maybe updated once an hour or less... dunno, but I must have used some resources from somewhere today. I did about 20 requests I think. Count them..
-    - 95,000 tokens in total.  Cost estimate: $0.25
-    - Is that token limit per Month ? nope lol. Tokens Per Minute. Calm down.
-    - looks like 11 questions I asked for project-b68cd74. That's pretty efficient coding.
-    - Probably a few more for project-3402007.md because I was being a bit more lax. but still. did 2 big projects in a day. Don't ever really need more than that???
-
-# Add candlesticks
-Soon mate, Soon.
-
 ## (Journey stuff) Sticky zone price target
 Shoud price target be center rather than nearest edge of sticky zone ? (seems more natural than aiming for edge of structure, right?)
 That's journey stuff I think, though, don't want let Gemimi loose on that yet, though, lol
@@ -16,29 +6,36 @@ That's journey stuff I think, though, don't want let Gemimi loose on that yet, t
 # Target zone should be represented with a circle (the sniper target zone)
 Cooolllll!!!!!!!!!!!!!!!!!!
 
-# Next 
-Command stuff for keyboard action
-
 # Stop printing hover windows in random colors
 I want to print in fixed colors somehow
 
-# Notes
-Weird thing when you get inside a Low Wick area, ie using Sim to move price up, it splits into Low Wick and High Wick Area. ie two 'interfering' triangles.
-Why does live price make a difference here? Oh yes, of course, because price defines what is low and high wick zoens. So they will change based on price.
-Seems fine then.
+# Differentiate stablecoins in pair list
+Be nice to mark stablecoin pairs maybe, separate them in the list or mark them at least. Then they could have a different default value for PH. Currently it is 15% for everything which is not very friendly. If we separate them out, would mke more sense to give them different default.
 
-# Things I can fix myself without AI
-1.  Play with time_decay_factor
-    - Could do this on my own without AI help......
-    - Try it at 2.0. What other values. What does 2.0 do exactly? (Setting this to 2.0 activates "Annualized Decay" (Data today is 2x stronger)
-    - default_time_decay_factor() in app.rs
-    - How does it affect BTC / SOL etc.
+# Test full DB Rebuild
+Time how long it takes in release mode
+Can archive current db. That will force a full rebuild I guess
+Note: to remove db files if we want to test from fresh
+cd rust/wherever lol
+rm klines.sqlite*
+
+# Updating DB in background when app is running
+Do we do that yet? If so on what schedule?
+Not even thoought about that yet.
+Ask AI how big a job. Where to put in schedule?b
+
+# How to do deal with pairs 'on the up' but have no significant sticky zones above them
+ie.. these pairs will not find a higher target zone so can never target it. Sad
+PAXGUSDT
+but maybe pairs which have recently been in price discovery will be like this
+Zoom in? Yep. that works.
+
 
 
 # Note: Don't forget any time we print prices, use format_price() instead of just ${:.2} or whatever.
 Fixed via format_price(), always
 
-# 0.35
+# egui_plot 0.35 coming soon 
 See when 0.35 version is due out and what features it will offer. Might help guide decision making
 Appears like quite a big API change (sigh)
 https://github.com/emilk/egui_plot/issues/200
@@ -58,14 +55,7 @@ Then we can audit cloning and see if anything to fix (though I don't want get in
 Easy enough to rename if needed
 Pages is set up but app not running coz coding issues (see WASM Version not running)
   
-# Tuesday
-Completey get rid of crate:: calls from app.rs coz I pasted that all in again.... and main.rs and anywhere else....
-Do this once app is running.... don't do yet coz I will probably paste his code in again, and he wrill overwrite my overwrites.
-app_simulation.rs too
 
-# Note - to remove db files if we want to test from fresh
-cd rust/wherever lol
-rm klines.sqlite*
 
 # ideas to ask AI
 ask him to improve the project; either coding-based (features, coding style,  DRY, project organization, rayon for easy paralllelization, whatever u can think of) or front-end software (ui), or actual trading features (which are very underfeatured so far. We have hardly get started yet on this...)
@@ -75,3 +65,5 @@ other public crypto services that might be useful?
 
 # Random AI Advice
 "Check `src/main.rs` for idiomatic Rust patterns and refactor imports."
+
+

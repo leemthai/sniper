@@ -465,13 +465,8 @@ impl ZoneSniperApp {
                     ui.heading("Simulation Mode Controls");
                     ui.add_space(5.0);
 
-                    #[cfg(target_arch = "wasm32")]
-                    ui.label(
-                        RichText::new("(WEB DEMO: OFFLINE)").color(Color32::from_rgb(255, 150, 0)),
-                    );
 
                     ui.add_space(5.0);
-
 
                     let mut _sim_shortcuts = vec![
                         ("D", UI_TEXT.label_help_sim_toggle_direction),
