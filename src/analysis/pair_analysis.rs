@@ -91,16 +91,22 @@ pub fn pair_analysis_pure(
         price_range,
     );
 
-    // 6. Add Metadata
-    let first_kline_timestamp = ohlcv_time_series.first_kline_timestamp_ms;
+    // Store the raw ranges for the UI Navigator
+    cva_results.included_ranges = slice_ranges.clone();
+    cva_results.relevant_candle_count = total_candle_count;
+
+    // Fix Start/End Timestamps to use REAL data, not Index Math.
     if let (Some((first_start, _)), Some((_, last_end))) =
         (slice_ranges.first(), slice_ranges.last())
     {
-        cva_results.start_timestamp_ms =
-            first_kline_timestamp + (*first_start as i64 * ANALYSIS.interval_width_ms);
-        cva_results.end_timestamp_ms =
-            first_kline_timestamp + (*last_end as i64 * ANALYSIS.interval_width_ms);
+        // Safe indices
+        let max_idx = ohlcv_time_series.klines().saturating_sub(1);
+        let start_idx = (*first_start).min(max_idx);
+        let end_idx = (last_end.saturating_sub(1)).min(max_idx); // range end is exclusive
+        
+        // Use get_candle to retrieve the actual timestamp from DB
+        cva_results.start_timestamp_ms = ohlcv_time_series.get_candle(start_idx).timestamp_ms;
+        cva_results.end_timestamp_ms = ohlcv_time_series.get_candle(end_idx).timestamp_ms;
     }
-
     Ok(cva_results)
 }

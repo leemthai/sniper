@@ -45,6 +45,14 @@ impl TimeUtils {
     }
 }
 
+
+// Time Helper functions
+
+pub fn epoch_ms_to_utc(epoch_ms: i64) -> String {
+    // Used for display purposes
+    epoch_sec_to_utc(epoch_ms / 1000)
+}
+
 pub fn epoch_sec_to_utc(epoch_sec: i64) -> String {
     // Used for display purposes
     let dt = DateTime::from_timestamp(epoch_sec, 0).expect("invalid timestamp");
@@ -57,8 +65,34 @@ pub fn local_now_as_timestamp_ms() -> i64 {
     now_local.timestamp_millis()
 }
 
-pub fn how_many_seconds_ago(past_timestamp_ms: i64) -> i64 {
-    // How many seconds ago was the event described by `past_timestamp_ms` ?
-    let now_timestamp_ms = local_now_as_timestamp_ms();
-    (now_timestamp_ms - past_timestamp_ms) / 1000
+// pub fn how_many_seconds_ago(past_timestamp_ms: i64) -> i64 {
+//     // How many seconds ago was the event described by `past_timestamp_ms` ?
+//     let now_timestamp_ms = local_now_as_timestamp_ms();
+//     (now_timestamp_ms - past_timestamp_ms) / 1000
+// }
+
+pub fn format_duration(ms: i64) -> String {
+    let secs = ms / 1000;
+    if secs < 60 {
+        return format!("{}s", secs);
+    }
+    let mins = secs / 60;
+    if mins < 60 {
+        return format!("{}m", mins);
+    }
+    let hours = mins / 60;
+    if hours < 24 {
+        return format!("{}h", hours);
+    }
+    let days = hours / 24;
+    if days < 30 {
+        return format!("{}d", days);
+    }
+    let months = days / 30;
+    if months < 12 {
+        return format!("{}M", months);
+    }
+    let years = months / 12;
+    let rem_months = months % 12;
+    format!("{}Y {}M", years, rem_months)
 }

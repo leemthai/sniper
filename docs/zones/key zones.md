@@ -30,6 +30,12 @@ PAXGUSDT
 but maybe pairs which have recently been in price discovery will be like this
 Zoom in? Yep. that works.
 
+# Codium keys
+Ctrl+P to search through files quikly
+Ctrl+T: Global Symbol Search to search for functions+structs+varaibles maybe
+Ctrl+Shift+E - file explorer
+Ctrl+Shift+I - Rust formatting
+Ctrl+Shift+F - Global search
 
 
 # Note: Don't forget any time we print prices, use format_price() instead of just ${:.2} or whatever.

@@ -4,6 +4,7 @@ pub mod pair_analysis;
 pub mod selection_criteria;
 pub mod zone_scoring;
 pub mod horizon_profiler;
+pub mod range_gap_finder;
 
 // Re-export commonly used types
 pub use multi_pair_monitor::MultiPairMonitor;

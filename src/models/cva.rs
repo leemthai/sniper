@@ -17,6 +17,8 @@ pub struct CVACore {
 
     pub total_candles: usize,
 
+    pub included_ranges: Vec<(usize, usize)>,
+
     // Metadata
     pub pair_name: String,
     pub price_range: RangeF64,
@@ -182,7 +184,8 @@ impl CVACore {
             total_candles,
             relevant_candle_count, 
             interval_ms,           
-            volatility_pct,        
+            volatility_pct,
+            included_ranges: Vec::new(),
             start_timestamp_ms: 0,
             end_timestamp_ms: 0,
             time_decay_factor,

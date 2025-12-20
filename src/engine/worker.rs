@@ -12,6 +12,13 @@ use crate::models::timeseries::find_matching_ohlcv; // Needed for data lookup
 use crate::models::trading_view::TradingModel;
 use crate::utils::app_time::AppInstant;
 
+#[cfg(debug_assertions)] use {
+    crate::analysis::range_gap_finder::{RangeGapFinder, GapReason},
+    crate::utils::time_utils,
+};
+
+
+
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
 pub fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult>) {
@@ -106,6 +113,49 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
 
         match result_cva {
             Ok(cva) => {
+               // --- DEBUG: LOG RANGES ---
+                #[cfg(debug_assertions)]
+                {
+                    // Re-fetch OHLCV for the gap analyzer (Cheap lookup)
+                    if let Ok(ohlcv) = find_matching_ohlcv(
+                        &req.timeseries.series_data,
+                        &req.pair_name,
+                        req.config.interval_width_ms
+                    ) {
+                        let bounds = cva.price_range.min_max();
+                        let segments = RangeGapFinder::analyze(ohlcv, &cva.included_ranges, bounds);
+                        
+                        if !segments.is_empty() {
+                            log::info!("🧩 ACCORDION REPORT for [{}] ({} Segments):", req.pair_name, segments.len());
+                            for (i, seg) in segments.iter().enumerate() {
+                                let start_str = time_utils::epoch_ms_to_utc(seg.start_ts);
+                                let end_str = time_utils::epoch_ms_to_utc(seg.end_ts);
+                                
+                                let gap_info = match seg.gap_reason {
+                                    GapReason::None => "Start".to_string(),
+                                    GapReason::PriceMismatch => 
+                                        format!("✂ Skipped {} (Price Range)", seg.gap_duration_str),
+                                    GapReason::MissingSourceData => 
+                                        format!("⚠ DATA HOLE {} (Exchange Down)", seg.gap_duration_str),
+
+                                    // NEW CONTEXTUAL LOGS
+                                    GapReason::PriceAbovePH =>
+                                        format!("⬆ Price > PH for {}", seg.gap_duration_str),
+                                    GapReason::PriceBelowPH =>
+                                        format!("⬇ Price < PH for {}", seg.gap_duration_str),
+                                    GapReason::PriceMixed =>
+                                        format!("✂ Skipped {} (Mixed)", seg.gap_duration_str),
+                                };
+
+                                log::info!(
+                                    "[{}] Seg {:03}: {} -> {} | {} candles | {}", 
+                                    req.pair_name, i + 1, start_str, end_str, seg.candle_count, gap_info
+                                );
+                            }
+                        }
+                    }
+                }
+
                 let cva_arc = Arc::new(cva);
                 let model = TradingModel::from_cva(cva_arc.clone(), profile.clone());
 
