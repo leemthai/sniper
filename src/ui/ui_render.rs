@@ -184,9 +184,13 @@ impl ZoneSniperApp {
                         // 2. Simulation Mode / Live Price Logic
                         if let Some(pair) = &self.selected_pair.clone() {
                             if self.is_simulation_mode() {
+                                #[cfg(target_arch = "wasm32")]
+                                let label = "WEB DEMO (OFFLINE)";
+                                #[cfg(not(target_arch = "wasm32"))]
+                                let label = "SIMULATION MODE";
                                 // --- SIMULATION MODE UI ---
                                 ui.label(
-                                    RichText::new("SIMULATION MODE")
+                                    RichText::new(label)
                                         .strong()
                                         .color(Color32::from_rgb(255, 150, 0)),
                                 );
@@ -426,31 +430,32 @@ impl ZoneSniperApp {
                 ui.heading("Keyboard Shortcuts (Press key to execute commands listed)");
                 ui.add_space(10.0);
 
-                // ui.label("Press any key to execute the command:");
-                // ui.add_space(5.0);
+                // Pre-calculate dynamic strings so they live long enough for the Vec
+                let l_sticky = "Toggle ".to_owned() + &UI_TEXT.label_hvz;
+                let l_low = "Toggle ".to_owned() + &UI_TEXT.label_lower_wick_zones;
+                let l_high = "Toggle ".to_owned() + &UI_TEXT.label_upper_wick_zones;
 
-                let general_shortcuts = [
+                // 1. General Shortcuts
+                // Use vec![] to create a growable Vector (Arrays [...] are fixed size)
+                let mut _general_shortcuts = vec![
                     ("H", "Toggle this help panel"),
-                    ("S", "Toggle Simulation Mode"),
                     ("ESC", "Close all open Help Windows"),
                     ("B", UI_TEXT.label_help_background),
-                    ("1", &("Toggle ".to_owned() + &UI_TEXT.label_hvz)),
-                    (
-                        "2",
-                        &("Toggle ".to_owned() + &UI_TEXT.label_lower_wick_zones),
-                    ),
-                    (
-                        "3",
-                        &("Toggle ".to_owned() + &UI_TEXT.label_upper_wick_zones),
-                    ),
+                    ("1", l_sticky.as_str()),
+                    ("2", l_low.as_str()),
+                    ("3", l_high.as_str()),
                 ];
+
+                // Only add 'S' for Native
+                #[cfg(not(target_arch = "wasm32"))]
+                _general_shortcuts.insert(1, ("S", "Toggle Simulation Mode"));
 
                 Grid::new("general_shortcuts_grid")
                     .num_columns(2)
                     .spacing([20.0, 8.0])
                     .striped(true)
                     .show(ui, |ui| {
-                        Self::render_shortcut_rows(ui, &general_shortcuts);
+                        Self::render_shortcut_rows(ui, &_general_shortcuts);
                     });
 
                 if is_sim_mode {
@@ -460,7 +465,15 @@ impl ZoneSniperApp {
                     ui.heading("Simulation Mode Controls");
                     ui.add_space(5.0);
 
-                    let sim_shortcuts = [
+                    #[cfg(target_arch = "wasm32")]
+                    ui.label(
+                        RichText::new("(WEB DEMO: OFFLINE)").color(Color32::from_rgb(255, 150, 0)),
+                    );
+
+                    ui.add_space(5.0);
+
+
+                    let mut _sim_shortcuts = vec![
                         ("D", UI_TEXT.label_help_sim_toggle_direction),
                         ("X", UI_TEXT.label_help_sim_step_size),
                         ("A", UI_TEXT.label_help_sim_activate_price_change),
@@ -469,12 +482,16 @@ impl ZoneSniperApp {
                         ("6", UI_TEXT.label_help_sim_jump_higher_wicks),
                     ];
 
+                    // Only add 'S' for Native
+                    #[cfg(not(target_arch = "wasm32"))]
+                    _sim_shortcuts.insert(0, ("S", "Enter/Exit Simulation Mode"));
+
                     Grid::new("sim_shortcuts_grid")
                         .num_columns(2)
                         .spacing([20.0, 8.0])
                         .striped(true)
                         .show(ui, |ui| {
-                            Self::render_shortcut_rows(ui, &sim_shortcuts);
+                            Self::render_shortcut_rows(ui, &_sim_shortcuts);
                         });
                 }
 

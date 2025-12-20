@@ -167,6 +167,11 @@ impl ZoneSniperApp {
     }
 
     pub fn is_simulation_mode(&self) -> bool {
+                // WASM is always offline/simulation
+        #[cfg(target_arch = "wasm32")]
+        return true;
+
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(engine) = &self.engine {
             engine.price_stream.is_suspended()
         } else {
@@ -241,6 +246,7 @@ impl ZoneSniperApp {
         None
     }
     
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn toggle_simulation_mode(&mut self) {
         if let Some(engine) = &self.engine {
             let is_sim = !engine.price_stream.is_suspended(); 
@@ -339,7 +345,11 @@ impl ZoneSniperApp {
                     }
                 }
             }
-            if i.key_pressed(Key::S) { self.toggle_simulation_mode(); }
+            // Gate the 'S' key so it only works on Native
+            #[cfg(not(target_arch = "wasm32"))]
+            if i.key_pressed(Key::S) {
+                self.toggle_simulation_mode();
+            }
             if i.key_pressed(Key::Num4) { self.jump_to_next_zone("sticky"); }
             if i.key_pressed(Key::Num5) { self.jump_to_next_zone("low-wick"); }
             if i.key_pressed(Key::Num6) { self.jump_to_next_zone("high-wick"); }

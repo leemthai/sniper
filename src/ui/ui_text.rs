@@ -90,8 +90,8 @@ pub const UI_TEXT: UiText = UiText {
     plot_this_zone_is: "This zone is",
 
     label_volume: "Trading Volume",
-    label_lower_wick_count: "Lower Wick Count",
-    label_upper_wick_count: "Higher Wick Count",
+    label_lower_wick_count: "Lower Wick Strength",
+    label_upper_wick_count: "Higher Wick Strength",
     label_hvz: "High Volume Zones",
     label_lower_wick_zones: "Lower Wick Zones",
     label_upper_wick_zones: "Upper Wick Zones",
@@ -101,7 +101,7 @@ pub const UI_TEXT: UiText = UiText {
     label_hvz_beneath: "`High Volume Zone` is below (if bearish, acts as future target price)",
     label_hvz_within: "Inside `High Volume Zone` now (consolidating...)",
 
-    label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Count (Find Demand Zones) ,(3) Upper Wick Count (Find Supply Zones)",
+    label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Strength (Find Demand Zones), (3) Upper Wick Strength (Find Supply Zones)",
     label_help_sim_toggle_direction: "Toggle direction (⬆️ UP / ⬇️ DOWN)",
     label_help_sim_step_size: "Cycle step size (0.1% → 1% → 5% → 10%)",
     label_help_sim_activate_price_change: "Activate price change in current direction",

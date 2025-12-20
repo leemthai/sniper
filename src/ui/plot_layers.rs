@@ -42,12 +42,12 @@ impl PlotLayer for BackgroundLayer {
         // 1. Determine Label
         let type_label = match ctx.background_score_type {
             ScoreType::FullCandleTVW => "Trading Volume",
-            ScoreType::LowWickCount => "Lower Wick Count",
-            ScoreType::HighWickCount => "Upper Wick Count",
+            ScoreType::LowWickCount => "Lower Wick Strength",
+            ScoreType::HighWickCount => "Upper Wick Strength",
         };
 
         // 2. Create Group Name (Appears in Legend)
-        let legend_label = format!("Zone Strength: {}", type_label);
+        let legend_label = format!("Background Plot: {}", type_label);
 
         for bar in &ctx.cache.bars {
             let half_h = bar.height / 2.0;

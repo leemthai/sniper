@@ -158,7 +158,8 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
             // We use a low Sigma to capture the "Bulk" of the volume profile,
             // ensuring we see the full context of where trading has occurred,
             // not just the extreme outliers.
-            sigma: 0.5,
+            // sigma: 0.5,
+            sigma: 0.2, // Trying to capture zones with less amplitude e.g. PAXGUSDT at 8.122%
         },
 
         // REVERSAL ZONES (Wick Counts)
@@ -194,7 +195,8 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         // This makes the model 20x more sensitive for testing.
         // TESTING ONLY CHANGE .... change back when not testing to 0.01
         // price_recalc_threshold_pct: 0.000003,
-        price_recalc_threshold_pct: 0.0001,
+        // price_recalc_threshold_pct: 0.0001,
+        price_recalc_threshold_pct: 0.01,
         min_candles_for_analysis: 100,
     },
 
