@@ -22,7 +22,6 @@ pub struct DebugFlags {
     pub enable_perf_logging: bool,
 
     // NEW: Limit how many pairs are loaded in Debug mode.
-    // Set to 1000 to load everything. Set to 2 for instant startup.
     pub max_pairs_load: usize,
 }
 
@@ -35,10 +34,9 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
     print_trigger_updates: false,    // must be enabled to see journey logs
     print_journey_for_pair: "",      // pair to track journey of
 
-    enable_perf_logging: false, // Turn this back on for cool scope-level timings..... set via trace_time! macro.
+    enable_perf_logging: true, // Turn this back on for cool scope-level timings..... set via trace_time! macro.
 
     // Default to a small number for quick UI testing.
-    // Change this to 100 when you want to stress-test the model.
-    // To remove all limits, just set a huge number like 10000
-    max_pairs_load: 60, // 50,
+    // Change this to 1000 when you want to stress-test the model i.e all pairs.
+    max_pairs_load: 60,
 };

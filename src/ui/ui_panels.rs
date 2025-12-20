@@ -7,8 +7,8 @@ use strum::IntoEnumIterator;
 
 use crate::analysis::range_gap_finder::{DisplaySegment, GapReason};
 
-use crate::config::{ANALYSIS, PriceHorizonConfig};
 use crate::config::plot::PLOT_CONFIG;
+use crate::config::{ANALYSIS, PriceHorizonConfig};
 
 use crate::domain::pair_interval::PairInterval;
 
@@ -17,6 +17,7 @@ use crate::models::horizon_profile::HorizonProfile;
 use crate::models::{PairContext, ZoneType};
 
 use crate::ui::config::UI_TEXT;
+use crate::ui::styles::UiStyleExt;
 use crate::ui::utils::{
     colored_subsection_heading, format_candle_count, format_duration_context, section_heading,
     spaced_separator,
@@ -44,8 +45,11 @@ impl<'a> CandleRangePanel<'a> {
         let mut clicked_idx = None;
 
         ui.add_space(10.0);
-        ui.heading(format!("{} {}", self.segments.len(), UI_TEXT.cr_title));
+        ui.heading(format!("{}", UI_TEXT.cr_title));
         ui.separator();
+        // ui.heading(format!("{} {}", self.segments.len(), UI_TEXT.cr_subtitle));
+        ui.label_subheader(format!("{} {}", self.segments.len(), UI_TEXT.cr_subtitle));
+
 
         ScrollArea::vertical()
             .auto_shrink([false, false])
