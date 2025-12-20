@@ -10,6 +10,7 @@ use crate::Cli;
 
 use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
 
+use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::engine::SniperEngine;
@@ -23,6 +24,7 @@ use crate::ui::utils::setup_custom_visuals;
 use crate::ui::app_simulation::{SimStepSize, SimDirection};
 
 use crate::utils::TimeUtils;
+
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -146,7 +148,7 @@ impl ZoneSniperApp {
             std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
                 rt.block_on(async move {
-                    let (data, sig) = crate::data::fetch_pair_data(
+                    let (data, sig) = fetch_pair_data(
                         300, 
                         &args_clone, 
                         Some(prog_tx)
@@ -162,7 +164,7 @@ impl ZoneSniperApp {
             let _ = prog_tx;
             let args_clone = args.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let (data, sig) = crate::data::fetch_pair_data(0, &args_clone, None).await;
+                let (data, sig) = fetch_pair_data(0, &args_clone, None).await;
                 let _ = data_tx.send((data, sig));
             });
         }

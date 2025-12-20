@@ -41,18 +41,17 @@ pub struct JourneySettings {
 }
 
 /// Settings for CVA (Cumulative Volume Analysis)
-#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CvaSettings {
     // Price change threshold (fractional) to trigger CVA recomputation
     pub price_recalc_threshold_pct: f64,
-    // Minimum number of candles required for valid CVA analysis
-    // Below this threshold, the system lacks sufficient data for reliable zone detection
+    // Minimum number of candles required for valid CVA analysis. Below this threshold, the system lacks sufficient data for reliable zone detection => error
     pub min_candles_for_analysis: usize,
-    pub segment_merge_tolerance_ms: i64, // NEW: Accordion Merge Tolerance
+    pub segment_merge_tolerance_ms: i64, // Accordion Merge Tolerance
 }
 
 /// Parameters for a specific zone type (Sticky, Reversal, etc.)
-#[derive(Clone, Debug, Copy, Serialize, Deserialize)] // Add Serde
+#[derive(Clone, Debug, Copy, Serialize, Deserialize)]
 pub struct ZoneParams {
     /// Smoothing Window % (0.0 to 1.0).
     /// Turn UP to merge jagged spikes into hills. Turn DOWN for sharp precision.
@@ -73,14 +72,14 @@ pub struct ZoneParams {
     pub sigma: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZoneClassificationConfig {
     pub sticky: ZoneParams,
     pub reversal: ZoneParams,
 }
 
 /// The Master Analysis Configuration
-#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnalysisConfig {
     // This defines the candle interval for all analysis (1h, 5m, 15m, etc.)
     pub interval_width_ms: i64,
@@ -128,7 +127,7 @@ impl AnalysisConfig {
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     interval_width_ms: TimeUtils::MS_IN_5_MIN,
-    zone_count: 256, // Goldilocks number (see private project-3eed40f.md for explanation)
+    zone_count: 256,
 
     // 2. Derive the default automatically
     // 2. Use the Constant
@@ -176,18 +175,11 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     },
 
     cva: CvaSettings {
-        // CHANGE: 0.01 (1%) -> 0.0005 (0.05%)
-        // This makes the model 20x more sensitive for testing.
-        // TESTING ONLY CHANGE .... change back when not testing to 0.01
-        // price_recalc_threshold_pct: 0.000003,
-        // price_recalc_threshold_pct: 0.0001,
         price_recalc_threshold_pct: 0.01,
         min_candles_for_analysis: 100,
-        // Defined here. 1 Day default.
-        segment_merge_tolerance_ms: TimeUtils::MS_IN_D,
+        segment_merge_tolerance_ms: TimeUtils::MS_IN_D, // Merging time segments. Set 1 Day default.
     },
 
-    // NEW: Initialize Default PriceHorizon
     price_horizon: PriceHorizonConfig {
         threshold_pct: DEFAULT_PH_THRESHOLD,
         min_threshold_pct: 0.001, // = 0.10% minimum - seems fine for stablecoins even, let's see
