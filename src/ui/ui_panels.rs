@@ -75,19 +75,25 @@ impl<'a> CandleRangePanel<'a> {
                                 );
                                 ui.label(""); // Length
 
-                                let reason_text = match seg.gap_reason {
-                                    GapReason::PriceMismatch => UI_TEXT.cr_gap_price_mismatch,
-                                    GapReason::MissingSourceData => UI_TEXT.cr_gap_missing_source,
-                                    GapReason::PriceAbovePH => UI_TEXT.cr_gap_price_above,
-                                    GapReason::PriceBelowPH => UI_TEXT.cr_gap_price_below,
-                                    GapReason::PriceMixed => UI_TEXT.cr_gap_mixed,
-                                    GapReason::None => "",
+                                // VISUAL DISTINCTION
+                                let (text, color) = match seg.gap_reason {
+                                    GapReason::PriceMismatch => (
+                                        UI_TEXT.cr_gap_price_mismatch,
+                                        Color32::from_rgb(255, 165, 0),
+                                    ), // Orange
+                                    GapReason::MissingSourceData => {
+                                        (UI_TEXT.cr_gap_missing_source, Color32::ORANGE)
+                                    } // ORANGE ALERT (it's not actionable so just warning)
+                                    GapReason::PriceAbovePH => {
+                                        (UI_TEXT.cr_gap_price_above, Color32::LIGHT_BLUE)
+                                    } // Contextual
+                                    GapReason::PriceBelowPH => {
+                                        (UI_TEXT.cr_gap_price_below, Color32::LIGHT_BLUE)
+                                    } // Contextual
+                                    GapReason::PriceMixed => (UI_TEXT.cr_gap_mixed, Color32::GRAY),
+                                    GapReason::None => ("", Color32::TRANSPARENT),
                                 };
-                                ui.label(
-                                    RichText::new(reason_text)
-                                        .small()
-                                        .color(Color32::from_rgb(255, 100, 100)),
-                                );
+                                ui.label(RichText::new(text).small().color(color));
                                 ui.end_row();
                             }
 
@@ -382,7 +388,9 @@ impl<'a> DataGenerationPanel<'a> {
         if let Some(profile) = self.profile {
             // --- A. CUSTOM HEATMAP WIDGET ---
             let (rect, response) =
-                ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click_and_drag());
+                // Subtract 10.0 from available_width to create a safety margin on the right
+                // so the panel resize handle doesn't steal clicks at 100%.
+                ui.allocate_exact_size(vec2(ui.available_width() - 10.0, 40.0), Sense::click_and_drag());
 
             // Handle Input (Logarithmic)
             if response.dragged() || response.clicked() {
