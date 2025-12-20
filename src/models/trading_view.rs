@@ -14,9 +14,6 @@ use crate::models::OhlcvTimeSeries;
 
 use crate::utils::maths_utils::{normalize_max, smooth_data, calculate_stats};
 
-// use crate::utils::TimeUtils;
-
-
 /// A single price zone with its properties
 #[derive(Debug, Clone)]
 pub struct Zone {

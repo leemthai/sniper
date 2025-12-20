@@ -12,13 +12,6 @@ use crate::models::timeseries::find_matching_ohlcv; // Needed for data lookup
 use crate::models::trading_view::TradingModel;
 use crate::utils::app_time::AppInstant;
 
-// #[cfg(debug_assertions)]
-// use {
-//     crate::analysis::range_gap_finder::{GapReason, RangeGapFinder},
-//     crate::utils::TimeUtils,
-//     crate::utils::time_utils,
-// };
-
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
 pub fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult>) {
