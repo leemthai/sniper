@@ -13,7 +13,47 @@ use crate::utils::TimeUtils;
 use super::app::ZoneSniperApp;
 use crate::ui::utils::format_price;
 
+use crate::ui::ui_panels::CandleRangePanel;
+
+
 impl ZoneSniperApp {
+
+
+pub(super) fn render_right_panel(&mut self, ctx: &Context) {
+        let panel_frame = Frame::new().fill(UI_CONFIG.colors.side_panel);
+
+        SidePanel::right("right_panel")
+            .min_width(300.0) // Wider for table data
+            .resizable(true)
+            .frame(panel_frame)
+            .show(ctx, |ui| {
+                ui.add_space(5.0);
+                
+                // Safety check for Engine/Model
+                if let Some(engine) = &self.engine {
+                    if let Some(pair) = &self.selected_pair {
+                        if let Some(model) = engine.get_model(pair) {
+                            
+                            // Render the Segment List
+                            // We pass None for current_idx for now (interactive logic comes next)
+                            let mut panel = CandleRangePanel::new(&model.segments, None);
+                            
+                            if let Some(clicked_idx) = panel.render(ui) {
+                                // Placeholder for interaction
+                                #[cfg(debug_assertions)]
+                                log::info!("Clicked Segment Index: {}", clicked_idx);
+                            }
+                            
+                        } else {
+                            ui.label("No model loaded.");
+                        }
+                    } else {
+                        ui.label("No pair selected.");
+                    }
+                }
+            });
+    }
+
     pub(super) fn render_side_panel(&mut self, ctx: &Context) {
         let side_panel_frame = Frame::new().fill(UI_CONFIG.colors.side_panel);
         SidePanel::left("left_panel")
@@ -60,15 +100,6 @@ impl ZoneSniperApp {
                                 self.invalidate_all_pairs_for_global_change(
                                     "price horizon threshold changed",
                                 );
-                            }
-                        }
-                        DataGenerationEventChanged::TimeHorizonDays(days) => {
-                            if self.app_config.time_horizon.default_days != days {
-                                self.app_config.time_horizon.default_days = days.clamp(
-                                    ANALYSIS.time_horizon.min_days,
-                                    ANALYSIS.time_horizon.max_days,
-                                );
-                                self.mark_all_journeys_stale("Time Horizon changed");
                             }
                         }
                     }
@@ -552,7 +583,6 @@ impl ZoneSniperApp {
             self.selected_pair.clone(),
             available_pairs,
             &self.app_config.price_horizon,
-            self.app_config.time_horizon.default_days,
             profile.as_ref(),
             actual_count,
             self.app_config.interval_width_ms,

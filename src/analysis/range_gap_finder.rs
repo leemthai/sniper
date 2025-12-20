@@ -28,19 +28,24 @@ pub struct DisplaySegment {
 pub struct RangeGapFinder;
 
 impl RangeGapFinder {
-    pub fn analyze(
+
+pub fn analyze(
         timeseries: &OhlcvTimeSeries, 
         ph_ranges: &[(usize, usize)],
-        price_bounds: (f64, f64)
+        price_bounds: (f64, f64),
+        merge_tolerance_ms: i64, // <--- NEW ARGUMENT
     ) -> Vec<DisplaySegment> {
-               if ph_ranges.is_empty() || timeseries.timestamps.is_empty() {
+        if ph_ranges.is_empty() || timeseries.timestamps.is_empty() {
             return Vec::new();
         }
 
-        let mut segments = Vec::new();
         let interval_ms = timeseries.pair_interval.interval_ms;
-        let tolerance_ms = (interval_ms as f64 * 1.1) as i64; 
+        // Tolerance for detecting "Missing Source Data" (Exchange Down)
+        let source_gap_tolerance = (interval_ms as f64 * 1.1) as i64; 
 
+        // --- PASS 1: Generate Raw Segments ---
+        // This splits ranges based on Price Horizon gaps AND Source Data gaps
+        let mut raw_segments = Vec::new();
         let mut prev_segment_end_idx = 0;
         let mut prev_segment_end_ts = 0;
         let mut first_segment = true;
@@ -54,14 +59,16 @@ impl RangeGapFinder {
             for i in range_start..safe_end {
                 let current_ts = timeseries.timestamps[i];
                 
+                // Look ahead to check continuity within this range (Source Data Gaps)
                 if i + 1 < safe_end {
                     let next_ts = timeseries.timestamps[i+1];
                     let diff = next_ts - current_ts;
                     
-                    if diff > tolerance_ms {
+                    if diff > source_gap_tolerance {
+                        // Found Source Gap inside PH Range
                         let sub_end = i + 1;
                         
-                        segments.push(Self::create_segment(
+                        raw_segments.push(Self::create_segment(
                             timeseries, 
                             current_sub_start, 
                             sub_end, 
@@ -80,8 +87,9 @@ impl RangeGapFinder {
                 }
             }
             
+            // Push the final chunk of this range
             if current_sub_start < safe_end {
-                segments.push(Self::create_segment(
+                raw_segments.push(Self::create_segment(
                     timeseries,
                     current_sub_start,
                     safe_end,
@@ -98,7 +106,42 @@ impl RangeGapFinder {
             }
         }
 
-        segments
+        // --- PASS 2: COALESCE (Merge small price gaps) ---
+        if raw_segments.is_empty() { return vec![]; }
+
+        let mut merged_segments: Vec<DisplaySegment> = Vec::new();
+        let mut current = raw_segments[0].clone();
+
+        for next in raw_segments.into_iter().skip(1) {
+            // Gap duration between current segment end and next segment start
+            let gap_duration = next.start_ts - current.end_ts;
+            
+            // Check if gap is structural (Missing Data) or filter-based (Price)
+            let is_source_hole = matches!(next.gap_reason, GapReason::MissingSourceData);
+
+            if !is_source_hole && gap_duration <= merge_tolerance_ms {
+                // MERGE: The price excursion was short enough to ignore.
+                
+                // 1. Calculate how many candles we are "filling in" from the exclusion zone
+                // Indices between [current.end_idx ... next.start_idx) are the ones we skipped.
+                // Since !is_source_hole, these indices exist in the DB, just not in PH range.
+                let skipped_count = next.start_idx.saturating_sub(current.end_idx);
+
+                // 2. Extend current segment
+                current.end_idx = next.end_idx;
+                current.end_ts = next.end_ts;
+                current.candle_count += next.candle_count + skipped_count;
+                
+                // Note: current.gap_reason stays as whatever started the *merged* block
+            } else {
+                // Cannot merge (Too long OR Data missing). Finalize current.
+                merged_segments.push(current);
+                current = next;
+            }
+        }
+        merged_segments.push(current);
+
+        merged_segments
     }
 
     fn create_segment(
@@ -118,15 +161,10 @@ impl RangeGapFinder {
         } else {
             let time_gap = start_ts - prev_end_ts;
             
-            // LOGIC:
-            // 1. If indices are contiguous, it's a Source Gap.
-            // 2. If indices are skipped, check prices of the skipped candles.
             let reason = if start == prev_end_idx {
                 GapReason::MissingSourceData
             } else {
-                // Determine direction
-                // We check the first excluded candle to see where it was.
-                // (prev_end_idx is the index of the first excluded candle)
+                // Check skipped candle price to determine direction
                 if prev_end_idx < ts.low_prices.len() {
                     let low = ts.low_prices[prev_end_idx];
                     let high = ts.high_prices[prev_end_idx];
@@ -157,5 +195,4 @@ impl RangeGapFinder {
             gap_duration_str: duration_str,
         }
     }
-
 }

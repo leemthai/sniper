@@ -1,11 +1,21 @@
 use std::sync::Arc;
 
+
+// User crates
 use crate::analysis::zone_scoring::find_target_zones;
-use crate::config::ANALYSIS; // Import Config
+use crate::analysis::range_gap_finder::{RangeGapFinder, DisplaySegment};
+
+use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::config::ZoneParams;
+
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::horizon_profile::HorizonProfile;
+use crate::models::OhlcvTimeSeries;
+
 use crate::utils::maths_utils::{normalize_max, smooth_data, calculate_stats};
+
+// use crate::utils::TimeUtils;
+
 
 /// A single price zone with its properties
 #[derive(Debug, Clone)]
@@ -149,6 +159,7 @@ pub struct TradingModel {
     pub zones: ClassifiedZones,
     pub coverage: ZoneCoverageStats,
     pub profile: HorizonProfile,
+    pub segments: Vec<DisplaySegment>,
 }
 
 // New Struct for Stats
@@ -161,15 +172,33 @@ pub struct ZoneCoverageStats {
 
 impl TradingModel {
     /// Create a new trading model from CVA results and optional current price
-    pub fn from_cva(cva: Arc<CVACore>, profile: HorizonProfile) -> Self {
-        let (zones, coverage) = Self::classify_zones(&cva);
+    pub fn from_cva(
+        cva: Arc<CVACore>, 
+        profile: HorizonProfile,
+        ohlcv: &OhlcvTimeSeries,
+        config: &AnalysisConfig,
+    ) -> Self {
+        let (classified, stats) = Self::classify_zones(&cva);
+        
+        // CALCULATE SEGMENTS (On Worker Thread)
+        // 1 Day tolerance merges small "Price < PH" dips, but keeps structural data holes.
+        let bounds = cva.price_range.min_max();
+        let merge_ms = config.cva.segment_merge_tolerance_ms;
+        
+        let segments = RangeGapFinder::analyze(
+            ohlcv, 
+            &cva.included_ranges, 
+            bounds, 
+            merge_ms
+        );
 
-        TradingModel {
-            pair_name: cva.pair_name.clone(),
+        Self {
             cva,
-            zones,
-            coverage,
             profile,
+            zones: classified,
+            coverage: stats,
+            pair_name: ohlcv.pair_interval.name().to_string(), // Safer to get from OHLCV
+            segments, // Store it
         }
     }
 

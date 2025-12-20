@@ -1,13 +1,13 @@
 use colorgrad::Gradient;
 use eframe::egui::{
     Align, Align2, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
-    RichText, ScrollArea, Sense, Slider, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2,
+    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2,
 };
 use strum::IntoEnumIterator;
 
 use crate::config::ANALYSIS;
+use crate::config::PriceHorizonConfig;
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{PriceHorizonConfig};
 
 use crate::domain::pair_interval::PairInterval;
 
@@ -21,8 +21,109 @@ use crate::ui::utils::{
     spaced_separator,
 };
 
+use crate::analysis::range_gap_finder::{DisplaySegment, GapReason};
+
+use crate::utils::time_utils;
+
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
+
+pub struct CandleRangePanel<'a> {
+    segments: &'a [DisplaySegment],
+    current_range_idx: Option<usize>,
+}
+
+impl<'a> CandleRangePanel<'a> {
+    pub fn new(segments: &'a [DisplaySegment], current_idx: Option<usize>) -> Self {
+        Self {
+            segments,
+            current_range_idx: current_idx,
+        }
+    }
+
+    pub fn render(&mut self, ui: &mut Ui) -> Option<usize> {
+        let mut clicked_idx = None;
+
+        ui.add_space(10.0);
+        ui.heading(format!("{} {}", self.segments.len(), UI_TEXT.cr_title));
+        ui.separator();
+
+        ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                Grid::new("cr_grid")
+                    .striped(true)
+                    .num_columns(4)
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(UI_TEXT.cr_header_id).strong());
+                        ui.label(RichText::new(UI_TEXT.cr_header_date).strong());
+                        ui.label(RichText::new(UI_TEXT.cr_header_len).strong());
+                        ui.label(RichText::new(UI_TEXT.cr_header_ctx).strong());
+                        ui.end_row();
+
+                        for (i, seg) in self.segments.iter().enumerate() {
+                            // Highlight current range
+                            let is_selected = self.current_range_idx == Some(i);
+
+                            // Draw Gap Row (if not first)
+                            if i > 0 {
+                                ui.label(""); // #
+                                ui.label(
+                                    RichText::new(format!("-- {} Gap --", seg.gap_duration_str))
+                                        .italics()
+                                        .color(Color32::GRAY),
+                                );
+                                ui.label(""); // Length
+
+                                let reason_text = match seg.gap_reason {
+                                    GapReason::PriceMismatch => UI_TEXT.cr_gap_price_mismatch,
+                                    GapReason::MissingSourceData => UI_TEXT.cr_gap_missing_source,
+                                    GapReason::PriceAbovePH => UI_TEXT.cr_gap_price_above,
+                                    GapReason::PriceBelowPH => UI_TEXT.cr_gap_price_below,
+                                    GapReason::PriceMixed => UI_TEXT.cr_gap_mixed,
+                                    GapReason::None => "",
+                                };
+                                ui.label(
+                                    RichText::new(reason_text)
+                                        .small()
+                                        .color(Color32::from_rgb(255, 100, 100)),
+                                );
+                                ui.end_row();
+                            }
+
+                            // Draw Segment Row
+                            let start_date = time_utils::epoch_ms_to_utc(seg.start_ts);
+                            let end_date = time_utils::epoch_ms_to_utc(seg.end_ts);
+
+                            // Clickable Row ID
+                            if ui
+                                .selectable_label(is_selected, format!("{}", i + 1))
+                                .clicked()
+                            {
+                                clicked_idx = Some(i);
+                            }
+
+                            ui.label(format!("{} - {}", start_date, end_date));
+                            ui.label(format!("{} candles", seg.candle_count));
+
+                            // Context (Live vs Historical)
+                            if i == self.segments.len() - 1 {
+                                ui.label(
+                                    RichText::new(UI_TEXT.cr_label_live)
+                                        .color(Color32::GREEN)
+                                        .strong(),
+                                );
+                            } else {
+                                ui.label(UI_TEXT.cr_label_historical);
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
+
+        clicked_idx
+    }
+}
 
 // --- HELPER STRUCT FOR LOGARITHMIC SLIDER ---
 struct LogMapper {
@@ -71,7 +172,6 @@ pub struct DataGenerationPanel<'a> {
     selected_pair: Option<String>,
     available_pairs: Vec<String>,
     price_horizon_config: &'a PriceHorizonConfig,
-    time_horizon_days: u64,
     profile: Option<&'a HorizonProfile>,
     actual_candle_count: usize,
     interval_ms: i64,
@@ -83,7 +183,6 @@ impl<'a> DataGenerationPanel<'a> {
         selected_pair: Option<String>,
         available_pairs: Vec<String>,
         price_horizon_config: &'a PriceHorizonConfig,
-        time_horizon_days: u64,
         profile: Option<&'a HorizonProfile>,
         actual_candle_count: usize,
         interval_ms: i64,
@@ -93,7 +192,6 @@ impl<'a> DataGenerationPanel<'a> {
             selected_pair,
             available_pairs,
             price_horizon_config,
-            time_horizon_days,
             profile,
             actual_candle_count,
             interval_ms,
@@ -391,12 +489,7 @@ impl<'a> DataGenerationPanel<'a> {
         }
     }
 
-    fn render_horizon_report(
-        &self,
-        ui: &mut Ui,
-        current_pct: f64,
-        profile: &HorizonProfile,
-    ) {
+    fn render_horizon_report(&self, ui: &mut Ui, current_pct: f64, profile: &HorizonProfile) {
         ui.vertical(|ui| {
             ui.add_space(4.0);
 
@@ -494,38 +587,6 @@ impl<'a> DataGenerationPanel<'a> {
         });
     }
 
-    fn render_time_horizon_slider(&mut self, ui: &mut Ui) -> Option<u64> {
-        let mut changed = None;
-
-        ui.add_space(5.0);
-        ui.label(colored_subsection_heading(UI_TEXT.time_horizon_heading));
-
-        let mut horizon_days = self.time_horizon_days as f64;
-        let response = ui.add(
-            Slider::new(
-                &mut horizon_days,
-                ANALYSIS.time_horizon.min_days as f64..=ANALYSIS.time_horizon.max_days as f64,
-            )
-            .integer()
-            .suffix(" days"),
-        );
-
-        let new_value = horizon_days.round() as u64;
-        self.time_horizon_days = new_value;
-
-        if response.changed() {
-            changed = Some(new_value);
-        }
-
-        let helper_text = format!(
-            "{}{}{}",
-            UI_TEXT.time_horizon_helper_prefix, new_value, UI_TEXT.time_horizon_helper_suffix
-        );
-        ui.label(RichText::new(helper_text).small().color(Color32::GRAY));
-
-        changed
-    }
-
     fn render_pair_selector(&mut self, ui: &mut Ui) -> Option<String> {
         let mut changed = None;
         let previously_selected_pair = self.selected_pair.clone();
@@ -562,7 +623,6 @@ pub enum DataGenerationEventChanged {
     // ZoneCount(usize),
     Pair(String),
     PriceHorizonThreshold(f64),
-    TimeHorizonDays(u64),
 }
 
 impl<'a> Panel for DataGenerationPanel<'a> {
@@ -574,11 +634,6 @@ impl<'a> Panel for DataGenerationPanel<'a> {
         // Price Horizon display (always enabled)
         if let Some(threshold) = self.render_price_horizon_display(ui, show_help) {
             events.push(DataGenerationEventChanged::PriceHorizonThreshold(threshold));
-        }
-        spaced_separator(ui);
-
-        if let Some(days) = self.render_time_horizon_slider(ui) {
-            events.push(DataGenerationEventChanged::TimeHorizonDays(days));
         }
         spaced_separator(ui);
 

@@ -68,6 +68,19 @@ pub struct UiText {
     pub ph_help_scope_rows: &'static [(&'static str, &'static str, &'static str)],
 
     pub ph_help_definitions: &'static [(&'static str, &'static str)],
+
+    pub cr_title: &'static str,
+    pub cr_header_id: &'static str,
+    pub cr_header_date: &'static str,
+    pub cr_header_len: &'static str,
+    pub cr_header_ctx: &'static str,
+    pub cr_label_live: &'static str,
+    pub cr_label_historical: &'static str,
+    pub cr_gap_price_mismatch: &'static str,
+    pub cr_gap_missing_source: &'static str,
+    pub cr_gap_price_above: &'static str,
+    pub cr_gap_price_below: &'static str,
+    pub cr_gap_mixed: &'static str,
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -183,4 +196,24 @@ pub const UI_TEXT: UiText = UiText {
             "Ratio of Evidence to History. (Yellow = High Data Quality).",
         ),
     ],
+
+    // --- CANDLE RANGE NAVIGATOR (CR) ---
+    cr_title: "Candle Ranges (Accordion)",
+
+    // Headers
+    cr_header_id: "#",
+    cr_header_date: "Date Range",
+    cr_header_len: "Length",
+    cr_header_ctx: "Context",
+
+    // Context Labels
+    cr_label_live: "LIVE",
+    cr_label_historical: "Historical",
+
+    // Gap Reasons
+    cr_gap_price_mismatch: "Price out of Range",
+    cr_gap_missing_source: "Missing Data (Exchange)",
+    cr_gap_price_above: "Price > Horizon",
+    cr_gap_price_below: "Price < Horizon",
+    cr_gap_mixed: "Mixed Gap",
 };

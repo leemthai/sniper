@@ -513,6 +513,7 @@ impl eframe::App for ZoneSniperApp {
         self.handle_global_shortcuts(ctx);
         self.render_side_panel(ctx);
         self.render_central_panel(ctx);
+        self.render_right_panel(ctx);
         self.render_status_panel(ctx);
         self.render_help_panel(ctx);
         

@@ -32,15 +32,6 @@ pub struct PriceHorizonConfig {
     pub profiler_steps: usize,
 }
 
-/// Configuration for the Time Horizon UI Slider
-#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
-pub struct TimeHorizonConfig {
-    // Time Horizon slider configuration
-    pub min_days: u64,
-    pub max_days: u64,
-    pub default_days: u64,
-}
-
 /// Settings specific to Journey Analysis
 #[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
 pub struct JourneySettings {
@@ -57,6 +48,7 @@ pub struct CvaSettings {
     // Minimum number of candles required for valid CVA analysis
     // Below this threshold, the system lacks sufficient data for reliable zone detection
     pub min_candles_for_analysis: usize,
+    pub segment_merge_tolerance_ms: i64, // NEW: Accordion Merge Tolerance
 }
 
 /// Parameters for a specific zone type (Sticky, Reversal, etc.)
@@ -98,7 +90,6 @@ pub struct AnalysisConfig {
     pub time_decay_factor: f64,
 
     // Sub-groups
-    pub time_horizon: TimeHorizonConfig,
     pub journey: JourneySettings,
     pub cva: CvaSettings,
     pub zones: ZoneClassificationConfig,
@@ -178,12 +169,6 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         },
     },
 
-    time_horizon: TimeHorizonConfig {
-        min_days: 1,
-        max_days: 100,
-        default_days: 7,
-    },
-
     journey: JourneySettings {
         start_price_tolerance_pct: 0.5,
         // Stop-loss threshold (percentage move against position) for journey failures
@@ -198,6 +183,8 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         // price_recalc_threshold_pct: 0.0001,
         price_recalc_threshold_pct: 0.01,
         min_candles_for_analysis: 100,
+        // Defined here. 1 Day default.
+        segment_merge_tolerance_ms: TimeUtils::MS_IN_D,
     },
 
     // NEW: Initialize Default PriceHorizon

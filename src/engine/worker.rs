@@ -12,12 +12,12 @@ use crate::models::timeseries::find_matching_ohlcv; // Needed for data lookup
 use crate::models::trading_view::TradingModel;
 use crate::utils::app_time::AppInstant;
 
-#[cfg(debug_assertions)] use {
-    crate::analysis::range_gap_finder::{RangeGapFinder, GapReason},
-    crate::utils::time_utils,
-};
-
-
+// #[cfg(debug_assertions)]
+// use {
+//     crate::analysis::range_gap_finder::{GapReason, RangeGapFinder},
+//     crate::utils::TimeUtils,
+//     crate::utils::time_utils,
+// };
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -46,9 +46,9 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
             if let Ok(ts) = find_matching_ohlcv(
                 &req.timeseries.series_data,
                 &req.pair_name,
-                req.config.interval_width_ms
+                req.config.interval_width_ms,
             ) {
-                 ts.close_prices.last().copied().unwrap_or(0.0)
+                ts.close_prices.last().copied().unwrap_or(0.0)
             } else {
                 0.0
             }
@@ -85,8 +85,10 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
             // Check if valid: Same Price? Same Bounds?
             // Note: EPSILON check is safer for floats
             let price_match = (existing.base_price - price_for_analysis).abs() < f64::EPSILON;
-            let min_match = (existing.min_pct - req.config.price_horizon.min_threshold_pct).abs() < f64::EPSILON;
-            let max_match = (existing.max_pct - req.config.price_horizon.max_threshold_pct).abs() < f64::EPSILON;
+            let min_match = (existing.min_pct - req.config.price_horizon.min_threshold_pct).abs()
+                < f64::EPSILON;
+            let max_match = (existing.max_pct - req.config.price_horizon.max_threshold_pct).abs()
+                < f64::EPSILON;
 
             if price_match && min_match && max_match {
                 #[cfg(debug_assertions)]
@@ -113,51 +115,78 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
 
         match result_cva {
             Ok(cva) => {
-               // --- DEBUG: LOG RANGES ---
-                #[cfg(debug_assertions)]
-                {
-                    // Re-fetch OHLCV for the gap analyzer (Cheap lookup)
-                    if let Ok(ohlcv) = find_matching_ohlcv(
-                        &req.timeseries.series_data,
-                        &req.pair_name,
-                        req.config.interval_width_ms
-                    ) {
-                        let bounds = cva.price_range.min_max();
-                        let segments = RangeGapFinder::analyze(ohlcv, &cva.included_ranges, bounds);
-                        
-                        if !segments.is_empty() {
-                            log::info!("🧩 ACCORDION REPORT for [{}] ({} Segments):", req.pair_name, segments.len());
-                            for (i, seg) in segments.iter().enumerate() {
-                                let start_str = time_utils::epoch_ms_to_utc(seg.start_ts);
-                                let end_str = time_utils::epoch_ms_to_utc(seg.end_ts);
-                                
-                                let gap_info = match seg.gap_reason {
-                                    GapReason::None => "Start".to_string(),
-                                    GapReason::PriceMismatch => 
-                                        format!("✂ Skipped {} (Price Range)", seg.gap_duration_str),
-                                    GapReason::MissingSourceData => 
-                                        format!("⚠ DATA HOLE {} (Exchange Down)", seg.gap_duration_str),
+                // We need the OHLCV data to calculate segments in the model.
+                // Since CVA generation succeeded, we know find_matching_ohlcv will succeed.
+                let ohlcv = find_matching_ohlcv(
+                    &req.timeseries.series_data,
+                    &req.pair_name,
+                    req.config.interval_width_ms,
+                )
+                .expect("OHLCV data missing despite CVA success");
 
-                                    // NEW CONTEXTUAL LOGS
-                                    GapReason::PriceAbovePH =>
-                                        format!("⬆ Price > PH for {}", seg.gap_duration_str),
-                                    GapReason::PriceBelowPH =>
-                                        format!("⬇ Price < PH for {}", seg.gap_duration_str),
-                                    GapReason::PriceMixed =>
-                                        format!("✂ Skipped {} (Mixed)", seg.gap_duration_str),
-                                };
+                // --- DEBUG: LOG RANGES ---
+                // #[cfg(debug_assertions)]
+                // {
+                //     // Re-fetch OHLCV for the gap analyzer (Cheap lookup)
+                //     if let Ok(ohlcv) = find_matching_ohlcv(
+                //         &req.timeseries.series_data,
+                //         &req.pair_name,
+                //         req.config.interval_width_ms,
+                //     ) {
+                //         let bounds = cva.price_range.min_max();
+                //         // let merge_ms = 14_400_000;
+                //         let merge_ms = TimeUtils::MS_IN_D;
+                //         let segments =
+                //             RangeGapFinder::analyze(ohlcv, &cva.included_ranges, bounds, merge_ms);
 
-                                log::info!(
-                                    "[{}] Seg {:03}: {} -> {} | {} candles | {}", 
-                                    req.pair_name, i + 1, start_str, end_str, seg.candle_count, gap_info
-                                );
-                            }
-                        }
-                    }
-                }
+                //         if !segments.is_empty() {
+                //             log::info!(
+                //                 "🧩 ACCORDION REPORT for [{}] ({} Segments):",
+                //                 req.pair_name,
+                //                 segments.len()
+                //             );
+                //             for (i, seg) in segments.iter().enumerate() {
+                //                 let start_str = time_utils::epoch_ms_to_utc(seg.start_ts);
+                //                 let end_str = time_utils::epoch_ms_to_utc(seg.end_ts);
+
+                //                 let gap_info = match seg.gap_reason {
+                //                     GapReason::None => "Start".to_string(),
+                //                     GapReason::PriceMismatch => {
+                //                         format!("✂ Skipped {} (Price Range)", seg.gap_duration_str)
+                //                     }
+                //                     GapReason::MissingSourceData => format!(
+                //                         "⚠ DATA HOLE {} (Exchange Down)",
+                //                         seg.gap_duration_str
+                //                     ),
+
+                //                     // NEW CONTEXTUAL LOGS
+                //                     GapReason::PriceAbovePH => {
+                //                         format!("⬆ Price > PH for {}", seg.gap_duration_str)
+                //                     }
+                //                     GapReason::PriceBelowPH => {
+                //                         format!("⬇ Price < PH for {}", seg.gap_duration_str)
+                //                     }
+                //                     GapReason::PriceMixed => {
+                //                         format!("✂ Skipped {} (Mixed)", seg.gap_duration_str)
+                //                     }
+                //                 };
+
+                //                 log::info!(
+                //                     "[{}] Seg {:03}: {} -> {} | {} candles | {}",
+                //                     req.pair_name,
+                //                     i + 1,
+                //                     start_str,
+                //                     end_str,
+                //                     seg.candle_count,
+                //                     gap_info
+                //                 );
+                //             }
+                //         }
+                //     }
+                // }
 
                 let cva_arc = Arc::new(cva);
-                let model = TradingModel::from_cva(cva_arc.clone(), profile.clone());
+                let model = TradingModel::from_cva(cva_arc.clone(), profile.clone(), ohlcv, &req.config);
 
                 let _ = tx.send(JobResult {
                     pair_name: req.pair_name,
@@ -165,7 +194,7 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
                     result: Ok(Arc::new(model)),
                     cva: Some(cva_arc),
                     profile: Some(profile),
-                    candle_count: exact_candle_count, 
+                    candle_count: exact_candle_count,
                 });
             }
             Err(e) => {
@@ -175,7 +204,7 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
                     result: Err(e.to_string()),
                     cva: None,
                     profile: Some(profile),
-                    candle_count: exact_candle_count, 
+                    candle_count: exact_candle_count,
                 });
             }
         }
