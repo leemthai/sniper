@@ -6,18 +6,21 @@ use egui_plot::{AxisHints, Corner, HPlacement, Legend, Plot};
 
 use crate::config::plot::PLOT_CONFIG;
 
+use crate::engine::SniperEngine;
+
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::trading_view::TradingModel;
+use crate::models::timeseries::find_matching_ohlcv;
 
-use crate::ui::ui_text::UI_TEXT;
 use crate::ui::app::PlotVisibility;
+use crate::ui::ui_text::UI_TEXT;
 
 use crate::ui::utils::format_price;
 use crate::utils::maths_utils;
 
 // Import the new Layer System
 use crate::ui::plot_layers::{
-    BackgroundLayer, LayerContext, PlotLayer, PriceLineLayer, ReversalZoneLayer, StickyZoneLayer,
+    BackgroundLayer, LayerContext, PlotLayer, PriceLineLayer, ReversalZoneLayer, StickyZoneLayer, CandlestickLayer,
 };
 
 /// A lightweight representation of a background bar.
@@ -73,7 +76,7 @@ impl PlotView {
         self.cache.is_some()
     }
 
-pub fn show_my_plot(
+    pub fn show_my_plot(
         &mut self,
         ui: &mut Ui,
         cva_results: &CVACore,
@@ -81,7 +84,27 @@ pub fn show_my_plot(
         current_pair_price: Option<f64>,
         background_score_type: ScoreType,
         visibility: &PlotVisibility,
+        engine: &SniperEngine,
     ) {
+        // 1. Fetch OHLCV Data (Required for Candle Layer)
+        // We assume the pair exists since we have a model for it.
+        let ohlcv = find_matching_ohlcv(
+            &engine.timeseries.series_data,
+            &cva_results.pair_name,
+            cva_results.interval_ms,
+        )
+        .expect("OHLCV data missing for current model");
+
+        // 2. Calculate Visual Width (Total candles + Gaps)
+        let total_candles = trading_model
+            .segments
+            .iter()
+            .map(|s| s.candle_count)
+            .sum::<usize>();
+        let gap_count = trading_model.segments.len().saturating_sub(1);
+        let gap_size = crate::config::plot::PLOT_CONFIG.segment_gap_width;
+        let total_visual_width = (total_candles as f64) + (gap_count as f64 * gap_size);
+
         // 1. Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
         let pair_name = &cva_results.pair_name;
@@ -113,15 +136,24 @@ pub fn show_my_plot(
             .y_grid_spacer(move |_input| {
                 let mut marks = Vec::new();
                 // 1. Mandatory Start/End
-                marks.push(egui_plot::GridMark { value: y_min, step_size: total_y_range });
-                marks.push(egui_plot::GridMark { value: y_max, step_size: total_y_range });
+                marks.push(egui_plot::GridMark {
+                    value: y_min,
+                    step_size: total_y_range,
+                });
+                marks.push(egui_plot::GridMark {
+                    value: y_max,
+                    step_size: total_y_range,
+                });
 
                 // 2. Middle steps
                 let divisions = 5;
                 let step = total_y_range / divisions as f64;
                 for i in 1..divisions {
                     let value = y_min + (step * i as f64);
-                    marks.push(egui_plot::GridMark { value, step_size: step });
+                    marks.push(egui_plot::GridMark {
+                        value,
+                        step_size: step,
+                    });
                 }
                 marks
             })
@@ -131,19 +163,24 @@ pub fn show_my_plot(
             .allow_boxed_zoom(false)
             .allow_double_click_reset(false)
             .show(ui, |plot_ui| {
+                
                 let (y_min, y_max) = cva_results.price_range.min_max();
                 let price = current_pair_price.unwrap_or(y_min);
                 let y_min_adjusted = y_min.min(price);
                 let y_max_adjusted = y_max.max(price);
 
                 plot_ui.set_plot_bounds_y(y_min_adjusted..=y_max_adjusted);
-                plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
+                // plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
+                // Set Bounds: X is now 0..TotalWidth
+                plot_ui.set_plot_bounds_x(0.0..=total_visual_width);
+
 
                 // --- LAYER RENDERING SYSTEM ---
 
                 // 1. Create Context
                 let ctx = LayerContext {
-                    trading_model: trading_model, 
+                    trading_model: trading_model,
+                    ohlcv: ohlcv,
                     cache: &cache,
                     visibility,
                     background_score_type,
@@ -174,6 +211,10 @@ pub fn show_my_plot(
                 if visibility.price_line {
                     layers.push(Box::new(PriceLineLayer));
                 }
+
+                // CANDLES ON TOP
+                layers.push(Box::new(CandlestickLayer));
+
 
                 // 3. Render Loop
                 for layer in layers {

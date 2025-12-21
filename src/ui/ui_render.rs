@@ -168,6 +168,7 @@ impl ZoneSniperApp {
                         current_price,
                         self.debug_background_mode,
                         &self.plot_visibility,
+                        engine,
                     );
                 }
                 // PRIORITY 3: CALCULATING (Initial Load)

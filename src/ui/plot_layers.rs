@@ -3,22 +3,100 @@ use eframe::egui::{Color32, Id, LayerId, Order::Tooltip, RichText, Stroke, Ui};
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
 
-use egui_plot::{HLine, PlotPoints, PlotUi, Polygon};
+use egui_plot::{HLine, PlotPoints, PlotUi, Polygon, Line};
 
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::models::cva::ScoreType;
 use crate::models::trading_view::{SuperZone, TradingModel};
+use crate::models::OhlcvTimeSeries;
 
 use crate::ui::app::PlotVisibility;
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
 
+pub struct CandlestickLayer;
+
+impl PlotLayer for CandlestickLayer {
+    fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+        // Fix 1: Use ctx.trading_model
+        if ctx.trading_model.segments.is_empty() { return; }
+
+        let mut visual_x = 0.0;
+        
+        let candle_width = PLOT_CONFIG.candle_width_pct; 
+        let wick_width = PLOT_CONFIG.candle_wick_width;
+        let gap_width = PLOT_CONFIG.segment_gap_width;
+
+        // Fix 1: Use ctx.trading_model
+        for (seg_idx, segment) in ctx.trading_model.segments.iter().enumerate() {
+            
+            for i in segment.start_idx..segment.end_idx {
+                // Fix 2: Use ctx.ohlcv (added to struct above)
+                let candle = ctx.ohlcv.get_candle(i);
+                
+                let is_green = candle.close_price >= candle.open_price;
+                let color = if is_green { 
+                    PLOT_CONFIG.candle_bullish_color
+                } else { 
+                    PLOT_CONFIG.candle_bearish_color
+                };
+                
+                // 1. Wick (Vertical Line)
+                // Fix 3: Wrap PlotPoints in a Line struct.
+                // 'Line' has the .color() and .width() methods.
+                let wick_points = PlotPoints::new(vec![
+                    [visual_x, candle.low_price],
+                    [visual_x, candle.high_price]
+                ]);
+                
+                plot_ui.line(Line::new("", wick_points)
+                    .color(color)
+                    .width(wick_width)
+                );
+                
+                // 2. Body (Rectangle)
+                let open = candle.open_price;
+                let close = candle.close_price;
+                
+                let (body_bottom, body_top) = if (open - close).abs() < f64::EPSILON {
+                    (open, open + (open * 0.0001))
+                } else {
+                    (open.min(close), open.max(close))
+                };
+
+                let half_w = candle_width / 2.0;
+                let rect_points = vec![
+                    [visual_x - half_w, body_bottom],
+                    [visual_x + half_w, body_bottom],
+                    [visual_x + half_w, body_top],
+                    [visual_x - half_w, body_top],
+                ];
+                
+                let poly = Polygon::new(
+                    "", // Name argument required by your version
+                    PlotPoints::new(rect_points)
+                ).fill_color(color);
+
+                plot_ui.polygon(poly);
+
+                visual_x += 1.0;
+            }
+
+            // Draw Gap Separator
+            if seg_idx < ctx.trading_model.segments.len() - 1 {
+                visual_x += gap_width;
+            }
+        }
+    }
+}
+
 /// Context passed to every layer during rendering.
 /// This prevents argument explosion.
 pub struct LayerContext<'a> {
     pub trading_model: &'a TradingModel,
+    pub ohlcv: &'a OhlcvTimeSeries,
     pub cache: &'a PlotCache,
     pub visibility: &'a PlotVisibility,
     pub background_score_type: ScoreType,

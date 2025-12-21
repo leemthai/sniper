@@ -32,15 +32,22 @@ pub struct PlotConfig {
     pub background_bar_intensity_pct: f32,
     pub active_zone_stroke_color: Color32,
     pub active_zone_stroke_width: f32,
+
+    // --- CANDLESTICKS (NEW) ---
+    pub candle_bullish_color: Color32,
+    pub candle_bearish_color: Color32,
+    pub candle_width_pct: f64,  // 0.0 to 1.0 (relative to time step)
+    pub candle_wick_width: f32, // Pixels
+    pub segment_gap_width: f64, // Visual space between accordion segments
 }
 
 pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     // STICKY ZONES ("The Terrain" - Earthy/Solid)
     // Darker Green for Support below
-    support_zone_color: Color32::from_rgb(34, 139, 34),    // Forest Green
+    support_zone_color: Color32::from_rgb(34, 139, 34), // Forest Green
     // Darker Red for Resistance above
     resistance_zone_color: Color32::from_rgb(178, 34, 34), // Firebrick Red
-    
+
     // Generic sticky (fallback)
     sticky_zone_color: Color32::from_rgb(148, 0, 211),
 
@@ -54,12 +61,12 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
 
     // REVERSAL/WICK ZONES ("The Forces" - Neon/Bright)
     // Cyan = Buyers (Demand)
-    low_wicks_zone_color: Color32::from_rgb(0, 255, 255),   // Cyan / Electric Blue
+    low_wicks_zone_color: Color32::from_rgb(0, 255, 255), // Cyan / Electric Blue
     // Magenta = Sellers (Supply)
-    high_wicks_zone_color: Color32::from_rgb(255, 0, 255),  // Magenta / Fuchsia
+    high_wicks_zone_color: Color32::from_rgb(255, 0, 255), // Magenta / Fuchsia
 
     default_bar_color: Color32::from_rgb(255, 165, 0),
-    
+
     // From low importance (navy blue) to high importance (dark red)
     zone_gradient_colors: &[
         "#000080", // Navy blue
@@ -70,19 +77,26 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
         "#b22222", // Firebrick
         "#8b0000", // Dark red
     ],
-    
+
     zone_boundary_line_width: 2.0,
     current_price_line_width: 4.0,
     current_price_outer_width: 8.0,
     plot_axis_divisions: 20,
-    
+
     // 40% Opacity allows the "Neon" wicks to blend with the "Earthy" walls
     // producing unique colors (e.g. Cyan + Red = Purple Conflict Zone)
     zone_fill_opacity_pct: 0.40,
-    
+
     background_bar_intensity_pct: 0.5,
 
     // Highlight stroke for active zones
     active_zone_stroke_color: Color32::from_rgb(255, 255, 255), // White for max contrast on Gold
     active_zone_stroke_width: 1.5,
+
+    // --- CANDLESTICKS (NEW) ---
+    candle_bullish_color: Color32::from_rgb(38, 166, 154), // TradingView Green
+    candle_bearish_color: Color32::from_rgb(239, 83, 80),  // TradingView Red
+    candle_width_pct: 0.8, // 80% width leaves a small gap between candles
+    candle_wick_width: 1.0,
+    segment_gap_width: 4.0, // Visual gap between accordion segments
 };
