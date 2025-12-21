@@ -78,6 +78,7 @@ impl CVACore {
     /// Applies a score to a range of zones WITHOUT diluting it.
     /// Used for: Wicks / Rejection / Presence.
     /// If a wick covers 5 zones, all 5 zones get the full rejection score.
+    #[inline]
     pub fn apply_rejection_impact(
         &mut self,
         st: ScoreType,
@@ -120,6 +121,7 @@ impl CVACore {
     }
 
 
+    #[inline]
     pub fn distribute_conserved_volume(
         &mut self,
         st: ScoreType,

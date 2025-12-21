@@ -167,7 +167,10 @@ pub struct TimeSeriesSlice<'a> {
     pub ranges: Vec<(usize, usize)>, // Vector of (start_idx, end_idx) where end_idx is exclusive
 }
 
+
+
 impl TimeSeriesSlice<'_> {
+
     /// Generate CVA results from this time slice (potentially discontinuous ranges)
     pub fn generate_cva_results(
         &self,
@@ -211,6 +214,8 @@ impl TimeSeriesSlice<'_> {
             volatility_pct * 100.0,
         );
 
+        // log::info!("TD is: {}", time_decay_factor);
+
         // Process all candles across all ranges, maintaining temporal decay based on position
         let mut position = 0;
         crate::trace_time!("CVA Math Loop", 5000, {
@@ -230,24 +235,7 @@ impl TimeSeriesSlice<'_> {
                     } else {
                         time_decay_factor
                     };
-
-                    // If decay_base is 2.0, Newest data gets 2.0 weight, Oldest gets 1.0.
-                    // If decay_base is 1.0, all data gets same weight
-                    let temporal_weight = decay_base.powf(progress);
-                    // It is recommended to start with 1.0 ("Equal Weighting"). Justifications:
-                    // Since we use Base Asset Volume (e.g., counting physical BTC traded), we are already normalized for price inflation.
-                    // Support is memory: A massive consolidation zone from 2021 is often still a massive support level today
-                    // The Strategy: IF charts get clustered with "ghost zones", the bump the factor to 1.5 or 2.0 to prioritize
-                    // recent structure. But "Pure Volume" (1.) is the industry standard for identifying Key Zones.
-                    // let temporal_weight = decay_base.powf(progress);
-                    // #[cfg(debug_assertions)]
-                    // log::warn!(
-                    //     "{}",
-                    //     format!(
-                    //         "Current temporal weight is {} from time_decay_factor of {}",
-                    //         temporal_weight, time_decay_factor
-                    //     )
-                    // );
+                    let temporal_weight = decay_base.powf(progress); // powf() call takes around 30ns in release build. Fairly reasonable
                     self.process_candle_scores(&mut cva_core, &candle, temporal_weight);
                     position += 1;
                 }
@@ -257,6 +245,7 @@ impl TimeSeriesSlice<'_> {
         cva_core
     }
 
+    #[inline]
     fn process_candle_scores(&self, cva_core: &mut CVACore, candle: &Candle, temporal_weight: f64) {
         let (price_min, price_max) = cva_core.price_range.min_max();
         let clamp = |price: f64| price.max(price_min).min(price_max);

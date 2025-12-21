@@ -23,10 +23,12 @@ impl RangeF64 {
         }
     }
 
+    #[inline]
     pub fn min_max(&self) -> (f64, f64) {
         (self.start_range, self.end_range)
     }
 
+    #[inline]
     pub fn count_intersecting_chunks(&self, mut x_low: f64, mut x_high: f64) -> usize {
         // Swap the values over if necessary
         if x_high < x_low {
@@ -54,14 +56,17 @@ impl RangeF64 {
         (last_chunk_index - first_chunk_index + 1) as usize
     }
 
+    #[inline]
     pub fn range_length(&self) -> f64 {
         self.end_range - self.start_range
     }
 
+    #[inline]
     pub fn chunk_size(&self) -> f64 {
         self.range_length() / (self.n_chunks as f64)
     }
 
+    #[inline]
     pub fn chunk_index(&self, value: f64) -> usize {
         let index = (value - self.start_range) / self.chunk_size();
         let chunk_index = index as usize;
@@ -70,6 +75,7 @@ impl RangeF64 {
         chunk_index.min(self.n_chunks - 1)
     }
 
+    #[inline]
     pub fn chunk_bounds(&self, chunk_index: usize) -> (f64, f64) {
         debug_assert!(chunk_index < self.n_chunks);
         let lower_bound = self.start_range + chunk_index as f64 * self.chunk_size();
@@ -81,22 +87,26 @@ impl RangeF64 {
 /// Given an interval size, how many intervals total in a given range,
 /// This assumes the range is exclusive, and hence why we need to add 1
 /// i.e `range_end` is start of the last interval, not the end
+#[inline]
 pub fn intervals(range_start: i64, range_end: i64, interval: i64) -> i64 {
     debug_assert_eq!((range_end - range_start) % interval, 0);
     ((range_end - range_start) / interval) + 1
 }
 
 /// In which interval is `value`
+#[inline]
 pub fn index_into_range(range_start: i64, value: i64, range_interval: i64) -> i64 {
     debug_assert_eq!((value - range_start) % range_interval, 0);
     (value - range_start) / range_interval
 }
 
+#[inline]
 pub fn get_max(vec: &[f64]) -> f64 {
     let max_index: usize = vec.argmax();
     vec[max_index]
 }
 
+#[inline]
 pub fn get_min(vec: &[f64]) -> f64 {
     let max_index: usize = vec.argmin();
     vec[max_index]
@@ -105,6 +115,7 @@ pub fn get_min(vec: &[f64]) -> f64 {
 // Normalizes a vector of (positive) f64 to 0.0 to 1.0. Guarantees largest value is 1.0
 // Smallest output value will be 0.0 iff smallest input value = 0.0
 // Name: `Max normalization`, `Max-Abs normalization`, or `L∞ normalization`
+#[inline]
 pub fn normalize_max(vec: &[f64]) -> Vec<f64> {
     let max_value = get_max(vec);
 
@@ -127,6 +138,7 @@ pub fn normalize_max(vec: &[f64]) -> Vec<f64> {
 
 /// Applies a simple centered moving average to smooth the data.
 /// window_size should be an odd number (e.g., 3, 5, 7).
+#[inline]
 pub fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
     if data.is_empty() {
         return Vec::new();
@@ -150,6 +162,7 @@ pub fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
     smoothed
 }
 
+#[inline]
 pub fn calculate_stats(data: &[f64]) -> (f64, f64) {
     let count = data.len();
     if count == 0 {

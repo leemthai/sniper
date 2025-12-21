@@ -129,6 +129,7 @@ pub fn show_my_plot(
             .allow_zoom(false)
             .allow_drag(false)
             .allow_boxed_zoom(false)
+            .allow_double_click_reset(false)
             .show(ui, |plot_ui| {
                 let (y_min, y_max) = cva_results.price_range.min_max();
                 let price = current_pair_price.unwrap_or(y_min);
@@ -296,5 +297,5 @@ fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
     AxisHints::new_y()
         .label(label)
         .formatter(|grid_mark, _range| format!("{}", format_price(grid_mark.value)))
-        .placement(HPlacement::Left)
+        .placement(HPlacement::Right)
 }

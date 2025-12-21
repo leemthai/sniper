@@ -21,7 +21,7 @@ impl ZoneSniperApp {
 
 
 pub(super) fn render_right_panel(&mut self, ctx: &Context) {
-        let panel_frame = Frame::new().fill(UI_CONFIG.colors.side_panel);
+        let panel_frame = UI_CONFIG.panel_frame();
 
         SidePanel::right("right_panel")
             .min_width(300.0) // Wider for table data
@@ -55,10 +55,13 @@ pub(super) fn render_right_panel(&mut self, ctx: &Context) {
             });
     }
 
-    pub(super) fn render_side_panel(&mut self, ctx: &Context) {
-        let side_panel_frame = Frame::new().fill(UI_CONFIG.colors.side_panel);
+    pub(super) fn render_left_panel(&mut self, ctx: &Context) {
+        
+        let side_panel_frame = UI_CONFIG.panel_frame();
+
         SidePanel::left("left_panel")
             .min_width(140.0)
+            .resizable(false)
             .frame(side_panel_frame)
             .show(ctx, |ui| {
                 let mut opp_events = Vec::new();
@@ -210,6 +213,7 @@ pub(super) fn render_right_panel(&mut self, ctx: &Context) {
             .inner_margin(Margin::symmetric(8, 4));
         TopBottomPanel::bottom("status_panel")
             .frame(status_frame)
+            .resizable(false)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {

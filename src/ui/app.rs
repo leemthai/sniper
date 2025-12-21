@@ -400,6 +400,18 @@ impl eframe::App for ZoneSniperApp {
             // Check Completion
             if let Some(rx) = &self.data_rx {
                 if let Ok((timeseries, _sig)) = rx.try_recv() {
+
+                    let available_pairs = timeseries.unique_pair_names();
+                    let current_is_valid = self.selected_pair.as_ref().map(|p| available_pairs.contains(p)).unwrap_or(false);
+
+                    if !current_is_valid {
+                        if let Some(first) = available_pairs.first() {
+                            #[cfg(debug_assertions)]
+                            log::warn!("Startup: Persisted pair {:?} not found. Switching to {}", self.selected_pair, first);
+                            self.selected_pair = Some(first.clone());
+                        }
+                    }
+
                     let mut engine = SniperEngine::new(timeseries);
                     engine.update_config(self.app_config.clone());
                     engine.set_all_overrides(self.price_horizon_overrides.clone());
@@ -517,7 +529,7 @@ impl eframe::App for ZoneSniperApp {
 
         self.handle_global_shortcuts(ctx);
         // 1. RENDER SIDES FIRST (They claim space)
-        self.render_side_panel(ctx);
+        self.render_left_panel(ctx);
         self.render_right_panel(ctx);
         // 2. RENDER CENTER LAST (Fills whatever space is left)
         self.render_central_panel(ctx);

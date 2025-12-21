@@ -10,6 +10,8 @@ use super::messages::{JobRequest, JobResult};
 use crate::analysis::horizon_profiler::generate_profile;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 
+use crate::domain::price_horizon;
+
 use crate::models::timeseries::find_matching_ohlcv; // Needed for data lookup
 use crate::models::trading_view::TradingModel;
 
@@ -33,7 +35,12 @@ pub fn spawn_worker_thread(_rx: Receiver<JobRequest>, _tx: Sender<JobResult>) {
 }
 
 pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
-    crate::trace_time!("Total Worker Job", 5000, {
+
+    // 1. Prepare dynamic label with PH %
+    let ph_pct = req.config.price_horizon.threshold_pct * 100.0;
+    let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct);
+
+    crate::trace_time!(&format!("Total JOB (process_request_sync()) [{}]", base_label), 5000, {
         let start = AppInstant::now();
 
         // 0. RESOLVE PRICE
@@ -50,46 +57,57 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
             }
         });
 
-        // 1. Calculate Exact Count First (The Truth)
-        let ohlcv_result = find_matching_ohlcv(
-            &req.timeseries.series_data,
-            &req.pair_name,
-            req.config.interval_width_ms, // Use config from request
-        );
-
-        let exact_candle_count: usize = if let Ok(ohlcv) = ohlcv_result {
-            let (ranges, _) = crate::domain::price_horizon::auto_select_ranges(
-                ohlcv,
-                price_for_analysis,
-                &req.config.price_horizon,
+        // 1. Exact Count (Range Logic)
+        let exact_candle_count: usize = crate::trace_time!(&format!("1. Exact Count (Range Logic) [{}]", base_label), 500, {
+            let ohlcv_result = find_matching_ohlcv(
+                &req.timeseries.series_data,
+                &req.pair_name,
+                req.config.interval_width_ms,
             );
-            ranges.iter().map(|(s, e)| e - s).sum()
-        } else {
-            0
-        };
 
-        // 2. Run CVA Logic
-        let result_cva = pair_analysis_pure(
-            req.pair_name.clone(),
-            &req.timeseries,
-            price_for_analysis,
-            &req.config,
-        );
+            if let Ok(ohlcv) = ohlcv_result {
+                let (ranges, _) = price_horizon::auto_select_ranges(
+                    ohlcv,
+                    price_for_analysis,
+                    &req.config.price_horizon,
+                );
+                ranges.iter().map(|(s, e)| e - s).sum()
+            } else {
+                0
+            }
+        });
 
-        // 3. Run Profiler (SMART CACHING OPTIMIZATION)
-        let profile = if let Some(existing) = req.existing_profile {
-            // Check if valid: Same Price? Same Bounds?
-            // Note: EPSILON check is safer for floats
-            let price_match = (existing.base_price - price_for_analysis).abs() < f64::EPSILON;
-            let min_match = (existing.min_pct - req.config.price_horizon.min_threshold_pct).abs()
-                < f64::EPSILON;
-            let max_match = (existing.max_pct - req.config.price_horizon.max_threshold_pct).abs()
-                < f64::EPSILON;
+        let full_label = format!("{} ({} candles)", base_label, exact_candle_count);
 
-            if price_match && min_match && max_match {
-                #[cfg(debug_assertions)]
-                log::debug!("Worker: Reusing Cached Profile for {}", req.pair_name);
-                existing
+        // 2. CVA Logic (The Heavy Math)
+        let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 1000, {
+            pair_analysis_pure(
+                req.pair_name.clone(),
+                &req.timeseries,
+                price_for_analysis,
+                &req.config,
+            )
+        });
+
+        // 3. Profiler (Smart Cache)
+        let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 1000, {
+            if let Some(existing) = req.existing_profile {
+                let price_match = (existing.base_price - price_for_analysis).abs() < f64::EPSILON;
+                let min_match = (existing.min_pct - req.config.price_horizon.min_threshold_pct).abs() < f64::EPSILON;
+                let max_match = (existing.max_pct - req.config.price_horizon.max_threshold_pct).abs() < f64::EPSILON;
+
+                if price_match && min_match && max_match {
+                    #[cfg(debug_assertions)]
+                    log::debug!("Worker: Reusing Cached Profile for {}", req.pair_name);
+                    existing
+                } else {
+                    generate_profile(
+                        &req.pair_name,
+                        &req.timeseries,
+                        price_for_analysis,
+                        &req.config.price_horizon,
+                    )
+                }
             } else {
                 generate_profile(
                     &req.pair_name,
@@ -98,91 +116,27 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
                     &req.config.price_horizon,
                 )
             }
-        } else {
-            generate_profile(
-                &req.pair_name,
-                &req.timeseries,
-                price_for_analysis,
-                &req.config.price_horizon,
-            )
-        };
+        });
 
         let elapsed = start.elapsed().as_millis();
 
         match result_cva {
             Ok(cva) => {
-                // We need the OHLCV data to calculate segments in the model.
-                // Since CVA generation succeeded, we know find_matching_ohlcv will succeed.
-                let ohlcv = find_matching_ohlcv(
-                    &req.timeseries.series_data,
-                    &req.pair_name,
-                    req.config.interval_width_ms,
-                )
-                .expect("OHLCV data missing despite CVA success");
-
-                // --- DEBUG: LOG RANGES ---
-                // #[cfg(debug_assertions)]
-                // {
-                //     // Re-fetch OHLCV for the gap analyzer (Cheap lookup)
-                //     if let Ok(ohlcv) = find_matching_ohlcv(
-                //         &req.timeseries.series_data,
-                //         &req.pair_name,
-                //         req.config.interval_width_ms,
-                //     ) {
-                //         let bounds = cva.price_range.min_max();
-                //         // let merge_ms = 14_400_000;
-                //         let merge_ms = TimeUtils::MS_IN_D;
-                //         let segments =
-                //             RangeGapFinder::analyze(ohlcv, &cva.included_ranges, bounds, merge_ms);
-
-                //         if !segments.is_empty() {
-                //             log::info!(
-                //                 "🧩 ACCORDION REPORT for [{}] ({} Segments):",
-                //                 req.pair_name,
-                //                 segments.len()
-                //             );
-                //             for (i, seg) in segments.iter().enumerate() {
-                //                 let start_str = time_utils::epoch_ms_to_utc(seg.start_ts);
-                //                 let end_str = time_utils::epoch_ms_to_utc(seg.end_ts);
-
-                //                 let gap_info = match seg.gap_reason {
-                //                     GapReason::None => "Start".to_string(),
-                //                     GapReason::PriceMismatch => {
-                //                         format!("✂ Skipped {} (Price Range)", seg.gap_duration_str)
-                //                     }
-                //                     GapReason::MissingSourceData => format!(
-                //                         "⚠ DATA HOLE {} (Exchange Down)",
-                //                         seg.gap_duration_str
-                //                     ),
-
-                //                     // NEW CONTEXTUAL LOGS
-                //                     GapReason::PriceAbovePH => {
-                //                         format!("⬆ Price > PH for {}", seg.gap_duration_str)
-                //                     }
-                //                     GapReason::PriceBelowPH => {
-                //                         format!("⬇ Price < PH for {}", seg.gap_duration_str)
-                //                     }
-                //                     GapReason::PriceMixed => {
-                //                         format!("✂ Skipped {} (Mixed)", seg.gap_duration_str)
-                //                     }
-                //                 };
-
-                //                 log::info!(
-                //                     "[{}] Seg {:03}: {} -> {} | {} candles | {}",
-                //                     req.pair_name,
-                //                     i + 1,
-                //                     start_str,
-                //                     end_str,
-                //                     seg.candle_count,
-                //                     gap_info
-                //                 );
-                //             }
-                //         }
-                //     }
-                // }
 
                 let cva_arc = Arc::new(cva);
-                let model = TradingModel::from_cva(cva_arc.clone(), profile.clone(), ohlcv, &req.config);
+
+                // We need the OHLCV data to calculate segments in the model.
+                // Since CVA generation succeeded, we know find_matching_ohlcv will succeed.
+                // Measure the Segment Analysis cost
+                let model = crate::trace_time!(&format!("4. Segments/Model [{}]", full_label), 1000, {
+                    let ohlcv = find_matching_ohlcv(
+                        &req.timeseries.series_data,
+                        &req.pair_name,
+                        req.config.interval_width_ms,
+                    ).expect("OHLCV missing");
+                    
+                    TradingModel::from_cva(cva_arc.clone(), profile.clone(), ohlcv, &req.config)
+                });
 
                 let _ = tx.send(JobResult {
                     pair_name: req.pair_name,

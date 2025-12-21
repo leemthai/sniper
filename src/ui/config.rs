@@ -1,4 +1,4 @@
-use eframe::egui::Color32;
+use eframe::egui::{Frame, Margin, Stroke, Color32};
 
 pub use crate::ui::ui_text::{UI_TEXT, UiText};
 
@@ -34,3 +34,15 @@ pub static UI_CONFIG: UiConfig = UiConfig {
     },
     max_journey_zone_lines: 10,
 };
+
+
+impl UiConfig {
+    pub fn panel_frame(&self) -> Frame {
+        Frame {
+            fill: self.colors.side_panel, // Use your existing config color
+            stroke: Stroke::NONE,         // Or add a border if you want
+            inner_margin: Margin::same(8), // 8px padding on ALL sides
+            ..Default::default()
+        }
+    }
+}

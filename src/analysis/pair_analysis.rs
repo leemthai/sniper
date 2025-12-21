@@ -84,12 +84,7 @@ pub fn pair_analysis_pure(
         ranges: slice_ranges.clone(),
     };
 
-    let mut cva_results = timeseries_slice.generate_cva_results(
-        zone_count,
-        pair_name.clone(),
-        dynamic_decay_factor,
-        price_range,
-    );
+    let mut cva_results = timeseries_slice.generate_cva_results(zone_count, pair_name.clone(), dynamic_decay_factor, price_range);
 
     // Store the raw ranges for the UI Navigator
     cva_results.included_ranges = slice_ranges.clone();

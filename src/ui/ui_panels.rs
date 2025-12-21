@@ -391,9 +391,7 @@ impl<'a> DataGenerationPanel<'a> {
         if let Some(profile) = self.profile {
             // --- A. CUSTOM HEATMAP WIDGET ---
             let (rect, response) =
-                // Subtract 10.0 from available_width to create a safety margin on the right
-                // so the panel resize handle doesn't steal clicks at 100%.
-                ui.allocate_exact_size(vec2(ui.available_width() - 10.0, 40.0), Sense::click_and_drag());
+                ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click_and_drag());
 
             // Handle Input (Logarithmic)
             if response.dragged() || response.clicked() {

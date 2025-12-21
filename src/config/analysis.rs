@@ -7,16 +7,6 @@ use crate::utils::TimeUtils;
 pub const DEFAULT_PH_THRESHOLD: f64 = 0.15;
 pub const DEFAULT_TIME_DECAY: f64 = 1.5; // Manually synced to match 0.15 logic
 
-// #[derive(Clone, Debug, Serialize, Deserialize)]
-// pub struct QualityZone {
-//     pub max_count: usize,        // Upper bound (e.g. 100)
-//     pub label: String,           // "No Res"
-//     pub color_rgb: (u8, u8, u8), // (255, 100, 100)
-
-//     #[serde(default)]
-//     pub description: String,
-// }
-
 /// Configuration for the Price Horizon.
 /// Determines the vertical price range of interest relative to the current price.
 #[derive(Debug, Clone, Serialize, Deserialize)]
