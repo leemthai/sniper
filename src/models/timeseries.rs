@@ -214,8 +214,6 @@ impl TimeSeriesSlice<'_> {
             volatility_pct * 100.0,
         );
 
-        // log::info!("TD is: {}", time_decay_factor);
-
         // Process all candles across all ranges, maintaining temporal decay based on position
         let mut position = 0;
         crate::trace_time!("CVA Math Loop", 5000, {
