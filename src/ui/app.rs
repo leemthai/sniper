@@ -85,6 +85,8 @@ pub struct ZoneSniperApp {
     pub debug_background_mode: ScoreType,
 
     #[serde(skip)]
+    pub scroll_to_pair: bool,
+    #[serde(skip)]
     pub engine: Option<SniperEngine>,
     #[serde(skip)]
     pub plot_view: PlotView,
@@ -120,6 +122,7 @@ impl Default for ZoneSniperApp {
             sim_step_size: SimStepSize::default(),
             sim_direction: SimDirection::default(),
             simulated_prices: HashMap::new(),
+            scroll_to_pair: false,
         }
     }
 }
@@ -196,6 +199,8 @@ impl ZoneSniperApp {
         }
 
         self.selected_pair = Some(new_pair.clone());
+
+        self.scroll_to_pair = true;
 
         if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
             let mut config = saved_config.clone();
@@ -418,6 +423,7 @@ impl eframe::App for ZoneSniperApp {
                     engine.trigger_global_recalc(self.selected_pair.clone());
                     self.engine = Some(engine);
                     self.state = AppState::Running;
+                    self.scroll_to_pair = true;
                     ctx.request_repaint();
                     return; // Transition immediately
                 }

@@ -8,43 +8,39 @@ use crate::models::cva::ScoreType;
 
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
-use crate::ui::ui_panels::{DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel, CandleRangePanel};
+use crate::ui::ui_panels::{
+    CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel,
+};
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
 
 use super::app::ZoneSniperApp;
 
-
-
 impl ZoneSniperApp {
-
-
-pub(super) fn render_right_panel(&mut self, ctx: &Context) {
+    pub(super) fn render_right_panel(&mut self, ctx: &Context) {
         let panel_frame = UI_CONFIG.panel_frame();
 
         SidePanel::right("right_panel")
-            .min_width(300.0) // Wider for table data
+            .min_width(300.0)
             .resizable(true)
             .frame(panel_frame)
             .show(ctx, |ui| {
                 ui.add_space(5.0);
-                
+
                 // Safety check for Engine/Model
                 if let Some(engine) = &self.engine {
                     if let Some(pair) = &self.selected_pair {
                         if let Some(model) = engine.get_model(pair) {
-                            
                             // Render the Segment List
                             // We pass None for current_idx for now (interactive logic comes next)
                             let mut panel = CandleRangePanel::new(&model.segments, None);
-                            
-                            if let Some(clicked_idx) = panel.render(ui) {
+
+                            if let Some(_clicked_idx) = panel.render(ui) {
                                 // Placeholder for interaction
                                 #[cfg(debug_assertions)]
-                                log::info!("Clicked Segment Index: {}", clicked_idx);
+                                log::info!("Clicked Segment Index: {}", _clicked_idx);
                             }
-                            
                         } else {
                             ui.label("No model loaded.");
                         }
@@ -56,7 +52,6 @@ pub(super) fn render_right_panel(&mut self, ctx: &Context) {
     }
 
     pub(super) fn render_left_panel(&mut self, ctx: &Context) {
-        
         let side_panel_frame = UI_CONFIG.panel_frame();
 
         SidePanel::left("left_panel")
@@ -74,10 +69,8 @@ pub(super) fn render_right_panel(&mut self, ctx: &Context) {
                     .show(ui, |ui| {
                         opp_events = self.signals_panel(ui);
                     });
-                for pair in opp_events {
-                    if Some(&pair) != self.selected_pair.as_ref() {
-                        self.selected_pair = Some(pair);
-                    }
+                for pair_name in opp_events {
+                    self.handle_pair_selection(pair_name);
                 }
 
                 for event in data_events {
@@ -501,7 +494,6 @@ pub(super) fn render_right_panel(&mut self, ctx: &Context) {
                     ui.heading("Simulation Mode Controls");
                     ui.add_space(5.0);
 
-
                     ui.add_space(5.0);
 
                     let mut _sim_shortcuts = vec![
@@ -591,9 +583,15 @@ pub(super) fn render_right_panel(&mut self, ctx: &Context) {
             profile.as_ref(),
             actual_count,
             self.app_config.interval_width_ms,
+            self.scroll_to_pair,
         );
 
         let events = panel.render(ui, &mut self.show_ph_help);
+
+        // We have rendered the frame. If scroll was requested, it happened.
+        // Turn it off so the user can scroll manually next frame.
+        self.scroll_to_pair = false;
+
         // Render the window (it handles its own "if open" check internally via .open())
         if self.show_ph_help {
             DataGenerationPanel::render_ph_help_window(ui.ctx(), &mut self.show_ph_help);

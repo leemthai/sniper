@@ -2,10 +2,14 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
+
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 
 use crate::models::cva::{CVACore, ScoreType};
+
+#[cfg(debug_assertions)]
+use crate::config::DEBUG_FLAGS;
 
 // ============================================================================
 // OhlcvTimeSeries: Raw time series data for a trading pair
@@ -94,6 +98,7 @@ impl OhlcvTimeSeries {
         // This block runs only in debug builds to inform you about data quality.
         // It does not affect the struct or production performance.
         #[cfg(debug_assertions)]
+        if DEBUG_FLAGS.gap_report
         {
             let last_ts = ts_vec.last().copied().unwrap_or(first_ts);
             let duration_ms = last_ts - first_ts;

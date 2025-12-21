@@ -50,7 +50,6 @@ impl<'a> CandleRangePanel<'a> {
         // ui.heading(format!("{} {}", self.segments.len(), UI_TEXT.cr_subtitle));
         ui.label_subheader(format!("{} {}", self.segments.len(), UI_TEXT.cr_subtitle));
 
-
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -184,6 +183,7 @@ pub struct DataGenerationPanel<'a> {
     profile: Option<&'a HorizonProfile>,
     actual_candle_count: usize,
     interval_ms: i64,
+    pub scroll_to_selected: bool,
 }
 
 impl<'a> DataGenerationPanel<'a> {
@@ -195,6 +195,7 @@ impl<'a> DataGenerationPanel<'a> {
         profile: Option<&'a HorizonProfile>,
         actual_candle_count: usize,
         interval_ms: i64,
+        scroll_to_selected: bool,
     ) -> Self {
         Self {
             zone_count,
@@ -204,6 +205,7 @@ impl<'a> DataGenerationPanel<'a> {
             profile,
             actual_candle_count,
             interval_ms,
+            scroll_to_selected,
         }
     }
 
@@ -607,9 +609,19 @@ impl<'a> DataGenerationPanel<'a> {
             .show(ui, |ui| {
                 for item in &self.available_pairs {
                     let is_selected = self.selected_pair.as_ref() == Some(item);
-                    if ui.selectable_label(is_selected, item).clicked() {
+
+                    // Capture the response so we can scroll to it
+                    let response = ui.selectable_label(is_selected, item);
+
+                    if response.clicked() {
                         self.selected_pair = Some(item.clone());
                         changed = Some(item.clone());
+                    }
+
+                    // ONE-SHOT SCROLL
+                    // Only scroll if this item is selected AND the flag is raised
+                    if is_selected && self.scroll_to_selected {
+                        response.scroll_to_me(Some(Align::Center));
                     }
                 }
             });

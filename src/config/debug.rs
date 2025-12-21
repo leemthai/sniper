@@ -23,6 +23,8 @@ pub struct DebugFlags {
 
     // NEW: Limit how many pairs are loaded in Debug mode.
     pub max_pairs_load: usize,
+
+    pub gap_report: bool,
 }
 
 pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
@@ -38,5 +40,7 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
 
     // Default to a small number for quick UI testing.
     // Change this to 1000 when you want to stress-test the model i.e all pairs.
-    max_pairs_load: 5, // 60,
+    max_pairs_load: 25, // 60,
+
+    gap_report: false,
 };
