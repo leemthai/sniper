@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, self};
 use std::collections::BTreeMap;
 
-use eframe::egui::{Context, CentralPanel, RichText, Key, Grid, ScrollArea, Color32, Align, Layout, ProgressBar};
+use eframe::egui::{Context, CentralPanel, RichText, Key, Grid, ScrollArea, Color32, Align, Layout, ProgressBar, Ui};
 use eframe::{Frame, Storage};
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +16,6 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::engine::SniperEngine;
 
 use crate::models::pair_context::PairContext;
-use crate::models::cva::ScoreType;
 use crate::models::{SyncStatus, ProgressEvent};
 
 use crate::ui::ui_plot_view::PlotView;
@@ -25,7 +24,20 @@ use crate::ui::app_simulation::{SimStepSize, SimDirection};
 
 use crate::utils::TimeUtils;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct NavigationState {
+    pub current_segment_idx: Option<usize>, // None = Show All
+    pub last_viewed_segment_idx: usize,
+}
 
+impl Default for NavigationState {
+    fn default() -> Self {
+        Self {
+            current_segment_idx: None,
+            last_viewed_segment_idx: 0,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppState {
@@ -58,6 +70,7 @@ pub struct PlotVisibility {
     pub pivot_lines: bool,
     pub background: bool,
     pub price_line: bool,
+    pub candles: bool,
 }
 
 impl Default for PlotVisibility {
@@ -69,6 +82,7 @@ impl Default for PlotVisibility {
             pivot_lines: false,
             background: true,
             price_line: true,
+            candles: true,
         }
     }
 }
@@ -82,7 +96,7 @@ pub struct ZoneSniperApp {
     pub plot_visibility: PlotVisibility,
     pub show_debug_help: bool,
     pub show_ph_help: bool,
-    pub debug_background_mode: ScoreType,
+    pub candle_resolution: CandleResolution,
 
     #[serde(skip)]
     pub scroll_to_pair: bool,
@@ -102,7 +116,36 @@ pub struct ZoneSniperApp {
     pub sim_direction: SimDirection,
     #[serde(skip)]
     pub simulated_prices: HashMap<String, f64>,
+    #[serde(skip)]
+    pub nav_states: HashMap<String, NavigationState>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CandleResolution {
+    M5 = 1,
+    M15 = 3,
+    H1 = 12,
+    H4 = 48,
+    D1 = 288,
+}
+
+impl Default for CandleResolution {
+    fn default() -> Self { Self::M5 } // 1 * 5m = 5m
+}
+
+// NEW: Centralized Logic
+impl CandleResolution {
+    pub fn step_size(&self) -> usize {
+        match self {
+            Self::M5 => 1,
+            Self::M15 => 3,   // 3 * 5m
+            Self::H1 => 12,   // 12 * 5m
+            Self::H4 => 48,   // 48 * 5m
+            Self::D1 => 288,  // 288 * 5m
+        }
+    }
+}
+
 
 impl Default for ZoneSniperApp {
     fn default() -> Self {
@@ -113,7 +156,6 @@ impl Default for ZoneSniperApp {
             plot_visibility: PlotVisibility::default(),
             show_debug_help: false,
             show_ph_help: false,
-            debug_background_mode: ScoreType::FullCandleTVW, 
             engine: None,
             plot_view: PlotView::new(),
             state: AppState::default(),
@@ -123,11 +165,26 @@ impl Default for ZoneSniperApp {
             sim_direction: SimDirection::default(),
             simulated_prices: HashMap::new(),
             scroll_to_pair: false,
+            nav_states: HashMap::new(),
+            candle_resolution: CandleResolution::default(),
         }
     }
 }
 
 impl ZoneSniperApp {
+
+    pub fn get_nav_state(&mut self) -> NavigationState {
+        let pair = self.selected_pair.clone().unwrap_or("DEFAULT".to_string());
+        *self.nav_states.entry(pair).or_default()
+    }
+
+    pub fn set_nav_state(&mut self, state: NavigationState) {
+        if let Some(pair) = self.selected_pair.clone() {
+            self.nav_states.insert(pair, state);
+        }
+    }
+
+
     pub fn new(cc: &eframe::CreationContext<'_>, args: Cli) -> Self {
         let mut app: ZoneSniperApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
@@ -340,22 +397,6 @@ impl ZoneSniperApp {
             if i.key_pressed(Key::Num3) { self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks; }
             if i.key_pressed(Key::H) { self.show_debug_help = !self.show_debug_help; }
             if i.key_pressed(Key::Escape) { self.show_debug_help = false; self.show_ph_help = false; }
-            if i.key_pressed(Key::B) {
-                if !self.plot_visibility.background {
-                    self.plot_visibility.background = true;
-                    self.debug_background_mode = ScoreType::FullCandleTVW;
-                } else {
-                    // Was ON -> Cycle Modes
-                    match self.debug_background_mode {
-                        ScoreType::FullCandleTVW => self.debug_background_mode = ScoreType::LowWickCount,
-                        ScoreType::LowWickCount => self.debug_background_mode = ScoreType::HighWickCount,
-                        ScoreType::HighWickCount => {
-                            // End of cycle -> Turn OFF
-                            self.plot_visibility.background = false;
-                        }
-                    }
-                }
-            }
             // Gate the 'S' key so it only works on Native
             #[cfg(not(target_arch = "wasm32"))]
             if i.key_pressed(Key::S) {
@@ -376,6 +417,70 @@ impl ZoneSniperApp {
         });
     }
 
+    fn render_loading_grid(ui: &mut Ui, state: &LoadingState) {
+        ScrollArea::vertical().show(ui, |ui| {
+            Grid::new("loading_grid_multi_col")
+                .striped(true)
+                .spacing([20.0, 10.0])
+                .min_col_width(250.0) 
+                .show(ui, |ui| {
+                    
+                    for (i, (_idx, (pair, status))) in state.pairs.iter().enumerate() {
+                        
+                        // Determine Color/Text based on Status
+                        let (color, status_text, status_color) = match status {
+                            SyncStatus::Pending => (
+                                Color32::from_gray(80), 
+                                "-".to_string(), 
+                                Color32::from_gray(80)
+                            ),
+                            SyncStatus::Syncing => (
+                                Color32::YELLOW, 
+                                "Syncing".to_string(), 
+                                Color32::YELLOW
+                            ),
+                            SyncStatus::Completed(n) => (
+                                Color32::WHITE, 
+                                format!("+{}", n),
+                                Color32::GREEN
+                            ),
+                            SyncStatus::Failed(_) => (
+                                Color32::RED, 
+                                "FAILED".to_string(), 
+                                Color32::RED
+                            ),
+                        };
+
+                        // Render Cell
+                        ui.horizontal(|ui| {
+                            ui.set_min_width(240.0);
+                            ui.label(RichText::new(pair).monospace().strong().color(color));
+                            
+                            // Clean Layout syntax using imports
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                match status {
+                                    SyncStatus::Syncing => { ui.spinner(); },
+                                    SyncStatus::Completed(_) => { 
+                                        // We use status_text ("+500") here
+                                        ui.label(RichText::new(status_text).color(status_color)); 
+                                    },
+                                    _ => { 
+                                        ui.label(RichText::new(status_text).color(status_color)); 
+                                    }
+                                }
+                            });
+                        });
+
+                        // New row every 3 items
+                        if (i + 1) % 3 == 0 {
+                            ui.end_row();
+                        }
+                    }
+                });
+        });
+    }
+
+
 }
 
 impl eframe::App for ZoneSniperApp {
@@ -386,29 +491,28 @@ impl eframe::App for ZoneSniperApp {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         setup_custom_visuals(ctx);
 
-        // --- 1. HANDLE LOADING UPDATES ---
+        let mut next_state = None;
+
+        // --- PHASE A: LOADING LOGIC ---
         if let AppState::Loading(state) = &mut self.state {
-            // Check Progress
+
+            // 1. Process Progress Updates
             if let Some(rx) = &self.progress_rx {
                 while let Ok(event) = rx.try_recv() {
-                    // Store by INDEX to preserve order
                     state.pairs.insert(event.index, (event.pair, event.status));
-                    
                     state.total_pairs = state.pairs.len();
                     state.completed = state.pairs.values().filter(|(_, s)| matches!(s, SyncStatus::Completed(_))).count();
                     state.failed = state.pairs.values().filter(|(_, s)| matches!(s, SyncStatus::Failed(_))).count();
-                    
                     ctx.request_repaint();
                 }
             }
 
-            // Check Completion
+            // 2. Check Data Completion
             if let Some(rx) = &self.data_rx {
                 if let Ok((timeseries, _sig)) = rx.try_recv() {
 
                     let available_pairs = timeseries.unique_pair_names();
                     let current_is_valid = self.selected_pair.as_ref().map(|p| available_pairs.contains(p)).unwrap_or(false);
-
                     if !current_is_valid {
                         if let Some(first) = available_pairs.first() {
                             #[cfg(debug_assertions)]
@@ -421,127 +525,90 @@ impl eframe::App for ZoneSniperApp {
                     engine.update_config(self.app_config.clone());
                     engine.set_all_overrides(self.price_horizon_overrides.clone());
                     engine.trigger_global_recalc(self.selected_pair.clone());
+
                     self.engine = Some(engine);
-                    self.state = AppState::Running;
+                    // next_state = Some(AppState::Running);
                     self.scroll_to_pair = true;
-                    ctx.request_repaint();
-                    return; // Transition immediately
+
+                    // FIX: Reset Navigation for the current pair in the Map
+                    if let Some(pair) = &self.selected_pair {
+                        self.nav_states.insert(pair.clone(), NavigationState::default());
+                    }
+
+                    next_state = Some(AppState::Running);
+
                 }
             }
         }
 
-        // --- 2. RENDER LOADING SCREEN ---
-        if let AppState::Loading(state) = &self.state {
-            CentralPanel::default().show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(20.0);
-                    ui.heading(RichText::new("ZONE SNIPER INITIALIZATION").size(24.0).strong().color(Color32::from_rgb(255, 215, 0))); // Gold title
-                    // NEW: Sub-header with Interval Context
-                    let interval_str = TimeUtils::interval_to_string(ANALYSIS.interval_width_ms);
-                    ui.label(RichText::new(format!(
-                        "Syncing {} klines from Binance Public API. Please be patient. This may take some time if it hasn't been run for a while or you are collecting many pairs. Subsequent runs will complete much quicker.", 
-                        interval_str
-                    )).italics().color(Color32::LIGHT_GRAY));
 
-                    ui.add_space(20.0);
-
-
-                    // Progress Bar
-                    let total = state.pairs.len();
-                    let done = state.completed + state.failed;
-                    let progress = if total > 0 { done as f32 / total as f32 } else { 0.0 };
-                    
-                    ui.add_space(20.0);
-                    ui.add(ProgressBar::new(progress)
-                        .show_percentage()
-                        .animate(true)
-                        .text(format!("Processed {}/{}", done, total))
-                    );
-                    
-                    if state.failed > 0 {
-                        ui.add_space(5.0);
-                        ui.label(RichText::new(format!("⚠ {} Failures", state.failed)).color(Color32::RED));
-                    }
-                    
-                    ui.add_space(20.0);
-                });
-
-                // 3-COLUMN GRID LAYOUT
-                ScrollArea::vertical().show(ui, |ui| {
-                    Grid::new("loading_grid_multi_col")
-                        .striped(true)
-                        .spacing([20.0, 10.0])
-                        .min_col_width(250.0) 
-                        .show(ui, |ui| {
+        // --- Phase B: APPLY TRANSITION --- 
+        // We do this outside the 'if let AppState::Loading' block 
+        // to avoid "cannot assign to self.state because it is borrowed" error.
+        if let Some(new_state) = next_state {
+            self.state = new_state;
+            ctx.request_repaint();
+            return; 
+        }
                             
-                            for (i, (_idx, (pair, status))) in state.pairs.iter().enumerate() {
-                                
-                                // Determine Color based on Status
-                                let (color, status_text, status_color) = match status {
-                                    SyncStatus::Pending => (
-                                        Color32::from_gray(80), // Dimmed Gray for Queue
-                                        "-".to_string(), 
-                                        Color32::from_gray(80)
-                                    ),
-                                    SyncStatus::Syncing => (
-                                        Color32::YELLOW, // Bright for Active
-                                        "Syncing".to_string(), 
-                                        Color32::YELLOW
-                                    ),
-                                    SyncStatus::Completed(n) => (
-                                        Color32::WHITE, // Normal for Done
-                                        format!("+{}", n),
-                                        Color32::GREEN
-                                    ),
-                                    SyncStatus::Failed(_) => (
-                                        Color32::RED, 
-                                        "FAILED".to_string(), 
-                                        Color32::RED
-                                    ),
-                                };
+        // --- 2. RENDER LOADING SCREEN ---
+        match &self.state {
+            AppState::Loading(state) => {
+                CentralPanel::default().show(ctx, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(20.0);
+                        ui.heading(RichText::new("ZONE SNIPER INITIALIZATION").size(24.0).strong().color(Color32::from_rgb(255, 215, 0))); // Gold title
+                        let interval_str = TimeUtils::interval_to_string(ANALYSIS.interval_width_ms);
+                        ui.label(RichText::new(format!(
+                            "Syncing {} klines from Binance Public API. Please be patient. This may take some time if it hasn't been run for a while or you are collecting many pairs. Subsequent runs will complete much quicker.", 
+                            interval_str
+                        )).italics().color(Color32::LIGHT_GRAY));
 
-                                // Render Cell
-                                ui.horizontal(|ui| {
-                                    ui.set_min_width(240.0);
-                                    ui.label(RichText::new(pair).monospace().strong().color(color));
-                                    
-                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        match status {
-                                            SyncStatus::Syncing => { ui.spinner(); },
-                                            SyncStatus::Completed(n) => { 
-                                                ui.label(RichText::new(format!("✔ (+{})", n)).color(status_color)); 
-                                            },
-                                            _ => { 
-                                                ui.label(RichText::new(status_text).color(status_color)); 
-                                            }
-                                        }
-                                    });
-                                });
+                        ui.add_space(20.0);
 
-                                if (i + 1) % 3 == 0 {
-                                    ui.end_row();
-                                }
-                            }
-                        });
-                });
+
+                        // Progress Bar
+                        let total = state.pairs.len();
+                        let done = state.completed + state.failed;
+                        let progress = if total > 0 { done as f32 / total as f32 } else { 0.0 };
+                        
+                        ui.add_space(20.0);
+                        ui.add(ProgressBar::new(progress)
+                            .show_percentage()
+                            .animate(true)
+                            .text(format!("Processed {}/{}", done, total))
+                        );
+                        
+                        if state.failed > 0 {
+                            ui.add_space(5.0);
+                            ui.label(RichText::new(format!("⚠ {} Failures", state.failed)).color(Color32::RED));
+                        }
+                        
+                        ui.add_space(20.0);
+                    });
+
+                    Self::render_loading_grid(ui, state);
             });
-            return;
-        }
 
+            ctx.request_repaint();
+        }
         // --- 3. RUNNING STATE ---
-        if let Some(engine) = &mut self.engine {
-            engine.update();
-        }
-
-        self.handle_global_shortcuts(ctx);
-        // 1. RENDER SIDES FIRST (They claim space)
-        self.render_left_panel(ctx);
-        self.render_right_panel(ctx);
-        // 2. RENDER CENTER LAST (Fills whatever space is left)
-        self.render_central_panel(ctx);
-        self.render_status_panel(ctx);
-        self.render_help_panel(ctx);
+        AppState::Running => {
+            if let Some(engine) = &mut self.engine {
+                engine.update();
+            }
+            self.handle_global_shortcuts(ctx);
+            // 1. RENDER SIDES FIRST (They claim space)
+            self.render_left_panel(ctx);
+            self.render_right_panel(ctx);
+            // 2. RENDER CENTER LAST (Fills whatever space is left)
+            self.render_central_panel(ctx);
+            self.render_status_panel(ctx);
+            self.render_help_panel(ctx);
         
-        ctx.request_repaint();
+            ctx.request_repaint();
+            }
+        }
     }
 }
+

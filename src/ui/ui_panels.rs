@@ -1,7 +1,7 @@
 use colorgrad::Gradient;
 use eframe::egui::{
     Align, Align2, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
-    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2,
+    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2, Button,
 };
 use strum::IntoEnumIterator;
 
@@ -41,14 +41,75 @@ impl<'a> CandleRangePanel<'a> {
         }
     }
 
-    pub fn render(&mut self, ui: &mut Ui) -> Option<usize> {
-        let mut clicked_idx = None;
+    pub fn render(&mut self, ui: &mut Ui, last_viewed_idx: usize) -> Option<Option<usize>> {
+
+        let mut action = None;
 
         ui.add_space(10.0);
         ui.heading(format!("{}", UI_TEXT.cr_title));
         ui.separator();
-        // ui.heading(format!("{} {}", self.segments.len(), UI_TEXT.cr_subtitle));
         ui.label_subheader(format!("{} {}", self.segments.len(), UI_TEXT.cr_subtitle));
+
+        ui.horizontal(|ui| {
+            // PREV BUTTON
+            let prev_enabled = self.current_range_idx.map_or(false, |i| i > 0);
+            if ui
+                .add_enabled(prev_enabled, Button::new("⬅ Prev"))
+                .clicked()
+            {
+                if let Some(curr) = self.current_range_idx {
+                    action = Some(Some(curr - 1));
+                }
+            }
+
+        // TOGGLE BUTTON LOGIC
+        let is_viewing_all = self.current_range_idx.is_none();
+        
+        let (btn_label, target_idx) = if is_viewing_all {
+            // We are viewing ALL. Button should offer to go to LAST VIEWED.
+            // Safety clamp
+            let safe_target = last_viewed_idx.min(self.segments.len().saturating_sub(1));
+            let is_live = safe_target == self.segments.len().saturating_sub(1);
+            
+            let text = if is_live {
+                UI_TEXT.cr_nav_return_live.to_string()
+            } else {
+                format!("{} {}", UI_TEXT.cr_nav_return_prefix, safe_target + 1)
+            };
+            // Use Standard "Secondary" style (White) because we are drilling down?
+            // Or "Primary" (Green) because it's an action?
+            // Let's use White/Secondary for navigation *into* specific views
+            (ui.button_text_secondary(text), Some(safe_target))
+            
+        } else {
+            // Context: Currently viewing a specific range.
+            // Action: Zoom Out (Show All).
+            // Use Standard "Primary" style (Green) for the "Reset/Home" action
+            (ui.button_text_primary(UI_TEXT.cr_nav_show_all), None)
+        };
+
+        if ui.button(btn_label).clicked() {
+            action = Some(target_idx);
+        }
+        
+
+            // NEXT BUTTON
+            let next_enabled = self
+                .current_range_idx
+                .map_or(false, |i| i < self.segments.len() - 1);
+            if ui
+                .add_enabled(next_enabled, eframe::egui::Button::new("Next ➡"))
+                .clicked()
+            {
+                if let Some(curr) = self.current_range_idx {
+                    action = Some(Some(curr + 1));
+                } else {
+                    // If showing all, Next jumps to the FIRST segment? Or the LAST (Live)?
+                    // Usually "Live" (Last) is most useful.
+                    action = Some(Some(self.segments.len() - 1));
+                }
+            }
+        });
 
         ScrollArea::vertical()
             .auto_shrink([false, false])
@@ -108,7 +169,7 @@ impl<'a> CandleRangePanel<'a> {
                                 .selectable_label(is_selected, format!("{}", i + 1))
                                 .clicked()
                             {
-                                clicked_idx = Some(i);
+                                action = Some(Some(i));
                             }
 
                             ui.label(format!("{} - {}", start_date, end_date));
@@ -129,7 +190,7 @@ impl<'a> CandleRangePanel<'a> {
                     });
             });
 
-        clicked_idx
+        action
     }
 }
 

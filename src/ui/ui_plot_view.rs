@@ -2,7 +2,7 @@ use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
 use eframe::egui::{Color32, Ui};
-use egui_plot::{AxisHints, Corner, HPlacement, Legend, Plot};
+use egui_plot::{AxisHints, HPlacement, Plot, GridMark};
 
 use crate::config::plot::PLOT_CONFIG;
 
@@ -13,7 +13,11 @@ use crate::models::trading_view::TradingModel;
 use crate::models::timeseries::find_matching_ohlcv;
 
 use crate::ui::app::PlotVisibility;
+use crate::ui::app::CandleResolution;
+
 use crate::ui::ui_text::UI_TEXT;
+
+use crate::analysis::range_gap_finder::DisplaySegment;
 
 use crate::ui::utils::format_price;
 use crate::utils::maths_utils;
@@ -76,6 +80,95 @@ impl PlotView {
         self.cache.is_some()
     }
 
+    // Helper: Calculates the X-Axis bounds (0..TotalWidth) or (Start..End) based on Time Machine state
+fn calculate_view_bounds(
+        &self,
+        model: &TradingModel,
+        current_segment_idx: Option<usize>,
+        resolution: CandleResolution, // <--- NEW ARG
+    ) -> (f64, f64, f64) {
+        let gap_size = PLOT_CONFIG.segment_gap_width;
+        let step_size = resolution.step_size();
+
+        // Helper to calc visual width of a candle count
+        // Integer division with ceiling (any remainder needs a partial candle space)
+        let calc_width = |count: usize| -> f64 {
+            (count as f64 / step_size as f64).ceil()
+        };
+
+        let total_visual_candles: f64 = model.segments.iter()
+            .map(|s| calc_width(s.candle_count))
+            .sum();
+            
+        let gap_count = model.segments.len().saturating_sub(1);
+        let total_visual_width = total_visual_candles + (gap_count as f64 * gap_size);
+
+        if let Some(target_idx) = current_segment_idx {
+            if target_idx < model.segments.len() {
+                let mut start_x = 0.0;
+                for i in 0..target_idx {
+                    start_x += calc_width(model.segments[i].candle_count);
+                    start_x += gap_size;
+                }
+                let width = calc_width(model.segments[target_idx].candle_count);
+                return (start_x, start_x + width, total_visual_width);
+            }
+        }
+        (0.0, total_visual_width, total_visual_width)
+    }
+
+
+    // Helper: Calculates Y-Axis bounds based on PH, Live Price, and Visible Segments
+    fn calculate_y_bounds(
+        &self,
+        cva_results: &CVACore,
+        model: &TradingModel,
+        current_pair_price: Option<f64>,
+        current_segment_idx: Option<usize>,
+    ) -> std::ops::RangeInclusive<f64> {
+        // 1. Get Global Context (PH Bounds + Live Price)
+        let (ph_min, ph_max) = cva_results.price_range.min_max();
+        let current_price = current_pair_price.unwrap_or(ph_min);
+
+        // 2. Calculate Actual Data Bounds (Excursions)
+        let mut data_min = f64::MAX;
+        let mut data_max = f64::MIN;
+
+        let mut check_segment = |seg: &DisplaySegment| {
+            if seg.low_price < data_min { data_min = seg.low_price; }
+            if seg.high_price > data_max { data_max = seg.high_price; }
+        };
+
+        if let Some(target_idx) = current_segment_idx {
+            // Time Machine: Only check the specific segment
+            if let Some(seg) = model.segments.get(target_idx) {
+                check_segment(seg);
+            }
+        } else {
+            // Show All: Check all segments
+            for seg in &model.segments {
+                check_segment(seg);
+            }
+        }
+        
+        // Safety fallback if segments are empty
+        if data_min == f64::MAX { 
+            data_min = ph_min; 
+            data_max = ph_max; 
+        }
+
+        // 3. Union: Show PH Zone + Actual Data + Current Price
+        let final_min = ph_min.min(data_min).min(current_price);
+        let final_max = ph_max.max(data_max).max(current_price);
+
+        // 4. Apply Configured Padding
+        let range = final_max - final_min;
+        let pad = range * crate::config::plot::PLOT_CONFIG.plot_y_padding_pct;
+        
+        (final_min - pad)..=(final_max + pad)
+    }
+
+
     pub fn show_my_plot(
         &mut self,
         ui: &mut Ui,
@@ -85,6 +178,8 @@ impl PlotView {
         background_score_type: ScoreType,
         visibility: &PlotVisibility,
         engine: &SniperEngine,
+        resolution: CandleResolution,
+        current_segment_idx: Option<usize>,
     ) {
         // 1. Fetch OHLCV Data (Required for Candle Layer)
         // We assume the pair exists since we have a model for it.
@@ -95,67 +190,53 @@ impl PlotView {
         )
         .expect("OHLCV data missing for current model");
 
-        // 2. Calculate Visual Width (Total candles + Gaps)
-        let total_candles = trading_model
-            .segments
-            .iter()
-            .map(|s| s.candle_count)
-            .sum::<usize>();
-        let gap_count = trading_model.segments.len().saturating_sub(1);
-        let gap_size = crate::config::plot::PLOT_CONFIG.segment_gap_width;
-        let total_visual_width = (total_candles as f64) + (gap_count as f64 * gap_size);
+        // 2. Calculate Bounds (Using Helper)
+        let (view_min, view_max, total_visual_width) = self.calculate_view_bounds(trading_model, current_segment_idx, resolution);
+
+        // 3. Calculate Visual Height (Y-Axis) -- MOVED UP
+        // We do this BEFORE the plot so the grid spacer knows the real visual range
+        let y_bounds_range = self.calculate_y_bounds(
+            cva_results,
+            trading_model,
+            current_pair_price,
+            current_segment_idx,
+        );
+        let y_min_vis = *y_bounds_range.start();
+        let y_max_vis = *y_bounds_range.end();
+        let total_y_range = y_max_vis - y_min_vis;
 
         // 1. Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
-        let pair_name = &cva_results.pair_name;
-        let (y_min, y_max) = cva_results.price_range.min_max();
-        let total_y_range = y_max - y_min;
-
-        let _legend = Legend::default().position(Corner::RightTop);
 
         Plot::new("my_plot")
-            .legend(_legend)
             .custom_x_axes(vec![create_x_axis(&cache)])
-            .custom_y_axes(vec![create_y_axis(pair_name)])
+            .custom_y_axes(vec![create_y_axis(&cva_results.pair_name)])
             .label_formatter(|_, _| String::new())
             .x_grid_spacer(move |_input| {
                 let mut marks = Vec::new();
                 let (min, max) = _input.bounds;
-                let range = max - min;
-                let step_size = if range < 0.1 { 0.02 } else { 0.1 };
-                let start = (min / step_size).ceil() as i64;
-                let end = (max / step_size).floor() as i64;
+                // Simple integer stepping for visual candles (100 candles per mark)
+                let step = 100.0; 
+                let start = (min / step).ceil() as i64;
+                let end = (max / step).floor() as i64;
                 for i in start..=end {
-                    let value = i as f64 * step_size;
-                    if value >= 0.0 && value <= 1.0 {
-                        marks.push(egui_plot::GridMark { value, step_size });
-                    }
+                    marks.push(GridMark { value: i as f64 * step, step_size: step });
                 }
                 marks
             })
             .y_grid_spacer(move |_input| {
-                let mut marks = Vec::new();
-                // 1. Mandatory Start/End
-                marks.push(egui_plot::GridMark {
-                    value: y_min,
-                    step_size: total_y_range,
-                });
-                marks.push(egui_plot::GridMark {
-                    value: y_max,
-                    step_size: total_y_range,
-                });
-
-                // 2. Middle steps
-                let divisions = 5;
-                let step = total_y_range / divisions as f64;
-                for i in 1..divisions {
-                    let value = y_min + (step * i as f64);
-                    marks.push(egui_plot::GridMark {
-                        value,
-                        step_size: step,
-                    });
-                }
-                marks
+                 let mut marks = Vec::new();
+                 // Mandatory Ends (Visible Area, not just PH)
+                 marks.push(GridMark { value: y_min_vis, step_size: total_y_range });
+                 marks.push(GridMark { value: y_max_vis, step_size: total_y_range });
+                 
+                 // Intermediates
+                 let divisions = 5;
+                 let step = total_y_range / divisions as f64;
+                 for i in 1..divisions {
+                     marks.push(GridMark { value: y_min_vis + (step * i as f64), step_size: step });
+                 }
+                 marks
             })
             .allow_scroll(false)
             .allow_zoom(false)
@@ -164,57 +245,40 @@ impl PlotView {
             .allow_double_click_reset(false)
             .show(ui, |plot_ui| {
                 
-                let (y_min, y_max) = cva_results.price_range.min_max();
-                let price = current_pair_price.unwrap_or(y_min);
-                let y_min_adjusted = y_min.min(price);
-                let y_max_adjusted = y_max.max(price);
+                plot_ui.set_plot_bounds_x(view_min..=view_max);
+                plot_ui.set_plot_bounds_y(y_bounds_range);
 
-                plot_ui.set_plot_bounds_y(y_min_adjusted..=y_max_adjusted);
-                // plot_ui.set_plot_bounds_x(cache.x_min..=cache.x_max);
-                // Set Bounds: X is now 0..TotalWidth
-                plot_ui.set_plot_bounds_x(0.0..=total_visual_width);
-
-
-                // --- LAYER RENDERING SYSTEM ---
-
-                // 1. Create Context
+                // --- LAYER STACK ---
                 let ctx = LayerContext {
                     trading_model: trading_model,
                     ohlcv: ohlcv,
                     cache: &cache,
                     visibility,
                     background_score_type,
-                    x_min: cache.x_min,
-                    x_max: cache.x_max,
+                    x_min: 0.0,
+                    x_max: total_visual_width,
                     current_price: current_pair_price,
+                    resolution: resolution,
                 };
 
                 // 2. Define Layer Stack (Dynamic)
-                let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(4);
+                let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(5);
 
-                // Layer 1: Background (Controlled by 'B')
                 if visibility.background {
                     layers.push(Box::new(BackgroundLayer));
                 }
-
-                // Layer 2: Sticky Zones (Controlled by '1')
                 if visibility.sticky {
                     layers.push(Box::new(StickyZoneLayer));
                 }
-
-                // Layer 3: Reversal/Wick Zones (Controlled by '3')
                 if visibility.low_wicks || visibility.high_wicks {
                     layers.push(Box::new(ReversalZoneLayer));
                 }
-
-                // Layer 4: Price Line
                 if visibility.price_line {
                     layers.push(Box::new(PriceLineLayer));
                 }
-
-                // CANDLES ON TOP
-                layers.push(Box::new(CandlestickLayer));
-
+                if visibility.candles {
+                    layers.push(Box::new(CandlestickLayer));
+                }
 
                 // 3. Render Loop
                 for layer in layers {

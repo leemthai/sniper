@@ -27,7 +27,7 @@ pub struct UiText {
     pub label_hvz_above: &'static str,
     pub label_hvz_beneath: &'static str,
     pub label_hvz_within: &'static str,
-    pub label_help_background: &'static str,
+    // pub label_help_background: &'static str,
     pub label_help_sim_toggle_direction: &'static str,
     pub label_help_sim_step_size: &'static str,
     pub label_help_sim_activate_price_change: &'static str,
@@ -82,6 +82,11 @@ pub struct UiText {
     pub cr_gap_price_above: &'static str,
     pub cr_gap_price_below: &'static str,
     pub cr_gap_mixed: &'static str,
+
+    pub cr_nav_show_all: &'static str,
+    pub cr_nav_return_prefix: &'static str,
+    pub cr_nav_return_live: &'static str,
+
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -115,7 +120,7 @@ pub const UI_TEXT: UiText = UiText {
     label_hvz_beneath: "`High Volume Zone` is below (if bearish, acts as future target price)",
     label_hvz_within: "Inside `High Volume Zone` now (consolidating...)",
 
-    label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Strength (Find Demand Zones), (3) Upper Wick Strength (Find Supply Zones)",
+    // label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Strength (Find Demand Zones), (3) Upper Wick Strength (Find Supply Zones)",
     label_help_sim_toggle_direction: "Toggle direction (⬆️ UP / ⬇️ DOWN)",
     label_help_sim_step_size: "Cycle step size (0.1% → 1% → 5% → 10%)",
     label_help_sim_activate_price_change: "Activate price change in current direction",
@@ -218,4 +223,10 @@ pub const UI_TEXT: UiText = UiText {
     cr_gap_price_above: "Price > Horizon",
     cr_gap_price_below: "Price < Horizon",
     cr_gap_mixed: "Mixed Gap",
+
+    // NAVIGATION
+    cr_nav_show_all: "SHOW ALL RANGES", // Clearer than just "SHOW ALL"
+    cr_nav_return_prefix: "RETURN TO SEGMENT",
+    cr_nav_return_live: "RETURN TO LIVE",
+
 };

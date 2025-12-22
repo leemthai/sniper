@@ -19,6 +19,9 @@ pub struct DisplaySegment {
     pub start_ts: i64,
     pub end_ts: i64,
     pub candle_count: usize,
+
+    pub low_price: f64,
+    pub high_price: f64,
     
     // Gap *preceding* this segment
     pub gap_reason: GapReason,
@@ -127,7 +130,22 @@ pub fn analyze(
                 // Since !is_source_hole, these indices exist in the DB, just not in PH range.
                 let skipped_count = next.start_idx.saturating_sub(current.end_idx);
 
-                // 2. Extend current segment
+                // 2. Update Bounds (Include the excursion candles!)
+                // We must scan the indices *between* the segments to capture the price 
+                // that triggered the exclusion (Price < PH or Price > PH).
+                for i in current.end_idx..next.start_idx {
+                     let l = timeseries.low_prices[i];
+                     let h = timeseries.high_prices[i];
+                     if l < current.low_price { current.low_price = l; }
+                     if h > current.high_price { current.high_price = h; }
+                }
+
+                // 3. Update Bounds (Merge the next segment's bounds)
+                if next.low_price < current.low_price { current.low_price = next.low_price; }
+                if next.high_price > current.high_price { current.high_price = next.high_price; }
+
+
+                // 4. Extend current segment
                 current.end_idx = next.end_idx;
                 current.end_ts = next.end_ts;
                 current.candle_count += next.candle_count + skipped_count;
@@ -153,6 +171,8 @@ pub fn analyze(
         is_first: bool,
         bounds: (f64, f64),
     ) -> DisplaySegment {
+
+
         let start_ts = ts.timestamps[start];
         let end_ts = ts.timestamps[end - 1]; 
         
@@ -185,6 +205,22 @@ pub fn analyze(
             (reason, time_utils::format_duration(time_gap))
         };
 
+        // NEW: Calculate Min/Max for this segment
+        // We iterate the slice to find bounds. This is done in the Worker, so it's safe.
+        let mut seg_low = f64::MAX;
+        let mut seg_high = f64::MIN;
+        
+        // Note: 'end' is exclusive
+        for i in start..end {
+            let l = ts.low_prices[i];
+            let h = ts.high_prices[i];
+            if l < seg_low { seg_low = l; }
+            if h > seg_high { seg_high = h; }
+        }
+        
+        // Handle empty case (shouldn't happen logic-wise but good safety)
+        if seg_low == f64::MAX { seg_low = 0.0; seg_high = 0.0; }
+
         DisplaySegment {
             start_idx: start,
             end_idx: end,
@@ -193,6 +229,8 @@ pub fn analyze(
             candle_count: end - start,
             gap_reason: reason,
             gap_duration_str: duration_str,
+            low_price: seg_low,
+            high_price: seg_high,
         }
     }
 }

@@ -6,11 +6,13 @@ use eframe::egui::{
 use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::models::cva::ScoreType;
 
+use crate::ui::app::CandleResolution;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::UiStyleExt;
 use crate::ui::ui_panels::{
     CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel,
 };
+
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
@@ -32,14 +34,27 @@ impl ZoneSniperApp {
                 if let Some(engine) = &self.engine {
                     if let Some(pair) = &self.selected_pair {
                         if let Some(model) = engine.get_model(pair) {
-                            // Render the Segment List
-                            // We pass None for current_idx for now (interactive logic comes next)
-                            let mut panel = CandleRangePanel::new(&model.segments, None);
 
-                            if let Some(_clicked_idx) = panel.render(ui) {
-                                // Placeholder for interaction
+                            let mut nav = self.get_nav_state();
+                            let max_idx = model.segments.len().saturating_sub(1);
+                            let safe_last = nav.last_viewed_segment_idx.min(max_idx);
+
+                            // We pass None for current_idx for now (interactive logic comes next)
+                            let mut panel = CandleRangePanel::new(&model.segments, nav.current_segment_idx);
+
+                            if let Some(new_idx) = panel.render(ui, safe_last) {
+                                nav.current_segment_idx = new_idx;
+                                // If we switched to a specific segment (not "Show All"), remember it.
+                                if let Some(idx) = new_idx {
+                                    nav.last_viewed_segment_idx = idx;
+                                }
+                                // Write back to app state
+                                self.set_nav_state(nav);
+
+                                // Maybe trigger a repaint or scroll?
+                                ctx.request_repaint();
                                 #[cfg(debug_assertions)]
-                                log::info!("Clicked Segment Index: {}", _clicked_idx);
+                                log::info!("Clicked Segment Index: {:?}", new_idx);
                             }
                         } else {
                             ui.label("No model loaded.");
@@ -110,7 +125,40 @@ impl ZoneSniperApp {
         CentralPanel::default()
             .frame(central_panel_frame)
             .show(ctx, |ui| {
-                ui.add_space(10.0);
+                ui.add_space(5.0);
+
+                // --- TOP TOOLBAR ---
+                ui.horizontal(|ui| {
+                    // 1. CANDLE RESOLUTION
+                    // Mutually exclusive selection for aggregation
+                    ui.label("Res:");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M5, "5m");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M15, "15m");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::H1, "1h");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::H4, "4h");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::D1, "1D");
+
+                    ui.separator();
+
+                    // 2. LAYER VISIBILITY
+                    // Direct boolean toggles
+                    ui.checkbox(&mut self.plot_visibility.sticky, "Sticky");
+                    ui.checkbox(&mut self.plot_visibility.low_wicks, "Demand");
+                    ui.checkbox(&mut self.plot_visibility.high_wicks, "Supply");
+                    ui.checkbox(&mut self.plot_visibility.background, "Volume Hist");
+                    ui.checkbox(&mut self.plot_visibility.candles, "Candles");
+                    ui.checkbox(&mut self.plot_visibility.price_line, "Price");
+                });
+
+
+                ui.separator();
+                ui.add_space(5.0);
+
+                // FIX: Grab Nav State HERE (Before borrowing self.engine)
+                // This requires us to clone it because it's Copy/Clone
+                let nav_state = self.get_nav_state();
+
+
 
                 // 1. Safety Check: Engine existence
                 let Some(engine) = &self.engine else {
@@ -139,11 +187,6 @@ impl ZoneSniperApp {
 
                 let (is_calculating, last_error) = engine.get_pair_status(&pair);
 
-                // Debug log to confirm what the UI is sending to the plot
-                if self.is_simulation_mode() {
-                    //  log::info!("UI sending price to plot: {:?}", current_price);
-                }
-
                 // PRIORITY 1: ERRORS
                 // If the most recent calculation failed (e.g. "Insufficient Data" at 1%),
                 // we must show the error, even if we have an old cached model.
@@ -161,14 +204,17 @@ impl ZoneSniperApp {
                 // PRIORITY 2: VALID MODEL
                 // If no error, and we have data, draw it.
                 else if let Some(model) = engine.get_model(&pair) {
+
                     self.plot_view.show_my_plot(
                         ui,
                         &model.cva,
                         &model,
                         current_price,
-                        self.debug_background_mode,
+                        ScoreType::FullCandleTVW,
                         &self.plot_visibility,
                         engine,
+                        self.candle_resolution,
+                        nav_state.current_segment_idx,
                     );
                 }
                 // PRIORITY 3: CALCULATING (Initial Load)
@@ -292,20 +338,20 @@ impl ZoneSniperApp {
 
                         ui.separator();
 
-                        // 4. Background View Mode
-                        ui.label_subdued("Background plot view:");
-                        let (text, color) = if self.plot_visibility.background {
-                            let t = match self.debug_background_mode {
-                                ScoreType::FullCandleTVW => UI_TEXT.label_volume,
-                                ScoreType::LowWickCount => UI_TEXT.label_lower_wick_count,
-                                ScoreType::HighWickCount => UI_TEXT.label_upper_wick_count,
-                            };
-                            (t, Color32::from_rgb(0, 255, 255)) // Cyan
-                        } else {
-                            ("HIDDEN", Color32::DARK_GRAY)
-                        };
-                        ui.label(RichText::new(text).small().color(color));
-                        ui.separator();
+                        // // 4. Background View Mode
+                        // ui.label_subdued("Background plot view:");
+                        // let (text, color) = if self.plot_visibility.background {
+                        //     let t = match self.debug_background_mode {
+                        //         ScoreType::FullCandleTVW => UI_TEXT.label_volume,
+                        //         ScoreType::LowWickCount => UI_TEXT.label_lower_wick_count,
+                        //         ScoreType::HighWickCount => UI_TEXT.label_upper_wick_count,
+                        //     };
+                        //     (t, Color32::from_rgb(0, 255, 255)) // Cyan
+                        // } else {
+                        //     ("HIDDEN", Color32::DARK_GRAY)
+                        // };
+                        // ui.label(RichText::new(text).small().color(color));
+                        // ui.separator();
 
                         // Coverage Statistics
                         // 4. Coverage Statistics
@@ -470,7 +516,7 @@ impl ZoneSniperApp {
                 let mut _general_shortcuts = vec![
                     ("H", "Toggle this help panel"),
                     ("ESC", "Close all open Help Windows"),
-                    ("B", UI_TEXT.label_help_background),
+                    // ("B", UI_TEXT.label_help_background),
                     ("1", l_sticky.as_str()),
                     ("2", l_low.as_str()),
                     ("3", l_high.as_str()),

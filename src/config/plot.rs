@@ -39,6 +39,10 @@ pub struct PlotConfig {
     pub candle_width_pct: f64,  // 0.0 to 1.0 (relative to time step)
     pub candle_wick_width: f32, // Pixels
     pub segment_gap_width: f64, // Visual space between accordion segments
+
+    pub plot_y_padding_pct: f64, // Y-Axis Padding factor (e.g. 0.05 = 5% padding top and bottom)
+
+
 }
 
 pub const PLOT_CONFIG: PlotConfig = PlotConfig {
@@ -99,4 +103,10 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     candle_width_pct: 0.8, // 80% width leaves a small gap between candles
     candle_wick_width: 1.0,
     segment_gap_width: 4.0, // Visual gap between accordion segments
+
+    // plot_y_padding_pct: 0.55, 
+    // plot_y_padding_pct: 0.05, 
+    // plot_y_padding_pct: 0.0001, 
+    plot_y_padding_pct: 0.25, 
+
 };

@@ -3,7 +3,7 @@ use eframe::egui::{Color32, Id, LayerId, Order::Tooltip, RichText, Stroke, Ui};
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
 
-use egui_plot::{HLine, PlotPoints, PlotUi, Polygon, Line};
+use egui_plot::{HLine, PlotPoints, PlotUi, Polygon, Line, LineStyle};
 
 use crate::config::plot::PLOT_CONFIG;
 
@@ -11,44 +11,81 @@ use crate::models::cva::ScoreType;
 use crate::models::trading_view::{SuperZone, TradingModel};
 use crate::models::OhlcvTimeSeries;
 
-use crate::ui::app::PlotVisibility;
+use crate::ui::app::{CandleResolution, PlotVisibility};
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
 
 pub struct CandlestickLayer;
 
+fn draw_gap_separator(plot_ui: &mut PlotUi, x_pos: f64, gap_width: f64, y_bounds: (f64, f64)) {
+    let (y_min, y_max) = y_bounds;
+    let line_x = x_pos + (gap_width / 2.0);
+
+    // Overshoot the bounds slightly to ensure the line always looks infinite vertical
+    let range = y_max - y_min;
+    let y_start = y_min - range; 
+    let y_end = y_max + range;
+
+    plot_ui.line(
+        Line::new("", PlotPoints::new(vec![[line_x, y_start], [line_x, y_end]]))
+        .color(Color32::from_gray(60)) // Subtle gray
+        .width(1.0)
+        .style(LineStyle::Dashed { length: 5.0 })
+    );
+}
+
 impl PlotLayer for CandlestickLayer {
+
+
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        // Fix 1: Use ctx.trading_model
         if ctx.trading_model.segments.is_empty() { return; }
 
         let mut visual_x = 0.0;
-        
         let candle_width = PLOT_CONFIG.candle_width_pct; 
         let wick_width = PLOT_CONFIG.candle_wick_width;
         let gap_width = PLOT_CONFIG.segment_gap_width;
+        let y_bounds = ctx.trading_model.cva.price_range.min_max();
 
-        // Fix 1: Use ctx.trading_model
+        // Determine Aggregation Step Size
+        let step_size = ctx.resolution.step_size();
+
         for (seg_idx, segment) in ctx.trading_model.segments.iter().enumerate() {
             
-            for i in segment.start_idx..segment.end_idx {
-                // Fix 2: Use ctx.ohlcv (added to struct above)
-                let candle = ctx.ohlcv.get_candle(i);
+            // FIX: Use a Range Iterator with step_by.
+            // This cleanly handles the "1 to N" grouping without manual counters.
+            for chunk_start in (segment.start_idx..segment.end_idx).step_by(step_size) {
+                let chunk_end = (chunk_start + step_size).min(segment.end_idx);
+
+                // --- AGGREGATION LOGIC ---
+                // 1. Init with First Candle
+                let first = ctx.ohlcv.get_candle(chunk_start);
+                let open = first.open_price; // Open never changes!
+                let mut high = first.high_price;
+                let mut low = first.low_price;
+                let mut close = first.close_price;
+
+                // 2. Merge remaining candles in this chunk
+                for i in (chunk_start + 1)..chunk_end {
+                    let c = ctx.ohlcv.get_candle(i);
+                    high = high.max(c.high_price);
+                    low = low.min(c.low_price);
+                    close = c.close_price; // Close is always the latest
+                }
                 
-                let is_green = candle.close_price >= candle.open_price;
+                // --- DRAWING ---
+                let is_green = close >= open;
+                
                 let color = if is_green { 
                     PLOT_CONFIG.candle_bullish_color
                 } else { 
                     PLOT_CONFIG.candle_bearish_color
                 };
                 
-                // 1. Wick (Vertical Line)
-                // Fix 3: Wrap PlotPoints in a Line struct.
-                // 'Line' has the .color() and .width() methods.
+                // 1. Wick
                 let wick_points = PlotPoints::new(vec![
-                    [visual_x, candle.low_price],
-                    [visual_x, candle.high_price]
+                    [visual_x, low],
+                    [visual_x, high]
                 ]);
                 
                 plot_ui.line(Line::new("", wick_points)
@@ -56,12 +93,9 @@ impl PlotLayer for CandlestickLayer {
                     .width(wick_width)
                 );
                 
-                // 2. Body (Rectangle)
-                let open = candle.open_price;
-                let close = candle.close_price;
-                
+                // 2. Body
                 let (body_bottom, body_top) = if (open - close).abs() < f64::EPSILON {
-                    (open, open + (open * 0.0001))
+                    (open, open * 1.0001) // Doji visibility
                 } else {
                     (open.min(close), open.max(close))
                 };
@@ -74,21 +108,22 @@ impl PlotLayer for CandlestickLayer {
                     [visual_x - half_w, body_top],
                 ];
                 
-                let poly = Polygon::new(
-                    "", // Name argument required by your version
-                    PlotPoints::new(rect_points)
-                ).fill_color(color);
+                let poly = Polygon::new("", PlotPoints::new(rect_points))
+                    .fill_color(color);
 
                 plot_ui.polygon(poly);
 
+                // Advance Visual X by 1 unit (representing 1 aggregated candle)
                 visual_x += 1.0;
             }
 
-            // Draw Gap Separator
+            // Draw Gap Separator (if not last segment)
             if seg_idx < ctx.trading_model.segments.len() - 1 {
+                draw_gap_separator(plot_ui, visual_x, gap_width, y_bounds);
                 visual_x += gap_width;
             }
         }
+
     }
 }
 
@@ -103,6 +138,7 @@ pub struct LayerContext<'a> {
     pub x_min: f64,
     pub x_max: f64,
     pub current_price: Option<f64>, // Pass SIM-aware price so layers render correctly in SIM mode
+    pub resolution: CandleResolution,
 }
 
 /// A standardized layer in the plot stack.
@@ -117,17 +153,16 @@ pub struct BackgroundLayer;
 
 impl PlotLayer for BackgroundLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        use egui_plot::{PlotPoints, Polygon};
 
-        // 1. Determine Label
-        let type_label = match ctx.background_score_type {
-            ScoreType::FullCandleTVW => "Trading Volume",
-            ScoreType::LowWickCount => "Lower Wick Strength",
-            ScoreType::HighWickCount => "Upper Wick Strength",
-        };
+        // // 1. Determine Label
+        // let type_label = match ctx.background_score_type {
+        //     ScoreType::FullCandleTVW => "Trading Volume",
+        //     ScoreType::LowWickCount => "Lower Wick Strength",
+        //     ScoreType::HighWickCount => "Upper Wick Strength",
+        // };
 
         // 2. Create Group Name (Appears in Legend)
-        let legend_label = format!("Background Plot: {}", type_label);
+        // let legend_label = format!("Background Plot: {}", type_label);
 
         for bar in &ctx.cache.bars {
             let half_h = bar.height / 2.0;
@@ -140,7 +175,7 @@ impl PlotLayer for BackgroundLayer {
             ]);
 
             // Name passed here enables Legend grouping
-            let polygon = Polygon::new(&legend_label, points)
+            let polygon = Polygon::new("", points)
                 .fill_color(bar.color)
                 .stroke(Stroke::NONE); // Critical for visual coherence
 

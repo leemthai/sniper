@@ -21,6 +21,14 @@ pub trait UiStyleExt {
     
     /// Renders a warning/info message (Yellow/Gold).
     fn label_warning(&mut self, text: impl Into<String>);
+
+    /// Generates RichText styled specifically for a Primary Action Button (Green/Bold).
+    fn button_text_primary(&self, text: impl Into<String>) -> RichText;
+    
+    /// Generates RichText styled specifically for a Secondary Action Button (White/Bold).
+    fn button_text_secondary(&self, text: impl Into<String>) -> RichText;
+
+
 }
 
 impl UiStyleExt for Ui {
@@ -52,4 +60,13 @@ impl UiStyleExt for Ui {
     fn label_warning(&mut self, text: impl Into<String>) {
          self.label(RichText::new(text).small().color(Color32::from_rgb(255, 215, 0)));
     }
+
+    fn button_text_primary(&self, text: impl Into<String>) -> RichText {
+        RichText::new(text).strong().color(Color32::GREEN)
+    }
+
+    fn button_text_secondary(&self, text: impl Into<String>) -> RichText {
+        RichText::new(text).strong().color(Color32::WHITE)
+    }
+
 }
