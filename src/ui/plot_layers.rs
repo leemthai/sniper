@@ -16,6 +16,41 @@ use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
 
+// #[cfg(debug_assertions)]
+// use crate::utils::time_utils::TimeUtils;
+
+pub struct HorizonLinesLayer;
+
+impl PlotLayer for HorizonLinesLayer {
+    fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+        let (ph_min, ph_max) = ctx.ph_bounds;
+        
+        // VISIBILITY FIX: 
+        // Use White for max contrast against dark backgrounds and grey grid lines.
+        // Make it slightly thicker (1.5) so it pops.
+        let color = Color32::WHITE; 
+        let width = 1.5;
+        let dash_style = LineStyle::Dashed { length: 10.0 };
+
+        // Top Line
+        plot_ui.hline(
+            HLine::new("",ph_max)
+                .color(color)
+                .style(dash_style)
+                .width(width)
+        );
+
+        // Bottom Line
+        plot_ui.hline(
+            HLine::new("",ph_min)
+                .color(color)
+                .style(dash_style)
+                .width(width)
+        );
+    }
+}
+
+
 pub struct CandlestickLayer;
 
 fn draw_gap_separator(plot_ui: &mut PlotUi, x_pos: f64, gap_width: f64, y_bounds: (f64, f64)) {
@@ -36,96 +71,180 @@ fn draw_gap_separator(plot_ui: &mut PlotUi, x_pos: f64, gap_width: f64, y_bounds
 }
 
 impl PlotLayer for CandlestickLayer {
-
-
-    fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         if ctx.trading_model.segments.is_empty() { return; }
 
         let mut visual_x = 0.0;
-        let candle_width = PLOT_CONFIG.candle_width_pct; 
-        let wick_width = PLOT_CONFIG.candle_wick_width;
         let gap_width = PLOT_CONFIG.segment_gap_width;
-        let y_bounds = ctx.trading_model.cva.price_range.min_max();
-
-        // Determine Aggregation Step Size
-        let step_size = ctx.resolution.step_size();
+        let agg_interval_ms = ctx.resolution.interval_ms();
+        
+        // We use the Global Y-Bounds for the gap separator line
+        // (This ensures the dashed line covers the whole chart height)
+        let (y_min_global, y_max_global) = ctx.trading_model.cva.price_range.min_max(); 
+        // Note: Ideally we pass the actual plot bounds for the line, but PH bounds are a decent proxy.
+        // Or we can just calculate a "safe" large range if needed.
+        let y_bounds_separator = (y_min_global, y_max_global);
 
         for (seg_idx, segment) in ctx.trading_model.segments.iter().enumerate() {
-            
-            // FIX: Use a Range Iterator with step_by.
-            // This cleanly handles the "1 to N" grouping without manual counters.
-            for chunk_start in (segment.start_idx..segment.end_idx).step_by(step_size) {
-                let chunk_end = (chunk_start + step_size).min(segment.end_idx);
+            let mut i = segment.start_idx;
 
-                // --- AGGREGATION LOGIC ---
-                // 1. Init with First Candle
-                let first = ctx.ohlcv.get_candle(chunk_start);
-                let open = first.open_price; // Open never changes!
+            while i < segment.end_idx {
+                let first = ctx.ohlcv.get_candle(i);
+                
+                // --- UTC GRID ALIGNMENT ---
+                let boundary_start = (first.timestamp_ms / agg_interval_ms) * agg_interval_ms;
+                let boundary_end = boundary_start + agg_interval_ms;
+
+                // --- AGGREGATION ---
+                let open = first.open_price;
+                let mut close = first.close_price;
                 let mut high = first.high_price;
                 let mut low = first.low_price;
-                let mut close = first.close_price;
 
-                // 2. Merge remaining candles in this chunk
-                for i in (chunk_start + 1)..chunk_end {
-                    let c = ctx.ohlcv.get_candle(i);
+                let mut next_i = i + 1;
+                while next_i < segment.end_idx {
+                    let c = ctx.ohlcv.get_candle(next_i);
+                    if c.timestamp_ms >= boundary_end {
+                        break; 
+                    }
                     high = high.max(c.high_price);
                     low = low.min(c.low_price);
-                    close = c.close_price; // Close is always the latest
+                    close = c.close_price;
+                    next_i += 1;
                 }
-                
-                // --- DRAWING ---
-                let is_green = close >= open;
-                
-                let color = if is_green { 
-                    PLOT_CONFIG.candle_bullish_color
-                } else { 
-                    PLOT_CONFIG.candle_bearish_color
-                };
-                
-                // 1. Wick
-                let wick_points = PlotPoints::new(vec![
-                    [visual_x, low],
-                    [visual_x, high]
-                ]);
-                
-                plot_ui.line(Line::new("", wick_points)
-                    .color(color)
-                    .width(wick_width)
+
+                // --- DRAWING (Delegated to Helper) ---
+                draw_split_candle(
+                    plot_ui, 
+                    visual_x, 
+                    open, high, low, close, 
+                    ctx.ph_bounds, 
+                    ctx.visibility.ghost_candles
                 );
-                
-                // 2. Body
-                let (body_bottom, body_top) = if (open - close).abs() < f64::EPSILON {
-                    (open, open * 1.0001) // Doji visibility
-                } else {
-                    (open.min(close), open.max(close))
-                };
 
-                let half_w = candle_width / 2.0;
-                let rect_points = vec![
-                    [visual_x - half_w, body_bottom],
-                    [visual_x + half_w, body_bottom],
-                    [visual_x + half_w, body_top],
-                    [visual_x - half_w, body_top],
-                ];
-                
-                let poly = Polygon::new("", PlotPoints::new(rect_points))
-                    .fill_color(color);
-
-                plot_ui.polygon(poly);
-
-                // Advance Visual X by 1 unit (representing 1 aggregated candle)
                 visual_x += 1.0;
+                i = next_i;
             }
 
-            // Draw Gap Separator (if not last segment)
+            // Draw Gap Separator
             if seg_idx < ctx.trading_model.segments.len() - 1 {
-                draw_gap_separator(plot_ui, visual_x, gap_width, y_bounds);
+                draw_gap_separator(plot_ui, visual_x, gap_width, y_bounds_separator);
                 visual_x += gap_width;
             }
         }
+    }
 
+}
+
+// --- HELPERS (Keep the main logic clean) ---
+fn draw_split_candle(
+    ui: &mut PlotUi,
+    x: f64,
+    open: f64,
+    high: f64,
+    low: f64,
+    close: f64,
+    ph_bounds: (f64, f64),
+    show_ghosts: bool,
+) {
+    let (ph_min, ph_max) = ph_bounds;
+    let is_green = close >= open;
+    
+    let base_color = if is_green { 
+        PLOT_CONFIG.candle_bullish_color
+    } else { 
+        PLOT_CONFIG.candle_bearish_color
+    };
+
+    // VISUAL FIX 2: Ghost Color
+    // Make it look "Dead" / Desaturated. 
+    // We use a very high transparency (0.2) so it recedes into the background.
+    let ghost_color = base_color.linear_multiply(0.2); 
+
+    // 1. Draw Wicks
+    // Top Ghost
+    if show_ghosts && high > ph_max {
+        let bottom = low.max(ph_max);
+        if high > bottom {
+            draw_wick_line(ui, x, high, bottom, ghost_color);
+        }
+    }
+    // Bottom Ghost
+    if show_ghosts && low < ph_min {
+        let top = high.min(ph_min);
+        if top > low {
+            draw_wick_line(ui, x, top, low, ghost_color);
+        }
+    }
+    // Solid Wick
+    let solid_top = high.min(ph_max);
+    let solid_bot = low.max(ph_min);
+    if solid_top > solid_bot {
+        draw_wick_line(ui, x, solid_top, solid_bot, base_color);
+    }
+
+    // 2. Draw Body
+    let body_top_raw = open.max(close);
+    let body_bot_raw = open.min(close);
+    // Doji check
+    let body_top = if (body_top_raw - body_bot_raw).abs() < f64::EPSILON { 
+        body_bot_raw * 1.0001 
+    } else { 
+        body_top_raw 
+    };
+    let body_bot = body_bot_raw;
+
+    // Top Ghost Body
+    if show_ghosts && body_top > ph_max {
+        let b = body_bot.max(ph_max);
+        if body_top > b {
+            draw_body_rect(ui, x, body_top, b, ghost_color);
+        }
+    }
+    // Bottom Ghost Body
+    if show_ghosts && body_bot < ph_min {
+        let t = body_top.min(ph_min);
+        if t > body_bot {
+            draw_body_rect(ui, x, t, body_bot, ghost_color);
+        }
+    }
+    // Solid Body
+    let solid_body_top = body_top.min(ph_max);
+    let solid_body_bot = body_bot.max(ph_min);
+    if solid_body_top > solid_body_bot {
+        draw_body_rect(ui, x, solid_body_top, solid_body_bot, base_color);
     }
 }
+
+#[inline]
+fn draw_wick_line(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32) {
+    ui.line(Line::new("", PlotPoints::new(vec![[x, bottom], [x, top]]))
+        .color(color)
+        .width(PLOT_CONFIG.candle_wick_width)
+    );
+}
+
+#[inline]
+fn draw_body_rect(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32) {
+    let half_w = PLOT_CONFIG.candle_width_pct / 2.0;
+    let pts = vec![
+        [x - half_w, bottom], 
+        [x + half_w, bottom],
+        [x + half_w, top], 
+        [x - half_w, top],
+    ];
+    
+    // VISUAL FIX 1: Remove the Stroke (Border)
+    // This removes the "Rainbow/Blurry" effect on thin candles.
+    ui.polygon(
+        Polygon::new("", PlotPoints::new(pts))
+            .fill_color(color)
+            .stroke(eframe::egui::Stroke::NONE) // <--- CLEAN LOOK
+    );
+}
+
+
+
 
 /// Context passed to every layer during rendering.
 /// This prevents argument explosion.
@@ -139,6 +258,7 @@ pub struct LayerContext<'a> {
     pub x_max: f64,
     pub current_price: Option<f64>, // Pass SIM-aware price so layers render correctly in SIM mode
     pub resolution: CandleResolution,
+    pub ph_bounds: (f64, f64), // (min, max) of the Price Horizon,
 }
 
 /// A standardized layer in the plot stack.
@@ -153,16 +273,6 @@ pub struct BackgroundLayer;
 
 impl PlotLayer for BackgroundLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-
-        // // 1. Determine Label
-        // let type_label = match ctx.background_score_type {
-        //     ScoreType::FullCandleTVW => "Trading Volume",
-        //     ScoreType::LowWickCount => "Lower Wick Strength",
-        //     ScoreType::HighWickCount => "Upper Wick Strength",
-        // };
-
-        // 2. Create Group Name (Appears in Legend)
-        // let legend_label = format!("Background Plot: {}", type_label);
 
         for bar in &ctx.cache.bars {
             let half_h = bar.height / 2.0;
@@ -330,20 +440,6 @@ enum ZoneShape {
     TriangleUp,
     TriangleDown,
 }
-
-// fn get_zone_status_color(zone: &SuperZone, current_price: Option<f64>) -> Color32 {
-//     if let Some(price) = current_price {
-//         if zone.contains(price) {
-//             PLOT_CONFIG.sticky_zone_color // Purple (Active)
-//         } else if zone.price_center < price {
-//             PLOT_CONFIG.support_zone_color // Green
-//         } else {
-//             PLOT_CONFIG.resistance_zone_color // Red
-//         }
-//     } else {
-//         PLOT_CONFIG.sticky_zone_color
-//     }
-// }
 
 fn get_stroke(zone: &SuperZone, current_price: Option<f64>, base_color: Color32) -> Stroke {
     let is_active = current_price.map(|p| zone.contains(p)).unwrap_or(false);

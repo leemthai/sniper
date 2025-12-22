@@ -7,7 +7,7 @@ use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::models::timeseries::{OhlcvTimeSeries, find_matching_ohlcv};
 
-use crate::utils::app_time::now;
+use crate::utils::time_utils::now;
 
 const MILLIS_PER_DAY: f64 = 86_400_000.0;
 

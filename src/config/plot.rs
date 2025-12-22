@@ -107,6 +107,6 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     // plot_y_padding_pct: 0.55, 
     // plot_y_padding_pct: 0.05, 
     // plot_y_padding_pct: 0.0001, 
-    plot_y_padding_pct: 0.25, 
+    plot_y_padding_pct: 0.05, 
 
 };

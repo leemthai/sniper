@@ -15,7 +15,7 @@ use crate::domain::price_horizon;
 use crate::models::timeseries::find_matching_ohlcv; // Needed for data lookup
 use crate::models::trading_view::TradingModel;
 
-use crate::utils::app_time::AppInstant;
+use crate::utils::time_utils::AppInstant;
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]

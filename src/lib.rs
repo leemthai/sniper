@@ -21,7 +21,6 @@ pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
 pub use domain::{Candle, PairInterval};
 pub use models::{CVACore, TimeSeriesSlice, TradingModel, Zone};
 pub use ui::ZoneSniperApp;
-pub use utils::app_time;
 
 // CLI argument parsing
 use clap::Parser;

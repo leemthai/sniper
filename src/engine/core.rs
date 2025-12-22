@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use crate::utils::app_time::AppInstant;
+use crate::utils::time_utils::AppInstant;
 
 use crate::analysis::MultiPairMonitor;
 

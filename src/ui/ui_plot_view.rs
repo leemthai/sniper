@@ -24,7 +24,7 @@ use crate::utils::maths_utils;
 
 // Import the new Layer System
 use crate::ui::plot_layers::{
-    BackgroundLayer, LayerContext, PlotLayer, PriceLineLayer, ReversalZoneLayer, StickyZoneLayer, CandlestickLayer,
+    BackgroundLayer, LayerContext, PlotLayer, PriceLineLayer, ReversalZoneLayer, StickyZoneLayer, CandlestickLayer, HorizonLinesLayer,
 };
 
 /// A lightweight representation of a background bar.
@@ -209,7 +209,7 @@ fn calculate_view_bounds(
         let cache = self.calculate_plot_data(cva_results, background_score_type);
 
         Plot::new("my_plot")
-            .custom_x_axes(vec![create_x_axis(&cache)])
+            // .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_y_axes(vec![create_y_axis(&cva_results.pair_name)])
             .label_formatter(|_, _| String::new())
             .x_grid_spacer(move |_input| {
@@ -248,6 +248,10 @@ fn calculate_view_bounds(
                 plot_ui.set_plot_bounds_x(view_min..=view_max);
                 plot_ui.set_plot_bounds_y(y_bounds_range);
 
+                // 1. Get the STRICT Price Horizon limits for the "Ghosting" logic
+                let (ph_min, ph_max) = cva_results.price_range.min_max();
+
+
                 // --- LAYER STACK ---
                 let ctx = LayerContext {
                     trading_model: trading_model,
@@ -259,6 +263,7 @@ fn calculate_view_bounds(
                     x_max: total_visual_width,
                     current_price: current_pair_price,
                     resolution: resolution,
+                    ph_bounds: (ph_min, ph_max),
                 };
 
                 // 2. Define Layer Stack (Dynamic)
@@ -276,6 +281,19 @@ fn calculate_view_bounds(
                 if visibility.price_line {
                     layers.push(Box::new(PriceLineLayer));
                 }
+
+                // NEW: Horizon Lines (Dashed PH boundaries)
+                if visibility.horizon_lines {
+                    layers.push(Box::new(HorizonLinesLayer));
+                }
+                
+                // CANDLES ON TOP
+                // Note: 'ghost_candles' is handled internally by CandlestickLayer
+                if visibility.candles { 
+                    layers.push(Box::new(CandlestickLayer)); 
+                }
+
+
                 if visibility.candles {
                     layers.push(Box::new(CandlestickLayer));
                 }
@@ -388,14 +406,14 @@ fn to_egui_color(colorgrad_color: colorgrad::Color) -> Color32 {
     Color32::from_rgba_unmultiplied(rgba8[0], rgba8[1], rgba8[2], 255)
 }
 
-fn create_x_axis(_plot_cache: &PlotCache) -> AxisHints<'static> {
-    AxisHints::new_x()
-        .label(UI_TEXT.plot_x_axis)
-        .formatter(move |grid_mark, _range| {
-            let pct = grid_mark.value * 100.0;
-            format!("{:.0}%", pct)
-        })
-}
+// fn create_x_axis(_plot_cache: &PlotCache) -> AxisHints<'static> {
+//     AxisHints::new_x()
+//         .label(UI_TEXT.plot_x_axis)
+//         .formatter(move |grid_mark, _range| {
+//             let pct = grid_mark.value * 100.0;
+//             format!("{:.0}%", pct)
+//         })
+// }
 
 fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
     let label = format!("{}  {}", pair_name, UI_TEXT.plot_y_axis);

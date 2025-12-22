@@ -23,7 +23,7 @@ use crate::ui::utils::{
     spaced_separator,
 };
 
-use crate::utils::time_utils;
+use crate::utils::TimeUtils;
 
 #[cfg(debug_assertions)]
 use crate::config::DEBUG_FLAGS;
@@ -124,7 +124,7 @@ impl<'a> CandleRangePanel<'a> {
                         ui.label(RichText::new(UI_TEXT.cr_header_ctx).strong());
                         ui.end_row();
 
-                        for (i, seg) in self.segments.iter().enumerate() {
+                        for (i, seg) in self.segments.iter().enumerate().rev() {
                             // Highlight current range
                             let is_selected = self.current_range_idx == Some(i);
 
@@ -161,8 +161,8 @@ impl<'a> CandleRangePanel<'a> {
                             }
 
                             // Draw Segment Row
-                            let start_date = time_utils::epoch_ms_to_utc(seg.start_ts);
-                            let end_date = time_utils::epoch_ms_to_utc(seg.end_ts);
+                            let start_date = TimeUtils::epoch_ms_to_datetime_string(seg.start_ts);
+                            let end_date = TimeUtils::epoch_ms_to_datetime_string(seg.end_ts);
 
                             // Clickable Row ID
                             if ui

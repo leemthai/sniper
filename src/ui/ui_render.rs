@@ -137,6 +137,9 @@ impl ZoneSniperApp {
                     ui.selectable_value(&mut self.candle_resolution, CandleResolution::H1, "1h");
                     ui.selectable_value(&mut self.candle_resolution, CandleResolution::H4, "4h");
                     ui.selectable_value(&mut self.candle_resolution, CandleResolution::D1, "1D");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::D3, "3D");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::W1, "1W");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M1, "1M");
 
                     ui.separator();
 
@@ -147,6 +150,11 @@ impl ZoneSniperApp {
                     ui.checkbox(&mut self.plot_visibility.high_wicks, "Supply");
                     ui.checkbox(&mut self.plot_visibility.background, "Volume Hist");
                     ui.checkbox(&mut self.plot_visibility.candles, "Candles");
+                    
+                    ui.checkbox(&mut self.plot_visibility.ghost_candles, "Ghosts"); // Toggle faint candles
+                    ui.checkbox(&mut self.plot_visibility.horizon_lines, "PH Lines"); // Toggle dashed horizontal PH border lines
+
+
                     ui.checkbox(&mut self.plot_visibility.price_line, "Price");
                 });
 

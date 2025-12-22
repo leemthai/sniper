@@ -5,7 +5,7 @@ macro_rules! trace_time {
         // Check the global flag
         if crate::config::DEBUG_FLAGS.enable_perf_logging {
             // FIX: Use AppInstant instead of std::time::Instant
-            let start = crate::utils::app_time::AppInstant::now();
+            let start = crate::utils::time_utils::AppInstant::now();
             let result = $block;
             let elapsed = start.elapsed();
             let micros = elapsed.as_micros();

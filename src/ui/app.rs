@@ -67,10 +67,12 @@ pub struct PlotVisibility {
     pub sticky: bool,
     pub low_wicks: bool,
     pub high_wicks: bool,
-    pub pivot_lines: bool,
     pub background: bool,
     pub price_line: bool,
     pub candles: bool,
+
+    pub horizon_lines: bool,
+    pub ghost_candles: bool,
 }
 
 impl Default for PlotVisibility {
@@ -79,10 +81,11 @@ impl Default for PlotVisibility {
             sticky: true,
             low_wicks: false,
             high_wicks: false,
-            pivot_lines: false,
             background: true,
             price_line: true,
             candles: true,
+            horizon_lines: true,
+            ghost_candles: true,
         }
     }
 }
@@ -122,11 +125,14 @@ pub struct ZoneSniperApp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CandleResolution {
-    M5 = 1,
-    M15 = 3,
-    H1 = 12,
-    H4 = 48,
-    D1 = 288,
+    M5,
+    M15,
+    H1,
+    H4,
+    D1,
+    D3,
+    W1,
+    M1,
 }
 
 impl Default for CandleResolution {
@@ -142,8 +148,25 @@ impl CandleResolution {
             Self::H1 => 12,   // 12 * 5m
             Self::H4 => 48,   // 48 * 5m
             Self::D1 => 288,  // 288 * 5m
+            Self::D3 => 288 * 3,
+            Self::W1 => 288 * 7,
+            Self::M1 => 288 * 30,
         }
     }
+
+    pub fn interval_ms(&self) -> i64 {
+        match self {
+            Self::M5 => TimeUtils::MS_IN_5_MIN,
+            Self::M15 => TimeUtils::MS_IN_15_MIN,
+            Self::H1 => TimeUtils::MS_IN_H,
+            Self::H4 => TimeUtils::MS_IN_4_H,
+            Self::D1 => TimeUtils::MS_IN_D,
+            Self::D3 => TimeUtils::MS_IN_3_D,
+            Self::W1 => TimeUtils::MS_IN_W,
+            Self::M1 => TimeUtils::MS_IN_1_M,
+        }
+    }
+
 }
 
 

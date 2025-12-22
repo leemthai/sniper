@@ -1,5 +1,5 @@
 use crate::models::OhlcvTimeSeries;
-use crate::utils::time_utils;
+use crate::utils::TimeUtils;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GapReason {
@@ -202,7 +202,7 @@ pub fn analyze(
                 }
             };
             
-            (reason, time_utils::format_duration(time_gap))
+            (reason, TimeUtils::format_duration(time_gap))
         };
 
         // NEW: Calculate Min/Max for this segment
