@@ -2,7 +2,7 @@ use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
 use eframe::egui::{Color32, Ui};
-use egui_plot::{AxisHints, HPlacement, Plot, GridMark, VPlacement};
+use egui_plot::{AxisHints, HPlacement, Plot, GridMark, VPlacement, Axis};
 
 use crate::config::plot::PLOT_CONFIG;
 
@@ -59,6 +59,25 @@ pub struct PlotView {
     cache: Option<PlotCache>,
 }
 
+// Helper: Calculate a human-friendly step size (1, 2, 5, 10, 20, 50...)
+fn calculate_adaptive_step(range: f64, target_count: f64) -> f64 {
+    let raw_step = range / target_count.max(1.0);
+    // Find magnitude (power of 10)
+    let mag = 10.0_f64.powi(raw_step.log10().floor() as i32);
+    let normalized = raw_step / mag; // Scale to 1.0 .. 10.0
+
+    // Snap to "Nice" integers
+    let nice_step = if normalized < 1.5 { 1.0 }
+                   else if normalized < 3.0 { 2.0 }
+                   else if normalized < 7.0 { 5.0 }
+                   else { 10.0 };
+    
+    let result = nice_step * mag;
+    
+    // Ensure we never step less than 1 visual unit (1 candle)
+    result.max(1.0)
+}
+
 // Helper to build the Time Axis with smart spacing and formatting
 fn create_time_axis(
     model: &TradingModel,
@@ -70,7 +89,7 @@ fn create_time_axis(
     let gap_width = PLOT_CONFIG.segment_gap_width;
     let step_size = resolution.step_size();
 
-    AxisHints::new(egui_plot::Axis::X)
+    AxisHints::new(Axis::X)
         .label("Time")
         .formatter(move |mark, _range| {
             let visual_x = mark.value;
@@ -82,13 +101,45 @@ fn create_time_axis(
 
                 if visual_x >= current_visual_start && visual_x < current_visual_end {
                     let offset = (visual_x - current_visual_start) * step_size as f64;
-                    let idx = seg.start_idx + offset as usize;
-                    if idx < timestamps.len() {
-                        return TimeUtils::epoch_ms_to_date_string(timestamps[idx]);
+                    let raw_idx = seg.start_idx + offset as usize;
+
+                    // --- DEBUG PROBE ---
+                    #[cfg(debug_assertions)]
+                    if step_size > 200 && raw_idx >= seg.end_idx {
+                         // We are trying to read Index 1000 in a segment of size 500
+                         // Use a rate limiter or simple check to avoid spam, or just log
+                         // Since axis formatter runs often, maybe only log specific X values or specific error conditions?
+                         // Let's just log once per frame if possible, or use a trick.
+                         // For now, let's just log:
+                         // log::warn!("AXIS OVERSHOOT: Seg len {}, Step {}, VisualOffset {:.2} -> RawOffset {}. EXCEEDS LIMIT!", 
+                         //    seg.end_idx - seg.start_idx, step_size, local_offset, raw_offset);
+                         
+                         return "GAP (Overshoot)".to_string(); // Change text to confirm diagnosis on screen
                     }
+                    // ------------------
+
+                    // Safety Clamp to segment end (Prevent over-reading into next segment data)
+                    if raw_idx < seg.end_idx && raw_idx < timestamps.len() {
+                        return TimeUtils::epoch_ms_to_date_string(timestamps[raw_idx]);
+                    } else {
+                        // This happens if visual_x is at the very fractional edge of a segment
+                        //  return String::new(); 
+                         return "EDGE".to_string(); 
+                    }
+
                 }
                 current_visual_start = current_visual_end + gap_width;
+                // If visual_x is here, it is in a gap
+                if visual_x < current_visual_start {
+                    // MARK GAPS EXPLICITLY
+                    return "GAP".to_string(); 
+                }
             }
+
+            // --- DEBUG 3D/1W ISSUES ---
+            // If we fall through here, visual_x is beyond all segments.
+            // Uncomment to debug if 3D is generating out-of-bounds X values.
+            log::warn!("Axis Formatter OOB: {:.2}", visual_x);
             String::new()
         })
         .placement(VPlacement::Bottom)
@@ -219,6 +270,20 @@ fn calculate_view_bounds(
         resolution: CandleResolution,
         current_segment_idx: Option<usize>,
     ) {
+
+        // // --- 1. SHRINK FONT STYLE ---
+        // // FIX: Deep clone the inner Style data, not just the Arc pointer.
+        // let mut style = ui.style().as_ref().clone();
+        
+        // // Now we can mutate it because we own this copy
+        // style.text_styles.insert(
+        //     eframe::egui::TextStyle::Small, 
+        //     eframe::egui::FontId::proportional(8.0) // Tiny text for X-Axis dates
+        // );
+        
+        // // Apply this style to the UI scope for the plot
+        // ui.set_style(style);
+
         // 1. Fetch OHLCV Data (Required for Candle Layer)
         // We assume the pair exists since we have a model for it.
         let ohlcv = find_matching_ohlcv(
@@ -248,7 +313,6 @@ fn calculate_view_bounds(
 
         let time_axis = create_time_axis(trading_model, ohlcv, resolution);
 
-
         Plot::new("my_plot")
             // .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_x_axes(vec![time_axis])
@@ -257,8 +321,8 @@ fn calculate_view_bounds(
             .x_grid_spacer(move |input| {
                 let mut marks = Vec::new();
                 let (min, max) = input.bounds;
-                let step = 50.0; // Draw a vertical line every 50 visual candles
-                
+                let step = calculate_adaptive_step(max-min, 8.0);
+
                 let start = (min / step).ceil() as i64;
                 let end = (max / step).floor() as i64;
                 

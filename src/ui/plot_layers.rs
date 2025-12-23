@@ -76,11 +76,7 @@ fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         let gap_width = PLOT_CONFIG.segment_gap_width;
         let agg_interval_ms = ctx.resolution.interval_ms();
         
-        // We use the Global Y-Bounds for the gap separator line
-        // (This ensures the dashed line covers the whole chart height)
         let (y_min_global, y_max_global) = ctx.trading_model.cva.price_range.min_max(); 
-        // Note: Ideally we pass the actual plot bounds for the line, but PH bounds are a decent proxy.
-        // Or we can just calculate a "safe" large range if needed.
         let y_bounds_separator = (y_min_global, y_max_global);
 
         for (seg_idx, segment) in ctx.trading_model.segments.iter().enumerate() {
@@ -272,20 +268,35 @@ pub struct BackgroundLayer;
 impl PlotLayer for BackgroundLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
 
+        // 1. Get the CURRENT Visible X-Range (The "Camera")
+        let bounds = plot_ui.plot_bounds();
+        let view_min = *bounds.range_x().start();
+        let view_max = *bounds.range_x().end();
+        let view_width = view_max - view_min;
+
+        // Safety check to prevent infinite scaling on zero width
+        if view_width <= f64::EPSILON { return; }
+
+ 
         for bar in &ctx.cache.bars {
             let half_h = bar.height / 2.0;
 
+            // 2. Map Score (0.0 .. 1.0) to View (view_min .. view_max)
+            // This ensures the mountain always fills the screen horizontally.
+            let x_start = view_min;
+            let x_end = view_min + (bar.x_max * view_width);
+
+            // Define the rectangle
             let points = PlotPoints::new(vec![
-                [0.0, bar.y_center - half_h],
-                [bar.x_max, bar.y_center - half_h],
-                [bar.x_max, bar.y_center + half_h],
-                [0.0, bar.y_center + half_h],
+                [x_start, bar.y_center - half_h],
+                [x_end,   bar.y_center - half_h],
+                [x_end,   bar.y_center + half_h],
+                [x_start, bar.y_center + half_h],
             ]);
 
-            // Name passed here enables Legend grouping
             let polygon = Polygon::new("", points)
                 .fill_color(bar.color)
-                .stroke(Stroke::NONE); // Critical for visual coherence
+                .stroke(Stroke::NONE);
 
             plot_ui.polygon(polygon);
         }
