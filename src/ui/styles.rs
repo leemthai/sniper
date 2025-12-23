@@ -62,11 +62,11 @@ impl UiStyleExt for Ui {
     }
 
     fn button_text_primary(&self, text: impl Into<String>) -> RichText {
-        RichText::new(text).strong().color(Color32::GREEN)
+        RichText::new(text).strong().color(Color32::GREEN).small()
     }
 
     fn button_text_secondary(&self, text: impl Into<String>) -> RichText {
-        RichText::new(text).strong().color(Color32::WHITE)
+        RichText::new(text).strong().color(Color32::WHITE).small()
     }
 
 }

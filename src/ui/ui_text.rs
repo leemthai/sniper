@@ -69,8 +69,8 @@ pub struct UiText {
 
     pub ph_help_definitions: &'static [(&'static str, &'static str)],
 
-    pub cr_title: &'static str,
-    pub cr_subtitle: &'static str,
+    pub cr_title_1: &'static str,
+    pub cr_title_2: &'static str,
     pub cr_header_id: &'static str,
     pub cr_header_date: &'static str,
     pub cr_header_len: &'static str,
@@ -204,8 +204,8 @@ pub const UI_TEXT: UiText = UiText {
     ],
 
     // --- CANDLE RANGE NAVIGATOR (CR) ---
-    cr_title: "Price Action Time Machine (Accordion)",
-    cr_subtitle: "Candle Ranges Intersect PH Range",
+    cr_title_1: "Time Machine",
+    cr_title_2: "Candle Ranges Intersect PH Range",
 
     // Headers
     cr_header_id: "#",

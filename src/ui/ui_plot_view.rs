@@ -1,7 +1,7 @@
 use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
-use eframe::egui::{Color32, Ui};
+use eframe::egui::{Color32, Ui, Vec2b};
 use egui_plot::{AxisHints, HPlacement, Plot, GridMark, VPlacement, Axis};
 
 use crate::config::plot::PLOT_CONFIG;
@@ -17,8 +17,6 @@ use crate::ui::app::PlotVisibility;
 use crate::ui::app::CandleResolution;
 
 use crate::ui::ui_text::UI_TEXT;
-
-use crate::analysis::range_gap_finder::DisplaySegment;
 
 use crate::ui::utils::format_price;
 use crate::utils::maths_utils;
@@ -207,56 +205,31 @@ fn calculate_view_bounds(
     }
 
 
-    // Helper: Calculates Y-Axis bounds based on PH, Live Price, and Visible Segments
+    // Ignores historical outliers to prevent compression.
+    // Helper: Calculates Y-Axis bounds based on PH and Live Price (Sniper View)
     fn calculate_y_bounds(
         &self,
         cva_results: &CVACore,
-        model: &TradingModel,
-        current_pair_price: Option<f64>,
-        current_segment_idx: Option<usize>,
+        current_price_opt: Option<f64>,
     ) -> std::ops::RangeInclusive<f64> {
-        // 1. Get Global Context (PH Bounds + Live Price)
+        // 1. Get Global Context (PH Bounds)
         let (ph_min, ph_max) = cva_results.price_range.min_max();
-        let current_price = current_pair_price.unwrap_or(ph_min);
-
-        // 2. Calculate Actual Data Bounds (Excursions)
-        let mut data_min = f64::MAX;
-        let mut data_max = f64::MIN;
-
-        let mut check_segment = |seg: &DisplaySegment| {
-            if seg.low_price < data_min { data_min = seg.low_price; }
-            if seg.high_price > data_max { data_max = seg.high_price; }
-        };
-
-        if let Some(target_idx) = current_segment_idx {
-            // Time Machine: Only check the specific segment
-            if let Some(seg) = model.segments.get(target_idx) {
-                check_segment(seg);
-            }
-        } else {
-            // Show All: Check all segments
-            for seg in &model.segments {
-                check_segment(seg);
-            }
-        }
         
-        // Safety fallback if segments are empty
-        if data_min == f64::MAX { 
-            data_min = ph_min; 
-            data_max = ph_max; 
-        }
+        // FIX: Use the argument 'current_price_opt'
+        let current_price = current_price_opt.unwrap_or(ph_min);
 
-        // 3. Union: Show PH Zone + Actual Data + Current Price
-        let final_min = ph_min.min(data_min).min(current_price);
-        let final_max = ph_max.max(data_max).max(current_price);
+        // 2. Union: Show PH Zone + Current Price
+        // We explicitly EXCLUDE segment data bounds to prevent "Depeg/Crash" history 
+        // from compressing the view.
+        let final_min = ph_min.min(current_price);
+        let final_max = ph_max.max(current_price);
 
-        // 4. Apply Configured Padding
+        // 3. Apply Configured Padding
         let range = final_max - final_min;
-        let pad = range * crate::config::plot::PLOT_CONFIG.plot_y_padding_pct;
+        let pad = range * PLOT_CONFIG.plot_y_padding_pct;
         
-        (final_min - pad)..=(final_max + pad)
+        (final_min - pad).max(0.0)..=(final_max + pad)
     }
-
 
     pub fn show_my_plot(
         &mut self,
@@ -270,19 +243,6 @@ fn calculate_view_bounds(
         resolution: CandleResolution,
         current_segment_idx: Option<usize>,
     ) {
-
-        // // --- 1. SHRINK FONT STYLE ---
-        // // FIX: Deep clone the inner Style data, not just the Arc pointer.
-        // let mut style = ui.style().as_ref().clone();
-        
-        // // Now we can mutate it because we own this copy
-        // style.text_styles.insert(
-        //     eframe::egui::TextStyle::Small, 
-        //     eframe::egui::FontId::proportional(8.0) // Tiny text for X-Axis dates
-        // );
-        
-        // // Apply this style to the UI scope for the plot
-        // ui.set_style(style);
 
         // 1. Fetch OHLCV Data (Required for Candle Layer)
         // We assume the pair exists since we have a model for it.
@@ -300,13 +260,9 @@ fn calculate_view_bounds(
         // We do this BEFORE the plot so the grid spacer knows the real visual range
         let y_bounds_range = self.calculate_y_bounds(
             cva_results,
-            trading_model,
             current_pair_price,
-            current_segment_idx,
         );
         let y_min_vis = *y_bounds_range.start();
-        let y_max_vis = *y_bounds_range.end();
-        let total_y_range = y_max_vis - y_min_vis;
 
         // 1. Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
@@ -334,23 +290,29 @@ fn calculate_view_bounds(
             })
             .y_grid_spacer(move |_input| {
                  let mut marks = Vec::new();
-                 // Mandatory Ends (Visible Area, not just PH)
-                 marks.push(GridMark { value: y_min_vis, step_size: total_y_range });
-                 marks.push(GridMark { value: y_max_vis, step_size: total_y_range });
+                 
+                 // FIX 1: Use PH Bounds (Inner) instead of Visual Bounds (Outer)
+                 // This ensures the top/bottom labels are slightly inside the plot area.
+                 let (ph_min, ph_max) = cva_results.price_range.min_max();
+                 let ph_range = ph_max - ph_min;
+
+                 // Mandatory Ends
+                 marks.push(GridMark { value: ph_min, step_size: ph_range });
+                 marks.push(GridMark { value: ph_max, step_size: ph_range });
                  
                  // Intermediates
                  let divisions = 5;
-                 let step = total_y_range / divisions as f64;
+                 let step = ph_range / divisions as f64;
                  for i in 1..divisions {
                      marks.push(GridMark { value: y_min_vis + (step * i as f64), step_size: step });
                  }
                  marks
             })
-            .allow_scroll(false)
-            .allow_zoom(false)
-            .allow_drag(false)
-            .allow_boxed_zoom(false)
             .allow_double_click_reset(false)
+            .allow_scroll(false)
+            .allow_drag(Vec2b { x: false, y: true })
+            .allow_zoom(Vec2b { x: false, y: true })
+
             .show(ui, |plot_ui| {
                 
                 plot_ui.set_plot_bounds_x(view_min..=view_max);

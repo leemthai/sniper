@@ -104,9 +104,6 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     candle_wick_width: 1.0,
     segment_gap_width: 4.0, // Visual gap between accordion segments
 
-    // plot_y_padding_pct: 0.55, 
-    // plot_y_padding_pct: 0.05, 
-    // plot_y_padding_pct: 0.0001, 
-    plot_y_padding_pct: 0.05,  
+    plot_y_padding_pct: 0.02,  // Visual plot padding above PH max and below PH min
 
 };

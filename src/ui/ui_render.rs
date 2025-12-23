@@ -24,8 +24,8 @@ impl ZoneSniperApp {
         let frame = UI_CONFIG.side_panel_frame();
 
         SidePanel::right("right_panel")
-            .min_width(300.0)
-            .resizable(true)
+            .min_width(160.0)
+            .resizable(false)
             .frame(frame)
             .show(ctx, |ui| {
                 ui.add_space(5.0);
