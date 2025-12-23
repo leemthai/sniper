@@ -90,38 +90,6 @@ impl Default for PlotVisibility {
     }
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(default)] 
-pub struct ZoneSniperApp {
-    pub selected_pair: Option<String>,
-    pub app_config: AnalysisConfig,
-    pub price_horizon_overrides: HashMap<String, PriceHorizonConfig>,
-    pub plot_visibility: PlotVisibility,
-    pub show_debug_help: bool,
-    pub show_ph_help: bool,
-    pub candle_resolution: CandleResolution,
-
-    #[serde(skip)]
-    pub scroll_to_pair: bool,
-    #[serde(skip)]
-    pub engine: Option<SniperEngine>,
-    #[serde(skip)]
-    pub plot_view: PlotView,
-    #[serde(skip)]
-    pub state: AppState,
-    #[serde(skip)]
-    pub progress_rx: Option<Receiver<ProgressEvent>>,
-    #[serde(skip)]
-    pub data_rx: Option<Receiver<(TimeSeriesCollection, &'static str)>>,
-    #[serde(skip)]
-    pub sim_step_size: SimStepSize,
-    #[serde(skip)]
-    pub sim_direction: SimDirection,
-    #[serde(skip)]
-    pub simulated_prices: HashMap<String, f64>,
-    #[serde(skip)]
-    pub nav_states: HashMap<String, NavigationState>,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CandleResolution {
@@ -169,6 +137,40 @@ impl CandleResolution {
 
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(default)] 
+pub struct ZoneSniperApp {
+    pub selected_pair: Option<String>,
+    pub app_config: AnalysisConfig,
+    pub price_horizon_overrides: HashMap<String, PriceHorizonConfig>,
+    pub plot_visibility: PlotVisibility,
+    pub show_debug_help: bool,
+    pub show_ph_help: bool,
+    pub candle_resolution: CandleResolution,
+
+    #[serde(skip)]
+    pub scroll_to_pair: bool,
+    #[serde(skip)]
+    pub engine: Option<SniperEngine>,
+    #[serde(skip)]
+    pub plot_view: PlotView,
+    #[serde(skip)]
+    pub state: AppState,
+    #[serde(skip)]
+    pub progress_rx: Option<Receiver<ProgressEvent>>,
+    #[serde(skip)]
+    pub data_rx: Option<Receiver<(TimeSeriesCollection, &'static str)>>,
+    #[serde(skip)]
+    pub sim_step_size: SimStepSize,
+    #[serde(skip)]
+    pub sim_direction: SimDirection,
+    #[serde(skip)]
+    pub simulated_prices: HashMap<String, f64>,
+    #[serde(skip)]
+    pub nav_states: HashMap<String, NavigationState>,
+    #[serde(skip)]
+    pub auto_scale_y: bool,
+}
 
 impl Default for ZoneSniperApp {
     fn default() -> Self {
@@ -190,6 +192,7 @@ impl Default for ZoneSniperApp {
             scroll_to_pair: false,
             nav_states: HashMap::new(),
             candle_resolution: CandleResolution::default(),
+            auto_scale_y: true,
         }
     }
 }
@@ -281,6 +284,8 @@ impl ZoneSniperApp {
         self.selected_pair = Some(new_pair.clone());
 
         self.scroll_to_pair = true;
+
+        self.auto_scale_y = true;
 
         if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
             let mut config = saved_config.clone();

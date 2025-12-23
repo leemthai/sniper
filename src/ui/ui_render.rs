@@ -1,6 +1,6 @@
 use eframe::egui::{
-    CentralPanel, Color32, Context, Frame, Grid, RichText, ScrollArea, SidePanel,
-    TopBottomPanel, Ui, Window,
+    CentralPanel, Color32, Context, Frame, Grid, RichText, ScrollArea, SidePanel, TopBottomPanel,
+    Ui, Window,
 };
 
 use crate::config::{ANALYSIS, AnalysisConfig};
@@ -12,6 +12,7 @@ use crate::ui::styles::UiStyleExt;
 use crate::ui::ui_panels::{
     CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel,
 };
+use crate::ui::ui_plot_view::PlotInteraction;
 
 use crate::ui::utils::format_price;
 
@@ -34,13 +35,13 @@ impl ZoneSniperApp {
                 if let Some(engine) = &self.engine {
                     if let Some(pair) = &self.selected_pair {
                         if let Some(model) = engine.get_model(pair) {
-
                             let mut nav = self.get_nav_state();
                             let max_idx = model.segments.len().saturating_sub(1);
                             let safe_last = nav.last_viewed_segment_idx.min(max_idx);
 
                             // We pass None for current_idx for now (interactive logic comes next)
-                            let mut panel = CandleRangePanel::new(&model.segments, nav.current_segment_idx);
+                            let mut panel =
+                                CandleRangePanel::new(&model.segments, nav.current_segment_idx);
 
                             if let Some(new_idx) = panel.render(ui, safe_last) {
                                 nav.current_segment_idx = new_idx;
@@ -51,6 +52,7 @@ impl ZoneSniperApp {
                                 // Write back to app state
                                 self.set_nav_state(nav);
 
+                                self.auto_scale_y = true;
                                 // Maybe trigger a repaint or scroll?
                                 ctx.request_repaint();
                                 #[cfg(debug_assertions)]
@@ -108,6 +110,7 @@ impl ZoneSniperApp {
                                 {
                                     self.app_config.time_decay_factor = new_decay;
                                 }
+                                self.auto_scale_y = true;
                                 // -----------------------------
                                 self.invalidate_all_pairs_for_global_change(
                                     "price horizon threshold changed",
@@ -120,40 +123,50 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn render_top_panel(&mut self, ctx: &Context) {
-        
         let frame = UI_CONFIG.top_panel_frame();
 
-        TopBottomPanel::top("top_toolbar").frame(frame).min_height(30.0).resizable(false).show(ctx, |ui| {
-                            // --- TOP TOOLBAR ---
-            ui.horizontal(|ui| {
-                // 1. CANDLE RESOLUTION
-                ui.label("Res:");
-                ui.selectable_value(&mut self.candle_resolution, CandleResolution::M5, "5m");
-                ui.selectable_value(&mut self.candle_resolution, CandleResolution::M15, "15m");
-                ui.selectable_value(&mut self.candle_resolution, CandleResolution::H1, "1h");
-                ui.selectable_value(&mut self.candle_resolution, CandleResolution::H4, "4h");
-                ui.selectable_value(&mut self.candle_resolution, CandleResolution::D1, "1D");
-                ui.selectable_value(&mut self.candle_resolution, CandleResolution::D3, "3D");
-                ui.selectable_value(&mut self.candle_resolution, CandleResolution::W1, "1W");
-                ui.selectable_value(&mut self.candle_resolution, CandleResolution::M1, "1M");
+        TopBottomPanel::top("top_toolbar")
+            .frame(frame)
+            .min_height(30.0)
+            .resizable(false)
+            .show(ctx, |ui| {
+                // --- TOP TOOLBAR ---
+                ui.horizontal(|ui| {
+                    // 1. CANDLE RESOLUTION
+                    ui.label("Res:");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M5, "5m");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M15, "15m");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::H1, "1h");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::H4, "4h");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::D1, "1D");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::D3, "3D");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::W1, "1W");
+                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M1, "1M");
 
-                ui.separator();
+                    ui.separator();
 
-                // 2. LAYER VISIBILITY
-                ui.checkbox(&mut self.plot_visibility.sticky, "Sticky");
-                ui.checkbox(&mut self.plot_visibility.low_wicks, "Demand");
-                ui.checkbox(&mut self.plot_visibility.high_wicks, "Supply");
-                ui.checkbox(&mut self.plot_visibility.background, "Volume Hist");
-                ui.checkbox(&mut self.plot_visibility.candles, "Candles");
-                
-                ui.separator();
+                    // 2. LAYER VISIBILITY
+                    ui.checkbox(&mut self.plot_visibility.sticky, "Sticky");
+                    ui.checkbox(&mut self.plot_visibility.low_wicks, "Demand");
+                    ui.checkbox(&mut self.plot_visibility.high_wicks, "Supply");
+                    ui.checkbox(&mut self.plot_visibility.background, "Volume Hist");
+                    ui.checkbox(&mut self.plot_visibility.candles, "Candles");
 
-                // CONTEXT
-                ui.checkbox(&mut self.plot_visibility.ghost_candles, "Ghosts"); // Toggle faint candles
-                ui.checkbox(&mut self.plot_visibility.horizon_lines, "PH Lines"); // Toggle dashed horizontal PH border lines
-                ui.checkbox(&mut self.plot_visibility.price_line, "Price");
+                    ui.separator();
+
+                    // CONTEXT
+                    ui.checkbox(&mut self.plot_visibility.ghost_candles, "Ghosts"); // Toggle faint candles
+                    ui.checkbox(&mut self.plot_visibility.horizon_lines, "PH Lines"); // Toggle dashed horizontal PH border lines
+                    ui.checkbox(&mut self.plot_visibility.price_line, "Price");
+
+                    // STATUS INDICATOR (TEMP but very useful)
+                    if self.auto_scale_y {
+                        ui.label(RichText::new("🔒 Y-LOCKED").small().color(Color32::GREEN));
+                    } else {
+                        ui.label(RichText::new("🔓 MANUAL Y").small().color(Color32::YELLOW));
+                    }
+                });
             });
-        });
     }
 
     pub(super) fn render_central_panel(&mut self, ctx: &Context) {
@@ -162,7 +175,6 @@ impl ZoneSniperApp {
         CentralPanel::default()
             .frame(central_panel_frame)
             .show(ctx, |ui| {
-
                 // FIX: Grab Nav State HERE (Before borrowing self.engine)
                 // This requires us to clone it because it's Copy/Clone
                 let nav_state = self.get_nav_state();
@@ -211,8 +223,7 @@ impl ZoneSniperApp {
                 // PRIORITY 2: VALID MODEL
                 // If no error, and we have data, draw it.
                 else if let Some(model) = engine.get_model(&pair) {
-
-                    self.plot_view.show_my_plot(
+                    let interaction = self.plot_view.show_my_plot(
                         ui,
                         &model.cva,
                         &model,
@@ -222,7 +233,21 @@ impl ZoneSniperApp {
                         engine,
                         self.candle_resolution,
                         nav_state.current_segment_idx,
+                        self.auto_scale_y,
                     );
+
+                    // HANDLE INTERACTION
+                    match interaction {
+                        PlotInteraction::UserInteracted => {
+                            // User wants control. Disable auto-scale.
+                            self.auto_scale_y = false;
+                        }
+                        PlotInteraction::RequestReset => {
+                            // User requested reset. Re-enable auto-scale.
+                            self.auto_scale_y = true;
+                        }
+                        PlotInteraction::None => {}
+                    }
                 }
                 // PRIORITY 3: CALCULATING (Initial Load)
                 else if is_calculating {

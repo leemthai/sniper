@@ -2,7 +2,7 @@ use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
 use eframe::egui::{Color32, Ui, Vec2b};
-use egui_plot::{AxisHints, HPlacement, Plot, GridMark, VPlacement, Axis};
+use egui_plot::{Axis, AxisHints, GridMark, HPlacement, Plot, VPlacement};
 
 use crate::config::plot::PLOT_CONFIG;
 
@@ -10,21 +10,22 @@ use crate::engine::SniperEngine;
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
-use crate::models::trading_view::TradingModel;
 use crate::models::timeseries::find_matching_ohlcv;
+use crate::models::trading_view::TradingModel;
 
-use crate::ui::app::PlotVisibility;
 use crate::ui::app::CandleResolution;
+use crate::ui::app::PlotVisibility;
 
 use crate::ui::ui_text::UI_TEXT;
 
 use crate::ui::utils::format_price;
-use crate::utils::maths_utils;
 use crate::utils::TimeUtils;
+use crate::utils::maths_utils;
 
 // Import the new Layer System
 use crate::ui::plot_layers::{
-    BackgroundLayer, LayerContext, PlotLayer, PriceLineLayer, ReversalZoneLayer, StickyZoneLayer, CandlestickLayer, HorizonLinesLayer,
+    BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, PlotLayer, PriceLineLayer,
+    ReversalZoneLayer, StickyZoneLayer,
 };
 
 /// A lightweight representation of a background bar.
@@ -65,13 +66,18 @@ fn calculate_adaptive_step(range: f64, target_count: f64) -> f64 {
     let normalized = raw_step / mag; // Scale to 1.0 .. 10.0
 
     // Snap to "Nice" integers
-    let nice_step = if normalized < 1.5 { 1.0 }
-                   else if normalized < 3.0 { 2.0 }
-                   else if normalized < 7.0 { 5.0 }
-                   else { 10.0 };
-    
+    let nice_step = if normalized < 1.5 {
+        1.0
+    } else if normalized < 3.0 {
+        2.0
+    } else if normalized < 7.0 {
+        5.0
+    } else {
+        10.0
+    };
+
     let result = nice_step * mag;
-    
+
     // Ensure we never step less than 1 visual unit (1 candle)
     result.max(1.0)
 }
@@ -92,7 +98,7 @@ fn create_time_axis(
         .formatter(move |mark, _range| {
             let visual_x = mark.value;
             let mut current_visual_start = 0.0;
-            
+
             for seg in &segments {
                 let seg_len_vis = ((seg.end_idx - seg.start_idx) as f64 / step_size as f64).ceil();
                 let current_visual_end = current_visual_start + seg_len_vis;
@@ -101,48 +107,36 @@ fn create_time_axis(
                     let offset = (visual_x - current_visual_start) * step_size as f64;
                     let raw_idx = seg.start_idx + offset as usize;
 
-                    // --- DEBUG PROBE ---
-                    #[cfg(debug_assertions)]
-                    if step_size > 200 && raw_idx >= seg.end_idx {
-                         // We are trying to read Index 1000 in a segment of size 500
-                         // Use a rate limiter or simple check to avoid spam, or just log
-                         // Since axis formatter runs often, maybe only log specific X values or specific error conditions?
-                         // Let's just log once per frame if possible, or use a trick.
-                         // For now, let's just log:
-                         // log::warn!("AXIS OVERSHOOT: Seg len {}, Step {}, VisualOffset {:.2} -> RawOffset {}. EXCEEDS LIMIT!", 
-                         //    seg.end_idx - seg.start_idx, step_size, local_offset, raw_offset);
-                         
-                         return "GAP (Overshoot)".to_string(); // Change text to confirm diagnosis on screen
-                    }
-                    // ------------------
-
                     // Safety Clamp to segment end (Prevent over-reading into next segment data)
                     if raw_idx < seg.end_idx && raw_idx < timestamps.len() {
                         return TimeUtils::epoch_ms_to_date_string(timestamps[raw_idx]);
                     } else {
-                        // This happens if visual_x is at the very fractional edge of a segment
-                        //  return String::new(); 
-                         return "EDGE".to_string(); 
+                        // This happens if visual_x is at the very fractional edge of a segment (never seen this yet)
+                        return "EDGE".to_string();
                     }
-
                 }
                 current_visual_start = current_visual_end + gap_width;
                 // If visual_x is here, it is in a gap
                 if visual_x < current_visual_start {
                     // MARK GAPS EXPLICITLY
-                    return "GAP".to_string(); 
+                    return "GAP".to_string();
                 }
             }
 
             // --- DEBUG 3D/1W ISSUES ---
             // If we fall through here, visual_x is beyond all segments.
             // Uncomment to debug if 3D is generating out-of-bounds X values.
-            log::warn!("Axis Formatter OOB: {:.2}", visual_x);
+            // log::warn!("Axis Formatter OOB: {:.2}", visual_x);
             String::new()
         })
         .placement(VPlacement::Bottom)
 }
 
+pub enum PlotInteraction {
+    None,
+    UserInteracted, // User dragged/zoomed
+    RequestReset,   // User double-clicked
+}
 
 impl PlotView {
     pub fn new() -> Self {
@@ -168,7 +162,7 @@ impl PlotView {
     }
 
     // Helper: Calculates the X-Axis bounds (0..TotalWidth) or (Start..End) based on Time Machine state
-fn calculate_view_bounds(
+    fn calculate_view_bounds(
         &self,
         model: &TradingModel,
         current_segment_idx: Option<usize>,
@@ -179,14 +173,14 @@ fn calculate_view_bounds(
 
         // Helper to calc visual width of a candle count
         // Integer division with ceiling (any remainder needs a partial candle space)
-        let calc_width = |count: usize| -> f64 {
-            (count as f64 / step_size as f64).ceil()
-        };
+        let calc_width = |count: usize| -> f64 { (count as f64 / step_size as f64).ceil() };
 
-        let total_visual_candles: f64 = model.segments.iter()
+        let total_visual_candles: f64 = model
+            .segments
+            .iter()
             .map(|s| calc_width(s.candle_count))
             .sum();
-            
+
         let gap_count = model.segments.len().saturating_sub(1);
         let total_visual_width = total_visual_candles + (gap_count as f64 * gap_size);
 
@@ -204,7 +198,6 @@ fn calculate_view_bounds(
         (0.0, total_visual_width, total_visual_width)
     }
 
-
     // Ignores historical outliers to prevent compression.
     // Helper: Calculates Y-Axis bounds based on PH and Live Price (Sniper View)
     fn calculate_y_bounds(
@@ -214,12 +207,12 @@ fn calculate_view_bounds(
     ) -> std::ops::RangeInclusive<f64> {
         // 1. Get Global Context (PH Bounds)
         let (ph_min, ph_max) = cva_results.price_range.min_max();
-        
+
         // FIX: Use the argument 'current_price_opt'
         let current_price = current_price_opt.unwrap_or(ph_min);
 
         // 2. Union: Show PH Zone + Current Price
-        // We explicitly EXCLUDE segment data bounds to prevent "Depeg/Crash" history 
+        // We explicitly EXCLUDE segment data bounds to prevent "Depeg/Crash" history
         // from compressing the view.
         let final_min = ph_min.min(current_price);
         let final_max = ph_max.max(current_price);
@@ -227,7 +220,7 @@ fn calculate_view_bounds(
         // 3. Apply Configured Padding
         let range = final_max - final_min;
         let pad = range * PLOT_CONFIG.plot_y_padding_pct;
-        
+
         (final_min - pad).max(0.0)..=(final_max + pad)
     }
 
@@ -242,8 +235,8 @@ fn calculate_view_bounds(
         engine: &SniperEngine,
         resolution: CandleResolution,
         current_segment_idx: Option<usize>,
-    ) {
-
+        auto_scale_y: bool,
+    ) -> PlotInteraction {
         // 1. Fetch OHLCV Data (Required for Candle Layer)
         // We assume the pair exists since we have a model for it.
         let ohlcv = find_matching_ohlcv(
@@ -254,73 +247,85 @@ fn calculate_view_bounds(
         .expect("OHLCV data missing for current model");
 
         // 2. Calculate Bounds (Using Helper)
-        let (view_min, view_max, total_visual_width) = self.calculate_view_bounds(trading_model, current_segment_idx, resolution);
+        let (view_min, view_max, total_visual_width) =
+            self.calculate_view_bounds(trading_model, current_segment_idx, resolution);
 
+        // Y-Axis: CONDITIONAL LOCK
         // 3. Calculate Visual Height (Y-Axis) -- MOVED UP
         // We do this BEFORE the plot so the grid spacer knows the real visual range
-        let y_bounds_range = self.calculate_y_bounds(
-            cva_results,
-            current_pair_price,
-        );
+        let y_bounds_range = self.calculate_y_bounds(cva_results, current_pair_price);
         let y_min_vis = *y_bounds_range.start();
 
         // 1. Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
 
         let time_axis = create_time_axis(trading_model, ohlcv, resolution);
+        let price_axis = create_y_axis(&cva_results.pair_name);
 
-        Plot::new("my_plot")
+        let plot_response = Plot::new("my_plot")
             // .custom_x_axes(vec![create_x_axis(&cache)])
             .custom_x_axes(vec![time_axis])
-            .custom_y_axes(vec![create_y_axis(&cva_results.pair_name)])
+            .custom_y_axes(vec![price_axis])
             .label_formatter(|_, _| String::new())
             .x_grid_spacer(move |input| {
                 let mut marks = Vec::new();
                 let (min, max) = input.bounds;
-                let step = calculate_adaptive_step(max-min, 8.0);
+                let step = calculate_adaptive_step(max - min, 8.0);
 
                 let start = (min / step).ceil() as i64;
                 let end = (max / step).floor() as i64;
-                
+
                 for i in start..=end {
                     let value = i as f64 * step;
-                    marks.push(GridMark { value, step_size: step });
+                    marks.push(GridMark {
+                        value,
+                        step_size: step,
+                    });
                 }
                 marks
             })
             .y_grid_spacer(move |_input| {
-                 let mut marks = Vec::new();
-                 
-                 // FIX 1: Use PH Bounds (Inner) instead of Visual Bounds (Outer)
-                 // This ensures the top/bottom labels are slightly inside the plot area.
-                 let (ph_min, ph_max) = cva_results.price_range.min_max();
-                 let ph_range = ph_max - ph_min;
+                let mut marks = Vec::new();
 
-                 // Mandatory Ends
-                 marks.push(GridMark { value: ph_min, step_size: ph_range });
-                 marks.push(GridMark { value: ph_max, step_size: ph_range });
-                 
-                 // Intermediates
-                 let divisions = 5;
-                 let step = ph_range / divisions as f64;
-                 for i in 1..divisions {
-                     marks.push(GridMark { value: y_min_vis + (step * i as f64), step_size: step });
-                 }
-                 marks
+                // FIX 1: Use PH Bounds (Inner) instead of Visual Bounds (Outer)
+                // This ensures the top/bottom labels are slightly inside the plot area.
+                let (ph_min, ph_max) = cva_results.price_range.min_max();
+                let ph_range = ph_max - ph_min;
+
+                // Mandatory Ends
+                marks.push(GridMark {
+                    value: ph_min,
+                    step_size: ph_range,
+                });
+                marks.push(GridMark {
+                    value: ph_max,
+                    step_size: ph_range,
+                });
+
+                // Intermediates
+                let divisions = 5;
+                let step = ph_range / divisions as f64;
+                for i in 1..divisions {
+                    marks.push(GridMark {
+                        value: y_min_vis + (step * i as f64),
+                        step_size: step,
+                    });
+                }
+                marks
             })
-            .allow_double_click_reset(false)
             .allow_scroll(false)
+            .allow_double_click_reset(false)
             .allow_drag(Vec2b { x: false, y: true })
             .allow_zoom(Vec2b { x: false, y: true })
-
             .show(ui, |plot_ui| {
-                
                 plot_ui.set_plot_bounds_x(view_min..=view_max);
-                plot_ui.set_plot_bounds_y(y_bounds_range);
+
+                if auto_scale_y {
+                    plot_ui.set_plot_bounds_y(y_bounds_range);
+                }
 
                 // 1. Get the STRICT Price Horizon limits for the "Ghosting" logic
                 let (ph_min, ph_max) = cva_results.price_range.min_max();
-
 
                 // --- LAYER STACK ---
                 let ctx = LayerContext {
@@ -337,17 +342,26 @@ fn calculate_view_bounds(
                 };
 
                 // 2. Define Layer Stack (Dynamic)
-                let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(5);
+                let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(6);
 
-                if visibility.background {
-                    layers.push(Box::new(BackgroundLayer));
+                // LOGIC: Only show Global Context layers (Volume/Zones) if we are viewing the FULL HISTORY ("Show All").
+                // If viewing a specific segment, leave these out as not relevant.
+                let is_show_all = current_segment_idx.is_none();
+
+                // 1. Global Context Layers (Only in Show All)
+                if is_show_all {
+                    if visibility.background {
+                        layers.push(Box::new(BackgroundLayer));
+                    }
+                    if visibility.sticky {
+                        layers.push(Box::new(StickyZoneLayer));
+                    }
+                    if visibility.low_wicks || visibility.high_wicks {
+                        layers.push(Box::new(ReversalZoneLayer));
+                    }
                 }
-                if visibility.sticky {
-                    layers.push(Box::new(StickyZoneLayer));
-                }
-                if visibility.low_wicks || visibility.high_wicks {
-                    layers.push(Box::new(ReversalZoneLayer));
-                }
+
+                // 2. Always Available Layers (Context Agnostic)
                 if visibility.price_line {
                     layers.push(Box::new(PriceLineLayer));
                 }
@@ -356,11 +370,11 @@ fn calculate_view_bounds(
                 if visibility.horizon_lines {
                     layers.push(Box::new(HorizonLinesLayer));
                 }
-                
+
                 // CANDLES ON TOP
                 // Note: 'ghost_candles' is handled internally by CandlestickLayer
-                if visibility.candles { 
-                    layers.push(Box::new(CandlestickLayer)); 
+                if visibility.candles {
+                    layers.push(Box::new(CandlestickLayer));
                 }
 
                 // 3. Render Loop
@@ -368,6 +382,36 @@ fn calculate_view_bounds(
                     layer.render(plot_ui, &ctx);
                 }
             });
+
+        let r = plot_response.response;
+        // 1. Double Click -> Reset (Lock)
+        if r.double_clicked() {
+            // #[cfg(debug_assertions)]
+            // log::info!("INTERACTION: Double Click Detected -> Resetting Y-Axis");
+            return PlotInteraction::RequestReset;
+        }
+
+        // 2. Dragging -> Break Lock (Unlock)
+        // Note: we explicitly check if Y drag is allowed by config,
+        // though we hardcoded it in Plot::new anyway.
+        if r.dragged_by(eframe::egui::PointerButton::Primary)
+            || r.dragged_by(eframe::egui::PointerButton::Secondary)
+        {
+            // Only trigger if we actually moved in Y to avoid accidental clicks?
+            // Actually, any drag intent should unlock it.
+            // #[cfg(debug_assertions)]
+            // log::info!("INTERACTION: Drag Detected -> Unlocking Y-Axis");
+            return PlotInteraction::UserInteracted;
+        }
+
+        // 3. Zooming (Scroll) -> Break Lock
+        if r.hovered() && ui.input(|i| i.raw_scroll_delta.y.abs() > 0.0) {
+            // #[cfg(debug_assertions)]
+            // log::info!("INTERACTION: Zooming(scrolling) detected -> Unlocking Y-Axis");
+            return PlotInteraction::UserInteracted;
+        }
+
+        PlotInteraction::None
     }
 
     fn calculate_plot_data(&mut self, cva_results: &CVACore, score_type: ScoreType) -> PlotCache {
@@ -470,15 +514,6 @@ fn to_egui_color(colorgrad_color: colorgrad::Color) -> Color32 {
     let rgba8 = colorgrad_color.to_rgba8();
     Color32::from_rgba_unmultiplied(rgba8[0], rgba8[1], rgba8[2], 255)
 }
-
-// fn create_x_axis(_plot_cache: &PlotCache) -> AxisHints<'static> {
-//     AxisHints::new_x()
-//         .label(UI_TEXT.plot_x_axis)
-//         .formatter(move |grid_mark, _range| {
-//             let pct = grid_mark.value * 100.0;
-//             format!("{:.0}%", pct)
-//         })
-// }
 
 fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
     let label = format!("{}  {}", pair_name, UI_TEXT.plot_y_axis);
