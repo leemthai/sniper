@@ -37,11 +37,42 @@ pub static UI_CONFIG: UiConfig = UiConfig {
 
 
 impl UiConfig {
-    pub fn panel_frame(&self) -> Frame {
+    /// Frame for Left/Right panels (Standard padding)
+    pub fn side_panel_frame(&self) -> Frame {
         Frame {
-            fill: self.colors.side_panel, // Use your existing config color
-            stroke: Stroke::NONE,         // Or add a border if you want
-            inner_margin: Margin::same(8), // 8px padding on ALL sides
+            fill: self.colors.side_panel,
+            stroke: Stroke::NONE,
+            inner_margin: Margin::same(8),
+            ..Default::default()
+        }
+    }
+
+    /// Frame for the Top Toolbar (Standard padding)
+    pub fn top_panel_frame(&self) -> Frame {
+        Frame {
+            fill: self.colors.side_panel,
+            stroke: Stroke::NONE,
+            inner_margin: Margin::same(8),
+            ..Default::default()
+        }
+    }
+
+    /// Frame for Bottom Status bar (Tighter vertical padding)
+    pub fn bottom_panel_frame(&self) -> Frame {
+        Frame {
+            fill: self.colors.side_panel,
+            stroke: Stroke::NONE,
+            inner_margin: Margin::symmetric(8, 4), // Tighter vertically
+            ..Default::default()
+        }
+    }
+
+    /// Frame for the Plot area
+    pub fn central_panel_frame(&self) -> Frame {
+        Frame {
+            fill: self.colors.central_panel,
+            stroke: Stroke::NONE,
+            inner_margin: Margin::same(0), // Plot needs full bleed usually, or minimal
             ..Default::default()
         }
     }

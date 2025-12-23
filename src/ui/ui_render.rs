@@ -1,5 +1,5 @@
 use eframe::egui::{
-    CentralPanel, Color32, Context, Frame, Grid, Margin, RichText, ScrollArea, SidePanel,
+    CentralPanel, Color32, Context, Frame, Grid, RichText, ScrollArea, SidePanel,
     TopBottomPanel, Ui, Window,
 };
 
@@ -21,12 +21,12 @@ use super::app::ZoneSniperApp;
 
 impl ZoneSniperApp {
     pub(super) fn render_right_panel(&mut self, ctx: &Context) {
-        let panel_frame = UI_CONFIG.panel_frame();
+        let frame = UI_CONFIG.side_panel_frame();
 
         SidePanel::right("right_panel")
             .min_width(300.0)
             .resizable(true)
-            .frame(panel_frame)
+            .frame(frame)
             .show(ctx, |ui| {
                 ui.add_space(5.0);
 
@@ -67,12 +67,12 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn render_left_panel(&mut self, ctx: &Context) {
-        let side_panel_frame = UI_CONFIG.panel_frame();
+        let frame = UI_CONFIG.side_panel_frame();
 
         SidePanel::left("left_panel")
             .min_width(140.0)
             .resizable(false)
-            .frame(side_panel_frame)
+            .frame(frame)
             .show(ctx, |ui| {
                 let mut opp_events = Vec::new();
 
@@ -120,8 +120,10 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn render_top_panel(&mut self, ctx: &Context) {
-        let panel_frame = UI_CONFIG.panel_frame();
-        TopBottomPanel::top("top_toolbar").frame(panel_frame).min_height(30.0).resizable(false).show(ctx, |ui| {
+        
+        let frame = UI_CONFIG.top_panel_frame();
+
+        TopBottomPanel::top("top_toolbar").frame(frame).min_height(30.0).resizable(false).show(ctx, |ui| {
                             // --- TOP TOOLBAR ---
             ui.horizontal(|ui| {
                 // 1. CANDLE RESOLUTION
@@ -253,11 +255,9 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn render_status_panel(&mut self, ctx: &Context) {
-        let status_frame = Frame::new()
-            .fill(UI_CONFIG.colors.side_panel)
-            .inner_margin(Margin::symmetric(8, 4));
+        let frame = UI_CONFIG.bottom_panel_frame();
         TopBottomPanel::bottom("status_panel")
-            .frame(status_frame)
+            .frame(frame)
             .resizable(false)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {

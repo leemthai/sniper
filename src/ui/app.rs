@@ -621,11 +621,15 @@ impl eframe::App for ZoneSniperApp {
                 engine.update();
             }
             self.handle_global_shortcuts(ctx);
-            // 1. RENDER PANELS FIRST (They consume screen space)
-            self.render_top_panel(ctx);
+
+            // 1. Render left and right panels first (they consume screen width)
             self.render_left_panel(ctx);
             self.render_right_panel(ctx);
+
+            // Then render top and bottom panels (these will be constricted by width consumed by left + right panels)
+            self.render_top_panel(ctx);
             self.render_status_panel(ctx);
+
             // 2. RENDER CENTER LAST (Fills whatever space is left)
             self.render_central_panel(ctx);
 
