@@ -342,7 +342,7 @@ impl PlotView {
                 };
 
                 // 2. Define Layer Stack (Dynamic)
-                let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(6);
+                let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(6); // '6' is really a hint. If require  more capacity, Rust will allocate at run-time np.
 
                 // LOGIC: Only show Global Context layers (Volume/Zones) if we are viewing the FULL HISTORY ("Show All").
                 // If viewing a specific segment, leave these out as not relevant.

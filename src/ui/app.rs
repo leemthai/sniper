@@ -282,9 +282,7 @@ impl ZoneSniperApp {
         }
 
         self.selected_pair = Some(new_pair.clone());
-
         self.scroll_to_pair = true;
-
         self.auto_scale_y = true;
 
         if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
