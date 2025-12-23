@@ -119,54 +119,51 @@ impl ZoneSniperApp {
             });
     }
 
+    pub(super) fn render_top_panel(&mut self, ctx: &Context) {
+        let panel_frame = UI_CONFIG.panel_frame();
+        TopBottomPanel::top("top_toolbar").frame(panel_frame).min_height(30.0).resizable(false).show(ctx, |ui| {
+                            // --- TOP TOOLBAR ---
+            ui.horizontal(|ui| {
+                // 1. CANDLE RESOLUTION
+                ui.label("Res:");
+                ui.selectable_value(&mut self.candle_resolution, CandleResolution::M5, "5m");
+                ui.selectable_value(&mut self.candle_resolution, CandleResolution::M15, "15m");
+                ui.selectable_value(&mut self.candle_resolution, CandleResolution::H1, "1h");
+                ui.selectable_value(&mut self.candle_resolution, CandleResolution::H4, "4h");
+                ui.selectable_value(&mut self.candle_resolution, CandleResolution::D1, "1D");
+                ui.selectable_value(&mut self.candle_resolution, CandleResolution::D3, "3D");
+                ui.selectable_value(&mut self.candle_resolution, CandleResolution::W1, "1W");
+                ui.selectable_value(&mut self.candle_resolution, CandleResolution::M1, "1M");
+
+                ui.separator();
+
+                // 2. LAYER VISIBILITY
+                ui.checkbox(&mut self.plot_visibility.sticky, "Sticky");
+                ui.checkbox(&mut self.plot_visibility.low_wicks, "Demand");
+                ui.checkbox(&mut self.plot_visibility.high_wicks, "Supply");
+                ui.checkbox(&mut self.plot_visibility.background, "Volume Hist");
+                ui.checkbox(&mut self.plot_visibility.candles, "Candles");
+                
+                ui.separator();
+
+                // CONTEXT
+                ui.checkbox(&mut self.plot_visibility.ghost_candles, "Ghosts"); // Toggle faint candles
+                ui.checkbox(&mut self.plot_visibility.horizon_lines, "PH Lines"); // Toggle dashed horizontal PH border lines
+                ui.checkbox(&mut self.plot_visibility.price_line, "Price");
+            });
+        });
+    }
+
     pub(super) fn render_central_panel(&mut self, ctx: &Context) {
         let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
 
         CentralPanel::default()
             .frame(central_panel_frame)
             .show(ctx, |ui| {
-                ui.add_space(5.0);
-
-                // --- TOP TOOLBAR ---
-                ui.horizontal(|ui| {
-                    // 1. CANDLE RESOLUTION
-                    // Mutually exclusive selection for aggregation
-                    ui.label("Res:");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M5, "5m");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M15, "15m");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::H1, "1h");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::H4, "4h");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::D1, "1D");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::D3, "3D");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::W1, "1W");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M1, "1M");
-
-                    ui.separator();
-
-                    // 2. LAYER VISIBILITY
-                    // Direct boolean toggles
-                    ui.checkbox(&mut self.plot_visibility.sticky, "Sticky");
-                    ui.checkbox(&mut self.plot_visibility.low_wicks, "Demand");
-                    ui.checkbox(&mut self.plot_visibility.high_wicks, "Supply");
-                    ui.checkbox(&mut self.plot_visibility.background, "Volume Hist");
-                    ui.checkbox(&mut self.plot_visibility.candles, "Candles");
-                    
-                    ui.checkbox(&mut self.plot_visibility.ghost_candles, "Ghosts"); // Toggle faint candles
-                    ui.checkbox(&mut self.plot_visibility.horizon_lines, "PH Lines"); // Toggle dashed horizontal PH border lines
-
-
-                    ui.checkbox(&mut self.plot_visibility.price_line, "Price");
-                });
-
-
-                ui.separator();
-                ui.add_space(5.0);
 
                 // FIX: Grab Nav State HERE (Before borrowing self.engine)
                 // This requires us to clone it because it's Copy/Clone
                 let nav_state = self.get_nav_state();
-
-
 
                 // 1. Safety Check: Engine existence
                 let Some(engine) = &self.engine else {

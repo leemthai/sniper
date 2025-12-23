@@ -2,12 +2,13 @@ use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
 use eframe::egui::{Color32, Ui};
-use egui_plot::{AxisHints, HPlacement, Plot, GridMark};
+use egui_plot::{AxisHints, HPlacement, Plot, GridMark, VPlacement};
 
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::engine::SniperEngine;
 
+use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::trading_view::TradingModel;
 use crate::models::timeseries::find_matching_ohlcv;
@@ -21,6 +22,7 @@ use crate::analysis::range_gap_finder::DisplaySegment;
 
 use crate::ui::utils::format_price;
 use crate::utils::maths_utils;
+use crate::utils::TimeUtils;
 
 // Import the new Layer System
 use crate::ui::plot_layers::{
@@ -56,6 +58,42 @@ pub struct PlotCache {
 pub struct PlotView {
     cache: Option<PlotCache>,
 }
+
+// Helper to build the Time Axis with smart spacing and formatting
+fn create_time_axis(
+    model: &TradingModel,
+    ohlcv: &OhlcvTimeSeries,
+    resolution: CandleResolution,
+) -> AxisHints<'static> {
+    let segments = model.segments.clone();
+    let timestamps = ohlcv.timestamps.clone();
+    let gap_width = PLOT_CONFIG.segment_gap_width;
+    let step_size = resolution.step_size();
+
+    AxisHints::new(egui_plot::Axis::X)
+        .label("Time")
+        .formatter(move |mark, _range| {
+            let visual_x = mark.value;
+            let mut current_visual_start = 0.0;
+            
+            for seg in &segments {
+                let seg_len_vis = ((seg.end_idx - seg.start_idx) as f64 / step_size as f64).ceil();
+                let current_visual_end = current_visual_start + seg_len_vis;
+
+                if visual_x >= current_visual_start && visual_x < current_visual_end {
+                    let offset = (visual_x - current_visual_start) * step_size as f64;
+                    let idx = seg.start_idx + offset as usize;
+                    if idx < timestamps.len() {
+                        return TimeUtils::epoch_ms_to_date_string(timestamps[idx]);
+                    }
+                }
+                current_visual_start = current_visual_end + gap_width;
+            }
+            String::new()
+        })
+        .placement(VPlacement::Bottom)
+}
+
 
 impl PlotView {
     pub fn new() -> Self {
@@ -208,19 +246,25 @@ fn calculate_view_bounds(
         // 1. Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
 
+        let time_axis = create_time_axis(trading_model, ohlcv, resolution);
+
+
         Plot::new("my_plot")
             // .custom_x_axes(vec![create_x_axis(&cache)])
+            .custom_x_axes(vec![time_axis])
             .custom_y_axes(vec![create_y_axis(&cva_results.pair_name)])
             .label_formatter(|_, _| String::new())
-            .x_grid_spacer(move |_input| {
+            .x_grid_spacer(move |input| {
                 let mut marks = Vec::new();
-                let (min, max) = _input.bounds;
-                // Simple integer stepping for visual candles (100 candles per mark)
-                let step = 100.0; 
+                let (min, max) = input.bounds;
+                let step = 50.0; // Draw a vertical line every 50 visual candles
+                
                 let start = (min / step).ceil() as i64;
                 let end = (max / step).floor() as i64;
+                
                 for i in start..=end {
-                    marks.push(GridMark { value: i as f64 * step, step_size: step });
+                    let value = i as f64 * step;
+                    marks.push(GridMark { value, step_size: step });
                 }
                 marks
             })
@@ -291,11 +335,6 @@ fn calculate_view_bounds(
                 // Note: 'ghost_candles' is handled internally by CandlestickLayer
                 if visibility.candles { 
                     layers.push(Box::new(CandlestickLayer)); 
-                }
-
-
-                if visibility.candles {
-                    layers.push(Box::new(CandlestickLayer));
                 }
 
                 // 3. Render Loop

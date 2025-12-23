@@ -16,20 +16,18 @@ use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
 
-// #[cfg(debug_assertions)]
-// use crate::utils::time_utils::TimeUtils;
-
 pub struct HorizonLinesLayer;
 
 impl PlotLayer for HorizonLinesLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+
         let (ph_min, ph_max) = ctx.ph_bounds;
         
         // VISIBILITY FIX: 
         // Use White for max contrast against dark backgrounds and grey grid lines.
-        // Make it slightly thicker (1.5) so it pops.
+        // Make it slightly thicker so it is visible whatever is behind it
         let color = Color32::WHITE; 
-        let width = 1.5;
+        let width = 4.0;
         let dash_style = LineStyle::Dashed { length: 10.0 };
 
         // Top Line

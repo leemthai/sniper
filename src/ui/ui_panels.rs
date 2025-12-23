@@ -98,7 +98,7 @@ impl<'a> CandleRangePanel<'a> {
                 .current_range_idx
                 .map_or(false, |i| i < self.segments.len() - 1);
             if ui
-                .add_enabled(next_enabled, eframe::egui::Button::new("Next ➡"))
+                .add_enabled(next_enabled, Button::new("Next ➡"))
                 .clicked()
             {
                 if let Some(curr) = self.current_range_idx {
@@ -161,8 +161,8 @@ impl<'a> CandleRangePanel<'a> {
                             }
 
                             // Draw Segment Row
-                            let start_date = TimeUtils::epoch_ms_to_datetime_string(seg.start_ts);
-                            let end_date = TimeUtils::epoch_ms_to_datetime_string(seg.end_ts);
+                            let start_date = TimeUtils::epoch_ms_to_date_string(seg.start_ts);
+                            let end_date = TimeUtils::epoch_ms_to_date_string(seg.end_ts);
 
                             // Clickable Row ID
                             if ui
