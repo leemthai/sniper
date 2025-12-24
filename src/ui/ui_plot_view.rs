@@ -314,6 +314,7 @@ impl PlotView {
                 marks
             })
             .allow_scroll(false)
+            .allow_boxed_zoom(false) // Not allowed because it alters both y and x. x is not allowed coz fixed.
             .allow_double_click_reset(false)
             .allow_drag(Vec2b { x: false, y: true })
             .allow_zoom(Vec2b { x: false, y: true })
