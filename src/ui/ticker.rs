@@ -50,7 +50,7 @@ impl TickerState {
                     url: None 
                 });
                 self.items.push(TickerItem { 
-                    symbol: "VISIT US ON GITHUB 🔗".to_string(), price: 0.0, change: 0.0, last_update_time: 0.0,
+                    symbol: "VISIT US ON GITHUB".to_string(), price: 0.0, change: 0.0, last_update_time: 0.0,
                     url: Some("https://github.com/leemthai/zone-sniper".to_string()) 
                 });
                 self.items.push(TickerItem { 
