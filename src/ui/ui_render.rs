@@ -4,6 +4,7 @@ use eframe::egui::{
 };
 
 use crate::config::{ANALYSIS, AnalysisConfig};
+use crate::config::TICKER;
 use crate::models::cva::ScoreType;
 
 use crate::ui::app::CandleResolution;
@@ -168,6 +169,35 @@ impl ZoneSniperApp {
                 });
             });
     }
+
+    pub(super) fn render_ticker_panel(&mut self, ctx: &Context) {
+        let panel_frame = UI_CONFIG.bottom_panel_frame();
+
+        // Render at bottom. If called BEFORE status panel in update(), it sits below it.
+        // If called AFTER, it sits above it.
+        TopBottomPanel::bottom("ticker_panel")
+            .frame(panel_frame)
+            .min_height(TICKER.height)
+            .resizable(false)
+            .show(ctx, |ui| {
+                if let Some(engine) = &self.engine {
+                    self.ticker_state.update_data(engine);
+                }
+
+                 // Render Ticker and Capture Result
+                if let Some(pair) = self.ticker_state.render(ui) {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        self.handle_pair_selection(pair);
+                    }
+                    // WASM: Suppress warning (Variable used)
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let _ = pair; 
+                    }
+                }
+            });
+        }
 
     pub(super) fn render_central_panel(&mut self, ctx: &Context) {
         let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);

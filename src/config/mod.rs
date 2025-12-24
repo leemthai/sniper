@@ -6,6 +6,7 @@ mod binance;
 mod debug;
 mod demo;
 mod persistence;
+mod ticker;
 
 // Can't be private because we don't re-export it
 pub mod plot;
@@ -16,3 +17,4 @@ pub use binance::{BINANCE, BinanceApiConfig};
 pub use debug::DEBUG_FLAGS;
 pub use demo::DEMO;
 pub use persistence::{PERSISTENCE, kline_cache_filename};
+pub use ticker::TICKER;

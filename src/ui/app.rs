@@ -21,6 +21,7 @@ use crate::models::{SyncStatus, ProgressEvent};
 use crate::ui::ui_plot_view::PlotView;
 use crate::ui::utils::setup_custom_visuals;
 use crate::ui::app_simulation::{SimStepSize, SimDirection};
+use crate::ui::ticker::TickerState;
 
 use crate::utils::TimeUtils;
 
@@ -170,6 +171,8 @@ pub struct ZoneSniperApp {
     pub nav_states: HashMap<String, NavigationState>,
     #[serde(skip)]
     pub auto_scale_y: bool,
+    #[serde(skip)]
+    pub ticker_state: TickerState,
 }
 
 impl Default for ZoneSniperApp {
@@ -193,6 +196,7 @@ impl Default for ZoneSniperApp {
             nav_states: HashMap::new(),
             candle_resolution: CandleResolution::default(),
             auto_scale_y: true,
+            ticker_state: TickerState::default(),
         }
     }
 }
@@ -631,6 +635,9 @@ impl eframe::App for ZoneSniperApp {
 
             // Then render top and bottom panels (these will be constricted by width consumed by left + right panels)
             self.render_top_panel(ctx);
+
+            // Bottom panels (first one listed gets rendered at absolute bottom)
+            self.render_ticker_panel(ctx);
             self.render_status_panel(ctx);
 
             // 2. RENDER CENTER LAST (Fills whatever space is left)
