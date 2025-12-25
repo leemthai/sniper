@@ -23,6 +23,7 @@ use crate::ui::utils::setup_custom_visuals;
 use crate::ui::app_simulation::{SimStepSize, SimDirection};
 use crate::ui::ticker::TickerState;
 
+use crate::utils::time_utils::AppInstant;
 use crate::utils::TimeUtils;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -173,6 +174,8 @@ pub struct ZoneSniperApp {
     pub auto_scale_y: bool,
     #[serde(skip)]
     pub ticker_state: TickerState,
+    #[serde(skip)]
+    pub last_frame_time: Option<AppInstant>,
 }
 
 impl Default for ZoneSniperApp {
@@ -197,6 +200,7 @@ impl Default for ZoneSniperApp {
             candle_resolution: CandleResolution::default(),
             auto_scale_y: true,
             ticker_state: TickerState::default(),
+            last_frame_time: None,
         }
     }
 }
@@ -510,6 +514,161 @@ impl ZoneSniperApp {
         });
     }
 
+    fn check_performance_monitor(&mut self) {
+        // --- PERFORMANCE MONITOR ---
+        let now = crate::utils::time_utils::now();
+        if let Some(last) = self.last_frame_time {
+            let dt = now.duration_since(last).as_secs_f32();
+            let ms = dt * 1000.0;
+            
+            // If frame took longer than 20ms (approx 50fps), log it.
+            // 16.6ms is perfect 60fps.
+            #[cfg(debug_assertions)]
+            if ms > 20. {
+                // Determine rough FPS
+                let fps = 1.0 / dt;
+                log::warn!("🐢 LAG SPIKE: Frame took {:.2}ms ({:.0} FPS)", ms, fps);
+            }
+        }
+        self.last_frame_time = Some(now);
+    }
+
+    fn render_loading_screen(ctx: &Context, state: &LoadingState) {
+        CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+                
+                // Title
+                ui.heading(
+                    RichText::new("ZONE SNIPER INITIALIZATION")
+                        .size(24.0)
+                        .strong()
+                        .color(Color32::from_rgb(255, 215, 0))
+                ); 
+
+                // Subtitle / Info
+                let interval_str = TimeUtils::interval_to_string(ANALYSIS.interval_width_ms);
+                ui.label(
+                    RichText::new(format!(
+                        "Syncing {} klines from Binance Public API. Please be patient. This may take some time if it hasn't been run for a while or you are collecting many pairs. Subsequent runs will complete much quicker.", 
+                        interval_str
+                    ))
+                    .italics()
+                    .color(Color32::LIGHT_GRAY)
+                );
+
+                ui.add_space(20.0);
+
+                // Progress Bar Logic
+                // Note: state.pairs is BTreeMap<usize, ...> so len() is correct for total
+                let total = state.total_pairs; 
+                let done = state.completed + state.failed;
+                let progress = if total > 0 { done as f32 / total as f32 } else { 0.0 };
+                
+                ui.add_space(20.0);
+                ui.add(
+                    ProgressBar::new(progress)
+                        .show_percentage()
+                        .animate(true)
+                        .text(format!("Processed {}/{}", done, total))
+                );
+                
+                // Failure Warning
+                if state.failed > 0 {
+                    ui.add_space(5.0);
+                    ui.label(
+                        RichText::new(format!("⚠ {} Failures", state.failed))
+                            .color(Color32::RED)
+                    );
+                }
+                
+                ui.add_space(20.0);
+            });
+
+            // Call the Grid Helper we made earlier
+            Self::render_loading_grid(ui, state);
+        });
+    }
+
+    fn render_running_state(&mut self, ctx: &Context) {
+        if let Some(engine) = &mut self.engine {
+            engine.update();
+        }
+        self.handle_global_shortcuts(ctx);
+
+        self.render_left_panel(ctx);
+        self.render_right_panel(ctx);
+        self.render_top_panel(ctx);
+        self.render_ticker_panel(ctx);
+        self.render_status_panel(ctx);
+        self.render_central_panel(ctx);
+        self.render_help_panel(ctx);
+    }
+
+    fn update_loading_progress(state: &mut crate::ui::app::LoadingState, rx_opt: &Option<Receiver<ProgressEvent>>) {
+        if let Some(rx) = rx_opt {
+            while let Ok(event) = rx.try_recv() {
+                // FIX: Insert using Index as Key (usize), and Tuple as Value
+                state.pairs.insert(event.index, (event.pair, event.status));
+            }
+            
+            state.total_pairs = state.pairs.len();
+            
+            // FIX: Destructure the tuple |(_, s)| to access the Status
+            state.completed = state.pairs.values()
+                .filter(|(_, s)| matches!(s, SyncStatus::Completed(_)))
+                .count();
+                
+            state.failed = state.pairs.values()
+                .filter(|(_, s)| matches!(s, SyncStatus::Failed(_)))
+                .count();
+        }
+    }
+
+
+    /// Helper: Checks if the background thread has finished.
+    /// Returns Some(NewState) if ready to transition.
+    fn check_loading_completion(&mut self) -> Option<AppState> {
+        // Access rx without borrowing self for long
+        // We need to use 'if let' on the field directly
+        if let Some(rx) = &self.data_rx {
+            // Non-blocking check
+            if let Ok((timeseries, _sig)) = rx.try_recv() {
+                
+                // 1. Validate Pair
+                let available_pairs = timeseries.unique_pair_names();
+                let current_is_valid = self.selected_pair.as_ref()
+                    .map(|p| available_pairs.contains(p))
+                    .unwrap_or(false);
+
+                if !current_is_valid {
+                    if let Some(first) = available_pairs.first() {
+                         #[cfg(debug_assertions)]
+                         log::warn!("Startup: Persisted pair {:?} not found. Switching to {}", self.selected_pair, first);
+                         self.selected_pair = Some(first.clone());
+                    }
+                }
+
+                // 2. Initialize Engine
+                let mut engine = SniperEngine::new(timeseries);
+                engine.update_config(self.app_config.clone());
+                engine.set_all_overrides(self.price_horizon_overrides.clone());
+                engine.trigger_global_recalc(self.selected_pair.clone());
+
+                self.engine = Some(engine);
+                self.scroll_to_pair = true;
+
+                // 3. Reset Navigation
+                if let Some(pair) = &self.selected_pair {
+                    self.nav_states.insert(pair.clone(), NavigationState::default());
+                }
+
+                return Some(AppState::Running);
+            }
+        }
+        None
+    }
+
 
 }
 
@@ -519,136 +678,43 @@ impl eframe::App for ZoneSniperApp {
     }
 
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+        self.check_performance_monitor();
         setup_custom_visuals(ctx);
 
         let mut next_state = None;
 
-        // --- PHASE A: LOADING LOGIC ---
-        if let AppState::Loading(state) = &mut self.state {
-
-            // 1. Process Progress Updates
-            if let Some(rx) = &self.progress_rx {
-                while let Ok(event) = rx.try_recv() {
-                    state.pairs.insert(event.index, (event.pair, event.status));
-                    state.total_pairs = state.pairs.len();
-                    state.completed = state.pairs.values().filter(|(_, s)| matches!(s, SyncStatus::Completed(_))).count();
-                    state.failed = state.pairs.values().filter(|(_, s)| matches!(s, SyncStatus::Failed(_))).count();
-                    ctx.request_repaint();
-                }
-            }
-
-            // 2. Check Data Completion
-            if let Some(rx) = &self.data_rx {
-                if let Ok((timeseries, _sig)) = rx.try_recv() {
-
-                    let available_pairs = timeseries.unique_pair_names();
-                    let current_is_valid = self.selected_pair.as_ref().map(|p| available_pairs.contains(p)).unwrap_or(false);
-                    if !current_is_valid {
-                        if let Some(first) = available_pairs.first() {
-                            #[cfg(debug_assertions)]
-                            log::warn!("Startup: Persisted pair {:?} not found. Switching to {}", self.selected_pair, first);
-                            self.selected_pair = Some(first.clone());
-                        }
-                    }
-
-                    let mut engine = SniperEngine::new(timeseries);
-                    engine.update_config(self.app_config.clone());
-                    engine.set_all_overrides(self.price_horizon_overrides.clone());
-                    engine.trigger_global_recalc(self.selected_pair.clone());
-
-                    self.engine = Some(engine);
-                    // next_state = Some(AppState::Running);
-                    self.scroll_to_pair = true;
-
-                    // FIX: Reset Navigation for the current pair in the Map
-                    if let Some(pair) = &self.selected_pair {
-                        self.nav_states.insert(pair.clone(), NavigationState::default());
-                    }
-
-                    next_state = Some(AppState::Running);
-
-                }
+        // --- PHASE A: LOADING STATE ---
+        // We use a scope block to limit the borrow of 'self.state'
+        {
+            if let AppState::Loading(state) = &mut self.state {
+                // 1. Update Progress (Pass fields individually to avoid conflict)
+                Self::update_loading_progress(state, &self.progress_rx);
+                ctx.request_repaint(); // Keep animating progress bar
             }
         }
 
+        // 2. Check Completion (requires &mut self)
+        // Only run this check if we are currently loading
+        if matches!(self.state, AppState::Loading(_)) {
+            next_state = self.check_loading_completion();
+        }
 
-        // --- Phase B: APPLY TRANSITION --- 
-        // We do this outside the 'if let AppState::Loading' block 
-        // to avoid "cannot assign to self.state because it is borrowed" error.
+        // --- PHASE B: TRANSITION ---
         if let Some(new_state) = next_state {
             self.state = new_state;
             ctx.request_repaint();
-            return; 
+            return;
         }
-                            
-        // --- 2. RENDER LOADING SCREEN ---
+
+        // --- PHASE C: RENDER ---
         match &self.state {
             AppState::Loading(state) => {
-                CentralPanel::default().show(ctx, |ui| {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(20.0);
-                        ui.heading(RichText::new("ZONE SNIPER INITIALIZATION").size(24.0).strong().color(Color32::from_rgb(255, 215, 0))); // Gold title
-                        let interval_str = TimeUtils::interval_to_string(ANALYSIS.interval_width_ms);
-                        ui.label(RichText::new(format!(
-                            "Syncing {} klines from Binance Public API. Please be patient. This may take some time if it hasn't been run for a while or you are collecting many pairs. Subsequent runs will complete much quicker.", 
-                            interval_str
-                        )).italics().color(Color32::LIGHT_GRAY));
-
-                        ui.add_space(20.0);
-
-
-                        // Progress Bar
-                        let total = state.pairs.len();
-                        let done = state.completed + state.failed;
-                        let progress = if total > 0 { done as f32 / total as f32 } else { 0.0 };
-                        
-                        ui.add_space(20.0);
-                        ui.add(ProgressBar::new(progress)
-                            .show_percentage()
-                            .animate(true)
-                            .text(format!("Processed {}/{}", done, total))
-                        );
-                        
-                        if state.failed > 0 {
-                            ui.add_space(5.0);
-                            ui.label(RichText::new(format!("⚠ {} Failures", state.failed)).color(Color32::RED));
-                        }
-                        
-                        ui.add_space(20.0);
-                    });
-
-                    Self::render_loading_grid(ui, state);
-            });
-
-            ctx.request_repaint();
-        }
-        // --- 3. RUNNING STATE ---
-        AppState::Running => {
-            if let Some(engine) = &mut self.engine {
-                engine.update();
+                Self::render_loading_screen(ctx, state);
             }
-            self.handle_global_shortcuts(ctx);
-
-            // 1. Render left and right panels first (they consume screen width)
-            self.render_left_panel(ctx);
-            self.render_right_panel(ctx);
-
-            // Then render top and bottom panels (these will be constricted by width consumed by left + right panels)
-            self.render_top_panel(ctx);
-
-            // Bottom panels (first one listed gets rendered at absolute bottom)
-            self.render_ticker_panel(ctx);
-            self.render_status_panel(ctx);
-
-            // 2. RENDER CENTER LAST (Fills whatever space is left)
-            self.render_central_panel(ctx);
-
-            // Help panel can be anywhere.
-            self.render_help_panel(ctx);
-        
-            ctx.request_repaint();
+            AppState::Running => {
+                self.render_running_state(ctx);
             }
         }
+
     }
 }
-

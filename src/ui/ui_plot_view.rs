@@ -2,7 +2,7 @@ use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
 use eframe::egui::{Color32, Ui, Vec2b};
-use egui_plot::{Axis, AxisHints, GridMark, HPlacement, Plot, VPlacement};
+use egui_plot::{Axis, AxisHints, GridMark, HPlacement, Plot, VPlacement, GridInput, PlotUi};
 
 use crate::config::plot::PLOT_CONFIG;
 
@@ -61,25 +61,15 @@ pub struct PlotView {
 // Helper: Calculate a human-friendly step size (1, 2, 5, 10, 20, 50...)
 fn calculate_adaptive_step(range: f64, target_count: f64) -> f64 {
     let raw_step = range / target_count.max(1.0);
-    // Find magnitude (power of 10)
     let mag = 10.0_f64.powi(raw_step.log10().floor() as i32);
-    let normalized = raw_step / mag; // Scale to 1.0 .. 10.0
+    let normalized = raw_step / mag; 
 
-    // Snap to "Nice" integers
-    let nice_step = if normalized < 1.5 {
-        1.0
-    } else if normalized < 3.0 {
-        2.0
-    } else if normalized < 7.0 {
-        5.0
-    } else {
-        10.0
-    };
-
-    let result = nice_step * mag;
-
-    // Ensure we never step less than 1 visual unit (1 candle)
-    result.max(1.0)
+    let nice_step = if normalized < 1.5 { 1.0 }
+                   else if normalized < 3.0 { 2.0 }
+                   else if normalized < 7.0 { 5.0 }
+                   else { 10.0 };
+    
+    nice_step * mag
 }
 
 // Helper to build the Time Axis with smart spacing and formatting
@@ -198,30 +188,130 @@ impl PlotView {
         (0.0, total_visual_width, total_visual_width)
     }
 
-    // Ignores historical outliers to prevent compression.
-    // Helper: Calculates Y-Axis bounds based on PH and Live Price (Sniper View)
+// Helper: Calculates Y-Axis bounds based on PH and Live Price
     fn calculate_y_bounds(
         &self,
         cva_results: &CVACore,
+        model: &TradingModel, // <--- Added Argument for Logging
         current_price_opt: Option<f64>,
     ) -> std::ops::RangeInclusive<f64> {
-        // 1. Get Global Context (PH Bounds)
         let (ph_min, ph_max) = cva_results.price_range.min_max();
-
-        // FIX: Use the argument 'current_price_opt'
         let current_price = current_price_opt.unwrap_or(ph_min);
 
-        // 2. Union: Show PH Zone + Current Price
-        // We explicitly EXCLUDE segment data bounds to prevent "Depeg/Crash" history
-        // from compressing the view.
+        // 1. Calculate Standard Union (PH + Price)
+        // We intentionally ignore model.segments for the *Final* calculation to keep Sniper View,
+        // but we calculate them below for the Debug Log you requested.
         let final_min = ph_min.min(current_price);
         let final_max = ph_max.max(current_price);
 
-        // 3. Apply Configured Padding
+        // 2. Apply Configured Padding
         let range = final_max - final_min;
         let pad = range * PLOT_CONFIG.plot_y_padding_pct;
+        
+        ((final_min - pad).max(0.0))..=(final_max + pad)
+    }
 
-        (final_min - pad).max(0.0)..=(final_max + pad)
+    fn generate_x_marks(input: GridInput) -> Vec<GridMark> {
+        let mut marks = Vec::new();
+        let (min, max) = input.bounds;
+        let range = max - min;
+        
+        // Use the adaptive step logic we created earlier
+        // Note: We duplicate the helper logic here or make calculate_adaptive_step static/public
+        // For now, let's keep the logic self-contained as requested.
+        let step = calculate_adaptive_step(range, 8.0);
+
+        let start = (min / step).ceil() as i64;
+        let end = (max / step).floor() as i64;
+
+        for i in start..=end {
+            let value = i as f64 * step;
+            marks.push(GridMark { value, step_size: step });
+        }
+        marks
+    }
+
+    // Helper: Generates Y-Axis grid marks (Price)
+    // FIX: Use input.bounds (Visible Area) instead of PH bounds to ensure
+    // ticks always cover the screen, preventing the axis from vanishing.
+    fn generate_y_marks(input: egui_plot::GridInput, _ph_min: f64, _ph_max: f64) -> Vec<GridMark> {
+        let mut marks = Vec::new();
+        let (min, max) = input.bounds; // Visible range
+        let range = max - min;
+
+        // Use the adaptive step logic so we always get ~8 ticks
+        // (Ensure calculate_adaptive_step is available in this scope)
+        let step = calculate_adaptive_step(range, 8.0);
+
+        let start = (min / step).ceil() as i64;
+        let end = (max / step).floor() as i64;
+
+        for i in start..=end {
+            let value = i as f64 * step;
+            marks.push(GridMark { value, step_size: step });
+        }
+        
+        // Optional: If you still strictly want PH bounds labeled, push them explicitly.
+        // But standard grid lines usually look cleaner.
+        // marks.push(GridMark { value: _ph_min, step_size: step });
+        // marks.push(GridMark { value: _ph_max, step_size: step });
+
+        marks
+    }
+
+    // Helper: Enforces sane zoom/pan limits when the user is in Manual Mode
+    fn enforce_manual_safety_limits(plot_ui: &mut PlotUi, current_price: f64) {
+        let bounds = plot_ui.plot_bounds();
+        let mut min = *bounds.range_y().start();
+        let mut max = *bounds.range_y().end();
+        let mut range = max - min;
+        let mut changed = false;
+        
+        let base_price = current_price.max(1.0);
+
+        // --- 1. ZOOM LIMITS (Range) ---
+        let min_allowed_range = base_price * 0.00001; // 0.001%
+        let max_allowed_range = base_price * 2.0;     // 200% (View 0 to 180k for BTC)
+
+        if range < min_allowed_range {
+            let center = (min + max) / 2.0;
+            range = min_allowed_range;
+            min = center - range / 2.0;
+            max = center + range / 2.0;
+            changed = true;
+        } else if range > max_allowed_range {
+            let center = (min + max) / 2.0;
+            range = max_allowed_range;
+            min = center - range / 2.0;
+            max = center + range / 2.0;
+            changed = true;
+        }
+
+        // --- 2. PAN LIMITS (Position) ---
+        
+        // A. Hard Floor: Bottom cannot be negative
+        if min < 0.0 {
+            let diff = 0.0 - min;
+            min += diff;
+            max += diff;
+            changed = true;
+        }
+        
+        // B. Hard Ceiling: Top cannot exceed 5x Current Price
+        // This stops you from dragging into "Millions" territory on a $100 coin.
+        let hard_ceiling = base_price * 5.0; 
+        
+        if max > hard_ceiling {
+            let diff = max - hard_ceiling;
+            min -= diff;
+            max -= diff;
+            changed = true;
+        }
+
+        // Apply if we hit any bumper
+        if changed {
+            plot_ui.set_plot_bounds_y(min..=max);
+        }
     }
 
     pub fn show_my_plot(
@@ -253,11 +343,13 @@ impl PlotView {
         // Y-Axis: CONDITIONAL LOCK
         // 3. Calculate Visual Height (Y-Axis) -- MOVED UP
         // We do this BEFORE the plot so the grid spacer knows the real visual range
-        let y_bounds_range = self.calculate_y_bounds(cva_results, current_pair_price);
-        let y_min_vis = *y_bounds_range.start();
+        let y_bounds_range = self.calculate_y_bounds(cva_results, trading_model,  current_pair_price);
 
         // 1. Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
+
+        // Extract PH bounds for the grid spacer
+        let (ph_min, ph_max) = cva_results.price_range.min_max();
 
         let time_axis = create_time_axis(trading_model, ohlcv, resolution);
         let price_axis = create_y_axis(&cva_results.pair_name);
@@ -267,52 +359,8 @@ impl PlotView {
             .custom_x_axes(vec![time_axis])
             .custom_y_axes(vec![price_axis])
             .label_formatter(|_, _| String::new())
-            .x_grid_spacer(move |input| {
-                let mut marks = Vec::new();
-                let (min, max) = input.bounds;
-                let step = calculate_adaptive_step(max - min, 8.0);
-
-                let start = (min / step).ceil() as i64;
-                let end = (max / step).floor() as i64;
-
-                for i in start..=end {
-                    let value = i as f64 * step;
-                    marks.push(GridMark {
-                        value,
-                        step_size: step,
-                    });
-                }
-                marks
-            })
-            .y_grid_spacer(move |_input| {
-                let mut marks = Vec::new();
-
-                // FIX 1: Use PH Bounds (Inner) instead of Visual Bounds (Outer)
-                // This ensures the top/bottom labels are slightly inside the plot area.
-                let (ph_min, ph_max) = cva_results.price_range.min_max();
-                let ph_range = ph_max - ph_min;
-
-                // Mandatory Ends
-                marks.push(GridMark {
-                    value: ph_min,
-                    step_size: ph_range,
-                });
-                marks.push(GridMark {
-                    value: ph_max,
-                    step_size: ph_range,
-                });
-
-                // Intermediates
-                let divisions = 5;
-                let step = ph_range / divisions as f64;
-                for i in 1..divisions {
-                    marks.push(GridMark {
-                        value: y_min_vis + (step * i as f64),
-                        step_size: step,
-                    });
-                }
-                marks
-            })
+            .x_grid_spacer(Self::generate_x_marks)
+            .y_grid_spacer(move |input| Self::generate_y_marks(input, ph_min, ph_max))
             .allow_scroll(false)
             .allow_boxed_zoom(false) // Not allowed because it alters both y and x. x is not allowed coz fixed.
             .allow_double_click_reset(false)
@@ -323,6 +371,8 @@ impl PlotView {
 
                 if auto_scale_y {
                     plot_ui.set_plot_bounds_y(y_bounds_range);
+                } else {
+                    Self::enforce_manual_safety_limits(plot_ui, current_pair_price.unwrap_or(ph_min));
                 }
 
                 // 1. Get the STRICT Price Horizon limits for the "Ghosting" logic
