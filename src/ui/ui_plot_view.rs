@@ -192,7 +192,7 @@ impl PlotView {
     fn calculate_y_bounds(
         &self,
         cva_results: &CVACore,
-        model: &TradingModel, // <--- Added Argument for Logging
+        // model: &TradingModel, // <--- Added Argument for Logging
         current_price_opt: Option<f64>,
     ) -> std::ops::RangeInclusive<f64> {
         let (ph_min, ph_max) = cva_results.price_range.min_max();
@@ -343,7 +343,7 @@ impl PlotView {
         // Y-Axis: CONDITIONAL LOCK
         // 3. Calculate Visual Height (Y-Axis) -- MOVED UP
         // We do this BEFORE the plot so the grid spacer knows the real visual range
-        let y_bounds_range = self.calculate_y_bounds(cva_results, trading_model,  current_pair_price);
+        let y_bounds_range = self.calculate_y_bounds(cva_results,  current_pair_price);
 
         // 1. Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
