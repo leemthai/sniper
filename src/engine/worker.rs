@@ -82,7 +82,7 @@ fn run_pathfinder_simulations(
     };
 
     // 3. Scan Targets
-    for (i, zone) in sticky_zones.iter().enumerate() {
+    for (_i, zone) in sticky_zones.iter().enumerate() {
         // ... (determine is_valid, target, stop) ...
         let (is_valid, target_price, stop_price, direction) = if current_price < zone.price_bottom {
              (true, zone.price_bottom, current_price * (1.0 - stop_pct), "Long".to_string())
@@ -113,8 +113,8 @@ fn run_pathfinder_simulations(
             ) {
                 // LOG SUCCESS for first few
                 #[cfg(debug_assertions)]
-                if i < 3 {
-                     log::info!("   -> Zone {}: {} Win Rate {:.1}% (Samples: {})", i, direction, result.success_rate * 100.0, result.sample_size);
+                if _i < 3 {
+                     log::info!("   -> Zone {}: {} Win Rate {:.1}% (Samples: {})", _i, direction, result.success_rate * 100.0, result.sample_size);
                 }
 
                 opportunities.push(TradeOpportunity {

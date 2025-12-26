@@ -3,9 +3,14 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    anyhow::{Context, Result},
+    anyhow::{anyhow, Context, Result},
+    serde_json::Value,
+    std::collections::HashMap,
     std::path::PathBuf,
+    std::thread,
+    std::time::{Duration, Instant},
     zone_sniper::config::{ANALYSIS, DEMO, PERSISTENCE},
+    zone_sniper::data::price_stream::PriceStreamManager,
     zone_sniper::data::storage::{MarketDataStorage, SqliteStorage},
     zone_sniper::data::timeseries::cache_file::CacheFile,
     zone_sniper::data::timeseries::TimeSeriesCollection,
@@ -82,10 +87,8 @@ async fn main() -> Result<()> {
     };
 
     // 6. Generate Filename
-    // Use the public re-export from config
     let standard_name = zone_sniper::config::kline_cache_filename(interval_ms);
     let demo_filename = format!("demo_{}", standard_name);
-    
     let output_path = PathBuf::from(PERSISTENCE.kline.directory).join(&demo_filename);
 
     log::info!("📦 Serializing to {:?}", output_path);
@@ -93,14 +96,98 @@ async fn main() -> Result<()> {
     let cache_file = CacheFile::new(interval_ms, collection, PERSISTENCE.kline.version);
     cache_file.save_to_path(&output_path)?;
 
+    // 7. Snapshot Prices (RESTORED)
+    log::info!("📸 Snapshotting Live Prices for WASM...");
+    let prices = fetch_current_prices_for_demo_pairs(demo_pairs)?;
+    write_demo_prices_json(&prices)?;
+
     log::info!("✅ Success!");
-    log::info!("IMPORTANT: Update src/config/persistence.rs macro if the filename changed:");
-    log::info!("   macro_rules! demo_cache_file {{ () => {{ \"{}\" }}; }}", demo_filename);
+    
+    Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_current_prices_for_demo_pairs(
+    demo_pairs: &[&str],
+) -> Result<HashMap<String, f64>> {
+    let stream = PriceStreamManager::new();
+
+    let symbols: Vec<String> = demo_pairs.iter().map(|s| s.to_string()).collect();
+    if symbols.is_empty() {
+        return Err(anyhow!("No WASM demo pairs configured"));
+    }
+
+    // This spawns a background thread/runtime to fetch prices
+    stream.subscribe_all(symbols.clone());
+
+    let timeout = Duration::from_secs(15);
+    let poll_interval = Duration::from_millis(200);
+    let start = Instant::now();
+
+    loop {
+        let mut prices: HashMap<String, f64> = HashMap::new();
+
+        for symbol in &symbols {
+            if let Some(price) = stream.get_price(symbol) {
+                prices.insert(symbol.clone(), price);
+            }
+        }
+
+        if prices.len() == symbols.len() {
+            println!("✅ Collected live prices for {} demo pairs.", prices.len());
+            return Ok(prices);
+        }
+
+        if start.elapsed() >= timeout {
+            return Err(anyhow!(
+                "Timed out after {:?} waiting for live prices (got {}/{}).",
+                timeout,
+                prices.len(),
+                symbols.len()
+            ));
+        }
+
+        thread::sleep(poll_interval);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn write_demo_prices_json(prices: &HashMap<String, f64>) -> Result<()> {
+    let output_path = PathBuf::from(PERSISTENCE.kline.directory).join("demo_prices.json");
+
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create directory for demo prices: {}",
+                parent.display()
+            )
+        })?;
+    }
+
+    let mut json_map: HashMap<String, Value> = HashMap::new();
+    for (pair, price) in prices {
+        json_map.insert(pair.to_uppercase(), Value::from(*price));
+    }
+
+    let json = serde_json::to_string_pretty(&json_map)
+        .context("Failed to serialize demo prices to JSON")?;
+
+    std::fs::write(&output_path, json).with_context(|| {
+        format!(
+            "Failed to write demo prices JSON to {}",
+            output_path.display()
+        )
+    })?;
+
+    println!(
+        "✅ Demo prices written to {:?} ({} pairs).",
+        output_path,
+        prices.len()
+    );
 
     Ok(())
 }
 
 // --- WASM STUB ---
-// This allows the file to 'compile' (into nothing) when building for WASM
 #[cfg(target_arch = "wasm32")]
 fn main() {}

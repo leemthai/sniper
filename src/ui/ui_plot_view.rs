@@ -381,8 +381,7 @@ impl PlotView {
                 let width = view_max - view_min;
                 let safe_width = width.max(10.0); // Safetey: If width is 0 (empty dat), default to small pad
                 let pad_x = safe_width * PLOT_CONFIG.plot_x_padding_pct;
-                // Set Bounds with Padding
-                // This pushes the view slightly negative (left) and positive (right)
+                // Set Bounds with Padding. This pushes the view slightly negative (left) and positive (right)
                 plot_ui.set_plot_bounds_x((view_min - pad_x)..=(view_max + pad_x));
 
                 if auto_scale_y {

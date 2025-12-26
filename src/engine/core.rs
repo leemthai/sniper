@@ -215,10 +215,10 @@ impl SniperEngine {
     }
 
     /// Force a single recalc with optional price override
-    pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, reason: &str) {
+    pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, _reason: &str) {
 
         #[cfg(debug_assertions)]
-        log::info!("ENGINE: Recalc Triggered for [{}] by [{}]", pair, reason);
+        log::info!("ENGINE: Recalc Triggered for [{}] by [{}]", pair, _reason);
 
 
         // Check if calculating
