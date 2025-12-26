@@ -41,8 +41,7 @@ pub struct PlotConfig {
     pub segment_gap_width: f64, // Visual space between accordion segments
 
     pub plot_y_padding_pct: f64, // Y-Axis Padding factor (e.g. 0.05 = 5% padding top and bottom)
-
-
+    pub plot_x_padding_pct: f64,
 }
 
 pub const PLOT_CONFIG: PlotConfig = PlotConfig {
@@ -104,6 +103,10 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     candle_wick_width: 1.0,
     segment_gap_width: 4.0, // Visual gap between accordion segments
 
-    plot_y_padding_pct: 0.02,  // Visual plot padding above PH max and below PH min
+    plot_y_padding_pct: 0.02, // Visual plot padding above PH max and below PH min
 
+    // X-Axis Padding (Horizontal)
+    // 2% of the width is added to Left and Right.
+    // E.g. if viewing 100 candles, this adds 2 "empty" candles of space on each side.
+    plot_x_padding_pct: 0.02,
 };

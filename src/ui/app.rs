@@ -514,24 +514,25 @@ impl ZoneSniperApp {
         });
     }
 
-    fn check_performance_monitor(&mut self) {
-        // --- PERFORMANCE MONITOR ---
-        let now = crate::utils::time_utils::now();
-        if let Some(last) = self.last_frame_time {
-            let dt = now.duration_since(last).as_secs_f32();
-            let ms = dt * 1000.0;
+    // fn check_performance_monitor(&mut self) {
+    //     // --- PERFORMANCE MONITOR ---
+    //     let now = time_utils::now();
+    //     if let Some(last) = self.last_frame_time {
+    //         let dt = now.duration_since(last).as_secs_f32();
+    //         let ms = dt * 1000.0;
             
-            // If frame took longer than 20ms (approx 50fps), log it.
-            // 16.6ms is perfect 60fps.
-            #[cfg(debug_assertions)]
-            if ms > 20. {
-                // Determine rough FPS
-                let fps = 1.0 / dt;
-                log::warn!("🐢 LAG SPIKE: Frame took {:.2}ms ({:.0} FPS)", ms, fps);
-            }
-        }
-        self.last_frame_time = Some(now);
-    }
+    //         // If frame took longer than 20ms (approx 50fps), log it.
+    //         // 16.6ms is perfect 60fps.
+    //         // #[cfg(debug_assertions)]
+    //         // if ms > 0.2 {
+    //         if ms > 20. {
+    //             // Determine rough FPS
+    //             let fps = 1.0 / dt;
+    //             log::error!("🐢 LAG SPIKE: Frame took {:.2}ms ({:.0} FPS)", ms, fps);
+    //         }
+    //     }
+    //     self.last_frame_time = Some(now);
+    // }
 
     fn render_loading_screen(ctx: &Context, state: &LoadingState) {
         CentralPanel::default().show(ctx, |ui| {
@@ -678,7 +679,7 @@ impl eframe::App for ZoneSniperApp {
     }
 
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
-        self.check_performance_monitor();
+        // self.check_performance_monitor();
         setup_custom_visuals(ctx);
 
         let mut next_state = None;

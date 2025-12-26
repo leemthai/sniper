@@ -1,15 +1,19 @@
 // use std::collections::HashMap;
-use eframe::egui::{Ui, Rect, Pos2, Color32, Sense, Vec2, FontId, OpenUrl};
+use eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2};
 
-use crate::config::TICKER;
+use crate::config::{ANALYSIS, TICKER};
 use crate::engine::SniperEngine;
-use crate::utils::TimeUtils;
+
 use crate::ui::utils::format_price;
+
+use crate::models::timeseries;
+use crate::utils::TimeUtils;
+use crate::utils::time_utils::AppInstant;
 
 pub struct TickerItem {
     pub symbol: String,
     pub price: f64,
-    pub change: f64, // Difference since last update
+    pub change: f64,           // Difference since last update
     pub last_update_time: f64, // For fade effects
     pub url: Option<String>,
 }
@@ -18,75 +22,87 @@ pub struct TickerState {
     // Horizontal offset (pixels)
     offset: f32,
     // Local cache to calculate diffs (Symbol -> LastPrice)
-    // price_cache: HashMap<String, f64>,
     // The items to render
     items: Vec<TickerItem>,
     // Interactive state
     is_hovered: bool,
     is_dragging: bool,
+    last_render_time: Option<AppInstant>,
 }
 
 impl Default for TickerState {
     fn default() -> Self {
         Self {
             offset: 0.0,
-            // price_cache: HashMap::new(),
             items: Vec::new(),
             is_hovered: false,
             is_dragging: false,
+            last_render_time: None,
         }
     }
 }
 
 impl TickerState {
-
     pub fn update_data(&mut self, engine: &SniperEngine) {
-
         // In WASM, we don't update from engine, we use static demo text
         if cfg!(target_arch = "wasm32") {
             if self.items.is_empty() {
-                 self.items.push(TickerItem { 
-                    symbol: "ZONE SNIPER WEB DEMO".to_string(), price: 0.0, change: 0.0, last_update_time: 0.0,
-                    url: None 
+                self.items.push(TickerItem {
+                    symbol: "ZONE SNIPER WEB DEMO".to_string(),
+                    price: 0.0,
+                    change: 0.0,
+                    last_update_time: 0.0,
+                    url: None,
                 });
-                self.items.push(TickerItem { 
-                    symbol: "VISIT US ON GITHUB".to_string(), price: 0.0, change: 0.0, last_update_time: 0.0,
-                    url: Some("https://github.com/leemthai/sniper".to_string()) 
+                self.items.push(TickerItem {
+                    symbol: "VISIT US ON GITHUB".to_string(),
+                    price: 0.0,
+                    change: 0.0,
+                    last_update_time: 0.0,
+                    url: Some("https://github.com/leemthai/sniper".to_string()),
                 });
-                self.items.push(TickerItem { 
-                    symbol: "GET PRO VERSION FOR LIVE DATA, UNLIMITED TRADING PAIRS AND MUCH MORE".to_string(), price: 0.0, change: 0.0, last_update_time: 0.0 , url: None
+                self.items.push(TickerItem {
+                    symbol: "GET PRO VERSION FOR LIVE DATA, UNLIMITED TRADING PAIRS AND MUCH MORE"
+                        .to_string(),
+                    price: 0.0,
+                    change: 0.0,
+                    last_update_time: 0.0,
+                    url: None,
                 });
                 // Add fake price data for demo pairs - TEMP do we really want this?
-                self.items.push(TickerItem { 
-                    symbol: "BTCUSDT".to_string(), price: 98000.0, change: 120.5, last_update_time: 0.0, url: None 
+                self.items.push(TickerItem {
+                    symbol: "BTCUSDT".to_string(),
+                    price: 98000.0,
+                    change: 120.5,
+                    last_update_time: 0.0,
+                    url: None,
                 });
             }
             return;
         }
 
         if cfg!(not(target_arch = "wasm32")) {
-            let now_ms = crate::utils::TimeUtils::now_timestamp_ms();
+            let now_ms = TimeUtils::now_timestamp_ms();
             let day_ago_ms = now_ms - (24 * 60 * 60 * 1000); // 24 Hours ago
 
             // 1. Sync Pairs with Engine
             let pairs = engine.get_all_pair_names();
-            
+
             for pair in pairs {
                 if let Some(current_price) = engine.get_price(&pair) {
-                    
                     // A. Calculate 24h Change
                     let mut change_24h = 0.0;
-                    
+
                     // Look up history
-                    if let Ok(ohlcv) = crate::models::timeseries::find_matching_ohlcv(
+                    if let Ok(ohlcv) = timeseries::find_matching_ohlcv(
                         &engine.timeseries.series_data,
                         &pair,
-                        crate::config::ANALYSIS.interval_width_ms
+                        ANALYSIS.interval_width_ms,
                     ) {
                         // Find index closest to 24h ago
                         let idx_result = ohlcv.timestamps.binary_search(&day_ago_ms);
                         let idx = match idx_result {
-                            Ok(i) => i,                 // Exact match
+                            Ok(i) => i,                    // Exact match
                             Err(i) => i.saturating_sub(1), // Closest previous candle
                         };
 
@@ -102,7 +118,7 @@ impl TickerState {
                     if let Some(item) = self.items.iter_mut().find(|i| i.symbol == pair) {
                         item.price = current_price;
                         item.change = change_24h;
-                        // Note: last_update_time is used for 'flash' effects, 
+                        // Note: last_update_time is used for 'flash' effects,
                         // we can update it only if price changed, or just leave it.
                     } else {
                         self.items.push(TickerItem {
@@ -119,7 +135,7 @@ impl TickerState {
             // 2. Inject Custom Messages
             for (text, url) in TICKER.custom_messages {
                 let symbol_key = text.to_string();
-                
+
                 // Only add if not already present
                 if !self.items.iter().any(|i| i.symbol == symbol_key) {
                     self.items.push(TickerItem {
@@ -132,69 +148,105 @@ impl TickerState {
                 }
             }
         }
-            
     }
 
     fn format_item(&self, item: &TickerItem) -> String {
         // 1. Custom Message / Link
         if item.url.is_some() {
-             return format!("{} 🔗", item.symbol);
+            return format!("{} 🔗", item.symbol);
         }
-        
+
         // 2. Static Message (WASM or Custom)
         if item.price == 0.0 && item.change == 0.0 {
             return item.symbol.clone();
         }
 
-        // 3. Formatted Price Pair
-        // TEMP we should probably implement some '24hr change' code to show updates.
+        // 2. Price
         let price_str = format_price(item.price);
-        let old_price = item.price - item.change;
-        let display_threshold = 1e-8;
 
-        let pct = if old_price.abs() > display_threshold {
+        // 3. Formatted Percent
+        let pct = self.calculate_pct(item);
+
+        // 4. Stable Precision Logic
+        // We ALWAYS use the "Long" format to prevent jitter.
+        let abs_change = item.change.abs();
+
+        // Determine precision based on magnitude
+        let precision = if abs_change < 0.0001 {
+            6
+        } else if abs_change < 1.0 {
+            4
+        } else {
+            2
+        };
+
+        // 5. Sign Logic (Fixed Width)
+        // We manually handle signs to ensure " " (Space) takes up same room as "+" or "-"
+        // if we are effectively zero (below display threshold).
+
+        // Note: Using the Configured Threshold to decide if it's "Zero"
+        let is_zero = pct.abs() < TICKER.min_change_pct_for_color;
+
+        let sign_change = if is_zero {
+            " "
+        } else if item.change > 0.0 {
+            "+"
+        } else {
+            "-"
+        };
+        let sign_pct = if is_zero {
+            " "
+        } else if pct > 0.0 {
+            "+"
+        } else {
+            "-"
+        };
+
+        // Format: SYMBOL PRICE (SIGN DELTA / SIGN PCT)
+        // Example: "USDCUSDT $1.0000 ( -0.0001 / -0.01%)"
+        // Example: "USDCUSDT $1.0000 (  0.0000 /  0.00%)"
+        format!(
+            "{} {} ({}{:.prec$} / {}{:.2}%)",
+            item.symbol,
+            price_str,
+            sign_change,
+            abs_change,
+            sign_pct,
+            pct.abs(),
+            prec = precision
+        )
+    }
+
+    // Helper: Single source of truth for % calculation
+    fn calculate_pct(&self, item: &TickerItem) -> f64 {
+        let old_price = item.price - item.change;
+        if old_price.abs() > f64::EPSILON {
             (item.change / old_price) * 100.0
         } else {
             0.0
-        };
-
-        // 5. Format Change string (Trimmed)
-        if item.change.abs() < display_threshold {
-             format!("{} {} (0.00%)", item.symbol, price_str)
-        } else {
-            let sign = if item.change > 0.0 { "+" } else { "" };
-            let abs_change = item.change.abs();
-
-            let change_val_str = if abs_change >= 1.0 {
-                // Standard prices: 2 decimals fixed
-                format!("{:.2}", item.change)
-            } else {
-                // Small prices: High precision, then TRIM trailing zeros
-                // Format to 8 places first
-                let s = format!("{:.8}", item.change);
-                // Trim '0', then trim '.' if it becomes "0."
-                let trimmed = s.trim_end_matches('0').trim_end_matches('.');
-                trimmed.to_string()
-            };
-            
-            // Standardize Percent to 2dp
-            format!("{} {} ({}{} / {}{:.2}%)", 
-                item.symbol, 
-                price_str, 
-                sign, change_val_str, 
-                sign, pct
-            )
         }
     }
 
 
     pub fn render(&mut self, ui: &mut Ui) -> Option<String> {
+        // Calculate EXACT delta time since last frame
+        let now = AppInstant::now();
+        let dt = if let Some(last) = self.last_render_time {
+            // Get raw duration in seconds
+            let duration = now.duration_since(last).as_secs_f32();
+            // Clamp to avoid massive jumps if app was minimized/backgrounded (max 100ms jump)
+            duration.min(0.10)
+        } else {
+            0.0
+        };
+        self.last_render_time = Some(now);
+
         let rect = ui.available_rect_before_wrap();
         let height = TICKER.height;
         let panel_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), height));
         let response = ui.allocate_rect(panel_rect, Sense::click_and_drag());
-        ui.painter().rect_filled(panel_rect, 0.0, TICKER.background_color); // Background
-
+        ui.painter()
+            .rect_filled(panel_rect, 0.0, TICKER.background_color); // Background
         // Interaction Logic
         self.is_hovered = response.hovered();
         self.is_dragging = response.dragged();
@@ -203,9 +255,6 @@ impl TickerState {
             // Drag to scrub
             self.offset += response.drag_delta().x;
         } else if !self.is_hovered {
-            // FIX: Clamp dt to prevent "Teleporting" during lag spikes.
-            // If the frame takes > 50ms, we just accept the slowdown rather than jumping.
-            let dt = ui.input(|i| i.stable_dt).min(0.05);
             self.offset -= TICKER.speed_pixels_per_sec * dt;
         }
 
@@ -224,19 +273,23 @@ impl TickerState {
             let galley = painter.layout_no_wrap(text, font_id.clone(), Color32::WHITE);
             total_width += galley.size().x + TICKER.item_spacing;
         }
-        
-        if total_width < 1.0 { return None; } // No data
+
+        if total_width < 1.0 {
+            return None;
+        } // No data
 
         // Wrap offset logic (Infinite Scroll)
         // If offset is too far left (negative), wrap it back to 0
         // If offset is too far right (positive), wrap it back
         self.offset = self.offset % total_width;
-        if self.offset > 0.0 { self.offset -= total_width; } // Keep it negative-flowing
-        
+        if self.offset > 0.0 {
+            self.offset -= total_width;
+        } // Keep it negative-flowing
+
         // Pass 2: Draw Visible Items
-        // We draw items starting at 'self.offset'. 
+        // We draw items starting at 'self.offset'.
         // If we reach the end of the list and still have screen space, we loop from start.
-        
+
         let screen_width = panel_rect.width();
         let start_pos = panel_rect.min;
         let loops_needed = (screen_width / total_width).ceil() as i32 + 2;
@@ -245,7 +298,6 @@ impl TickerState {
             let mut loop_x = self.offset + (loop_idx as f32 * total_width);
 
             for item in &self.items {
-
                 // COLOR LOGIC
                 let text_color = if let Some(_) = &item.url {
                     TICKER.text_color_link
@@ -257,10 +309,13 @@ impl TickerState {
                         Color32::GOLD
                     }
                 } else {
-                    // RESTORED: Green/Red for Pairs based on 24h Change
-                    if item.change > f64::EPSILON {
+                    // Calculate % change to check against threshold
+                    let pct = self.calculate_pct(item);
+
+                    // Use Configured Threshold (e.g. 0.01%)
+                    if pct > TICKER.min_change_pct_for_color {
                         TICKER.text_color_up
-                    } else if item.change < -f64::EPSILON {
+                    } else if pct < -TICKER.min_change_pct_for_color {
                         TICKER.text_color_down
                     } else {
                         TICKER.text_color_neutral
@@ -271,21 +326,24 @@ impl TickerState {
                 let galley = painter.layout_no_wrap(text_str, font_id.clone(), text_color);
                 let w = galley.size().x;
                 let h = galley.size().y;
-                
+
                 // Draw if visible
                 if loop_x + w > 0.0 && loop_x < screen_width {
                     let x_snapped = (start_pos.x + loop_x).round();
                     let y_snapped = (start_pos.y + (height - h) / 2.0).round();
                     let pos = Pos2::new(x_snapped, y_snapped);
-                    
+
                     painter.galley(pos, galley, text_color);
 
                     // Draw Underline for Links
                     if item.url.is_some() {
                         let line_y = y_snapped + h + 2.0; // 2px gap
                         painter.line_segment(
-                            [Pos2::new(x_snapped, line_y), Pos2::new(x_snapped + w, line_y)],
-                            (1.0, text_color) // 1px width
+                            [
+                                Pos2::new(x_snapped, line_y),
+                                Pos2::new(x_snapped + w, line_y),
+                            ],
+                            (1.0, text_color), // 1px width
                         );
                     }
 
@@ -308,7 +366,7 @@ impl TickerState {
                 loop_x += w + TICKER.item_spacing;
             }
         }
-        
+
         // Keep animating if we are scrolling
         if !self.is_hovered && !self.is_dragging {
             ui.ctx().request_repaint();
@@ -321,12 +379,12 @@ impl TickerState {
         // Phase based on Time + Position
         let time = TimeUtils::now_timestamp_ms() as f64 / 1000.0;
         let phase = (x_pos as f64 * 0.005) + (time * TICKER.rainbow_speed);
-        
+
         // Simple HSV -> RGB logic or sine waves
         let r = ((phase.sin() * 127.0) + 128.0) as u8;
         let g = (((phase + 2.0).sin() * 127.0) + 128.0) as u8;
         let b = (((phase + 4.0).sin() * 127.0) + 128.0) as u8;
-        
+
         Color32::from_rgb(r, g, b)
     }
 }

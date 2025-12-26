@@ -3,13 +3,13 @@ use eframe::egui::{Color32, Id, LayerId, Order::Tooltip, RichText, Stroke, Ui};
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
 
-use egui_plot::{HLine, PlotPoints, PlotUi, Polygon, Line, LineStyle};
+use egui_plot::{Line, LineStyle, PlotPoints, PlotUi, Polygon};
 
 use crate::config::plot::PLOT_CONFIG;
 
+use crate::models::OhlcvTimeSeries;
 use crate::models::cva::ScoreType;
 use crate::models::trading_view::{SuperZone, TradingModel};
-use crate::models::OhlcvTimeSeries;
 
 use crate::ui::app::{CandleResolution, PlotVisibility};
 use crate::ui::ui_plot_view::PlotCache;
@@ -20,34 +20,39 @@ pub struct HorizonLinesLayer;
 
 impl PlotLayer for HorizonLinesLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-
         let (ph_min, ph_max) = ctx.ph_bounds;
-        
-        // VISIBILITY FIX: 
-        // Use White for max contrast against dark backgrounds and grey grid lines.
-        // Make it slightly thicker so it is visible whatever is behind it
-        let color = Color32::WHITE; 
+        // Use White for max contrast against dark backgrounds and grey grid lines. Make it slightly thicker so it is visible whatever is behind it
+        let color = Color32::WHITE;
         let width = 4.0;
         let dash_style = LineStyle::Dashed { length: 10.0 };
 
+        // Define Start/End based on Data Limits
+        let x_start = ctx.x_min;
+        let x_end = ctx.x_max;
+
         // Top Line
-        plot_ui.hline(
-            HLine::new("",ph_max)
-                .color(color)
-                .style(dash_style)
-                .width(width)
+        plot_ui.line(
+            Line::new(
+                "",
+                PlotPoints::new(vec![[x_start, ph_max], [x_end, ph_max]]),
+            )
+            .color(color)
+            .style(dash_style)
+            .width(width),
         );
 
-        // Bottom Line
-        plot_ui.hline(
-            HLine::new("",ph_min)
-                .color(color)
-                .style(dash_style)
-                .width(width)
+        // Bottom Line (Segment)
+        plot_ui.line(
+            Line::new(
+                "",
+                PlotPoints::new(vec![[x_start, ph_min], [x_end, ph_min]]),
+            )
+            .color(color)
+            .style(dash_style)
+            .width(width),
         );
     }
 }
-
 
 pub struct CandlestickLayer;
 
@@ -57,26 +62,31 @@ fn draw_gap_separator(plot_ui: &mut PlotUi, x_pos: f64, gap_width: f64, y_bounds
 
     // Overshoot the bounds slightly to ensure the line always looks infinite vertical
     let range = y_max - y_min;
-    let y_start = y_min - range; 
+    let y_start = y_min - range;
     let y_end = y_max + range;
 
     plot_ui.line(
-        Line::new("", PlotPoints::new(vec![[line_x, y_start], [line_x, y_end]]))
+        Line::new(
+            "",
+            PlotPoints::new(vec![[line_x, y_start], [line_x, y_end]]),
+        )
         .color(Color32::from_gray(60)) // Subtle gray
         .width(1.0)
-        .style(LineStyle::Dashed { length: 5.0 })
+        .style(LineStyle::Dashed { length: 5.0 }),
     );
 }
 
 impl PlotLayer for CandlestickLayer {
-fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        if ctx.trading_model.segments.is_empty() { return; }
+    fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+        if ctx.trading_model.segments.is_empty() {
+            return;
+        }
 
         let mut visual_x = 0.0;
         let gap_width = PLOT_CONFIG.segment_gap_width;
         let agg_interval_ms = ctx.resolution.interval_ms();
-        
-        let (y_min_global, y_max_global) = ctx.trading_model.cva.price_range.min_max(); 
+
+        let (y_min_global, y_max_global) = ctx.trading_model.cva.price_range.min_max();
         let y_bounds_separator = (y_min_global, y_max_global);
 
         for (seg_idx, segment) in ctx.trading_model.segments.iter().enumerate() {
@@ -84,7 +94,7 @@ fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
 
             while i < segment.end_idx {
                 let first = ctx.ohlcv.get_candle(i);
-                
+
                 // --- UTC GRID ALIGNMENT ---
                 let boundary_start = (first.timestamp_ms / agg_interval_ms) * agg_interval_ms;
                 let boundary_end = boundary_start + agg_interval_ms;
@@ -99,7 +109,7 @@ fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
                 while next_i < segment.end_idx {
                     let c = ctx.ohlcv.get_candle(next_i);
                     if c.timestamp_ms >= boundary_end {
-                        break; 
+                        break;
                     }
                     high = high.max(c.high_price);
                     low = low.min(c.low_price);
@@ -109,11 +119,15 @@ fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
 
                 // --- DRAWING (Delegated to Helper) ---
                 draw_split_candle(
-                    plot_ui, 
-                    visual_x, 
-                    open, high, low, close, 
-                    ctx.ph_bounds, 
-                    ctx.visibility.ghost_candles
+                    plot_ui,
+                    visual_x,
+                    open,
+                    high,
+                    low,
+                    close,
+                    ctx.ph_bounds,
+                    ctx.visibility.ghost_candles,
+                    ctx.x_min,
                 );
 
                 visual_x += 1.0;
@@ -127,7 +141,6 @@ fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
             }
         }
     }
-
 }
 
 // --- HELPERS (Keep the main logic clean) ---
@@ -140,51 +153,52 @@ fn draw_split_candle(
     close: f64,
     ph_bounds: (f64, f64),
     show_ghosts: bool,
+    min_x_limit: f64,
 ) {
     let (ph_min, ph_max) = ph_bounds;
     let is_green = close >= open;
-    
-    let base_color = if is_green { 
+
+    let base_color = if is_green {
         PLOT_CONFIG.candle_bullish_color
-    } else { 
+    } else {
         PLOT_CONFIG.candle_bearish_color
     };
 
     // VISUAL FIX 2: Ghost Color
-    // Make it look "Dead" / Desaturated. 
+    // Make it look "Dead" / Desaturated.
     // We use a very high transparency (0.2) so it recedes into the background.
-    let ghost_color = base_color.linear_multiply(0.2); 
+    let ghost_color = base_color.linear_multiply(0.2);
 
     // 1. Draw Wicks
     // Top Ghost
     if show_ghosts && high > ph_max {
         let bottom = low.max(ph_max);
         if high > bottom {
-            draw_wick_line(ui, x, high, bottom, ghost_color);
+            draw_wick_line(ui, x, high, bottom, ghost_color, min_x_limit);
         }
     }
     // Bottom Ghost
     if show_ghosts && low < ph_min {
         let top = high.min(ph_min);
         if top > low {
-            draw_wick_line(ui, x, top, low, ghost_color);
+            draw_wick_line(ui, x, top, low, ghost_color, min_x_limit);
         }
     }
     // Solid Wick
     let solid_top = high.min(ph_max);
     let solid_bot = low.max(ph_min);
     if solid_top > solid_bot {
-        draw_wick_line(ui, x, solid_top, solid_bot, base_color);
+        draw_wick_line(ui, x, solid_top, solid_bot, base_color, min_x_limit);
     }
 
     // 2. Draw Body
     let body_top_raw = open.max(close);
     let body_bot_raw = open.min(close);
     // Doji check
-    let body_top = if (body_top_raw - body_bot_raw).abs() < f64::EPSILON { 
-        body_bot_raw * 1.0001 
-    } else { 
-        body_top_raw 
+    let body_top = if (body_top_raw - body_bot_raw).abs() < f64::EPSILON {
+        body_bot_raw * 1.0001
+    } else {
+        body_top_raw
     };
     let body_bot = body_bot_raw;
 
@@ -192,53 +206,73 @@ fn draw_split_candle(
     if show_ghosts && body_top > ph_max {
         let b = body_bot.max(ph_max);
         if body_top > b {
-            draw_body_rect(ui, x, body_top, b, ghost_color);
+            draw_body_rect(ui, x, body_top, b, ghost_color, min_x_limit);
         }
     }
     // Bottom Ghost Body
     if show_ghosts && body_bot < ph_min {
         let t = body_top.min(ph_min);
         if t > body_bot {
-            draw_body_rect(ui, x, t, body_bot, ghost_color);
+            draw_body_rect(ui, x, t, body_bot, ghost_color, min_x_limit);
         }
     }
     // Solid Body
     let solid_body_top = body_top.min(ph_max);
     let solid_body_bot = body_bot.max(ph_min);
     if solid_body_top > solid_body_bot {
-        draw_body_rect(ui, x, solid_body_top, solid_body_bot, base_color);
+        draw_body_rect(
+            ui,
+            x,
+            solid_body_top,
+            solid_body_bot,
+            base_color,
+            min_x_limit,
+        );
     }
 }
 
 #[inline]
-fn draw_wick_line(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32) {
-    ui.line(Line::new("", PlotPoints::new(vec![[x, bottom], [x, top]]))
-        .color(color)
-        .width(PLOT_CONFIG.candle_wick_width)
+fn draw_wick_line(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32, min_x: f64) {
+
+    if x < min_x { return; } // clipping logic
+
+
+    ui.line(
+        Line::new("", PlotPoints::new(vec![[x, bottom], [x, top]]))
+            .color(color)
+            .width(PLOT_CONFIG.candle_wick_width),
     );
 }
 
 #[inline]
-fn draw_body_rect(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32) {
+fn draw_body_rect(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32, min_x: f64) {
     let half_w = PLOT_CONFIG.candle_width_pct / 2.0;
+
+    // CLIPPING LOGIC:
+    // Ensure 'left' is never less than min_x (0.0)
+    // If x=0 and width=0.8, left becomes 0.0 instead of -0.4.
+    let left = (x - half_w).max(min_x);
+    let right = x + half_w;
+
+    // Safety: If clipping makes left >= right (fully out of bounds), don't draw
+    if left >= right {
+        return;
+    }
+
     let pts = vec![
-        [x - half_w, bottom], 
-        [x + half_w, bottom],
-        [x + half_w, top], 
-        [x - half_w, top],
+        [left, bottom], 
+        [right, bottom],
+        [right, top], 
+        [left, top],
     ];
     
-    // VISUAL FIX 1: Remove the Stroke (Border)
-    // This removes the "Rainbow/Blurry" effect on thin candles.
+
     ui.polygon(
         Polygon::new("", PlotPoints::new(pts))
             .fill_color(color)
-            .stroke(eframe::egui::Stroke::NONE) // <--- CLEAN LOOK
+            .stroke(eframe::egui::Stroke::NONE),
     );
 }
-
-
-
 
 /// Context passed to every layer during rendering.
 /// This prevents argument explosion.
@@ -267,31 +301,29 @@ pub struct BackgroundLayer;
 
 impl PlotLayer for BackgroundLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+        // Use Data Bounds (0..Total), not View Bounds (includes padding)
+        let x_start_data = ctx.x_min;
+        let x_end_data = ctx.x_max;
+        let data_width = x_end_data - x_start_data;
 
-        // 1. Get the CURRENT Visible X-Range (The "Camera")
-        let bounds = plot_ui.plot_bounds();
-        let view_min = *bounds.range_x().start();
-        let view_max = *bounds.range_x().end();
-        let view_width = view_max - view_min;
+        if data_width <= f64::EPSILON {
+            return;
+        }
 
-        // Safety check to prevent infinite scaling on zero width
-        if view_width <= f64::EPSILON { return; }
-
- 
         for bar in &ctx.cache.bars {
             let half_h = bar.height / 2.0;
 
-            // 2. Map Score (0.0 .. 1.0) to View (view_min .. view_max)
-            // This ensures the mountain always fills the screen horizontally.
-            let x_start = view_min;
-            let x_end = view_min + (bar.x_max * view_width);
+            // Map Score (0.0 .. 1.0) to Data Width
+            // This stops the histogram at the exact edge of the candles, respecting the margin.
+            let rect_x_start = x_start_data;
+            let rect_x_end = x_start_data + (bar.x_max * data_width);
 
             // Define the rectangle
             let points = PlotPoints::new(vec![
-                [x_start, bar.y_center - half_h],
-                [x_end,   bar.y_center - half_h],
-                [x_end,   bar.y_center + half_h],
-                [x_start, bar.y_center + half_h],
+                [rect_x_start, bar.y_center - half_h],
+                [rect_x_end, bar.y_center - half_h],
+                [rect_x_end, bar.y_center + half_h],
+                [rect_x_start, bar.y_center + half_h],
             ]);
 
             let polygon = Polygon::new("", points)
@@ -420,20 +452,24 @@ pub struct PriceLineLayer;
 impl PlotLayer for PriceLineLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         if let Some(price) = ctx.current_price {
-            let label = "Current Price";
+            let color = PLOT_CONFIG.current_price_color;
+            let outer_color = PLOT_CONFIG.current_price_outer_color;
 
-            // Outer Line (Border)
-            plot_ui.hline(
-                HLine::new(label, price)
-                    .color(PLOT_CONFIG.current_price_outer_color)
+            let x_start = ctx.x_min;
+            let x_end = ctx.x_max;
+
+            // Outer Glow/Border
+            plot_ui.line(
+                Line::new("", PlotPoints::new(vec![[x_start, price], [x_end, price]]))
+                    .color(outer_color)
                     .width(PLOT_CONFIG.current_price_outer_width)
                     .style(egui_plot::LineStyle::dashed_loose()),
             );
 
-            // Inner Line (Color)
-            plot_ui.hline(
-                HLine::new(label, price)
-                    .color(PLOT_CONFIG.current_price_color)
+            // Inner Solid
+            plot_ui.line(
+                Line::new("", PlotPoints::new(vec![[x_start, price], [x_end, price]]))
+                    .color(color)
                     .width(PLOT_CONFIG.current_price_line_width),
             );
         }

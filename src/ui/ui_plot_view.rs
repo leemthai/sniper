@@ -2,13 +2,14 @@ use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
 use eframe::egui::{Color32, Ui, Vec2b};
-use egui_plot::{Axis, AxisHints, GridMark, HPlacement, Plot, VPlacement, GridInput, PlotUi};
+use egui_plot::{Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotUi, VPlacement};
+
+use crate::analysis::range_gap_finder::DisplaySegment;
 
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::engine::SniperEngine;
 
-use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::timeseries::find_matching_ohlcv;
 use crate::models::trading_view::TradingModel;
@@ -62,61 +63,64 @@ pub struct PlotView {
 fn calculate_adaptive_step(range: f64, target_count: f64) -> f64 {
     let raw_step = range / target_count.max(1.0);
     let mag = 10.0_f64.powi(raw_step.log10().floor() as i32);
-    let normalized = raw_step / mag; 
+    let normalized = raw_step / mag;
 
-    let nice_step = if normalized < 1.5 { 1.0 }
-                   else if normalized < 3.0 { 2.0 }
-                   else if normalized < 7.0 { 5.0 }
-                   else { 10.0 };
-    
+    let nice_step = if normalized < 1.5 {
+        1.0
+    } else if normalized < 3.0 {
+        2.0
+    } else if normalized < 7.0 {
+        5.0
+    } else {
+        10.0
+    };
+
     nice_step * mag
 }
 
 // Helper to build the Time Axis with smart spacing and formatting
 fn create_time_axis(
     model: &TradingModel,
-    ohlcv: &OhlcvTimeSeries,
+    // _ohlcv: &OhlcvTimeSeries, // Unused for math now, but kept for signature
     resolution: CandleResolution,
 ) -> AxisHints<'static> {
     let segments = model.segments.clone();
-    let timestamps = ohlcv.timestamps.clone();
     let gap_width = PLOT_CONFIG.segment_gap_width;
-    let step_size = resolution.step_size();
+    
+    // KEY CHANGE: Use Interval MS (Time) instead of Step Size (Count)
+    let agg_interval_ms = resolution.interval_ms();
 
     AxisHints::new(Axis::X)
         .label("Time")
         .formatter(move |mark, _range| {
             let visual_x = mark.value;
             let mut current_visual_start = 0.0;
-
+            
             for seg in &segments {
-                let seg_len_vis = ((seg.end_idx - seg.start_idx) as f64 / step_size as f64).ceil();
+                // 1. Calculate Width using Timestamp Buckets (Matches Render Logic)
+                // Integer division snaps timestamps to the grid (e.g. Daily buckets)
+                let start_bucket = seg.start_ts / agg_interval_ms;
+                let end_bucket = seg.end_ts / agg_interval_ms;
+                let seg_len_vis = (end_bucket - start_bucket + 1) as f64;
+
                 let current_visual_end = current_visual_start + seg_len_vis;
 
                 if visual_x >= current_visual_start && visual_x < current_visual_end {
-                    let offset = (visual_x - current_visual_start) * step_size as f64;
-                    let raw_idx = seg.start_idx + offset as usize;
-
-                    // Safety Clamp to segment end (Prevent over-reading into next segment data)
-                    if raw_idx < seg.end_idx && raw_idx < timestamps.len() {
-                        return TimeUtils::epoch_ms_to_date_string(timestamps[raw_idx]);
-                    } else {
-                        // This happens if visual_x is at the very fractional edge of a segment (never seen this yet)
-                        return "EDGE".to_string();
-                    }
+                    // Calculate which bucket we are hovering over
+                    let local_offset = (visual_x - current_visual_start).floor() as i64;
+                    
+                    // Reconstruct the Timestamp for this bucket
+                    let bucket_ts = (start_bucket + local_offset) * agg_interval_ms;
+                    
+                    return TimeUtils::epoch_ms_to_date_string(bucket_ts);
                 }
+
                 current_visual_start = current_visual_end + gap_width;
-                // If visual_x is here, it is in a gap
+                
                 if visual_x < current_visual_start {
-                    // MARK GAPS EXPLICITLY
                     return "GAP".to_string();
                 }
             }
-
-            // --- DEBUG 3D/1W ISSUES ---
-            // If we fall through here, visual_x is beyond all segments.
-            // Uncomment to debug if 3D is generating out-of-bounds X values.
-            // log::warn!("Axis Formatter OOB: {:.2}", visual_x);
             String::new()
         })
         .placement(VPlacement::Bottom)
@@ -151,26 +155,34 @@ impl PlotView {
         self.cache.is_some()
     }
 
-    // Helper: Calculates the X-Axis bounds (0..TotalWidth) or (Start..End) based on Time Machine state
-    fn calculate_view_bounds(
+fn calculate_view_bounds(
         &self,
         model: &TradingModel,
         current_segment_idx: Option<usize>,
-        resolution: CandleResolution, // <--- NEW ARG
+        resolution: CandleResolution,
     ) -> (f64, f64, f64) {
         let gap_size = PLOT_CONFIG.segment_gap_width;
-        let step_size = resolution.step_size();
+        let agg_interval_ms = resolution.interval_ms();
 
-        // Helper to calc visual width of a candle count
-        // Integer division with ceiling (any remainder needs a partial candle space)
-        let calc_width = |count: usize| -> f64 { (count as f64 / step_size as f64).ceil() };
+        // Helper: Calculate visual width using UTC Grid logic
+        // This must match CandlestickLayer logic exactly.
+        let calc_width = |seg: &DisplaySegment| -> f64 {
+            // Get timestamps of first and last candle in segment
+            // Note: DisplaySegment stores start_ts and end_ts.
+            // end_ts is the timestamp of the last candle (inclusive).
+            
+            let start_bucket = seg.start_ts / agg_interval_ms;
+            let end_bucket = seg.end_ts / agg_interval_ms;
+            
+            // The number of visual bars is the number of buckets spanned
+            let buckets = end_bucket - start_bucket + 1;
+            buckets as f64
+        };
 
-        let total_visual_candles: f64 = model
-            .segments
-            .iter()
-            .map(|s| calc_width(s.candle_count))
+        let total_visual_candles: f64 = model.segments.iter()
+            .map(|s| calc_width(s))
             .sum();
-
+            
         let gap_count = model.segments.len().saturating_sub(1);
         let total_visual_width = total_visual_candles + (gap_count as f64 * gap_size);
 
@@ -178,21 +190,21 @@ impl PlotView {
             if target_idx < model.segments.len() {
                 let mut start_x = 0.0;
                 for i in 0..target_idx {
-                    start_x += calc_width(model.segments[i].candle_count);
+                    start_x += calc_width(&model.segments[i]);
                     start_x += gap_size;
                 }
-                let width = calc_width(model.segments[target_idx].candle_count);
+                let width = calc_width(&model.segments[target_idx]);
                 return (start_x, start_x + width, total_visual_width);
             }
         }
         (0.0, total_visual_width, total_visual_width)
     }
 
-// Helper: Calculates Y-Axis bounds based on PH and Live Price
+
+    // Helper: Calculates Y-Axis bounds based on PH and Live Price
     fn calculate_y_bounds(
         &self,
         cva_results: &CVACore,
-        // model: &TradingModel, // <--- Added Argument for Logging
         current_price_opt: Option<f64>,
     ) -> std::ops::RangeInclusive<f64> {
         let (ph_min, ph_max) = cva_results.price_range.min_max();
@@ -207,7 +219,7 @@ impl PlotView {
         // 2. Apply Configured Padding
         let range = final_max - final_min;
         let pad = range * PLOT_CONFIG.plot_y_padding_pct;
-        
+
         ((final_min - pad).max(0.0))..=(final_max + pad)
     }
 
@@ -215,10 +227,7 @@ impl PlotView {
         let mut marks = Vec::new();
         let (min, max) = input.bounds;
         let range = max - min;
-        
-        // Use the adaptive step logic we created earlier
-        // Note: We duplicate the helper logic here or make calculate_adaptive_step static/public
-        // For now, let's keep the logic self-contained as requested.
+
         let step = calculate_adaptive_step(range, 8.0);
 
         let start = (min / step).ceil() as i64;
@@ -226,7 +235,10 @@ impl PlotView {
 
         for i in start..=end {
             let value = i as f64 * step;
-            marks.push(GridMark { value, step_size: step });
+            marks.push(GridMark {
+                value,
+                step_size: step,
+            });
         }
         marks
     }
@@ -248,9 +260,12 @@ impl PlotView {
 
         for i in start..=end {
             let value = i as f64 * step;
-            marks.push(GridMark { value, step_size: step });
+            marks.push(GridMark {
+                value,
+                step_size: step,
+            });
         }
-        
+
         // Optional: If you still strictly want PH bounds labeled, push them explicitly.
         // But standard grid lines usually look cleaner.
         // marks.push(GridMark { value: _ph_min, step_size: step });
@@ -266,12 +281,12 @@ impl PlotView {
         let mut max = *bounds.range_y().end();
         let mut range = max - min;
         let mut changed = false;
-        
+
         let base_price = current_price.max(1.0);
 
         // --- 1. ZOOM LIMITS (Range) ---
         let min_allowed_range = base_price * 0.00001; // 0.001%
-        let max_allowed_range = base_price * 2.0;     // 200% (View 0 to 180k for BTC)
+        let max_allowed_range = base_price * 2.0; // 200% (View 0 to 180k for BTC)
 
         if range < min_allowed_range {
             let center = (min + max) / 2.0;
@@ -288,7 +303,7 @@ impl PlotView {
         }
 
         // --- 2. PAN LIMITS (Position) ---
-        
+
         // A. Hard Floor: Bottom cannot be negative
         if min < 0.0 {
             let diff = 0.0 - min;
@@ -296,11 +311,11 @@ impl PlotView {
             max += diff;
             changed = true;
         }
-        
+
         // B. Hard Ceiling: Top cannot exceed 5x Current Price
         // This stops you from dragging into "Millions" territory on a $100 coin.
-        let hard_ceiling = base_price * 5.0; 
-        
+        let hard_ceiling = base_price * 5.0;
+
         if max > hard_ceiling {
             let diff = max - hard_ceiling;
             min -= diff;
@@ -343,7 +358,7 @@ impl PlotView {
         // Y-Axis: CONDITIONAL LOCK
         // 3. Calculate Visual Height (Y-Axis) -- MOVED UP
         // We do this BEFORE the plot so the grid spacer knows the real visual range
-        let y_bounds_range = self.calculate_y_bounds(cva_results,  current_pair_price);
+        let y_bounds_range = self.calculate_y_bounds(cva_results, current_pair_price);
 
         // 1. Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
@@ -351,7 +366,7 @@ impl PlotView {
         // Extract PH bounds for the grid spacer
         let (ph_min, ph_max) = cva_results.price_range.min_max();
 
-        let time_axis = create_time_axis(trading_model, ohlcv, resolution);
+        let time_axis = create_time_axis(trading_model, resolution);
         let price_axis = create_y_axis(&cva_results.pair_name);
 
         let plot_response = Plot::new("my_plot")
@@ -367,12 +382,20 @@ impl PlotView {
             .allow_drag(Vec2b { x: false, y: true })
             .allow_zoom(Vec2b { x: false, y: true })
             .show(ui, |plot_ui| {
-                plot_ui.set_plot_bounds_x(view_min..=view_max);
+                let width = view_max - view_min;
+                let safe_width = width.max(10.0); // Safetey: If width is 0 (empty dat), default to small pad
+                let pad_x = safe_width * PLOT_CONFIG.plot_x_padding_pct;
+                // Set Bounds with Padding
+                // This pushes the view slightly negative (left) and positive (right)
+                plot_ui.set_plot_bounds_x((view_min - pad_x)..=(view_max + pad_x));
 
                 if auto_scale_y {
                     plot_ui.set_plot_bounds_y(y_bounds_range);
                 } else {
-                    Self::enforce_manual_safety_limits(plot_ui, current_pair_price.unwrap_or(ph_min));
+                    Self::enforce_manual_safety_limits(
+                        plot_ui,
+                        current_pair_price.unwrap_or(ph_min),
+                    );
                 }
 
                 // 1. Get the STRICT Price Horizon limits for the "Ghosting" logic
@@ -437,8 +460,6 @@ impl PlotView {
         let r = plot_response.response;
         // 1. Double Click -> Reset (Lock)
         if r.double_clicked() {
-            // #[cfg(debug_assertions)]
-            // log::info!("INTERACTION: Double Click Detected -> Resetting Y-Axis");
             return PlotInteraction::RequestReset;
         }
 
@@ -450,15 +471,11 @@ impl PlotView {
         {
             // Only trigger if we actually moved in Y to avoid accidental clicks?
             // Actually, any drag intent should unlock it.
-            // #[cfg(debug_assertions)]
-            // log::info!("INTERACTION: Drag Detected -> Unlocking Y-Axis");
             return PlotInteraction::UserInteracted;
         }
 
         // 3. Zooming (Scroll) -> Break Lock
         if r.hovered() && ui.input(|i| i.raw_scroll_delta.y.abs() > 0.0) {
-            // #[cfg(debug_assertions)]
-            // log::info!("INTERACTION: Zooming(scrolling) detected -> Unlocking Y-Axis");
             return PlotInteraction::UserInteracted;
         }
 

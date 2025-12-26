@@ -398,21 +398,6 @@ impl ZoneSniperApp {
 
                         ui.separator();
 
-                        // // 4. Background View Mode
-                        // ui.label_subdued("Background plot view:");
-                        // let (text, color) = if self.plot_visibility.background {
-                        //     let t = match self.debug_background_mode {
-                        //         ScoreType::FullCandleTVW => UI_TEXT.label_volume,
-                        //         ScoreType::LowWickCount => UI_TEXT.label_lower_wick_count,
-                        //         ScoreType::HighWickCount => UI_TEXT.label_upper_wick_count,
-                        //     };
-                        //     (t, Color32::from_rgb(0, 255, 255)) // Cyan
-                        // } else {
-                        //     ("HIDDEN", Color32::DARK_GRAY)
-                        // };
-                        // ui.label(RichText::new(text).small().color(color));
-                        // ui.separator();
-
                         // Coverage Statistics
                         // 4. Coverage Statistics
                         if let Some(engine) = &self.engine {
