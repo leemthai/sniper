@@ -22,6 +22,6 @@ pub const DEMO: DemoConfig = DemoConfig {
     max_pairs: 10,
 
     resources: DemoResources {
-        pairs: &["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "PAXGUSDT", "DOGEUSDT"],
+        pairs: &["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "PAXGUSDT", "DOGEUSDT", "USDCUSDT"],
     },
 };
