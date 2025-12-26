@@ -1,5 +1,5 @@
 use eframe::egui::{
-    CentralPanel, Color32, Context, Frame, Grid, RichText, ScrollArea, SidePanel, TopBottomPanel,
+    CentralPanel, Color32, Context, Grid, RichText, ScrollArea, SidePanel, TopBottomPanel,
     Ui, Window,
 };
 
@@ -200,7 +200,8 @@ impl ZoneSniperApp {
         }
 
     pub(super) fn render_central_panel(&mut self, ctx: &Context) {
-        let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
+        // let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
+        let central_panel_frame = UI_CONFIG.central_panel_frame();
 
         CentralPanel::default()
             .frame(central_panel_frame)

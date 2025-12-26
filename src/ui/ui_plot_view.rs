@@ -19,7 +19,7 @@ use crate::ui::app::PlotVisibility;
 
 use crate::ui::ui_text::UI_TEXT;
 
-use crate::ui::utils::format_price;
+// use crate::ui::utils::format_price;
 use crate::utils::TimeUtils;
 use crate::utils::maths_utils;
 
@@ -587,6 +587,26 @@ fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
     let label = format!("{}  {}", pair_name, UI_TEXT.plot_y_axis);
     AxisHints::new_y()
         .label(label)
-        .formatter(|grid_mark, _range| format!("{}", format_price(grid_mark.value)))
+                .formatter(|mark, range| {
+            // 1. Calculate the Visible Span
+            let span = range.end() - range.start();
+            
+            // 2. Decide Precision based on Zoom Level (Span)
+            // This ensures all labels share the same width/precision 
+            // regardless of their individual value.
+            let decimals = if span >= 1000.0 {
+                2 // Large range (e.g. BTC): $95,200.50
+            } else if span >= 1.0 {
+                4 // Medium range (e.g. SOL): $145.2050
+            } else if span >= 0.001 {
+                6 // Small range (e.g. Stable/Low Cap): $1.000200
+            } else {
+                8 // Micro range: $0.00004500
+            };
+
+            // 3. Format
+            // Forces exactly 'decimals' places.
+            format!("${:.1$}", mark.value, decimals)
+        })
         .placement(HPlacement::Right)
 }

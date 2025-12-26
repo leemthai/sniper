@@ -67,12 +67,17 @@ impl UiConfig {
         }
     }
 
-    /// Frame for the Plot area
+    // Frame for the Plot area
     pub fn central_panel_frame(&self) -> Frame {
         Frame {
             fill: self.colors.central_panel,
             stroke: Stroke::NONE,
-            inner_margin: Margin::same(0), // Plot needs full bleed usually, or minimal
+            inner_margin: Margin { 
+                left: 0, 
+                right: 8, // <--- THE GAP allows "PAIRNAME Price" to be fully viewable not smashed against the right border
+                top: 0, 
+                bottom: 0 
+            }, 
             ..Default::default()
         }
     }
