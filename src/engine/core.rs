@@ -192,6 +192,9 @@ impl SniperEngine {
 
     /// Smart Global Invalidation
     pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
+        #[cfg(debug_assertions)]
+        log::info!("ENGINE: Global Recalc Triggered (Startup/Reset)");
+
         self.queue.clear();
 
         let mut all_pairs = self.get_all_pair_names();
@@ -212,7 +215,12 @@ impl SniperEngine {
     }
 
     /// Force a single recalc with optional price override
-    pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>) {
+    pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, reason: &str) {
+
+        #[cfg(debug_assertions)]
+        log::info!("ENGINE: Recalc Triggered for [{}] by [{}]", pair, reason);
+
+
         // Check if calculating
         let is_calculating = self
             .pairs
@@ -282,28 +290,37 @@ impl SniperEngine {
 
     fn check_automatic_triggers(&mut self) {
         let pairs: Vec<String> = self.pairs.keys().cloned().collect();
+        // Use cva settings for threshold
+        let threshold = self.current_config.cva.price_recalc_threshold_pct;
 
         for pair in pairs {
             if let Some(current_price) = self.price_stream.get_price(&pair) {
                 if let Some(state) = self.pairs.get_mut(&pair) {
-                    // Don't queue if already busy or already queued (Check name only)
                     let in_queue = self.queue.iter().any(|(p, _)| p == &pair);
+                    
+                    if !state.is_calculating && !in_queue {
+                        
+                        // FIX: Handle Startup Case (0.0)
+                        // If we have no previous price, just sync state and DO NOT trigger.
+                        // The startup job (trigger_global_recalc) is already handling the calc.
+                        if state.last_update_price.abs() < f64::EPSILON {
+                            state.last_update_price = current_price;
+                            continue;
+                        }
 
-                    if state.is_calculating || in_queue {
-                        continue;
-                    }
+                        // Normal Logic
+                        let diff = (current_price - state.last_update_price).abs();
+                        let pct_diff = diff / state.last_update_price;
 
-                    // Handle startup (0.0)
-                    if state.last_update_price == 0.0 {
-                        self.queue.push_back((pair, None));
-                    } else {
-                        let threshold = ANALYSIS.cva.price_recalc_threshold_pct;
-                        let pct_diff = (current_price - state.last_update_price).abs()
-                            / state.last_update_price;
-
-                        if pct_diff >= threshold {
-                            log::info!("[{}] Trigger: Price moved {:.4}%", pair, pct_diff * 100.0);
-                            self.queue.push_back((pair, None));
+                        if pct_diff > threshold {
+                            #[cfg(debug_assertions)]
+                            log::info!(
+                                "ENGINE AUTO: [{}] moved {:.4}%. Triggering Recalc.", 
+                                pair, 
+                                pct_diff * 100.0
+                            );
+                            
+                            self.dispatch_job(pair.clone(), None); 
                         }
                     }
                 }
@@ -329,6 +346,9 @@ impl SniperEngine {
 
         // Pop the tuple
         if let Some((pair, price_opt)) = self.queue.pop_front() {
+            #[cfg(debug_assertions)]
+            log::warn!("ENGINE QUEUE: Popped job for [{}]", pair); // <--- LOG THIS
+
             self.dispatch_job(pair, price_opt);
         }
     }

@@ -8,12 +8,21 @@ use std::thread;
 use super::messages::{JobRequest, JobResult};
 
 use crate::analysis::horizon_profiler::generate_profile;
+use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
+use crate::analysis::scenario_simulator::{ScenarioConfig, ScenarioSimulator};
+
+use crate::config::AnalysisConfig;
 
 use crate::domain::price_horizon;
 
-use crate::models::timeseries::find_matching_ohlcv; // Needed for data lookup
-use crate::models::trading_view::TradingModel;
+use crate::models::OhlcvTimeSeries;
+use crate::models::cva::CVACore;
+use crate::models::horizon_profile::HorizonProfile;
+use crate::models::timeseries::find_matching_ohlcv;
+use crate::models::trading_view::{SuperZone, TradeOpportunity};
+
+use crate::TradingModel;
 
 use crate::utils::time_utils::AppInstant;
 
@@ -34,129 +43,253 @@ pub fn spawn_worker_thread(_rx: Receiver<JobRequest>, _tx: Sender<JobResult>) {
     // Do nothing.
 }
 
-pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
+// Helper: Runs Ghost Runner simulations for all visible sticky zones
+fn run_pathfinder_simulations(
+    ohlcv: &OhlcvTimeSeries,
+    sticky_zones: &[SuperZone],
+    current_price: f64,
+    config: &AnalysisConfig,
+) -> Vec<TradeOpportunity> {
+    let mut opportunities = Vec::new();
 
-    // 1. Prepare dynamic label with PH %
+    // 1. Calculate Adaptive Trend Lookback
+    let lookback = AnalysisConfig::calculate_trend_lookback(config.price_horizon.threshold_pct);
+
+    // --- LOG START ---
+    #[cfg(debug_assertions)]
+    log::info!(
+        "PATHFINDER START: Scanning {} zones. Lookback: {} candles.",
+        sticky_zones.len(),
+        lookback
+    );
+    // ----------------
+
+    let duration_ms = config.journey.max_journey_time.as_millis() as i64;
+    let duration_candles = (duration_ms / config.interval_width_ms) as usize;
+    let stop_pct = config.journey.stop_loss_pct / 100.0;
+    
+    // Get current index once
+    let current_idx = ohlcv.klines().saturating_sub(1);
+    // Pre-calculate Current State ONCE (Optimization)
+    // If we can't calc state for 'now', we can't compare anything.
+    let current_state = match MarketState::calculate(ohlcv, current_idx, lookback) {
+        Some(s) => s,
+        None => {
+            #[cfg(debug_assertions)]
+            log::warn!("PATHFINDER ABORT: Insufficient data to calculate current market state (Lookback {}).", lookback);
+            return Vec::new();
+        }
+    };
+
+    // 3. Scan Targets
+    for (i, zone) in sticky_zones.iter().enumerate() {
+        // ... (determine is_valid, target, stop) ...
+        let (is_valid, target_price, stop_price, direction) = if current_price < zone.price_bottom {
+             (true, zone.price_bottom, current_price * (1.0 - stop_pct), "Long".to_string())
+        } else if current_price > zone.price_top {
+             (true, zone.price_top, current_price * (1.0 + stop_pct), "Short".to_string())
+        } else {
+             (false, 0.0, 0.0, String::new())
+        };
+
+        if is_valid {
+            // ... (sim_config) ...
+             let sim_config = ScenarioConfig {
+                target_price,
+                stop_loss_price: stop_price,
+                max_duration_candles: duration_candles,
+            };
+
+            // Optimization: We pass the pre-calculated current_state to avoid re-doing it inside simulate?
+            // Actually, let's just stick to the existing simulate signature for now, 
+            // but the market_state fix above should solve the speed issue.
+            
+            if let Some(result) = ScenarioSimulator::simulate(
+                ohlcv,
+                current_idx,
+                &current_state,
+                &sim_config,
+                lookback
+            ) {
+                // LOG SUCCESS for first few
+                #[cfg(debug_assertions)]
+                if i < 3 {
+                     log::info!("   -> Zone {}: {} Win Rate {:.1}% (Samples: {})", i, direction, result.success_rate * 100.0, result.sample_size);
+                }
+
+                opportunities.push(TradeOpportunity {
+                    target_zone_id: zone.id,
+                    direction,
+                    target_price,
+                    stop_price,
+                    simulation: result,
+                });
+            }
+        }
+    }
+    opportunities
+}
+
+pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
     let ph_pct = req.config.price_horizon.threshold_pct * 100.0;
     let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct);
 
-    crate::trace_time!(&format!("Total JOB (process_request_sync()) [{}]", base_label), 5000, {
+    crate::trace_time!(&format!("Total JOB [{}]", base_label), 5000, {
         let start = AppInstant::now();
 
-        // 0. RESOLVE PRICE
-        // Handle the Option<f64>. If None, look up the last close price from DB.
-        let price_for_analysis = req.current_price.unwrap_or_else(|| {
-            if let Ok(ts) = find_matching_ohlcv(
-                &req.timeseries.series_data,
-                &req.pair_name,
-                req.config.interval_width_ms,
-            ) {
-                ts.close_prices.last().copied().unwrap_or(0.0)
-            } else {
-                0.0
-            }
+        // 1. Resolve Inputs
+        let price = resolve_analysis_price(&req);
+
+        // 2. Exact Count (Range Logic)
+        let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 500, {
+            calculate_exact_candle_count(&req, price)
         });
 
-        // 1. Exact Count (Range Logic)
-        let exact_candle_count: usize = crate::trace_time!(&format!("1. Exact Count (Range Logic) [{}]", base_label), 500, {
-            let ohlcv_result = find_matching_ohlcv(
-                &req.timeseries.series_data,
-                &req.pair_name,
-                req.config.interval_width_ms,
-            );
+        let full_label = format!("{} ({} candles)", base_label, count);
 
-            if let Ok(ohlcv) = ohlcv_result {
-                let (ranges, _) = price_horizon::auto_select_ranges(
-                    ohlcv,
-                    price_for_analysis,
-                    &req.config.price_horizon,
-                );
-                ranges.iter().map(|(s, e)| e - s).sum()
-            } else {
-                0
-            }
-        });
-
-        let full_label = format!("{} ({} candles)", base_label, exact_candle_count);
-
-        // 2. CVA Logic (The Heavy Math)
+        // 3. CVA Logic
         let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 1000, {
-            pair_analysis_pure(
-                req.pair_name.clone(),
-                &req.timeseries,
-                price_for_analysis,
-                &req.config,
-            )
+            pair_analysis_pure(req.pair_name.clone(), &req.timeseries, price, &req.config)
         });
 
-        // 3. Profiler (Smart Cache)
+        // 4. Profiler (Smart Cache)
         let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 1000, {
-            if let Some(existing) = req.existing_profile {
-                let price_match = (existing.base_price - price_for_analysis).abs() < f64::EPSILON;
-                let min_match = (existing.min_pct - req.config.price_horizon.min_threshold_pct).abs() < f64::EPSILON;
-                let max_match = (existing.max_pct - req.config.price_horizon.max_threshold_pct).abs() < f64::EPSILON;
-
-                if price_match && min_match && max_match {
-                    #[cfg(debug_assertions)]
-                    log::debug!("Worker: Reusing Cached Profile for {}", req.pair_name);
-                    existing
-                } else {
-                    generate_profile(
-                        &req.pair_name,
-                        &req.timeseries,
-                        price_for_analysis,
-                        &req.config.price_horizon,
-                    )
-                }
-            } else {
-                generate_profile(
-                    &req.pair_name,
-                    &req.timeseries,
-                    price_for_analysis,
-                    &req.config.price_horizon,
-                )
-            }
+            get_or_generate_profile(&req, price)
         });
 
         let elapsed = start.elapsed().as_millis();
 
-        match result_cva {
-            Ok(cva) => {
+        // 5. Final Assembly
+        let response = match result_cva {
+            Ok(cva) => build_success_result(&req, cva, profile, price, count, elapsed),
+            Err(e) => JobResult {
+                pair_name: req.pair_name.clone(),
+                duration_ms: elapsed,
+                result: Err(e.to_string()),
+                cva: None,
+                profile: Some(profile),
+                candle_count: count,
+            },
+        };
 
-                let cva_arc = Arc::new(cva);
-
-                // We need the OHLCV data to calculate segments in the model.
-                // Since CVA generation succeeded, we know find_matching_ohlcv will succeed.
-                // Measure the Segment Analysis cost
-                let model = crate::trace_time!(&format!("4. Segments/Model [{}]", full_label), 1000, {
-                    let ohlcv = find_matching_ohlcv(
-                        &req.timeseries.series_data,
-                        &req.pair_name,
-                        req.config.interval_width_ms,
-                    ).expect("OHLCV missing");
-                    
-                    TradingModel::from_cva(cva_arc.clone(), profile.clone(), ohlcv, &req.config)
-                });
-
-                let _ = tx.send(JobResult {
-                    pair_name: req.pair_name,
-                    duration_ms: elapsed,
-                    result: Ok(Arc::new(model)),
-                    cva: Some(cva_arc),
-                    profile: Some(profile),
-                    candle_count: exact_candle_count,
-                });
-            }
-            Err(e) => {
-                let _ = tx.send(JobResult {
-                    pair_name: req.pair_name,
-                    duration_ms: elapsed,
-                    result: Err(e.to_string()),
-                    cva: None,
-                    profile: Some(profile),
-                    candle_count: exact_candle_count,
-                });
-            }
-        }
+        let _ = tx.send(response);
     });
+}
+
+fn resolve_analysis_price(req: &JobRequest) -> f64 {
+    req.current_price.unwrap_or_else(|| {
+        if let Ok(ts) = find_matching_ohlcv(
+            &req.timeseries.series_data,
+            &req.pair_name,
+            req.config.interval_width_ms,
+        ) {
+            ts.close_prices.last().copied().unwrap_or(0.0)
+        } else {
+            0.0
+        }
+    })
+}
+
+fn calculate_exact_candle_count(req: &JobRequest, price: f64) -> usize {
+    let ohlcv_result = find_matching_ohlcv(
+        &req.timeseries.series_data,
+        &req.pair_name,
+        req.config.interval_width_ms,
+    );
+
+    if let Ok(ohlcv) = ohlcv_result {
+        let (ranges, _) =
+            price_horizon::auto_select_ranges(ohlcv, price, &req.config.price_horizon);
+        ranges.iter().map(|(s, e)| e - s).sum()
+    } else {
+        0
+    }
+}
+
+fn get_or_generate_profile(req: &JobRequest, price: f64) -> HorizonProfile {
+    if let Some(existing) = &req.existing_profile {
+        let cfg = &req.config.price_horizon;
+        let price_match = (existing.base_price - price).abs() < f64::EPSILON;
+        let min_match = (existing.min_pct - cfg.min_threshold_pct).abs() < f64::EPSILON;
+        let max_match = (existing.max_pct - cfg.max_threshold_pct).abs() < f64::EPSILON;
+
+        if price_match && min_match && max_match {
+            #[cfg(debug_assertions)]
+            log::debug!("Worker: Reusing Cached Profile for {}", req.pair_name);
+            return existing.clone();
+        }
+    }
+
+    generate_profile(
+        &req.pair_name,
+        &req.timeseries,
+        price,
+        &req.config.price_horizon,
+    )
+}
+
+fn build_success_result(
+    req: &JobRequest,
+    cva: CVACore,
+    profile: HorizonProfile,
+    price: f64,
+    count: usize,
+    elapsed: u128,
+) -> JobResult {
+    // 1. Fetch OHLCV (Must exist if CVA succeeded)
+    let ohlcv = find_matching_ohlcv(
+        &req.timeseries.series_data,
+        &req.pair_name,
+        req.config.interval_width_ms,
+    )
+    .expect("OHLCV data missing despite CVA success");
+
+    let cva_arc = Arc::new(cva);
+
+    // 2. Create Model
+    let mut model = TradingModel::from_cva(cva_arc.clone(), profile.clone(), ohlcv, &req.config);
+
+    // 3. Run Pathfinder
+    // (Note: Requires the helper function 'run_pathfinder_simulations' we added earlier in this file)
+    let opps =
+        run_pathfinder_simulations(ohlcv, &model.zones.sticky_superzones, price, &req.config);
+
+    // --- DEBUG LOGGING ---
+    #[cfg(debug_assertions)]
+    if !opps.is_empty() {
+        // Just log the top one to check sanity
+        if let Some(best) = opps.iter().max_by(|a, b| {
+            a.simulation
+                .success_rate
+                .partial_cmp(&b.simulation.success_rate)
+                .unwrap()
+        }) {
+            log::info!(
+                "🎯 PATHFINDER [{}]: Found {} opps. Best: {} to {:.2} (Win: {:.1}% | EV: {:.2} | Samples: {})",
+                req.pair_name,
+                opps.len(),
+                best.direction,
+                best.target_price,
+                best.simulation.success_rate * 100.0,
+                best.simulation.risk_reward_ratio, // or expected value if you calculated it
+                best.simulation.sample_size
+            );
+        }
+    } else {
+        log::debug!(
+            "PATHFINDER [{}]: No valid setups found (Price might be inside a zone/mud).",
+            req.pair_name
+        );
+    }
+
+    model.opportunities = opps;
+
+    JobResult {
+        pair_name: req.pair_name.clone(),
+        duration_ms: elapsed,
+        result: Ok(Arc::new(model)),
+        cva: Some(cva_arc),
+        profile: Some(profile),
+        candle_count: count,
+    }
 }

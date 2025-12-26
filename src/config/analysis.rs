@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize}; // Add Import
 
 use crate::utils::TimeUtils;
+use std::time::Duration;
 
 pub const DEFAULT_PH_THRESHOLD: f64 = 0.15;
 pub const DEFAULT_TIME_DECAY: f64 = 1.5; // Manually synced to match 0.15 logic
@@ -23,12 +24,12 @@ pub struct PriceHorizonConfig {
 }
 
 /// Settings specific to Journey Analysis
-#[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
-pub struct JourneySettings {
-    // Tolerance when matching historical prices for journey analysis (percentage)
-    pub start_price_tolerance_pct: f64,
-    pub stop_loss_pct: f64,
-}
+// #[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
+// pub struct JourneySettings {
+//     // Tolerance when matching historical prices for journey analysis (percentage)
+//     pub start_price_tolerance_pct: f64,
+//     pub stop_loss_pct: f64,
+// }
 
 /// Settings for CVA (Cumulative Volume Analysis)
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -79,11 +80,21 @@ pub struct AnalysisConfig {
     pub time_decay_factor: f64,
 
     // Sub-groups
-    pub journey: JourneySettings,
+    // pub journey: JourneySettings,
     pub cva: CvaSettings,
     pub zones: ZoneClassificationConfig,
 
     pub price_horizon: PriceHorizonConfig,
+
+    pub journey: JourneySettings,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct JourneySettings {
+    // Stop-loss threshold (percentage move against position)
+    pub stop_loss_pct: f64,
+    // Max duration for the trade simulation
+    pub max_journey_time: std::time::Duration,
 }
 
 impl AnalysisConfig {
@@ -111,6 +122,24 @@ impl AnalysisConfig {
             // Transition: Sniper (5.0) -> Aggressive (2.0)
             // We clamp the lower PH bound at 0.0 for math safety
             remap(ph_threshold, 0.0, 0.05, 5.0, 2.0)
+        }
+    }
+
+    /// Maps Price Horizon % -> Lookback Candles (for Momentum/Trend).
+    /// Used to generate the "Market Fingerprint".
+    pub fn calculate_trend_lookback(ph_threshold: f64) -> usize {
+        if ph_threshold >= 0.50 {
+            // Macro: Look back ~3 Months (approx 25k 5m candles)
+            25_000
+        } else if ph_threshold >= 0.15 {
+            // Swing: Look back ~1 Week (2016 candles)
+            2_016
+        } else if ph_threshold >= 0.05 {
+            // Aggressive: Look back ~1 Day (288 candles)
+            288
+        } else {
+            // Sniper: Look back ~2 Hours (24 candles)
+            24
         }
     }
 }
@@ -158,12 +187,6 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         },
     },
 
-    journey: JourneySettings {
-        start_price_tolerance_pct: 0.5,
-        // Stop-loss threshold (percentage move against position) for journey failures
-        stop_loss_pct: 5.0,
-    },
-
     cva: CvaSettings {
         price_recalc_threshold_pct: 0.01,
         min_candles_for_analysis: 100,
@@ -175,5 +198,10 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         min_threshold_pct: 0.001, // = 0.10% minimum - seems fine for stablecoins even, let's see
         max_threshold_pct: 1.0, // 1.0 = 100% Range (From 0 to 2x Current Price. Can increase this if we want to set range higher than 2x current price).
         profiler_steps: 1000,   // With 50% range, this is 0.05% per bucket
+    },
+
+    journey: JourneySettings {
+        stop_loss_pct: 5.0,                                          // 5% Stop Loss
+        max_journey_time: Duration::from_secs(86400 * 7), // 7 Days
     },
 };

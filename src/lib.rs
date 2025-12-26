@@ -8,7 +8,6 @@ pub mod analysis;
 pub mod config;
 pub mod data;
 pub mod domain;
-pub mod journeys;
 pub mod models;
 pub mod ui;
 pub mod utils;

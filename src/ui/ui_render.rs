@@ -159,6 +159,7 @@ impl ZoneSniperApp {
                     ui.checkbox(&mut self.plot_visibility.ghost_candles, "Ghosts"); // Toggle faint candles
                     ui.checkbox(&mut self.plot_visibility.horizon_lines, "PH Lines"); // Toggle dashed horizontal PH border lines
                     ui.checkbox(&mut self.plot_visibility.price_line, "Price");
+                    ui.checkbox(&mut self.plot_visibility.opportunities, "Targets");
 
                     // STATUS INDICATOR (TEMP but very useful)
                     if self.auto_scale_y {

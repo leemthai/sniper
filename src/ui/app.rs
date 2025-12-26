@@ -72,6 +72,7 @@ pub struct PlotVisibility {
     pub background: bool,
     pub price_line: bool,
     pub candles: bool,
+    pub opportunities: bool,
 
     pub horizon_lines: bool,
     pub ghost_candles: bool,
@@ -86,6 +87,7 @@ impl Default for PlotVisibility {
             background: true,
             price_line: true,
             candles: true,
+            opportunities: true,
             horizon_lines: true,
             ghost_candles: true,
         }
@@ -280,6 +282,10 @@ impl ZoneSniperApp {
     }
 
     pub fn handle_pair_selection(&mut self, new_pair: String) {
+
+        log::info!("UI: handle_pair_selection called for {}", new_pair);
+        
+        // 1. Save current config for the OLD pair
         if let Some(old_pair) = &self.selected_pair {
             let old_config = self.app_config.price_horizon.clone();
             self.price_horizon_overrides.insert(old_pair.clone(), old_config.clone());
@@ -289,12 +295,15 @@ impl ZoneSniperApp {
             }
         }
 
+        // 2. Set New Pair & Reset View Flags
         self.selected_pair = Some(new_pair.clone());
         self.scroll_to_pair = true;
         self.auto_scale_y = true;
 
+        // 3. Load config for the NEW pair (or default)
         if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
             let mut config = saved_config.clone();
+            // Ensure bounds are respected in case global constants changed
             config.min_threshold_pct = ANALYSIS.price_horizon.min_threshold_pct;
             config.max_threshold_pct = ANALYSIS.price_horizon.max_threshold_pct;
             config.threshold_pct = config.threshold_pct.clamp(config.min_threshold_pct, config.max_threshold_pct);
@@ -303,15 +312,30 @@ impl ZoneSniperApp {
             self.app_config.price_horizon = ANALYSIS.price_horizon.clone();
         }
 
+        // 4. Intelligent Update Logic
+        // Check if we already have data for this pair to avoid unnecessary recalculation
+        let needs_calc = if let Some(engine) = &self.engine {
+            engine.get_model(&new_pair).is_none()
+        } else {
+            true
+        };
+
         let price = self.get_display_price(&new_pair);
+
         if let Some(engine) = &mut self.engine {
+            // Always update the engine's config context so it knows the current PH settings
             engine.update_config(self.app_config.clone());
             engine.set_price_horizon_override(
                 new_pair.clone(),
                 self.app_config.price_horizon.clone(),
             );
-            engine.force_recalc(&new_pair, price);
+
+            // Only force a heavy recalc if the model is missing
+            if needs_calc {
+                engine.force_recalc(&new_pair, price, "USER PAIR SELECTION");
+            }
         }
+        
     }
 
     pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
@@ -323,7 +347,7 @@ impl ZoneSniperApp {
             if let Some(engine) = &mut self.engine {
                 engine.update_config(self.app_config.clone());
                 engine.set_price_horizon_override(pair.clone(), new_config);
-                engine.force_recalc(&pair, price);
+                engine.force_recalc(&pair, price, "INVALIDATE ALL PAIRS -> PRICE HORIZON CHANGED");
             }
         }
     }

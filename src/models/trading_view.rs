@@ -4,6 +4,7 @@ use std::sync::Arc;
 // User crates
 use crate::analysis::zone_scoring::find_target_zones;
 use crate::analysis::range_gap_finder::{RangeGapFinder, DisplaySegment};
+use crate::analysis::scenario_simulator::SimulationResult;
 
 use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::config::ZoneParams;
@@ -13,6 +14,15 @@ use crate::models::horizon_profile::HorizonProfile;
 use crate::models::OhlcvTimeSeries;
 
 use crate::utils::maths_utils::{normalize_max, smooth_data, calculate_stats};
+
+#[derive(Debug, Clone)]
+pub struct TradeOpportunity {
+    pub target_zone_id: usize,
+    pub direction: String, // "Long" or "Short"
+    pub target_price: f64,
+    pub stop_price: f64,
+    pub simulation: SimulationResult,
+}
 
 /// A single price zone with its properties
 #[derive(Debug, Clone)]
@@ -157,6 +167,7 @@ pub struct TradingModel {
     pub coverage: ZoneCoverageStats,
     pub profile: HorizonProfile,
     pub segments: Vec<DisplaySegment>,
+    pub opportunities: Vec<TradeOpportunity>,
 }
 
 // New Struct for Stats
@@ -194,8 +205,9 @@ impl TradingModel {
             profile,
             zones: classified,
             coverage: stats,
-            pair_name: ohlcv.pair_interval.name().to_string(), // Safer to get from OHLCV
-            segments, // Store it
+            pair_name: ohlcv.pair_interval.name().to_string(),
+            segments,
+            opportunities: Vec::new(),
         }
     }
 

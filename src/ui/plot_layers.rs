@@ -1,9 +1,9 @@
-use eframe::egui::{Color32, Id, LayerId, Order::Tooltip, RichText, Stroke, Ui};
+use eframe::egui::{Color32, Id, LayerId, Order::Tooltip, RichText, Stroke, Ui, Align2, Vec2};
 
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
 
-use egui_plot::{Line, LineStyle, PlotPoints, PlotUi, Polygon};
+use egui_plot::{Line, LineStyle, PlotPoints, PlotUi, Polygon, PlotPoint, Text};
 
 use crate::config::plot::PLOT_CONFIG;
 
@@ -17,6 +17,124 @@ use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
 
 pub struct HorizonLinesLayer;
+
+pub struct OpportunityLayer;
+
+impl PlotLayer for OpportunityLayer {
+    fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+        if !ctx.visibility.opportunities { return; }
+
+        let current_price = ctx.current_price.unwrap_or(0.0);
+
+        // CENTER THE HUD
+        // Instead of x_max (Right Edge), we use the visual center of the available data
+        let x_center = (ctx.x_min + ctx.x_max) / 2.0;
+
+
+                // Find the BEST opportunity to highlight (Highest Win Rate)
+        // Or should we draw all? Drawing overlapping huge targets might be messy.
+        // Let's draw the BEST one prominently.
+        if let Some(best_opp) = ctx.trading_model.opportunities.iter()
+            .max_by(|a, b| a.simulation.success_rate.partial_cmp(&b.simulation.success_rate).unwrap()) 
+        {
+            let win_rate = best_opp.simulation.success_rate;
+            if win_rate < 0.40 { return; }
+
+            let is_long = best_opp.direction == "Long";
+            let base_color = if is_long { Color32::GREEN } else { Color32::RED };
+            
+            // Brightness based on win rate, but keep it visible
+            let color = base_color.linear_multiply(0.8 + (win_rate as f32 * 0.2));
+
+            // 1. PATH LINE (Center to Target)
+            plot_ui.line(
+                Line::new("", PlotPoints::new(vec![[x_center, current_price], [x_center, best_opp.target_price]]))
+                .color(color)
+                .style(egui_plot::LineStyle::Dashed { length: 10.0 })
+                .width(2.0)
+            );
+
+            // 2. STOP LOSS LINE (Wide Horizontal Bar)
+            // Make it span a significant portion of the screen width visually
+            let width_vis = (ctx.x_max - ctx.x_min) * 0.5; // 50% screen width
+            plot_ui.line(
+                Line::new("", PlotPoints::new(vec![
+                    [x_center - (width_vis/2.0), best_opp.stop_price], 
+                    [x_center + (width_vis/2.0), best_opp.stop_price]
+                ]))
+                .color(Color32::GRAY)
+                .width(2.0)
+                .name("Stop Loss")
+            );
+
+            // 3. THE SNIPER SCOPE (Target)
+            // Big, bold, central.
+            draw_sniper_scope(plot_ui, x_center, best_opp.target_price, color);
+
+            // 4. DATA LABEL (HUD Style)
+            let label_text = format!(
+                "{}\nWin: {:.1}%\nEV: {:.2}", 
+                best_opp.direction.to_uppercase(),
+                win_rate * 100.0,
+                best_opp.simulation.risk_reward_ratio
+            );
+            
+            plot_ui.text(
+                Text::new(
+                    "",
+                    PlotPoint::new(x_center + (width_vis * 0.05), best_opp.target_price),
+                    RichText::new(label_text).size(16.0).strong().color(color).background_color(Color32::BLACK.gamma_multiply(0.6))
+                )
+                .anchor(Align2::LEFT_CENTER)
+            );
+        }
+ 
+
+        }
+    }
+
+
+    fn draw_sniper_scope(ui: &mut PlotUi, x: f64, y: f64, color: Color32) {
+    // 1. Convert Data Point (Time/Price) to Screen Point (Pixels)
+    let screen_pos = ui.screen_from_plot(PlotPoint::new(x, y));
+    
+    // 2. Get the Painter for the current layer
+    // This allows us to draw raw pixels on top of the plot
+    let painter = ui.ctx().layer_painter(ui.response().layer_id);
+
+    // 3. Draw Fixed-Size UI Elements (in Pixels)
+    let radius = 15.0;
+    let stroke = Stroke::new(1.5, color);
+    let faint_stroke = Stroke::new(1.0, color.linear_multiply(0.5));
+
+    // A. Circle
+    painter.circle_stroke(screen_pos, radius, stroke);
+
+    // B. Crosshairs (Fixed pixel length, e.g. 20px)
+    let hair_len = 20.0;
+    
+    // Vertical
+    painter.line_segment(
+        [
+            screen_pos - Vec2::new(0.0, hair_len),
+            screen_pos + Vec2::new(0.0, hair_len)
+        ],
+        faint_stroke
+    );
+
+    // Horizontal
+    painter.line_segment(
+        [
+            screen_pos - Vec2::new(hair_len, 0.0),
+            screen_pos + Vec2::new(hair_len, 0.0)
+        ],
+        faint_stroke
+    );
+
+    // C. Center Dot
+    painter.circle_filled(screen_pos, 3.0, color);
+}
+
 
 impl PlotLayer for HorizonLinesLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
@@ -270,7 +388,7 @@ fn draw_body_rect(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32
     ui.polygon(
         Polygon::new("", PlotPoints::new(pts))
             .fill_color(color)
-            .stroke(eframe::egui::Stroke::NONE),
+            .stroke(Stroke::NONE),
     );
 }
 
@@ -463,7 +581,7 @@ impl PlotLayer for PriceLineLayer {
                 Line::new("", PlotPoints::new(vec![[x_start, price], [x_end, price]]))
                     .color(outer_color)
                     .width(PLOT_CONFIG.current_price_outer_width)
-                    .style(egui_plot::LineStyle::dashed_loose()),
+                    .style(LineStyle::dashed_loose()),
             );
 
             // Inner Solid

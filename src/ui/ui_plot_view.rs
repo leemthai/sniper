@@ -19,14 +19,13 @@ use crate::ui::app::PlotVisibility;
 
 use crate::ui::ui_text::UI_TEXT;
 
-// use crate::ui::utils::format_price;
 use crate::utils::TimeUtils;
 use crate::utils::maths_utils;
 
 // Import the new Layer System
 use crate::ui::plot_layers::{
     BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, PlotLayer, PriceLineLayer,
-    ReversalZoneLayer, StickyZoneLayer,
+    ReversalZoneLayer, StickyZoneLayer, OpportunityLayer,
 };
 
 /// A lightweight representation of a background bar.
@@ -86,7 +85,7 @@ fn create_time_axis(
 ) -> AxisHints<'static> {
     let segments = model.segments.clone();
     let gap_width = PLOT_CONFIG.segment_gap_width;
-    
+
     // KEY CHANGE: Use Interval MS (Time) instead of Step Size (Count)
     let agg_interval_ms = resolution.interval_ms();
 
@@ -95,7 +94,7 @@ fn create_time_axis(
         .formatter(move |mark, _range| {
             let visual_x = mark.value;
             let mut current_visual_start = 0.0;
-            
+
             for seg in &segments {
                 // 1. Calculate Width using Timestamp Buckets (Matches Render Logic)
                 // Integer division snaps timestamps to the grid (e.g. Daily buckets)
@@ -108,15 +107,15 @@ fn create_time_axis(
                 if visual_x >= current_visual_start && visual_x < current_visual_end {
                     // Calculate which bucket we are hovering over
                     let local_offset = (visual_x - current_visual_start).floor() as i64;
-                    
+
                     // Reconstruct the Timestamp for this bucket
                     let bucket_ts = (start_bucket + local_offset) * agg_interval_ms;
-                    
+
                     return TimeUtils::epoch_ms_to_date_string(bucket_ts);
                 }
 
                 current_visual_start = current_visual_end + gap_width;
-                
+
                 if visual_x < current_visual_start {
                     return "GAP".to_string();
                 }
@@ -155,7 +154,7 @@ impl PlotView {
         self.cache.is_some()
     }
 
-fn calculate_view_bounds(
+    fn calculate_view_bounds(
         &self,
         model: &TradingModel,
         current_segment_idx: Option<usize>,
@@ -170,19 +169,17 @@ fn calculate_view_bounds(
             // Get timestamps of first and last candle in segment
             // Note: DisplaySegment stores start_ts and end_ts.
             // end_ts is the timestamp of the last candle (inclusive).
-            
+
             let start_bucket = seg.start_ts / agg_interval_ms;
             let end_bucket = seg.end_ts / agg_interval_ms;
-            
+
             // The number of visual bars is the number of buckets spanned
             let buckets = end_bucket - start_bucket + 1;
             buckets as f64
         };
 
-        let total_visual_candles: f64 = model.segments.iter()
-            .map(|s| calc_width(s))
-            .sum();
-            
+        let total_visual_candles: f64 = model.segments.iter().map(|s| calc_width(s)).sum();
+
         let gap_count = model.segments.len().saturating_sub(1);
         let total_visual_width = total_visual_candles + (gap_count as f64 * gap_size);
 
@@ -199,7 +196,6 @@ fn calculate_view_bounds(
         }
         (0.0, total_visual_width, total_visual_width)
     }
-
 
     // Helper: Calculates Y-Axis bounds based on PH and Live Price
     fn calculate_y_bounds(
@@ -440,7 +436,7 @@ fn calculate_view_bounds(
                     layers.push(Box::new(PriceLineLayer));
                 }
 
-                // NEW: Horizon Lines (Dashed PH boundaries)
+                // Horizon Lines (Dashed PH boundaries)
                 if visibility.horizon_lines {
                     layers.push(Box::new(HorizonLinesLayer));
                 }
@@ -449,6 +445,11 @@ fn calculate_view_bounds(
                 // Note: 'ghost_candles' is handled internally by CandlestickLayer
                 if visibility.candles {
                     layers.push(Box::new(CandlestickLayer));
+                }
+
+                // Top Layer: Sniping Overlays
+                if visibility.opportunities {
+                    layers.push(Box::new(OpportunityLayer));
                 }
 
                 // 3. Render Loop
@@ -587,12 +588,12 @@ fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
     let label = format!("{}  {}", pair_name, UI_TEXT.plot_y_axis);
     AxisHints::new_y()
         .label(label)
-                .formatter(|mark, range| {
+        .formatter(|mark, range| {
             // 1. Calculate the Visible Span
             let span = range.end() - range.start();
-            
+
             // 2. Decide Precision based on Zoom Level (Span)
-            // This ensures all labels share the same width/precision 
+            // This ensures all labels share the same width/precision
             // regardless of their individual value.
             let decimals = if span >= 1000.0 {
                 2 // Large range (e.g. BTC): $95,200.50
