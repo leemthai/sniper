@@ -8,9 +8,8 @@ use std::thread;
 use super::messages::{JobRequest, JobResult};
 
 use crate::analysis::horizon_profiler::generate_profile;
-use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
-use crate::analysis::scenario_simulator::{ScenarioConfig, ScenarioSimulator};
+use crate::analysis::scenario_simulator::{ScenarioSimulator};
 
 use crate::config::AnalysisConfig;
 
@@ -65,25 +64,34 @@ fn run_pathfinder_simulations(
     // ----------------
 
     let duration_ms = config.journey.max_journey_time.as_millis() as i64;
-    let duration_candles = (duration_ms / config.interval_width_ms) as usize;
+    // Use the actual interval from the data series to determine candle count
+    let interval_ms = ohlcv.pair_interval.interval_ms; 
+    let duration_candles = (duration_ms / interval_ms) as usize;
+    
     let stop_pct = config.journey.stop_loss_pct / 100.0;
     
     // Get current index once
     let current_idx = ohlcv.klines().saturating_sub(1);
-    // Pre-calculate Current State ONCE (Optimization)
-    // If we can't calc state for 'now', we can't compare anything.
-    let current_state = match MarketState::calculate(ohlcv, current_idx, lookback) {
-        Some(s) => s,
-        None => {
-            #[cfg(debug_assertions)]
-            log::warn!("PATHFINDER ABORT: Insufficient data to calculate current market state (Lookback {}).", lookback);
-            return Vec::new();
-        }
-    };
+
+    // --- OPTIMIZATION START ---
+    // Scan History ONCE.
+    let historical_matches = ScenarioSimulator::find_historical_matches(
+        ohlcv,
+        current_idx,
+        lookback,
+        duration_candles,
+        config.journey.sample_count 
+    );
+
+    if historical_matches.is_empty() {
+        #[cfg(debug_assertions)]
+        log::warn!("PATHFINDER ABORT: Insufficient data or matches (Lookback {}).", lookback);
+        return Vec::new();
+    }
+    // --- OPTIMIZATION END ---
 
     // 3. Scan Targets
     for (_i, zone) in sticky_zones.iter().enumerate() {
-        // ... (determine is_valid, target, stop) ...
         let (is_valid, target_price, stop_price, direction) = if current_price < zone.price_bottom {
              (true, zone.price_bottom, current_price * (1.0 - stop_pct), "Long".to_string())
         } else if current_price > zone.price_top {
@@ -93,23 +101,15 @@ fn run_pathfinder_simulations(
         };
 
         if is_valid {
-            // ... (sim_config) ...
-             let sim_config = ScenarioConfig {
-                target_price,
-                stop_loss_price: stop_price,
-                max_duration_candles: duration_candles,
-            };
-
-            // Optimization: We pass the pre-calculated current_state to avoid re-doing it inside simulate?
-            // Actually, let's just stick to the existing simulate signature for now, 
-            // but the market_state fix above should solve the speed issue.
-            
-            if let Some(result) = ScenarioSimulator::simulate(
+            // Replay using the pre-calculated historical_matches
+            if let Some(result) = ScenarioSimulator::analyze_outcome(
                 ohlcv,
-                current_idx,
-                &current_state,
-                &sim_config,
-                lookback
+                &historical_matches,
+                current_price,
+                target_price,
+                stop_price,
+                duration_candles,
+                &direction
             ) {
                 // LOG SUCCESS for first few
                 #[cfg(debug_assertions)]

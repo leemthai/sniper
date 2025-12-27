@@ -3,8 +3,11 @@ use eframe::egui::{Align2, Color32, Id, LayerId, Order::Tooltip, RichText, Strok
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
 
+use eframe::egui::text::{LayoutJob, TextFormat};
+
 use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 
+use crate::config::ANALYSIS;
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::models::OhlcvTimeSeries;
@@ -15,6 +18,7 @@ use crate::ui::app::{CandleResolution, PlotVisibility};
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
+use crate::utils::maths_utils;
 
 pub struct HorizonLinesLayer;
 
@@ -35,7 +39,7 @@ impl PlotLayer for OpportunityLayer {
             .max_by(|a, b| a.simulation.success_rate.partial_cmp(&b.simulation.success_rate).unwrap()) 
         {
             let win_rate = best_opp.simulation.success_rate;
-            if win_rate < 0.40 { return; }
+            if win_rate < ANALYSIS.journey.min_win_rate { return; }
 
             // 3. Setup Foreground Painter
             // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
@@ -53,38 +57,26 @@ impl PlotLayer for OpportunityLayer {
             let target_pos_screen = plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, best_opp.target_price));
             let sl_pos_screen = plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, best_opp.stop_price));
 
-            // Colors
+            // Colors for GEOMETRY (Lines/Circles) - Keep Red/Green for Long/Short visual
             let is_long = best_opp.direction == "Long";
-            let base_color = if is_long { Color32::GREEN } else { Color32::RED };
-            let color = base_color.linear_multiply(0.8 + (win_rate as f32 * 0.2));
-            let sl_color = Color32::from_rgb(255, 80, 80); // Bright Red for SL
+            let geom_color = if is_long { Color32::GREEN } else { Color32::RED };
+            let dimmed_geom = geom_color.linear_multiply(0.8);
+            let sl_color = Color32::from_rgb(255, 80, 80); 
 
-            // --- A. PATH LINE (Current -> Target) ---
-            // Dashed line simulation (Manual screen space drawing)
-            // We draw a solid line with lower alpha to represent the path
+            // --- A. PATH LINE ---
             painter.line_segment(
                 [current_pos_screen, target_pos_screen],
-                Stroke::new(2.0, color.linear_multiply(0.6)) // Semi-transparent path
+                Stroke::new(2.0, dimmed_geom.linear_multiply(0.6))
             );
 
-            // --- B. STOP LOSS (Line + Text) ---
-            // Calculate width in screen pixels based on plot width
-            // We can't map (x_max - x_min) directly because of zoom, 
-            // so we define a fixed visual width in pixels relative to the screen center.
+            // --- B. STOP LOSS ---
             let screen_rect = plot_ui.response().rect;
-            let sl_width_px = screen_rect.width() * 0.4; // 40% of screen width
+            let sl_width_px = screen_rect.width() * 0.4; 
             
             let sl_left = sl_pos_screen - Vec2::new(sl_width_px / 2.0, 0.0);
             let sl_right = sl_pos_screen + Vec2::new(sl_width_px / 2.0, 0.0);
 
-            // Line
-            painter.line_segment(
-                [sl_left, sl_right],
-                Stroke::new(1.5, sl_color)
-            );
-            
-            // Text "STOP LOSS"
-            // Draw slightly above the line on the left side
+            painter.line_segment([sl_left, sl_right], Stroke::new(1.5, sl_color));
             painter.text(
                 sl_left + Vec2::new(0.0, -4.0),
                 Align2::LEFT_BOTTOM,
@@ -92,47 +84,62 @@ impl PlotLayer for OpportunityLayer {
                 FontId::proportional(10.0),
                 sl_color
             );
-
-            // --- C. SNIPER SCOPE (Target) ---
-            // Draw circle
-            painter.circle_stroke(
-                target_pos_screen, 
-                15.0, 
-                Stroke::new(2.0, color)
-            );
             
-            // Crosshairs (Fixed Pixel Length)
+            // --- C. SCOPE ---
+            painter.circle_stroke(target_pos_screen, 15.0, Stroke::new(2.0, dimmed_geom));
             let hair_len = 20.0;
-            let faint_stroke = Stroke::new(1.0, color.linear_multiply(0.8));
+            let faint_stroke = Stroke::new(1.0, dimmed_geom.linear_multiply(0.8));
             
-            // Vertical Hair
             painter.line_segment(
                 [target_pos_screen - Vec2::new(0.0, hair_len), target_pos_screen + Vec2::new(0.0, hair_len)],
                 faint_stroke
             );
-            // Horizontal Hair
             painter.line_segment(
                 [target_pos_screen - Vec2::new(hair_len, 0.0), target_pos_screen + Vec2::new(hair_len, 0.0)],
                 faint_stroke
             );
-            // Center Dot
-            painter.circle_filled(target_pos_screen, 3.0, color);
-
-            // --- D. DATA LABEL ---
-            let label_text = format!(
-                "{}\nWin: {:.1}%\nEV: {:.2}", 
-                best_opp.direction.to_uppercase(),
-                win_rate * 100.0,
-                best_opp.simulation.risk_reward_ratio
+            painter.circle_filled(target_pos_screen, 3.0, dimmed_geom);
+            
+            // --- D. DATA LABEL & CALCULATION ---
+            
+            // 1. Calculate Expected ROI % (Per Trade)
+            let roi = maths_utils::calculate_expected_roi_pct(
+                current_price,
+                best_opp.target_price,
+                best_opp.stop_price,
+                win_rate
             );
 
-            painter.text(
-                target_pos_screen + Vec2::new(18.0, 0.0), // Offset to right of scope
-                Align2::LEFT_CENTER,
-                label_text,
-                FontId::proportional(14.0), // Bigger font
-                color
+            // 2. Build Rich Text Layout
+            let mut job = LayoutJob::default();
+            let font_id = FontId::proportional(14.0);
+            
+            // Block 1: Neutral Info
+            job.append(
+                &format!("{}\nWin: {:.1}%\nR:R: {:.2}\n", 
+                    best_opp.direction.to_uppercase(),
+                    win_rate * 100.0,
+                    best_opp.simulation.risk_reward_ratio
+                ),
+                0.0,
+                TextFormat { color: Color32::LIGHT_GRAY, font_id: font_id.clone(), ..Default::default() }
             );
+
+            // Block 2: ROI (Colored)
+            let roi_color = if roi > 0.0 { Color32::GREEN } else { Color32::from_rgb(255, 100, 100) };
+            // Note: We use {:.2}% precision because per-trade EV can be small (e.g. 0.05%)
+            job.append(
+                &format!("RoI: {:+.2}%", roi),
+                0.0,
+                TextFormat { color: roi_color, font_id: font_id, ..Default::default() }
+            );
+
+            // 3. Render it (FIXED: Use painter.layout_job)
+            let galley = painter.layout_job(job);
+            // We manually center it vertically since we can't use Align2 with galleys
+            let text_pos = target_pos_screen + Vec2::new(18.0, -galley.size().y / 2.0);
+            painter.galley(text_pos, galley, Color32::WHITE);
+
         }
     }
 }

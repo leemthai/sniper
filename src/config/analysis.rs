@@ -87,6 +87,8 @@ pub struct JourneySettings {
     pub stop_loss_pct: f64,
     // Max duration for the trade simulation
     pub max_journey_time: std::time::Duration,
+    pub sample_count: usize,
+    pub min_win_rate: f64,
 }
 
 impl AnalysisConfig {
@@ -196,5 +198,7 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     journey: JourneySettings {
         stop_loss_pct: 5.0,                                          // 5% Stop Loss
         max_journey_time: Duration::from_secs(86400 * 7), // 7 Days
+        sample_count: 50,
+        min_win_rate: 0.40,
     },
 };

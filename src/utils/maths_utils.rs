@@ -181,3 +181,29 @@ pub fn calculate_stats(data: &[f64]) -> (f64, f64) {
 
     (mean, variance.sqrt())
 }
+
+/// Calculates the Expected Return on Investment (ROI) percentage per trade.
+/// 
+/// Formula: (WinRate * Reward%) - (LossRate * Risk%)
+/// Returns: The expected percentage change to your capital per trade.
+#[inline]
+pub fn calculate_expected_roi_pct(
+    current_price: f64,
+    target_price: f64,
+    stop_price: f64,
+    win_rate: f64
+) -> f64 {
+    // Avoid division by zero
+    if current_price < f64::EPSILON { return 0.0; }
+
+    let risk_pct = (current_price - stop_price).abs() / current_price;
+    let reward_pct = (target_price - current_price).abs() / current_price;
+    
+    let loss_rate = 1.0 - win_rate;
+    
+    // Yield per trade (decimal)
+    let ev_yield = (win_rate * reward_pct) - (loss_rate * risk_pct);
+    
+    // Convert decimal to percentage (0.01 -> 1.0%)
+    ev_yield * 100.0
+}
