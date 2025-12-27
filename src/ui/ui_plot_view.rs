@@ -1,8 +1,8 @@
 use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
-use eframe::egui::{Color32, Ui, Vec2b};
-use egui_plot::{Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotUi, VPlacement};
+use eframe::egui::{Color32, Ui, Vec2b, Rect};
+use egui_plot::{Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotUi, VPlacement, PlotPoint};
 
 use crate::analysis::range_gap_finder::DisplaySegment;
 
@@ -24,8 +24,8 @@ use crate::utils::maths_utils;
 
 // Import the new Layer System
 use crate::ui::plot_layers::{
-    BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, PlotLayer, PriceLineLayer,
-    ReversalZoneLayer, StickyZoneLayer, OpportunityLayer,
+    BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,
+    PlotLayer, PriceLineLayer, ReversalZoneLayer, StickyZoneLayer, SegmentSeparatorLayer,
 };
 
 /// A lightweight representation of a background bar.
@@ -396,6 +396,20 @@ impl PlotView {
                 // 1. Get the STRICT Price Horizon limits for the "Ghosting" logic
                 let (ph_min, ph_max) = cva_results.price_range.min_max();
 
+                // FIX: Calculate STRICT clip rect based on visible plot bounds.
+                // This excludes axes labels and margins.
+                let bounds = plot_ui.plot_bounds();
+                let min = bounds.min();
+                let max = bounds.max();
+                
+                // Map Data Corners to Screen Pixels
+                // Top-Left in Data is (min_x, max_y) -> Screen (x, y)
+                let p1 = plot_ui.screen_from_plot(PlotPoint::new(min[0], max[1]));
+                // Bottom-Right in Data is (max_x, min_y) -> Screen (x, y)
+                let p2 = plot_ui.screen_from_plot(PlotPoint::new(max[0], min[1]));
+                
+                let clip_rect = Rect::from_min_max(p1, p2);
+
                 // --- LAYER STACK ---
                 let ctx = LayerContext {
                     trading_model: trading_model,
@@ -408,10 +422,11 @@ impl PlotView {
                     current_price: current_pair_price,
                     resolution: resolution,
                     ph_bounds: (ph_min, ph_max),
+                    clip_rect,
                 };
 
                 // 2. Define Layer Stack (Dynamic)
-                let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(6); // '6' is really a hint. If require  more capacity, Rust will allocate at run-time np.
+                let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(7); // '7' is basically a hint. If require  more capacity, Rust will allocate at run-time np.
 
                 // LOGIC: Only show Global Context layers (Volume/Zones) if we are viewing the FULL HISTORY ("Show All").
                 // If viewing a specific segment, leave these out as not relevant.
@@ -428,6 +443,10 @@ impl PlotView {
                     if visibility.low_wicks || visibility.high_wicks {
                         layers.push(Box::new(ReversalZoneLayer));
                     }
+                    // 3. Overlays (Separators)
+                    if visibility.separators {
+                        layers.push(Box::new(SegmentSeparatorLayer));
+                    }
                 }
 
                 // 2. Always Available Layers (Context Agnostic)
@@ -440,8 +459,7 @@ impl PlotView {
                     layers.push(Box::new(HorizonLinesLayer));
                 }
 
-                // CANDLES ON TOP
-                // Note: 'ghost_candles' is handled internally by CandlestickLayer
+                // Candles. Note: 'ghost_candles' is handled internally by CandlestickLayer
                 if visibility.candles {
                     layers.push(Box::new(CandlestickLayer));
                 }

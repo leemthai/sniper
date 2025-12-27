@@ -36,11 +36,11 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
     print_trigger_updates: false,    // must be enabled to see journey logs
     print_journey_for_pair: "",      // pair to track journey of
 
-    enable_perf_logging: false, // Turn this back on for cool scope-level timings..... set via trace_time! macro.
+    enable_perf_logging: true, // Activates trace_time! macro in perf.rs. Turn this back on for cool scope-level timing
 
     // Default to a small number for quick UI testing.
     // Change this to 1000 when you want to stress-test the model i.e all pairs.
-    max_pairs_load: 5, // 25, // 60,
+    max_pairs_load: 25, // 25, // 60,
 
     gap_report: false,
 };

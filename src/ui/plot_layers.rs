@@ -1,9 +1,9 @@
-use eframe::egui::{Align2, Color32, Id, LayerId, Order::Tooltip, RichText, Stroke, Ui, Vec2, Order, FontId};
+use eframe::egui::{Align2, Color32, Id, LayerId, Order::Tooltip, RichText, Stroke, Ui, Vec2, Order, FontId, Painter, Pos2, Rect};
 
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
 
-use egui_plot::{Line, LineStyle, PlotPoint, PlotPoints, PlotUi, Polygon};
+use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 
 use crate::config::plot::PLOT_CONFIG;
 
@@ -39,7 +39,11 @@ impl PlotLayer for OpportunityLayer {
 
             // 3. Setup Foreground Painter
             // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
-            let painter = plot_ui.ctx().layer_painter(LayerId::new(Order::Foreground, Id::new("sniper_hud")));
+            // FIX: Create Painter with Clipping
+            // This ensures the HUD never bleeds outside the plot area
+            let painter = plot_ui.ctx()
+                .layer_painter(LayerId::new(Order::Foreground, Id::new("sniper_hud")))
+                .with_clip_rect(ctx.clip_rect);
 
             // 4. Coordinates (Time/Price -> Screen Pixels)
             let x_center_plot = (ctx.x_min + ctx.x_max) / 2.0;
@@ -134,62 +138,50 @@ impl PlotLayer for OpportunityLayer {
 }
 
 impl PlotLayer for HorizonLinesLayer {
-    fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        let (ph_min, ph_max) = ctx.ph_bounds;
-        // Use White for max contrast against dark backgrounds and grey grid lines. Make it slightly thicker so it is visible whatever is behind it
-        let color = Color32::WHITE;
-        let width = 4.0;
-        let dash_style = LineStyle::Dashed { length: 10.0 };
 
-        // Define Start/End based on Data Limits
-        let x_start = ctx.x_min;
-        let x_end = ctx.x_max;
+    fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+    
+        let (ph_min, ph_max) = ctx.ph_bounds;
+        
+        // Foreground Painter + Clipping
+        let painter = plot_ui.ctx()
+            .layer_painter(LayerId::new(Order::Foreground, Id::new("horizon_lines")))
+            .with_clip_rect(ctx.clip_rect);
+
+        let stroke = Stroke::new(2.0, Color32::WHITE);
+        let dash = 10.0;
+        let gap = 10.0;
+
+        let x_left = ctx.clip_rect.left();
+        let x_right = ctx.clip_rect.right();
+
+        // Map Prices to Screen Y
+        let y_screen_max = plot_ui.screen_from_plot(PlotPoint::new(0.0, ph_max)).y;
+        let y_screen_min = plot_ui.screen_from_plot(PlotPoint::new(0.0, ph_min)).y;
 
         // Top Line
-        plot_ui.line(
-            Line::new(
-                "",
-                PlotPoints::new(vec![[x_start, ph_max], [x_end, ph_max]]),
-            )
-            .color(color)
-            .style(dash_style)
-            .width(width),
+        draw_dashed_line(
+            &painter,
+            Pos2::new(x_left, y_screen_max),
+            Pos2::new(x_right, y_screen_max),
+            stroke,
+            dash,
+            gap
         );
 
-        // Bottom Line (Segment)
-        plot_ui.line(
-            Line::new(
-                "",
-                PlotPoints::new(vec![[x_start, ph_min], [x_end, ph_min]]),
-            )
-            .color(color)
-            .style(dash_style)
-            .width(width),
+        // Bottom Line
+        draw_dashed_line(
+            &painter,
+            Pos2::new(x_left, y_screen_min),
+            Pos2::new(x_right, y_screen_min),
+            stroke,
+            dash,
+            gap
         );
     }
 }
 
 pub struct CandlestickLayer;
-
-fn draw_gap_separator(plot_ui: &mut PlotUi, x_pos: f64, gap_width: f64, y_bounds: (f64, f64)) {
-    let (y_min, y_max) = y_bounds;
-    let line_x = x_pos + (gap_width / 2.0);
-
-    // Overshoot the bounds slightly to ensure the line always looks infinite vertical
-    let range = y_max - y_min;
-    let y_start = y_min - range;
-    let y_end = y_max + range;
-
-    plot_ui.line(
-        Line::new(
-            "",
-            PlotPoints::new(vec![[line_x, y_start], [line_x, y_end]]),
-        )
-        .color(Color32::from_gray(60)) // Subtle gray
-        .width(1.0)
-        .style(LineStyle::Dashed { length: 5.0 }),
-    );
-}
 
 impl PlotLayer for CandlestickLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
@@ -198,13 +190,9 @@ impl PlotLayer for CandlestickLayer {
         }
 
         let mut visual_x = 0.0;
-        let gap_width = PLOT_CONFIG.segment_gap_width;
         let agg_interval_ms = ctx.resolution.interval_ms();
 
-        let (y_min_global, y_max_global) = ctx.trading_model.cva.price_range.min_max();
-        let y_bounds_separator = (y_min_global, y_max_global);
-
-        for (seg_idx, segment) in ctx.trading_model.segments.iter().enumerate() {
+        for segment in &ctx.trading_model.segments {
             let mut i = segment.start_idx;
 
             while i < segment.end_idx {
@@ -247,12 +235,6 @@ impl PlotLayer for CandlestickLayer {
 
                 visual_x += 1.0;
                 i = next_i;
-            }
-
-            // Draw Gap Separator
-            if seg_idx < ctx.trading_model.segments.len() - 1 {
-                draw_gap_separator(plot_ui, visual_x, gap_width, y_bounds_separator);
-                visual_x += gap_width;
             }
         }
     }
@@ -396,6 +378,7 @@ pub struct LayerContext<'a> {
     pub current_price: Option<f64>, // Pass SIM-aware price so layers render correctly in SIM mode
     pub resolution: CandleResolution,
     pub ph_bounds: (f64, f64), // (min, max) of the Price Horizon,
+    pub clip_rect: Rect,
 }
 
 /// A standardized layer in the plot stack.
@@ -554,6 +537,56 @@ impl PlotLayer for ReversalZoneLayer {
 }
 
 // ============================================================================
+// 6. SEGMENT SEPARATOR LAYER (Vertical Gaps)
+// ============================================================================
+pub struct SegmentSeparatorLayer;
+
+impl PlotLayer for SegmentSeparatorLayer {
+    fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+        if ctx.trading_model.segments.is_empty() { return; }
+
+        let gap_width = PLOT_CONFIG.segment_gap_width;
+        let mut visual_x = 0.0;
+        let step_size = ctx.resolution.step_size();
+
+        // Foreground Painter + Clipping
+        let painter = plot_ui.ctx()
+            .layer_painter(LayerId::new(Order::Foreground, Id::new("separators")))
+            .with_clip_rect(ctx.clip_rect);
+            
+        let stroke = Stroke::new(1.0, Color32::from_gray(80)); 
+        let y_top = ctx.clip_rect.top();
+        let y_bot = ctx.clip_rect.bottom();
+
+        for (seg_idx, segment) in ctx.trading_model.segments.iter().enumerate() {
+            let seg_candles_vis = ((segment.end_idx - segment.start_idx) as f64 / step_size as f64).ceil();
+            visual_x += seg_candles_vis;
+
+            if seg_idx < ctx.trading_model.segments.len() - 1 {
+                let line_plot_x = visual_x + (gap_width / 2.0);
+                
+                // Map X to Screen
+                let x_screen = plot_ui.screen_from_plot(PlotPoint::new(line_plot_x, 0.0)).x;
+
+                // Only draw if within horizontal bounds of the plot rect
+                if x_screen >= ctx.clip_rect.left() && x_screen <= ctx.clip_rect.right() {
+                    draw_dashed_line(
+                        &painter,
+                        Pos2::new(x_screen, y_top),
+                        Pos2::new(x_screen, y_bot),
+                        stroke,
+                        5.0, // Dash
+                        5.0  // Gap
+                    );
+                }
+
+                visual_x += gap_width;
+            }
+        }
+    }
+}
+
+// ============================================================================
 // 4. PRICE LINE LAYER
 // ============================================================================
 pub struct PriceLineLayer;
@@ -561,25 +594,24 @@ pub struct PriceLineLayer;
 impl PlotLayer for PriceLineLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         if let Some(price) = ctx.current_price {
+            // Foreground Painter + Clipping
+            let painter = plot_ui.ctx()
+                .layer_painter(LayerId::new(Order::Foreground, Id::new("price_line")))
+                .with_clip_rect(ctx.clip_rect);
+
             let color = PLOT_CONFIG.current_price_color;
-            let outer_color = PLOT_CONFIG.current_price_outer_color;
-
-            let x_start = ctx.x_min;
-            let x_end = ctx.x_max;
-
-            // Outer Glow/Border
-            plot_ui.line(
-                Line::new("", PlotPoints::new(vec![[x_start, price], [x_end, price]]))
-                    .color(outer_color)
-                    .width(PLOT_CONFIG.current_price_outer_width)
-                    .style(LineStyle::dashed_loose()),
-            );
-
-            // Inner Solid
-            plot_ui.line(
-                Line::new("", PlotPoints::new(vec![[x_start, price], [x_end, price]]))
-                    .color(color)
-                    .width(PLOT_CONFIG.current_price_line_width),
+            let width = PLOT_CONFIG.current_price_line_width; // Use standard width
+            
+            // Map Price to Screen Y
+            let y_screen = plot_ui.screen_from_plot(PlotPoint::new(0.0, price)).y;
+            
+            // Draw Simple Solid Line across width
+            painter.line_segment(
+                [
+                    Pos2::new(ctx.clip_rect.left(), y_screen), 
+                    Pos2::new(ctx.clip_rect.right(), y_screen)
+                ],
+                Stroke::new(width, color)
             );
         }
     }
@@ -686,5 +718,34 @@ fn draw_superzone(
                 },
             );
         }
+    }
+}
+
+/// Helper: Manually draws a dashed line between two screen points.
+fn draw_dashed_line(
+    painter: &Painter, 
+    p1: Pos2, 
+    p2: Pos2, 
+    stroke: Stroke, 
+    dash_len: f32, 
+    gap_len: f32
+) {
+    let vec = p2 - p1;
+    let total_len = vec.length();
+    
+    if total_len < 0.1 { return; }
+
+    let dir = vec / total_len;
+    let mut current_dist = 0.0;
+
+    while current_dist < total_len {
+        let end_dist = (current_dist + dash_len).min(total_len);
+        
+        let start_pos = p1 + (dir * current_dist);
+        let end_pos = p1 + (dir * end_dist);
+
+        painter.line_segment([start_pos, end_pos], stroke);
+
+        current_dist += dash_len + gap_len;
     }
 }

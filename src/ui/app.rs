@@ -76,6 +76,7 @@ pub struct PlotVisibility {
 
     pub horizon_lines: bool,
     pub ghost_candles: bool,
+    pub separators: bool,
 }
 
 impl Default for PlotVisibility {
@@ -90,6 +91,7 @@ impl Default for PlotVisibility {
             opportunities: true,
             horizon_lines: true,
             ghost_candles: true,
+            separators: true,
         }
     }
 }
@@ -145,13 +147,15 @@ impl CandleResolution {
 #[serde(default)] 
 pub struct ZoneSniperApp {
     pub selected_pair: Option<String>,
-    pub app_config: AnalysisConfig,
+    pub global_price_horizon: PriceHorizonConfig,
     pub price_horizon_overrides: HashMap<String, PriceHorizonConfig>,
     pub plot_visibility: PlotVisibility,
     pub show_debug_help: bool,
     pub show_ph_help: bool,
     pub candle_resolution: CandleResolution,
 
+    #[serde(skip)]
+    pub app_config: AnalysisConfig,
     #[serde(skip)]
     pub scroll_to_pair: bool,
     #[serde(skip)]
@@ -186,6 +190,7 @@ impl Default for ZoneSniperApp {
             selected_pair: Some("BTCUSDT".to_string()),
             app_config: ANALYSIS.clone(),
             price_horizon_overrides: HashMap::new(),
+            global_price_horizon: ANALYSIS.price_horizon.clone(),
             plot_visibility: PlotVisibility::default(),
             show_debug_help: false,
             show_ph_help: false,
@@ -227,6 +232,11 @@ impl ZoneSniperApp {
         } else {
             Self::default()
         };
+
+        // RESTORE STATE:
+        // Overwrite the default config's PH with the saved user preference.
+        // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
+        app.app_config.price_horizon = app.global_price_horizon.clone();
 
         app.plot_view = PlotView::new();
         app.simulated_prices = HashMap::new();
@@ -621,9 +631,9 @@ impl ZoneSniperApp {
         }
         self.handle_global_shortcuts(ctx);
 
+        self.render_top_panel(ctx); // Render before left/right if we want to occupy full app screen space
         self.render_left_panel(ctx);
         self.render_right_panel(ctx);
-        self.render_top_panel(ctx);
         self.render_ticker_panel(ctx);
         self.render_status_panel(ctx);
         self.render_central_panel(ctx);

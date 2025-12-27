@@ -1,9 +1,9 @@
 //! Analysis and computation configuration
 
+use std::time::Duration;
 use serde::{Deserialize, Serialize}; // Add Import
 
 use crate::utils::TimeUtils;
-use std::time::Duration;
 
 pub const DEFAULT_PH_THRESHOLD: f64 = 0.15;
 pub const DEFAULT_TIME_DECAY: f64 = 1.5; // Manually synced to match 0.15 logic
@@ -23,16 +23,8 @@ pub struct PriceHorizonConfig {
     pub profiler_steps: usize,
 }
 
-/// Settings specific to Journey Analysis
-// #[derive(Clone, Debug, Serialize, Deserialize)] // Add Serde
-// pub struct JourneySettings {
-//     // Tolerance when matching historical prices for journey analysis (percentage)
-//     pub start_price_tolerance_pct: f64,
-//     pub stop_loss_pct: f64,
-// }
-
 /// Settings for CVA (Cumulative Volume Analysis)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct CvaSettings {
     // Price change threshold (fractional) to trigger CVA recomputation
     pub price_recalc_threshold_pct: f64,
@@ -42,7 +34,7 @@ pub struct CvaSettings {
 }
 
 /// Parameters for a specific zone type (Sticky, Reversal, etc.)
-#[derive(Clone, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, Debug, Copy)]
 pub struct ZoneParams {
     /// Smoothing Window % (0.0 to 1.0).
     /// Turn UP to merge jagged spikes into hills. Turn DOWN for sharp precision.
@@ -63,14 +55,14 @@ pub struct ZoneParams {
     pub sigma: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct ZoneClassificationConfig {
     pub sticky: ZoneParams,
     pub reversal: ZoneParams,
 }
 
 /// The Master Analysis Configuration
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct AnalysisConfig {
     // This defines the candle interval for all analysis (1h, 5m, 15m, etc.)
     pub interval_width_ms: i64,
@@ -89,7 +81,7 @@ pub struct AnalysisConfig {
     pub journey: JourneySettings,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct JourneySettings {
     // Stop-loss threshold (percentage move against position)
     pub stop_loss_pct: f64,

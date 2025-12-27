@@ -99,7 +99,9 @@ impl ZoneSniperApp {
                         DataGenerationEventChanged::PriceHorizonThreshold(new_threshold) => {
                             let prev = self.app_config.price_horizon.threshold_pct;
                             if (prev - new_threshold).abs() > f64::EPSILON {
+
                                 self.app_config.price_horizon.threshold_pct = new_threshold;
+                                self.global_price_horizon.threshold_pct = new_threshold;
 
                                 // --- ADAPTIVE DECAY LOGIC ---
                                 // "Drag left to Snipe (High Decay), Drag right to Invest (Low Decay)"
@@ -157,6 +159,7 @@ impl ZoneSniperApp {
 
                     // CONTEXT
                     ui.checkbox(&mut self.plot_visibility.ghost_candles, "Ghosts"); // Toggle faint candles
+                    ui.checkbox(&mut self.plot_visibility.separators, "TM Separators"); // Toggle segment separators
                     ui.checkbox(&mut self.plot_visibility.horizon_lines, "PH Lines"); // Toggle dashed horizontal PH border lines
                     ui.checkbox(&mut self.plot_visibility.price_line, "Price");
                     ui.checkbox(&mut self.plot_visibility.opportunities, "Targets");

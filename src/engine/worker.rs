@@ -251,8 +251,14 @@ fn build_success_result(
 
     // 3. Run Pathfinder
     // (Note: Requires the helper function 'run_pathfinder_simulations' we added earlier in this file)
-    let opps =
-        run_pathfinder_simulations(ohlcv, &model.zones.sticky_superzones, price, &req.config);
+    let opps = crate::trace_time!(&format!("5. Pathfinder [{}]", req.pair_name), 500, {
+        run_pathfinder_simulations(
+            ohlcv,
+            &model.zones.sticky_superzones,
+            price,
+            &req.config,
+        )
+    });
 
     // --- DEBUG LOGGING ---
     #[cfg(debug_assertions)]

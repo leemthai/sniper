@@ -315,9 +315,10 @@ impl SniperEngine {
                         if pct_diff > threshold {
                             #[cfg(debug_assertions)]
                             log::info!(
-                                "ENGINE AUTO: [{}] moved {:.4}%. Triggering Recalc.", 
+                                "ENGINE AUTO: [{}] moved {:.4}% with threshold {}. Triggering Recalc.", 
                                 pair, 
-                                pct_diff * 100.0
+                                pct_diff * 100.0,
+                                threshold,
                             );
                             
                             self.dispatch_job(pair.clone(), None); 
