@@ -35,8 +35,10 @@ impl PlotLayer for OpportunityLayer {
         };
 
         // 2. Find Best Opportunity
-        if let Some(best_opp) = ctx.trading_model.opportunities.iter()
-            .max_by(|a, b| a.simulation.success_rate.partial_cmp(&b.simulation.success_rate).unwrap()) 
+        if let Some(best_opp) = ctx.trading_model.opportunities.iter()            // Filter out obviously bad ROI (negative expectancy) before sorting
+            .filter(|op| op.expected_roi() > 0.0) 
+                        // Sort by Expected ROI instead of just Success Rate
+            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap()) 
         {
             let win_rate = best_opp.simulation.success_rate;
             if win_rate < ANALYSIS.journey.min_win_rate { return; }

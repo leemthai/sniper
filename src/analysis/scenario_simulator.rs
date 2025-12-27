@@ -23,6 +23,7 @@ pub struct SimulationResult {
     pub avg_duration: f64,    // Average candles to result
     pub risk_reward_ratio: f64, // Based on historical outcomes
     pub sample_size: usize,   // How many similar scenarios we found
+    pub market_state: MarketState,
 }
 
 pub struct ScenarioSimulator;
@@ -37,13 +38,10 @@ impl ScenarioSimulator {
         trend_lookback: usize,
         max_duration_candles: usize,
         sample_count: usize,
-    ) -> Vec<(usize, f64)> { // Returns (index, score)
+    ) -> Option<(Vec<(usize, f64)>, MarketState)> { // Returns (index, score)
         
-        // 1. Calculate Current State
-        let current_state = match MarketState::calculate(ts, current_idx, trend_lookback) {
-            Some(s) => s,
-            None => return vec![],
-        };
+        // 1. Calculate Current Market State
+        let current_market_state = MarketState::calculate(ts, current_idx, trend_lookback)?;
 
         // 2. Define Scan Range (Don't scan the very end where we can't simulate forward)
         let end_scan = current_idx.saturating_sub(max_duration_candles);
@@ -53,7 +51,7 @@ impl ScenarioSimulator {
             .into_par_iter()
             .filter_map(|i| {
                 let hist_state = MarketState::calculate(ts, i, trend_lookback)?;
-                let score = current_state.similarity_score(&hist_state);
+                let score = current_market_state.similarity_score(&hist_state);
                 // Optimization: Filter out terrible matches early to save sort time
                 if score < 100.0 {
                     Some((i, score))
@@ -71,7 +69,7 @@ impl ScenarioSimulator {
             candidates.truncate(sample_count);
         }
 
-        candidates
+        Some((candidates, current_market_state))
     }
 
     /// STEP 2: The Fast Replay.
@@ -80,6 +78,7 @@ impl ScenarioSimulator {
     pub fn analyze_outcome(
         ts: &OhlcvTimeSeries,
         matches: &[(usize, f64)], // The candidates found in Step 1
+        current_market_state: MarketState,
         entry_price: f64,
         target_price: f64,
         stop_price: f64,
@@ -137,6 +136,7 @@ impl ScenarioSimulator {
             avg_duration,
             risk_reward_ratio: rr,
             sample_size: valid_samples,
+            market_state: current_market_state,
         })
     }
 

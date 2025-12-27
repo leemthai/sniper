@@ -1,7 +1,7 @@
 use colorgrad::Gradient;
 use eframe::egui::{
     Align, Align2, Button, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
-    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2,
+    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2, Order,
 };
 use strum::IntoEnumIterator;
 
@@ -264,6 +264,7 @@ impl<'a> DataGenerationPanel<'a> {
         Window::new(UI_TEXT.ph_help_title)
             .open(open)
             .resizable(false)
+            .order(Order::Tooltip)
             .collapsible(true)
             .show(ctx, |ui| {
                 ui.set_max_width(600.0);

@@ -207,3 +207,9 @@ pub fn calculate_expected_roi_pct(
     // Convert decimal to percentage (0.01 -> 1.0%)
     ev_yield * 100.0
 }
+
+#[inline]
+pub fn remap(val: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
+    let t = (val - in_min) / (in_max - in_min);
+    out_min + t * (out_max - out_min)
+}

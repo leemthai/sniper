@@ -91,53 +91,6 @@ pub struct JourneySettings {
     pub min_win_rate: f64,
 }
 
-impl AnalysisConfig {
-    /// The Source of Truth for the "Adaptive Decay" curve.
-    /// Maps Price Horizon % -> Time Decay Factor.
-    /// Used by both Config Initialization and UI Runtime updates.
-    pub fn calculate_time_decay(ph_threshold: f64) -> f64 {
-        // Helper for linear mapping
-        let remap = |val: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64| -> f64 {
-            let t = (val - in_min) / (in_max - in_min);
-            out_min + t * (out_max - out_min)
-        };
-
-        if ph_threshold >= 0.50 {
-            // Macro Mode: Pure History
-            1.0
-        } else if ph_threshold >= 0.15 {
-            // Transition: Swing (1.5) -> Macro (1.0)
-            // As PH gets larger (0.15 -> 0.50), Decay gets smaller (1.5 -> 1.0)
-            remap(ph_threshold, 0.15, 0.50, 1.5, 1.0)
-        } else if ph_threshold >= 0.05 {
-            // Transition: Aggressive (2.0) -> Swing (1.5)
-            remap(ph_threshold, 0.05, 0.15, 2.0, 1.5)
-        } else {
-            // Transition: Sniper (5.0) -> Aggressive (2.0)
-            // We clamp the lower PH bound at 0.0 for math safety
-            remap(ph_threshold, 0.0, 0.05, 5.0, 2.0)
-        }
-    }
-
-    /// Maps Price Horizon % -> Lookback Candles (for Momentum/Trend).
-    /// Used to generate the "Market Fingerprint".
-    pub fn calculate_trend_lookback(ph_threshold: f64) -> usize {
-        if ph_threshold >= 0.50 {
-            // Macro: Look back ~3 Months (approx 25k 5m candles)
-            25_000
-        } else if ph_threshold >= 0.15 {
-            // Swing: Look back ~1 Week (2016 candles)
-            2_016
-        } else if ph_threshold >= 0.05 {
-            // Aggressive: Look back ~1 Day (288 candles)
-            288
-        } else {
-            // Sniper: Look back ~2 Hours (24 candles)
-            24
-        }
-    }
-}
-
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     interval_width_ms: TimeUtils::MS_IN_5_MIN,
     zone_count: 256,
@@ -196,8 +149,8 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     },
 
     journey: JourneySettings {
-        stop_loss_pct: 5.0,                                          // 5% Stop Loss
-        max_journey_time: Duration::from_secs(86400 * 7), // 7 Days
+        stop_loss_pct: 5.0,  
+        max_journey_time: Duration::from_secs(86400 * 7),
         sample_count: 50,
         min_win_rate: 0.40,
     },

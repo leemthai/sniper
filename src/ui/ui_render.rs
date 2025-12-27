@@ -1,9 +1,10 @@
 use eframe::egui::{
     CentralPanel, Color32, Context, Grid, RichText, ScrollArea, SidePanel, TopBottomPanel,
-    Ui, Window,
+    Ui, Window, Order,
 };
 
-use crate::config::{ANALYSIS, AnalysisConfig};
+use crate::analysis::adaptive::AdaptiveParameters;
+use crate::config::{ANALYSIS};
 use crate::config::TICKER;
 use crate::models::cva::ScoreType;
 
@@ -22,6 +23,171 @@ use crate::utils::TimeUtils;
 use super::app::ZoneSniperApp;
 
 impl ZoneSniperApp {
+
+        pub(super) fn render_opportunity_details_modal(&mut self, ctx: &Context) {
+        // 1. Check if open
+        if !self.show_opportunity_details { return; }
+
+        // 2. Get Data (Thread-safe)
+        let Some(pair) = self.selected_pair.clone() else { return; };
+        let Some(model) = self.engine.as_ref().and_then(|e| e.get_model(&pair)) else { return; };
+        // let current_price = self.get_display_price(&pair).unwrap_or(0.0);
+
+        // 3. Find the "Current Opportunity" (Same logic as HUD)
+        let best_opp = model.opportunities.iter()
+            .filter(|op| op.expected_roi() > 0.0)
+            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap());
+
+        // 4. Render Window
+        Window::new(format!("Opportunity Explainer: {}", pair))
+            .collapsible(false)
+            .resizable(false)
+            .order(Order::Tooltip)
+            .open(&mut self.show_opportunity_details)
+            .default_width(600.)
+            .show(ctx, |ui| {
+                if let Some(op) = best_opp {
+
+                    let sim = &op.simulation;
+                    // --- LOOKUP TARGET ZONE FOR TITLE ---
+                    // Try to find the zone definition to get its bounds
+                    let zone_info = model.zones.sticky_superzones.iter()
+                        .find(|z| z.id == op.target_zone_id)
+                        .map(|z| format!("{} - {}", format_price(z.price_bottom), format_price(z.price_top)))
+                        .unwrap_or_else(|| format!("Zone #{}", op.target_zone_id)); // Fallback
+
+                    ui.heading(format!("Best Opportunity: {}", zone_info));
+                    ui.label_subdued(format!("Setup Type: {}", op.direction.to_uppercase()));
+                    ui.separator();
+
+
+                    // --- CALCULATIONS ---
+                    // 1. Get PH %
+                    let ph_pct = self.app_config.price_horizon.threshold_pct;
+                    
+                    // 2. Calculate Actual Lookback used (using new Adaptive logic)
+                    let lookback_candles = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
+                    let interval_ms = model.cva.interval_ms; 
+                    let lookback_ms = lookback_candles as i64 * interval_ms;
+                    let lookback_str = TimeUtils::format_duration(lookback_ms);
+
+                    // 3. Get Actual Max Journey Time (From Config, NOT derived)
+                    let max_time = self.app_config.journey.max_journey_time;
+                    let max_time_str = TimeUtils::format_duration(max_time.as_millis() as i64);
+
+
+                    // SECTION 1: THE MATH
+                    ui.label_subheader("Expectancy & Return");
+                    let roi = op.expected_roi();
+                    let color = if roi > 0.0 { Color32::GREEN } else { Color32::RED };
+                    
+                    ui.metric("RoI (per trade)", &format!("{:+.2}%", roi), color);
+                    ui.metric("Win Rate", &format!("{:.1}%", sim.success_rate * 100.0), Color32::WHITE);
+                    ui.metric("R:R Ratio", &format!("{:.2}", sim.risk_reward_ratio), Color32::WHITE);
+
+                    ui.add_space(10.0);
+
+                    // SECTION 2: MARKET CONTEXT (INLINE STYLE)
+                    ui.label_subheader("Market Context (The 'DNA')");
+                    let state = &sim.market_state;
+                    
+                    // Volatility (Standard metric is fine)
+                    ui.metric("Volatility", &format!("{:.2}%", state.volatility_pct * 100.0), Color32::LIGHT_BLUE);
+                    
+                    // Momentum (Inline Explanation)
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.label(RichText::new("Momentum:").small().color(Color32::GRAY));
+                        let mom_color = if state.momentum_pct >= 0.0 { Color32::GREEN } else { Color32::RED };
+                        ui.label(RichText::new(format!("{:+.2}%", state.momentum_pct * 100.0)).small().color(mom_color));
+                        
+                        ui.label(RichText::new(format!(
+                            "(Price change over the last {}. Adaptive lookback based on Price Horizon {:.3}%)", 
+                            lookback_str, ph_pct * 100.0
+                        )).small().color(Color32::GRAY));
+                    });
+
+                    // Rel Volume (Inline Explanation)
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.label(RichText::new("Rel. Volume:").small().color(Color32::GRAY));
+                        let vol_color = if state.relative_volume > 1.0 { Color32::YELLOW } else { Color32::GRAY };
+                        ui.label(RichText::new(format!("{:.2}x", state.relative_volume)).small().color(vol_color));
+                        
+                        ui.label(RichText::new("(Ratio of Current Volume vs Recent Average.)").small().color(Color32::GRAY));
+                    });
+
+                    ui.add_space(10.0);
+
+                  // SECTION 3: TRADE SETUP
+                    ui.label_subheader("Trade Setup");
+                    
+                    // Entry / Target can stay standard
+                    ui.metric("Entry", &format_price(op.start_price), Color32::LIGHT_GRAY);
+                    ui.metric("Target", &format_price(op.target_price), Color32::GREEN);
+                    
+                    // Stop Loss (Inline Explanation)
+                    let target_dist = (op.target_price - op.start_price).abs() / op.start_price * 100.0;
+                    let stop_dist = (op.stop_price - op.start_price).abs() / op.start_price * 100.0;
+
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.label(RichText::new("Stop Loss:").small().color(Color32::GRAY));
+                        ui.label(RichText::new(format_price(op.stop_price)).small().color(Color32::RED));
+                        
+                        ui.label(RichText::new(format!(
+                            "(Target {:.2}% / Stop {:.2}%)", 
+                            target_dist, stop_dist
+                        )).small().color(Color32::GRAY));
+                    });
+
+                    ui.add_space(15.0);
+                    ui.separator();
+                    ui.add_space(5.0);
+
+                    // SECTION 4: THE STORY
+                    ui.label_subheader("How this works");
+                    ui.vertical(|ui| {
+                        ui.style_mut().spacing.item_spacing.y = 4.0;
+                        let text_color = Color32::from_gray(200);
+                        
+                        ui.label(RichText::new(format!(
+                            "1. We fingerprinted the market right now (Vol = {:.2}%, Momentum = {:+.2}%, Rel.Vol = {:.2}x).",
+                            state.volatility_pct * 100.0,
+                            state.momentum_pct * 100.0,
+                            state.relative_volume
+                        )).small().color(text_color).italics());
+                        
+                        let match_text = if sim.sample_size < 50 {
+                            format!("2. We scanned history and found exactly {} periods that matched this fingerprint.", sim.sample_size)
+                        } else {
+                            format!("2. We scanned history and found many matches, but we kept only the Top {} closest matches.", sim.sample_size)
+                        };
+                        ui.label(RichText::new(match_text).small().color(text_color).italics());
+
+                        ui.label(RichText::new(format!(
+                            "3. We simulated these {} scenarios. We checked if price hit the Target, the Stop, or ran out of time (Limit: {}).",
+                            sim.sample_size,
+                            max_time_str
+                        )).small().color(text_color).italics());
+                        
+                        let win_count = (sim.success_rate * sim.sample_size as f64).round() as usize;
+                        let win_pct = sim.success_rate * 100.0;
+                        
+                        // FIXED: Specific Phrasing
+                        ui.label(RichText::new(format!(
+                            "4. In {} of those {} cases, price hit the Target first. This produces the {:.1}% Win Rate you see above.",
+                            win_count, sim.sample_size, win_pct
+                        )).small().color(text_color).italics());
+                    });
+
+                } else {
+                    ui.label("No valid opportunities found. Check your settings or try a different pair.");
+                }
+            });
+    }
+
+
     pub(super) fn render_right_panel(&mut self, ctx: &Context) {
         let frame = UI_CONFIG.side_panel_frame();
 
@@ -106,7 +272,7 @@ impl ZoneSniperApp {
 
                                 // --- ADAPTIVE DECAY LOGIC ---
                                 // "Drag left to Snipe (High Decay), Drag right to Invest (Low Decay)"
-                                let new_decay = AnalysisConfig::calculate_time_decay(new_threshold);
+                                let new_decay = AdaptiveParameters::calculate_time_decay(new_threshold);
 
                                 // Apply only if changed (prevents log spam if dragging within same band)
                                 if (self.app_config.time_decay_factor - new_decay).abs()
@@ -552,6 +718,7 @@ impl ZoneSniperApp {
         Window::new("⌨️ Keyboard Shortcuts")
             .open(&mut self.show_debug_help)
             .resizable(false)
+            .order(Order::Tooltip) // Need to set this because Plot draws elements on Order::Foreground (and redraws them every second) so we need be a higher-level than Foreground even
             .collapsible(false)
             .default_width(400.0)
             .show(ctx, |ui| {

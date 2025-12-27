@@ -13,15 +13,30 @@ use crate::models::cva::{CVACore, ScoreType};
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::OhlcvTimeSeries;
 
-use crate::utils::maths_utils::{normalize_max, smooth_data, calculate_stats};
+use crate::utils::maths_utils::{normalize_max, smooth_data, calculate_stats, calculate_expected_roi_pct};
 
 #[derive(Debug, Clone)]
 pub struct TradeOpportunity {
     pub target_zone_id: usize,
     pub direction: String, // "Long" or "Short"
+    pub start_price: f64,
     pub target_price: f64,
     pub stop_price: f64,
     pub simulation: SimulationResult,
+}
+
+impl TradeOpportunity {
+    // ... existing new/methods ...
+
+    /// Calculates the Expected ROI % per trade for this specific opportunity.
+    pub fn expected_roi(&self) -> f64 {
+        calculate_expected_roi_pct(
+            self.start_price,
+            self.target_price,
+            self.stop_price,
+            self.simulation.success_rate
+        )
+    }
 }
 
 /// A single price zone with its properties

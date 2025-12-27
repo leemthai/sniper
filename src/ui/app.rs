@@ -182,6 +182,8 @@ pub struct ZoneSniperApp {
     pub ticker_state: TickerState,
     #[serde(skip)]
     pub last_frame_time: Option<AppInstant>,
+    #[serde(skip)]
+    pub show_opportunity_details: bool,
 }
 
 impl Default for ZoneSniperApp {
@@ -208,6 +210,7 @@ impl Default for ZoneSniperApp {
             auto_scale_y: true,
             ticker_state: TickerState::default(),
             last_frame_time: None,
+            show_opportunity_details: false,
         }
     }
 }
@@ -464,11 +467,15 @@ impl ZoneSniperApp {
             if i.key_pressed(Key::Num2) { self.plot_visibility.low_wicks = !self.plot_visibility.low_wicks; }
             if i.key_pressed(Key::Num3) { self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks; }
             if i.key_pressed(Key::H) { self.show_debug_help = !self.show_debug_help; }
-            if i.key_pressed(Key::Escape) { self.show_debug_help = false; self.show_ph_help = false; }
+            if i.key_pressed(Key::Escape) { self.show_debug_help = false; self.show_ph_help = false; self.show_opportunity_details = false}
             // Gate the 'S' key so it only works on Native
             #[cfg(not(target_arch = "wasm32"))]
             if i.key_pressed(Key::S) {
                 self.toggle_simulation_mode();
+            }
+            // NEW: Toggle Opportunity Explainer
+            if i.key_pressed(Key::E) { 
+                self.show_opportunity_details = !self.show_opportunity_details;
             }
             if i.key_pressed(Key::Num4) { self.jump_to_next_zone("sticky"); }
             if i.key_pressed(Key::Num5) { self.jump_to_next_zone("low-wick"); }
@@ -548,26 +555,6 @@ impl ZoneSniperApp {
         });
     }
 
-    // fn check_performance_monitor(&mut self) {
-    //     // --- PERFORMANCE MONITOR ---
-    //     let now = time_utils::now();
-    //     if let Some(last) = self.last_frame_time {
-    //         let dt = now.duration_since(last).as_secs_f32();
-    //         let ms = dt * 1000.0;
-            
-    //         // If frame took longer than 20ms (approx 50fps), log it.
-    //         // 16.6ms is perfect 60fps.
-    //         // #[cfg(debug_assertions)]
-    //         // if ms > 0.2 {
-    //         if ms > 20. {
-    //             // Determine rough FPS
-    //             let fps = 1.0 / dt;
-    //             log::error!("🐢 LAG SPIKE: Frame took {:.2}ms ({:.0} FPS)", ms, fps);
-    //         }
-    //     }
-    //     self.last_frame_time = Some(now);
-    // }
-
     fn render_loading_screen(ctx: &Context, state: &LoadingState) {
         CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
@@ -637,7 +624,11 @@ impl ZoneSniperApp {
         self.render_ticker_panel(ctx);
         self.render_status_panel(ctx);
         self.render_central_panel(ctx);
+        
+        // Modals
         self.render_help_panel(ctx);
+        self.render_opportunity_details_modal(ctx);
+
     }
 
     fn update_loading_progress(state: &mut crate::ui::app::LoadingState, rx_opt: &Option<Receiver<ProgressEvent>>) {

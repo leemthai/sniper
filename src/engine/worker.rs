@@ -7,6 +7,7 @@ use std::thread;
 
 use super::messages::{JobRequest, JobResult};
 
+use crate::analysis::adaptive::AdaptiveParameters;
 use crate::analysis::horizon_profiler::generate_profile;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator};
@@ -52,7 +53,7 @@ fn run_pathfinder_simulations(
     let mut opportunities = Vec::new();
 
     // 1. Calculate Adaptive Trend Lookback
-    let lookback = AnalysisConfig::calculate_trend_lookback(config.price_horizon.threshold_pct);
+    let lookback = AdaptiveParameters::calculate_trend_lookback_candles(config.price_horizon.threshold_pct);
 
     // --- LOG START ---
     #[cfg(debug_assertions)]
@@ -75,19 +76,21 @@ fn run_pathfinder_simulations(
 
     // --- OPTIMIZATION START ---
     // Scan History ONCE.
-    let historical_matches = ScenarioSimulator::find_historical_matches(
+    // We now unwrap the tuple (matches, state)
+    let (historical_matches, current_market_state) = match ScenarioSimulator::find_historical_matches(
         ohlcv,
         current_idx,
         lookback,
         duration_candles,
         config.journey.sample_count 
-    );
-
-    if historical_matches.is_empty() {
-        #[cfg(debug_assertions)]
-        log::warn!("PATHFINDER ABORT: Insufficient data or matches (Lookback {}).", lookback);
-        return Vec::new();
-    }
+    ) {
+        Some((m, s)) if !m.is_empty() => (m, s),
+        _ => {
+            #[cfg(debug_assertions)]
+            log::warn!("PATHFINDER ABORT: Insufficient data or matches (Lookback {}).", lookback);
+            return Vec::new();
+        }
+    };
     // --- OPTIMIZATION END ---
 
     // 3. Scan Targets
@@ -105,6 +108,7 @@ fn run_pathfinder_simulations(
             if let Some(result) = ScenarioSimulator::analyze_outcome(
                 ohlcv,
                 &historical_matches,
+                current_market_state,
                 current_price,
                 target_price,
                 stop_price,
@@ -120,6 +124,7 @@ fn run_pathfinder_simulations(
                 opportunities.push(TradeOpportunity {
                     target_zone_id: zone.id,
                     direction,
+                    start_price: current_price,
                     target_price,
                     stop_price,
                     simulation: result,
