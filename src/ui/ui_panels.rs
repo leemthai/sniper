@@ -1,7 +1,7 @@
 use colorgrad::Gradient;
 use eframe::egui::{
-    Align, Align2, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
-    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2, Button,
+    Align, Align2, Button, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
+    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2,
 };
 use strum::IntoEnumIterator;
 
@@ -47,7 +47,12 @@ impl<'a> CandleRangePanel<'a> {
         ui.add_space(5.0);
         // ui.heading(format!("{}", UI_TEXT.cr_title));
         // ui.separator();
-        ui.label_subheader(format!("{} {} {}", self.segments.len(), UI_TEXT.cr_title_1, UI_TEXT.cr_title_2));
+        ui.label_subheader(format!(
+            "{} {} {}",
+            self.segments.len(),
+            UI_TEXT.cr_title_1,
+            UI_TEXT.cr_title_2
+        ));
 
         ui.horizontal(|ui| {
             // PREV BUTTON
@@ -63,7 +68,7 @@ impl<'a> CandleRangePanel<'a> {
             let (btn_label, target_idx) = if is_viewing_all {
                 let safe_target = last_viewed_idx.min(self.segments.len().saturating_sub(1));
                 let is_live = safe_target == self.segments.len().saturating_sub(1);
-                
+
                 let text = if is_live {
                     UI_TEXT.cr_nav_return_live.to_string()
                 } else {
@@ -79,8 +84,13 @@ impl<'a> CandleRangePanel<'a> {
             }
 
             // NEXT BUTTON
-            let next_enabled = self.current_range_idx.map_or(false, |i| i < self.segments.len() - 1);
-            if ui.add_enabled(next_enabled, eframe::egui::Button::new("➡")).clicked() {
+            let next_enabled = self
+                .current_range_idx
+                .map_or(false, |i| i < self.segments.len() - 1);
+            if ui
+                .add_enabled(next_enabled, eframe::egui::Button::new("➡"))
+                .clicked()
+            {
                 if let Some(curr) = self.current_range_idx {
                     action = Some(Some(curr + 1));
                 } else {
@@ -88,7 +98,7 @@ impl<'a> CandleRangePanel<'a> {
                 }
             }
         });
-        
+
         ui.separator();
 
         // --- COMPACT LIST ---
@@ -107,24 +117,30 @@ impl<'a> CandleRangePanel<'a> {
 
                         for (i, seg) in self.segments.iter().enumerate().rev() {
                             let is_selected = self.current_range_idx == Some(i);
-                            
+
                             // GAP ROW
                             if i > 0 {
                                 // Merged Gap Info (Duration + Reason)
-                                let gap_text = format!("-- {} Gap ({}) --", seg.gap_duration_str, match seg.gap_reason {
-                                    GapReason::PriceMismatch => "Price",
-                                    GapReason::MissingSourceData => "Missing",
-                                    GapReason::PriceAbovePH => "High",
-                                    GapReason::PriceBelowPH => "Low",
-                                    _ => "Mixed",
-                                });
-                                
+                                let gap_text = format!(
+                                    "-- {} Gap ({}) --",
+                                    seg.gap_duration_str,
+                                    match seg.gap_reason {
+                                        GapReason::PriceMismatch => "Price",
+                                        GapReason::MissingSourceData => "Missing",
+                                        GapReason::PriceAbovePH => "High",
+                                        GapReason::PriceBelowPH => "Low",
+                                        _ => "Mixed",
+                                    }
+                                );
+
                                 let gap_color = match seg.gap_reason {
                                     GapReason::MissingSourceData => Color32::ORANGE,
                                     _ => Color32::from_gray(90),
                                 };
 
-                                ui.label(RichText::new(gap_text).italics().small().color(gap_color));
+                                ui.label(
+                                    RichText::new(gap_text).italics().small().color(gap_color),
+                                );
                                 ui.label(""); // Empty context column for gap
                                 ui.end_row();
                             }
@@ -132,19 +148,32 @@ impl<'a> CandleRangePanel<'a> {
                             // SEGMENT ROW
                             let start_date = TimeUtils::epoch_ms_to_date_string(seg.start_ts);
                             let end_date = TimeUtils::epoch_ms_to_date_string(seg.end_ts);
-                            
+
                             // Column 1: Date Range + Count (Clickable)
                             // Format: "2024-01-01 - 2024-02-01 (500c)"
-                            let label_text = format!("{} - {} ({}c)", start_date, end_date, seg.candle_count);
-                            if ui.selectable_label(is_selected, RichText::new(label_text).small()).clicked() {
+                            let label_text =
+                                format!("{} - {} ({}c)", start_date, end_date, seg.candle_count);
+                            if ui
+                                .selectable_label(is_selected, RichText::new(label_text).small())
+                                .clicked()
+                            {
                                 action = Some(Some(i));
                             }
-                            
+
                             // Column 2: Context
                             if i == self.segments.len() - 1 {
-                                ui.label(RichText::new(UI_TEXT.cr_label_live).color(Color32::GREEN).strong().small());
+                                ui.label(
+                                    RichText::new(UI_TEXT.cr_label_live)
+                                        .color(Color32::GREEN)
+                                        .strong()
+                                        .small(),
+                                );
                             } else {
-                                ui.label(RichText::new(UI_TEXT.cr_label_historical).small().color(Color32::GRAY));
+                                ui.label(
+                                    RichText::new(UI_TEXT.cr_label_historical)
+                                        .small()
+                                        .color(Color32::GRAY),
+                                );
                             }
                             ui.end_row();
                         }
@@ -205,7 +234,7 @@ pub struct DataGenerationPanel<'a> {
     profile: Option<&'a HorizonProfile>,
     actual_candle_count: usize,
     interval_ms: i64,
-    pub scroll_to_selected: bool,
+    pub scroll_to_pair_requested: &'a mut Option<String>,
 }
 
 impl<'a> DataGenerationPanel<'a> {
@@ -217,7 +246,7 @@ impl<'a> DataGenerationPanel<'a> {
         profile: Option<&'a HorizonProfile>,
         actual_candle_count: usize,
         interval_ms: i64,
-        scroll_to_selected: bool,
+        scroll_to_pair_requested: &'a mut Option<String>,
     ) -> Self {
         Self {
             zone_count,
@@ -227,7 +256,7 @@ impl<'a> DataGenerationPanel<'a> {
             profile,
             actual_candle_count,
             interval_ms,
-            scroll_to_selected,
+            scroll_to_pair_requested,
         }
     }
 
@@ -631,8 +660,6 @@ impl<'a> DataGenerationPanel<'a> {
             .show(ui, |ui| {
                 for item in &self.available_pairs {
                     let is_selected = self.selected_pair.as_ref() == Some(item);
-
-                    // Capture the response so we can scroll to it
                     let response = ui.selectable_label(is_selected, item);
 
                     if response.clicked() {
@@ -640,10 +667,15 @@ impl<'a> DataGenerationPanel<'a> {
                         changed = Some(item.clone());
                     }
 
-                    // ONE-SHOT SCROLL
-                    // Only scroll if this item is selected AND the flag is raised
-                    if is_selected && self.scroll_to_selected {
-                        response.scroll_to_me(Some(Align::Center));
+                    // NEW LOGIC: Only scroll if there is an explicit external request for THIS item
+                    if let Some(target) = self.scroll_to_pair_requested {
+                        if target == item {
+                            // Use None to "Make Visible" (minimal scrolling) instead of Center
+                            response.scroll_to_me(None);
+
+                            // Clear the request immediately so it doesn't happen again
+                            *self.scroll_to_pair_requested = None;
+                        }
                     }
                 }
             });

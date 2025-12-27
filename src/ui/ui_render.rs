@@ -88,7 +88,8 @@ impl ZoneSniperApp {
                         opp_events = self.signals_panel(ui);
                     });
                 for pair_name in opp_events {
-                    self.handle_pair_selection(pair_name);
+                    self.handle_pair_selection(pair_name.clone());
+                    self.scroll_to_pair = Some(pair_name);
                 }
 
                 for event in data_events {
@@ -192,7 +193,8 @@ impl ZoneSniperApp {
                 if let Some(pair) = self.ticker_state.render(ui) {
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        self.handle_pair_selection(pair);
+                        self.handle_pair_selection(pair.clone());
+                        self.scroll_to_pair = Some(pair);
                     }
                     // WASM: Suppress warning (Variable used)
                     #[cfg(target_arch = "wasm32")]
@@ -680,14 +682,10 @@ impl ZoneSniperApp {
             profile.as_ref(),
             actual_count,
             self.app_config.interval_width_ms,
-            self.scroll_to_pair,
+            &mut self.scroll_to_pair,
         );
 
         let events = panel.render(ui, &mut self.show_ph_help);
-
-        // We have rendered the frame. If scroll was requested, it happened.
-        // Turn it off so the user can scroll manually next frame.
-        self.scroll_to_pair = false;
 
         // Render the window (it handles its own "if open" check internally via .open())
         if self.show_ph_help {

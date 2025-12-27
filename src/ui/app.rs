@@ -157,7 +157,7 @@ pub struct ZoneSniperApp {
     #[serde(skip)]
     pub app_config: AnalysisConfig,
     #[serde(skip)]
-    pub scroll_to_pair: bool,
+    pub scroll_to_pair: Option<String>,
     #[serde(skip)]
     pub engine: Option<SniperEngine>,
     #[serde(skip)]
@@ -202,7 +202,7 @@ impl Default for ZoneSniperApp {
             sim_step_size: SimStepSize::default(),
             sim_direction: SimDirection::default(),
             simulated_prices: HashMap::new(),
-            scroll_to_pair: false,
+            scroll_to_pair: None,
             nav_states: HashMap::new(),
             candle_resolution: CandleResolution::default(),
             auto_scale_y: true,
@@ -307,7 +307,7 @@ impl ZoneSniperApp {
 
         // 2. Set New Pair & Reset View Flags
         self.selected_pair = Some(new_pair.clone());
-        self.scroll_to_pair = true;
+        // self.scroll_to_pair = true;
         self.auto_scale_y = true;
 
         // 3. Load config for the NEW pair (or default)
@@ -691,7 +691,7 @@ impl ZoneSniperApp {
                 engine.trigger_global_recalc(self.selected_pair.clone());
 
                 self.engine = Some(engine);
-                self.scroll_to_pair = true;
+                self.scroll_to_pair = self.selected_pair.clone(); 
 
                 // 3. Reset Navigation
                 if let Some(pair) = &self.selected_pair {
