@@ -17,16 +17,22 @@ use crate::config::AnalysisConfig;
 
 use crate::domain::price_horizon;
 
-use crate::models::OhlcvTimeSeries;
 use crate::models::cva::CVACore;
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::timeseries::find_matching_ohlcv;
-use crate::models::trading_view::{SuperZone, TradeOpportunity, TradeDirection};
+use crate::models::OhlcvTimeSeries;
+use crate::models::trading_view::{SuperZone, TradeDirection, TradeOpportunity};
 
 use crate::TradingModel;
 
 use crate::utils::maths_utils::calculate_expected_roi_pct;
 use crate::utils::time_utils::AppInstant;
+
+#[cfg(debug_assertions)]
+use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::calculate_percent_diff};
+
+
+
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -63,39 +69,66 @@ fn run_pathfinder_simulations(
     let current_idx = ohlcv.klines().saturating_sub(1);
 
     #[cfg(debug_assertions)]
-    log::info!("PATHFINDER START: Scanning {} zones. Lookback: {} candles.", sticky_zones.len(), lookback);
+    log::info!(
+        "PATHFINDER START: Scanning {} zones. Lookback: {} candles.",
+        sticky_zones.len(),
+        lookback
+    );
 
-    
     // 2. Heavy Lift: Find Historical Matches ONCE
-    let (historical_matches, current_market_state) = match ScenarioSimulator::find_historical_matches(
-        ohlcv,
-        current_idx,
-        lookback,
-        duration_candles,
-        config.journey.sample_count 
-    ) {
-        Some((m, s)) if !m.is_empty() => (m, s),
-        _ => {
-            #[cfg(debug_assertions)]
-            log::warn!("PATHFINDER ABORT: Insufficient data or matches (Lookback {}).", lookback);
-            return Vec::new();
-        }
-    };
+    let (historical_matches, current_market_state) =
+        match ScenarioSimulator::find_historical_matches(
+            ohlcv,
+            current_idx,
+            lookback,
+            duration_candles,
+            config.journey.sample_count,
+            &config.similarity,
+        ) {
+            Some((m, s)) if !m.is_empty() => (m, s),
+            _ => {
+                #[cfg(debug_assertions)]
+                log::warn!(
+                    "PATHFINDER ABORT: Insufficient data or matches (Lookback {}).",
+                    lookback
+                );
+                return Vec::new();
+            }
+        };
     // ----------------
+
+    // --- DEBUG: ANALYZE THE MATCH QUALITY ---
+    #[cfg(debug_assertions)]
+    if let Some((best_idx, _best_score)) = historical_matches.first() {
+        if let Some(best_hist_state) = MarketState::calculate(ohlcv, *best_idx, lookback) {
+            let (total, d_vol, d_mom, d_vol_ratio) = current_market_state.debug_score_components(&best_hist_state, &config.similarity);
+            
+            // This log tells you EXACTLY what is driving the similarity
+            log::info!("🧬 MATCH ANATOMY (Score: {:.4}):", total);
+            log::info!("   - Volatility: {:.4} (Weight {:.1})", d_vol, config.similarity.weight_volatility);
+            log::info!("   - Momentum:   {:.4} (Weight {:.1})", d_mom, config.similarity.weight_momentum);
+            log::info!("   - Rel. Volume:{:.4} (Weight {:.1})", d_vol_ratio, config.similarity.weight_volume);
+            
+            if d_vol_ratio > d_vol && d_vol_ratio > d_mom {
+                log::warn!("   ⚠️ Volume is dominating the score! Consider lowering weight_volume.");
+            }
+        }
+    }
+
+
 
     // 3. Scan Zones
     for (i, zone) in sticky_zones.iter().enumerate() {
         // IDIOMATIC: Determine Setup using Option<(Price, Direction)>
         let setup = if current_price < zone.price_bottom {
-             Some((zone.price_bottom, TradeDirection::Long))
+            Some((zone.price_bottom, TradeDirection::Long))
         } else if current_price > zone.price_top {
-             Some((zone.price_top, TradeDirection::Short))
+            Some((zone.price_top, TradeDirection::Short))
         } else {
-             None
+            None
         };
 
         if let Some((target_price, direction)) = setup {
-
             // 4. Run Tournament to find best Stop Loss
             if let Some((best_result, best_stop)) = run_stop_loss_tournament(
                 ohlcv,
@@ -106,7 +139,7 @@ fn run_pathfinder_simulations(
                 direction,
                 duration_candles,
                 config.journey.risk_reward_tests,
-                i // zone index for debug logging
+                i, // zone index for debug logging
             ) {
                 opportunities.push(TradeOpportunity {
                     pair_name: ohlcv.pair_interval.name().to_string(),
@@ -135,7 +168,6 @@ fn run_stop_loss_tournament(
     risk_tests: &[f64],
     _zone_idx: usize,
 ) -> Option<(SimulationResult, f64)> {
-    
     let mut best_roi = f64::NEG_INFINITY;
     let mut best_result: Option<(SimulationResult, f64, f64)> = None; // (Result, Stop, Ratio)
     let target_dist_abs = (target_price - current_price).abs();
@@ -150,20 +182,31 @@ fn run_stop_loss_tournament(
     let debug = _zone_idx < 3;
     #[cfg(debug_assertions)]
     if debug {
-        log::info!("🔍 Analyzing Zone {} ({}): Testing {} SL candidates. Volatility Floor: {:.2}% (${:.4})", 
-            _zone_idx, direction, risk_tests.len(), vol_floor_pct * 100.0, min_stop_dist);
+        log::info!(
+            "🔍 Analyzing Zone {} ({}): Testing {} SL candidates. Volatility Floor: {:.2}% (${:.4})",
+            _zone_idx,
+            direction,
+            risk_tests.len(),
+            vol_floor_pct * 100.0,
+            min_stop_dist
+        );
     }
 
     for &_ratio in risk_tests {
         // 2. Calculate Candidate Stop
         let stop_dist = target_dist_abs / _ratio;
-        
+
         if stop_dist < min_stop_dist {
             #[cfg(debug_assertions)]
             if debug {
-                log::info!("   [R:R {:.1}] 🛑 SKIPPED: Stop distance {:.4} < Volatility Floor {:.4}", _ratio, stop_dist, min_stop_dist);
+                log::info!(
+                    "   [R:R {:.1}] 🛑 SKIPPED: Stop distance {:.4} < Volatility Floor {:.4}",
+                    _ratio,
+                    stop_dist,
+                    min_stop_dist
+                );
             }
-            continue; 
+            continue;
         }
 
         let candidate_stop = match direction {
@@ -180,20 +223,26 @@ fn run_stop_loss_tournament(
             target_price,
             candidate_stop,
             duration_candles,
-            direction
+            direction,
         ) {
             let roi = calculate_expected_roi_pct(
                 current_price,
                 target_price,
                 candidate_stop,
-                result.success_rate
+                result.success_rate,
             );
 
             #[cfg(debug_assertions)]
             if debug {
+                let risk_pct = calculate_percent_diff(candidate_stop, current_price);
                 log::info!(
-                    "   [R:R {:.1}] Stop: {:.4} | Win: {:.1}% | ROI: {:+.2}%", 
-                    _ratio, candidate_stop, result.success_rate * 100.0, roi
+                    "   [R:R {:.1}] Stop: {:.4} | {}: {:.1}% | ROI: {:+.2}% | Risk: {:.2}%",
+                    _ratio,
+                    candidate_stop,
+                    UI_TEXT.label_success_rate, // "Success Rate"
+                    result.success_rate * 100.0,
+                    roi,
+                    risk_pct
                 );
             }
 
@@ -214,8 +263,6 @@ fn run_stop_loss_tournament(
         None
     }
 }
-
-
 
 pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
     let ph_pct = req.config.price_horizon.threshold_pct * 100.0;
@@ -347,19 +394,17 @@ fn build_success_result(
     if !opps.is_empty() {
         // Just log the top one to check sanity
         if let Some(best) = opps.iter().max_by(|a, b| {
-            a.simulation
-                .success_rate
-                .partial_cmp(&b.simulation.success_rate)
-                .unwrap()
+            a.expected_roi().partial_cmp(&b.expected_roi()).unwrap()
         }) {
             log::info!(
-                "🎯 PATHFINDER [{}]: Found {} opps. Best: {} to {:.2} (Win: {:.1}% | EV: {:.2} | Samples: {})",
+                "🎯 PATHFINDER [{}]: Found {} opps. Best: {} to {:.2} ({}: {:.1}% | R:R: {:.2} | Samples: {})",
                 req.pair_name,
                 opps.len(),
                 best.direction,
                 best.target_price,
+                UI_TEXT.label_success_rate,
                 best.simulation.success_rate * 100.0,
-                best.simulation.risk_reward_ratio, // or expected value if you calculated it
+                best.simulation.risk_reward_ratio,
                 best.simulation.sample_size
             );
         }

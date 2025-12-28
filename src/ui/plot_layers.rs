@@ -12,7 +12,7 @@ use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 
 use crate::analysis::range_gap_finder::GapReason;
 
-use crate::config::ANALYSIS;
+// use crate::config::ANALYSIS;
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::models::OhlcvTimeSeries;
@@ -24,7 +24,7 @@ use crate::ui::styles::{DirectionColor, get_outcome_color, apply_opacity};
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
-use crate::utils::maths_utils;
+use crate::utils::maths_utils::{self, calculate_percent_diff};
 
 pub struct HorizonLinesLayer;
 
@@ -52,9 +52,9 @@ impl PlotLayer for OpportunityLayer {
             .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
         {
             let win_rate = best_opp.simulation.success_rate;
-            if win_rate < ANALYSIS.journey.min_win_rate {
-                return;
-            }
+            // if win_rate < ANALYSIS.journey.min_win_rate {
+                // return;
+            // }
 
             // 3. Setup Foreground Painter
             // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
@@ -144,6 +144,10 @@ impl PlotLayer for OpportunityLayer {
                 win_rate,
             );
 
+            // NEW: Calculate dynamic distances for the HUD
+            let target_dist_pct = calculate_percent_diff(best_opp.target_price, current_price);
+            let stop_dist_pct = calculate_percent_diff(best_opp.stop_price, current_price);
+
             // 2. Build Rich Text Layout
             let mut job = LayoutJob::default();
             let font_id = FontId::proportional(14.0);
@@ -151,8 +155,9 @@ impl PlotLayer for OpportunityLayer {
             // Block 1: Neutral Info
             job.append(
                 &format!(
-                    "{}\nWin: {:.1}%\nR:R: {:.2}\n",
+                    "{}\n{}: {:.1}%\nR:R: {:.2}\n",
                     best_opp.direction.to_string().to_uppercase(),
+                    UI_TEXT.label_success_rate,
                     win_rate * 100.0,
                     best_opp.simulation.risk_reward_ratio
                 ),
@@ -164,7 +169,29 @@ impl PlotLayer for OpportunityLayer {
                 },
             );
 
-            // Note: We use {:.2}% precision because per-trade EV can be small (e.g. 0.05%)
+            // Block 2: Target Info (Profit Color)
+            job.append(
+                &format!("Target: {} (+{:.2}%)\n", format_price(best_opp.target_price), target_dist_pct),
+                0.0,
+                TextFormat {
+                    color: PLOT_CONFIG.color_profit,
+                    font_id: font_id.clone(),
+                    ..Default::default()
+                },
+            );
+
+            // Block 3: Stop Info (Loss Color)
+            job.append(
+                &format!("Stop: {} (-{:.2}%)\n", format_price(best_opp.stop_price), stop_dist_pct),
+                0.0,
+                TextFormat {
+                    color: PLOT_CONFIG.color_stop_loss,
+                    font_id: font_id.clone(),
+                    ..Default::default()
+                },
+            );
+
+            // Block 4: RoI (Outcome Color)
             job.append(
                 &format!("RoI: {:+.2}%", roi),
                 0.0,
@@ -174,6 +201,8 @@ impl PlotLayer for OpportunityLayer {
                     ..Default::default()
                 },
             );
+
+
 
             // 3. Render it (FIXED: Use painter.layout_job)
             let galley = painter.layout_job(job);

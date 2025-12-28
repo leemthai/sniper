@@ -56,6 +56,14 @@ pub struct ZoneParams {
 }
 
 #[derive(Clone, Debug)]
+pub struct SimilaritySettings {
+    pub weight_volatility: f64,
+    pub weight_momentum: f64,
+    pub weight_volume: f64,
+    pub cutoff_score: f64, // The "100.0" filter
+}
+
+#[derive(Clone, Debug)]
 pub struct ZoneClassificationConfig {
     pub sticky: ZoneParams,
     pub reversal: ZoneParams,
@@ -79,6 +87,8 @@ pub struct AnalysisConfig {
     pub price_horizon: PriceHorizonConfig,
 
     pub journey: JourneySettings,
+
+    pub similarity: SimilaritySettings,
 }
 
 #[derive(Clone, Debug)]
@@ -99,6 +109,13 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     // 2. Derive the default automatically
     // 2. Use the Constant
     time_decay_factor: DEFAULT_TIME_DECAY,
+
+    similarity: SimilaritySettings {
+        weight_volatility: 10.0,
+        weight_momentum: 5.0,
+        weight_volume: 1.0,
+        cutoff_score: 100.0,
+    },
 
     zones: ZoneClassificationConfig {
         // STICKY ZONES (Volume Weighted)
@@ -152,7 +169,7 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         stop_loss_pct: 5.0,
         max_journey_time: Duration::from_secs(86400 * 7),
         sample_count: 50,
-        min_win_rate: 0.40,
+        min_win_rate: 0.05,
         // NEW: The Tournament Ratios
         risk_reward_tests: &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0],
     },

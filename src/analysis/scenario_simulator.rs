@@ -3,6 +3,7 @@ use rayon::prelude::*;
 
 use crate::analysis::market_state::MarketState;
 
+use crate::config::SimilaritySettings;
 use crate::models::OhlcvTimeSeries;
 use crate::models::trading_view::TradeDirection;
 
@@ -42,6 +43,7 @@ impl ScenarioSimulator {
         trend_lookback: usize,
         max_duration_candles: usize,
         sample_count: usize,
+        sim_config: &SimilaritySettings,
     ) -> Option<(Vec<(usize, f64)>, MarketState)> { // Returns (index, score)
         
         // 1. Calculate Current Market State
@@ -55,12 +57,14 @@ impl ScenarioSimulator {
             .into_par_iter()
             .filter_map(|i| {
                 let hist_state = MarketState::calculate(ts, i, trend_lookback)?;
-                let score = current_market_state.similarity_score(&hist_state);
-                // Optimization: Filter out terrible matches early to save sort time
-                if score < 100.0 {
-                    Some((i, score))
-                } else {
-                    None
+                
+                // USE CONFIG
+                let score = current_market_state.similarity_score(&hist_state, sim_config);
+                
+                if score < sim_config.cutoff_score { 
+                    Some((i, score)) 
+                } else { 
+                    None 
                 }
             })
             .collect();

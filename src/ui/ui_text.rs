@@ -87,6 +87,8 @@ pub struct UiText {
     pub cr_nav_return_prefix: &'static str,
     pub cr_nav_return_live: &'static str,
 
+    pub label_success_rate: &'static str,
+
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -228,5 +230,7 @@ pub const UI_TEXT: UiText = UiText {
     cr_nav_show_all: "SHOW ALL RANGES", // Clearer than just "SHOW ALL"
     cr_nav_return_prefix: "RETURN TO SEGMENT",
     cr_nav_return_live: "RETURN TO LIVE",
+
+    label_success_rate: "Success Rate",
 
 };

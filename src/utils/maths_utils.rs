@@ -208,6 +208,16 @@ pub fn calculate_expected_roi_pct(
     ev_yield * 100.0
 }
 
+/// Calculates the absolute percentage difference between two values relative to a reference.
+/// Returns 0.0 to 100.0+
+/// Formula: |value - reference| / reference * 100.0
+#[inline]
+pub fn calculate_percent_diff(value: f64, reference: f64) -> f64 {
+    if reference.abs() < f64::EPSILON { return 0.0; }
+    (value - reference).abs() / reference * 100.0
+}
+
+
 #[inline]
 pub fn remap(val: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
     let t = (val - in_min) / (in_max - in_min);

@@ -1,4 +1,5 @@
 use crate::models::OhlcvTimeSeries;
+use crate::config::SimilaritySettings;
 
 /// A normalized "Fingerprint" of the market conditions at a specific moment in time.
 /// Used to find historical matches for the Ghost Runner simulation.
@@ -21,6 +22,15 @@ pub struct MarketState {
 }
 
 impl MarketState {
+
+    /// Helper for debugging: Returns the contribution of each factor
+    pub fn debug_score_components(&self, other: &Self, config: &SimilaritySettings) -> (f64, f64, f64, f64) {
+        let d_vol = (self.volatility_pct - other.volatility_pct).abs() * config.weight_volatility;
+        let d_mom = (self.momentum_pct - other.momentum_pct).abs() * config.weight_momentum;
+        let d_vol_ratio = (self.relative_volume - other.relative_volume).abs() * config.weight_volume;
+        (d_vol + d_mom + d_vol_ratio, d_vol, d_mom, d_vol_ratio)
+    }
+
 
     /// Calculates the fingerprint for a specific index.
     /// `lookback`: Number of candles to use for Momentum and Volume MA.
@@ -75,18 +85,11 @@ impl MarketState {
     }
     
 
-    /// Calculates the "Distance" (Dissimilarity) between two states.
-    /// 0.0 = Identical. Higher = More different.
-    /// We weight the factors based on what matters most.
-    pub fn similarity_score(&self, other: &Self) -> f64 {
-        // Weights (Can be tuned later)
-        let w_volatility = 10.0; // Volatility mismatch is bad
-        let w_momentum = 5.0;    // Trend direction matters
-        let w_volume = 1.0;      // Volume is noisy, lower weight
 
-        let d_vol = (self.volatility_pct - other.volatility_pct).abs() * w_volatility;
-        let d_mom = (self.momentum_pct - other.momentum_pct).abs() * w_momentum;
-        let d_vol_ratio = (self.relative_volume - other.relative_volume).abs() * w_volume;
+    pub fn similarity_score(&self, other: &Self, config: &SimilaritySettings) -> f64 {
+        let d_vol = (self.volatility_pct - other.volatility_pct).abs() * config.weight_volatility;
+        let d_mom = (self.momentum_pct - other.momentum_pct).abs() * config.weight_momentum;
+        let d_vol_ratio = (self.relative_volume - other.relative_volume).abs() * config.weight_volume;
 
         d_vol + d_mom + d_vol_ratio
     }

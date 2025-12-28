@@ -22,6 +22,7 @@ use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
+use crate::utils::maths_utils::calculate_percent_diff;
 
 use super::app::ZoneSniperApp;
 
@@ -92,7 +93,7 @@ impl ZoneSniperApp {
                     let roi_color = get_outcome_color(roi);
                     
                     ui.metric("RoI (per trade)", &format!("{:+.2}%", roi), roi_color);
-                    ui.metric("Win Rate", &format!("{:.1}%", sim.success_rate * 100.0), PLOT_CONFIG.color_text_primary);
+                    ui.metric(UI_TEXT.label_success_rate, &format!("{:.1}%", sim.success_rate * 100.0), PLOT_CONFIG.color_text_primary);
                     ui.metric("R:R Ratio", &format!("{:.2}", sim.risk_reward_ratio), PLOT_CONFIG.color_text_primary);
 
                     ui.add_space(10.0);
@@ -139,8 +140,8 @@ impl ZoneSniperApp {
                     ui.metric("Target", &format_price(op.target_price), PLOT_CONFIG.color_profit);
                     
                     // Stop Loss (Inline Explanation)
-                    let target_dist = (op.target_price - op.start_price).abs() / op.start_price * 100.0;
-                    let stop_dist = (op.stop_price - op.start_price).abs() / op.start_price * 100.0;
+                    let target_dist = calculate_percent_diff(op.target_price, op.start_price);
+                    let stop_dist = calculate_percent_diff(op.stop_price, op.start_price);
 
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
