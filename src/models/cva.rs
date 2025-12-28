@@ -95,13 +95,6 @@ impl CVACore {
         let num_chunks = range_copy.count_intersecting_chunks(start_range, end_range);
 
         if num_chunks == 0 {
-            // Log at debug level to avoid spamming warn if price is just slightly out of bounds
-            // #[cfg(debug_assertions)]
-            // log::debug!(
-            //     "Flat Score: num_chunks is 0 for range [{:.2}, {:.2}]. Skipping.",
-            //     start_range,
-            //     end_range
-            // );
             return;
         }
 
