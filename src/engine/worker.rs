@@ -204,10 +204,10 @@ fn run_stop_loss_tournament(
         }
     }
 
-    if let Some((res, stop, ratio)) = best_result {
+    if let Some((res, stop, _ratio)) = best_result {
         #[cfg(debug_assertions)]
         if debug {
-            log::info!("   🏆 WINNER: R:R {:.1} with ROI {:+.2}%", ratio, best_roi);
+            log::info!("   🏆 WINNER: R:R {:.1} with ROI {:+.2}%", _ratio, best_roi);
         }
         Some((res, stop))
     } else {

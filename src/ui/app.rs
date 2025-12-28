@@ -111,7 +111,7 @@ pub enum CandleResolution {
 }
 
 impl Default for CandleResolution {
-    fn default() -> Self { Self::M5 } // 1 * 5m = 5m
+    fn default() -> Self { Self::D1 } // Default to 1D candles for plot candles
 }
 
 // NEW: Centralized Logic
