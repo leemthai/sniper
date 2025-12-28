@@ -161,7 +161,7 @@ fn run_stop_loss_tournament(
         if stop_dist < min_stop_dist {
             #[cfg(debug_assertions)]
             if debug {
-                log::debug!("   [R:R {:.1}] 🛑 SKIPPED: Stop distance {:.4} < Volatility Floor {:.4}", _ratio, stop_dist, min_stop_dist);
+                log::info!("   [R:R {:.1}] 🛑 SKIPPED: Stop distance {:.4} < Volatility Floor {:.4}", _ratio, stop_dist, min_stop_dist);
             }
             continue; 
         }
@@ -191,7 +191,7 @@ fn run_stop_loss_tournament(
 
             #[cfg(debug_assertions)]
             if debug {
-                log::debug!(
+                log::info!(
                     "   [R:R {:.1}] Stop: {:.4} | Win: {:.1}% | ROI: {:+.2}%", 
                     _ratio, candidate_stop, result.success_rate * 100.0, roi
                 );
@@ -302,7 +302,7 @@ fn get_or_generate_profile(req: &JobRequest, price: f64) -> HorizonProfile {
 
         if price_match && min_match && max_match {
             #[cfg(debug_assertions)]
-            log::debug!("Worker: Reusing Cached Profile for {}", req.pair_name);
+            log::info!("Worker: Reusing Cached Profile for {}", req.pair_name);
             return existing.clone();
         }
     }
@@ -364,7 +364,7 @@ fn build_success_result(
             );
         }
     } else {
-        log::debug!(
+        log::info!(
             "PATHFINDER [{}]: No valid setups found (Price might be inside a zone/mud).",
             req.pair_name
         );
