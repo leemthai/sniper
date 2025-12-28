@@ -1,3 +1,7 @@
+Copyright (c) 2025 Lee Hodgson
+
+Required Notice: Copyright Lee Hodgson (https://github.com/leemthai/sniper)
+
 # PolyForm Noncommercial License 1.0.0
 
 <https://polyformproject.org/licenses/noncommercial/1.0.0>
