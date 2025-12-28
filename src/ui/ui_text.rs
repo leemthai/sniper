@@ -160,7 +160,7 @@ pub const UI_TEXT: UiText = UiText {
         (
             "Deep Purple",
             "Low (< 10%)",
-            "Statistically Insignificant (Noise)",
+            "Statistically Insignificant (noise)",
         ),
         ("Orange/Red", "Medium", "Standard Statistical Confidence"),
         (
@@ -176,32 +176,32 @@ pub const UI_TEXT: UiText = UiText {
         (
             "< 5%",
             "Sniper / Scalp",
-            "Immediate price action (High Decay)",
+            "Immediate price action",
         ),
         (
             "5% - 15%",
             "Swing Trade",
-            "Balanced recent history (Med Decay)",
+            "Balanced recent history",
         ),
         (
             "> 15%",
             "Macro / Invest",
-            "Deep historical structure (Low Decay)",
+            "Deep historical structure",
         ),
     ],
 
     ph_help_definitions: &[
         (
             "Evidence",
-            "Total duration of actual data (candle count x interval).",
+            "Total duration of actual data (candle count * interval).",
         ),
         (
             "History",
-            "Calendar time elapsed between the first and last candle.",
+            "Calendar time elapsed between the first and last candle within this price range.",
         ),
         (
             "Density",
-            "Ratio of Evidence to History. (Yellow = High Data Quality).",
+            "Ratio of Evidence to History. (Yellow = highest data quality).",
         ),
     ],
 
@@ -221,13 +221,13 @@ pub const UI_TEXT: UiText = UiText {
 
     // Gap Reasons
     cr_gap_price_mismatch: "Price out of Range",
-    cr_gap_missing_source: "Missing Data (Exchange)",
+    cr_gap_missing_source: "Data missing from Exchange)",
     cr_gap_price_above: "Price > Horizon",
     cr_gap_price_below: "Price < Horizon",
     cr_gap_mixed: "Mixed Gap",
 
     // NAVIGATION
-    cr_nav_show_all: "SHOW ALL RANGES", // Clearer than just "SHOW ALL"
+    cr_nav_show_all: "SHOW ALL RANGES",
     cr_nav_return_prefix: "RETURN TO SEGMENT",
     cr_nav_return_live: "RETURN TO LIVE",
 
