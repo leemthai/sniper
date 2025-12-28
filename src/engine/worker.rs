@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
-// Only import thread on non-WASM targets
+// Only import thread on non-WASM target
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
 
