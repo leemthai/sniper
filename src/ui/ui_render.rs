@@ -1,5 +1,5 @@
 use eframe::egui::{
-    CentralPanel, Color32, Context, Grid, RichText, ScrollArea, SidePanel, TopBottomPanel,
+    CentralPanel, Context, Grid, RichText, ScrollArea, SidePanel, TopBottomPanel,
     Ui, Window, Order,
 };
 
@@ -10,7 +10,10 @@ use crate::models::cva::ScoreType;
 
 use crate::ui::app::CandleResolution;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
-use crate::ui::styles::UiStyleExt;
+use crate::ui::styles::{UiStyleExt, get_outcome_color, DirectionColor};
+
+use crate::config::plot::PLOT_CONFIG;
+
 use crate::ui::ui_panels::{
     CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel,
 };
@@ -57,7 +60,14 @@ impl ZoneSniperApp {
                         .unwrap_or_else(|| format!("Zone #{}", op.target_zone_id)); // Fallback
 
                     ui.heading(format!("Best Opportunity: {}", zone_info));
-                    ui.label_subdued(format!("Setup Type: {}", op.direction.to_uppercase()));
+                    // "Setup Type: LONG" (with encoded color)
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.label_subdued("Setup Type:");
+                        ui.label(RichText::new(op.direction.to_string().to_uppercase())
+                            .strong()
+                            .color(op.direction.color())); // Uses PLOT_CONFIG via trait
+                    });
                     ui.separator();
 
 
@@ -79,11 +89,11 @@ impl ZoneSniperApp {
                     // SECTION 1: THE MATH
                     ui.label_subheader("Expectancy & Return");
                     let roi = op.expected_roi();
-                    let color = if roi > 0.0 { Color32::GREEN } else { Color32::RED };
+                    let roi_color = get_outcome_color(roi);
                     
-                    ui.metric("RoI (per trade)", &format!("{:+.2}%", roi), color);
-                    ui.metric("Win Rate", &format!("{:.1}%", sim.success_rate * 100.0), Color32::WHITE);
-                    ui.metric("R:R Ratio", &format!("{:.2}", sim.risk_reward_ratio), Color32::WHITE);
+                    ui.metric("RoI (per trade)", &format!("{:+.2}%", roi), roi_color);
+                    ui.metric("Win Rate", &format!("{:.1}%", sim.success_rate * 100.0), PLOT_CONFIG.color_text_primary);
+                    ui.metric("R:R Ratio", &format!("{:.2}", sim.risk_reward_ratio), PLOT_CONFIG.color_text_primary);
 
                     ui.add_space(10.0);
 
@@ -92,29 +102,31 @@ impl ZoneSniperApp {
                     let state = &sim.market_state;
                     
                     // Volatility (Standard metric is fine)
-                    ui.metric("Volatility", &format!("{:.2}%", state.volatility_pct * 100.0), Color32::LIGHT_BLUE);
+                    ui.metric("Volatility", &format!("{:.2}%", state.volatility_pct * 100.0), PLOT_CONFIG.color_info);
                     
                     // Momentum (Inline Explanation)
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(RichText::new("Momentum:").small().color(Color32::GRAY));
-                        let mom_color = if state.momentum_pct >= 0.0 { Color32::GREEN } else { Color32::RED };
-                        ui.label(RichText::new(format!("{:+.2}%", state.momentum_pct * 100.0)).small().color(mom_color));
+                        ui.label(RichText::new("Momentum:").small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(format!("{:+.2}%", state.momentum_pct * 100.0)).small().color(get_outcome_color(state.momentum_pct)));
                         
                         ui.label(RichText::new(format!(
                             "(Price change over the last {}. Adaptive lookback based on Price Horizon {:.3}%)", 
                             lookback_str, ph_pct * 100.0
-                        )).small().color(Color32::GRAY));
+                        )).small().color(PLOT_CONFIG.color_text_subdued));
                     });
 
                     // Rel Volume (Inline Explanation)
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(RichText::new("Rel. Volume:").small().color(Color32::GRAY));
-                        let vol_color = if state.relative_volume > 1.0 { Color32::YELLOW } else { Color32::GRAY };
+                        ui.label(RichText::new("Rel. Volume:").small().color(PLOT_CONFIG.color_text_subdued));
+                        let vol_color = if state.relative_volume > 1.0 { 
+                            PLOT_CONFIG.color_warning 
+                        } else { 
+                            PLOT_CONFIG.color_text_subdued 
+                        };
                         ui.label(RichText::new(format!("{:.2}x", state.relative_volume)).small().color(vol_color));
-                        
-                        ui.label(RichText::new("(Ratio of Current Volume vs Recent Average.)").small().color(Color32::GRAY));
+                        ui.label(RichText::new("(Ratio of Current Volume vs Recent Average.)").small().color(PLOT_CONFIG.color_text_subdued));
                     });
 
                     ui.add_space(10.0);
@@ -123,8 +135,8 @@ impl ZoneSniperApp {
                     ui.label_subheader("Trade Setup");
                     
                     // Entry / Target can stay standard
-                    ui.metric("Entry", &format_price(op.start_price), Color32::LIGHT_GRAY);
-                    ui.metric("Target", &format_price(op.target_price), Color32::GREEN);
+                    ui.metric("Entry", &format_price(op.start_price), PLOT_CONFIG.color_text_neutral);
+                    ui.metric("Target", &format_price(op.target_price), PLOT_CONFIG.color_profit);
                     
                     // Stop Loss (Inline Explanation)
                     let target_dist = (op.target_price - op.start_price).abs() / op.start_price * 100.0;
@@ -132,13 +144,13 @@ impl ZoneSniperApp {
 
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(RichText::new("Stop Loss:").small().color(Color32::GRAY));
-                        ui.label(RichText::new(format_price(op.stop_price)).small().color(Color32::RED));
+                        ui.label(RichText::new("Stop Loss:").small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(format_price(op.stop_price)).small().color(PLOT_CONFIG.color_stop_loss));
                         
                         ui.label(RichText::new(format!(
                             "(Target {:.2}% / Stop {:.2}%)", 
                             target_dist, stop_dist
-                        )).small().color(Color32::GRAY));
+                        )).small().color(PLOT_CONFIG.color_text_subdued));
                     });
 
                     ui.add_space(15.0);
@@ -149,27 +161,27 @@ impl ZoneSniperApp {
                     ui.label_subheader("How this works");
                     ui.vertical(|ui| {
                         ui.style_mut().spacing.item_spacing.y = 4.0;
-                        let text_color = Color32::from_gray(200);
+                        let story_color = PLOT_CONFIG.color_text_neutral;
                         
                         ui.label(RichText::new(format!(
                             "1. We fingerprinted the market right now (Vol = {:.2}%, Momentum = {:+.2}%, Rel.Vol = {:.2}x).",
                             state.volatility_pct * 100.0,
                             state.momentum_pct * 100.0,
                             state.relative_volume
-                        )).small().color(text_color).italics());
+                        )).small().color(story_color).italics());
                         
                         let match_text = if sim.sample_size < 50 {
                             format!("2. We scanned history and found exactly {} periods that matched this fingerprint.", sim.sample_size)
                         } else {
                             format!("2. We scanned history and found many matches, but we kept only the Top {} closest matches.", sim.sample_size)
                         };
-                        ui.label(RichText::new(match_text).small().color(text_color).italics());
+                        ui.label(RichText::new(match_text).small().color(story_color).italics());
 
                         ui.label(RichText::new(format!(
                             "3. We simulated these {} scenarios. We checked if price hit the Target, the Stop, or ran out of time (Limit: {}).",
                             sim.sample_size,
                             max_time_str
-                        )).small().color(text_color).italics());
+                        )).small().color(story_color).italics());
                         
                         let win_count = (sim.success_rate * sim.sample_size as f64).round() as usize;
                         let win_pct = sim.success_rate * 100.0;
@@ -178,7 +190,7 @@ impl ZoneSniperApp {
                         ui.label(RichText::new(format!(
                             "4. In {} of those {} cases, price hit the Target first. This produces the {:.1}% Win Rate you see above.",
                             win_count, sim.sample_size, win_pct
-                        )).small().color(text_color).italics());
+                        )).small().color(story_color).italics());
                     });
 
                 } else {
@@ -333,9 +345,9 @@ impl ZoneSniperApp {
 
                     // STATUS INDICATOR (TEMP but very useful)
                     if self.auto_scale_y {
-                        ui.label(RichText::new("🔒 Y-LOCKED").small().color(Color32::GREEN));
+                        ui.label(RichText::new("🔒 Y-LOCKED").small().color(PLOT_CONFIG.color_profit));
                     } else {
-                        ui.label(RichText::new("🔓 MANUAL Y").small().color(Color32::YELLOW));
+                        ui.label(RichText::new("🔓 MANUAL Y").small().color(PLOT_CONFIG.color_warning));
                     }
                 });
             });
@@ -482,7 +494,7 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_status_panel(&mut self, ctx: &Context) {
+        pub(super) fn render_status_panel(&mut self, ctx: &Context) {
         let frame = UI_CONFIG.bottom_panel_frame();
         TopBottomPanel::bottom("status_panel")
             .frame(frame)
@@ -490,218 +502,168 @@ impl ZoneSniperApp {
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        // 2. Simulation Mode / Live Price Logic
-                        if let Some(pair) = &self.selected_pair.clone() {
-                            if self.is_simulation_mode() {
-                                #[cfg(target_arch = "wasm32")]
-                                let label = "WEB DEMO (OFFLINE)";
-                                #[cfg(not(target_arch = "wasm32"))]
-                                let label = "SIMULATION MODE";
-                                // --- SIMULATION MODE UI ---
-                                ui.label(
-                                    RichText::new(label)
-                                        .strong()
-                                        .color(Color32::from_rgb(255, 150, 0)),
-                                );
-                                ui.separator();
-
-                                // Sim Controls Display
-                                ui.label(
-                                    RichText::new(format!("{}", self.sim_direction))
-                                        .small()
-                                        .color(Color32::from_rgb(200, 200, 255)),
-                                );
-                                ui.separator();
-                                ui.label(
-                                    RichText::new(format!("| Step: {}", self.sim_step_size))
-                                        .small()
-                                        .color(Color32::from_rgb(100, 200, 100)),
-                                );
-                                ui.separator();
-
-                                if let Some(sim_price) = self.simulated_prices.get(pair) {
-                                    ui.label(
-                                        RichText::new(format!("💰 {}", format_price(*sim_price)))
-                                            .strong()
-                                            .color(Color32::from_rgb(255, 200, 100)),
-                                    );
-                                }
-                            } else {
-                                // --- FIX: LIVE MODE UI ---
-                                // This else block was missing/empty in previous versions
-                                ui.label(
-                                    RichText::new("🟢 LIVE MODE").small().color(Color32::GREEN),
-                                );
-                                ui.separator();
-
-                                if let Some(price) = self.get_display_price(pair) {
-                                    ui.label(
-                                        RichText::new(format!("💰 {}", format_price(price)))
-                                            .strong()
-                                            .color(Color32::from_rgb(100, 200, 100)), // Light Green
-                                    );
-                                } else {
-                                    ui.label("Connecting...");
-                                }
-                            }
-                        }
-
-                        // 3. Zone Size
-                        if let Some(engine) = &self.engine {
-                            if let Some(pair) = &self.selected_pair {
-                                if let Some(model) = engine.get_model(pair) {
-                                    let cva = &model.cva;
-                                    let zone_size = (cva.price_range.end_range
-                                        - cva.price_range.start_range)
-                                        / cva.zone_count as f64;
-
-                                    ui.metric(
-                                        "📏 Zone Size",
-                                        &format!(
-                                            "{} (N={})",
-                                            format_price(zone_size),
-                                            cva.zone_count
-                                        ),
-                                        Color32::from_rgb(180, 200, 255),
-                                    );
-                                    ui.separator();
-                                }
-                            }
-                        }
-
+                        // 1. Simulation / Live Mode
+                        self.render_status_mode(ui);
+                        
+                        // 2. Zone Info
+                        self.render_status_zone_info(ui);
+                        
                         ui.separator();
 
-                        // Coverage Statistics
-                        // 4. Coverage Statistics
-                        if let Some(engine) = &self.engine {
-                            if let Some(pair) = &self.selected_pair {
-                                if let Some(model) = engine.get_model(pair) {
-                                    // Helper to color-code coverage
-                                    // > 30% is Red (Too much), < 5% is Yellow (Too little?), Green is good
-                                    let cov_color = |pct: f64| {
-                                        if pct > 30.0 {
-                                            Color32::from_rgb(255, 100, 100) // Red
-                                        } else if pct < 5.0 {
-                                            Color32::from_rgb(255, 215, 0) // Yellow
-                                        } else {
-                                            Color32::from_rgb(150, 255, 150) // Green
-                                        }
-                                    };
+                        // 3. Coverage
+                        self.render_status_coverage(ui);
 
-                                    ui.label_subdued("Coverage");
-
-                                    ui.metric(
-                                        "Sticky",
-                                        &format!("{:.0}%", model.coverage.sticky_pct),
-                                        cov_color(model.coverage.sticky_pct),
-                                    );
-
-                                    ui.metric(
-                                        "R-Sup",
-                                        &format!("{:.0}%", model.coverage.support_pct),
-                                        cov_color(model.coverage.support_pct),
-                                    );
-
-                                    ui.metric(
-                                        "R-Res",
-                                        &format!("{:.0}%", model.coverage.resistance_pct),
-                                        cov_color(model.coverage.resistance_pct),
-                                    );
-
-                                    ui.separator();
-                                }
-                            }
-                        }
-
-                        // ... inside status panel, after coverage stats ...
-
-                        // 5. Candle & Volatility Stats
-                        if let Some(engine) = &self.engine {
-                            if let Some(pair) = &self.selected_pair {
-                                if let Some(model) = engine.get_model(pair) {
-                                    ui.separator();
-
-                                    // Candle Count: "129 / 3923 (14%) 30m"
-                                    let relevant = model.cva.relevant_candle_count;
-                                    let total = model.cva.total_candles;
-                                    let pct = if total > 0 {
-                                        (relevant as f64 / total as f64) * 100.0
-                                    } else {
-                                        0.0
-                                    };
-
-                                    let time_str =
-                                        TimeUtils::interval_to_string(model.cva.interval_ms);
-
-                                    ui.metric(
-                                        UI_TEXT.label_candle_count,
-                                        &format!(
-                                            "{}/{} ({:.1}%) {}",
-                                            relevant, total, pct, time_str
-                                        ),
-                                        Color32::LIGHT_GRAY,
-                                    );
-
-                                    ui.separator();
-
-                                    // Volatility
-                                    ui.metric(
-                                        UI_TEXT.label_volatility,
-                                        &format!("{:.3}%", model.cva.volatility_pct),
-                                        Color32::from_rgb(200, 200, 100), // Khaki/Gold
-                                    );
-                                }
-                            }
-                        }
+                        // 4. Candle Stats
+                        self.render_status_candles(ui);
 
                         // 5. System Status
-                        if let Some(engine) = &self.engine {
-                            let total_pairs = engine.get_active_pair_count();
-                            ui.metric("📊 Pairs", &format!("{}", total_pairs), Color32::LIGHT_GRAY);
-
-                            // Worker Status
-                            if let Some(msg) = engine.get_worker_status_msg() {
-                                ui.separator();
-                                ui.label(
-                                    RichText::new(format!("⚙ {}", msg))
-                                        .small()
-                                        .color(Color32::from_rgb(255, 165, 0)), // Orange
-                                );
-                            }
-
-                            // Queue Size
-                            let q_len = engine.get_queue_len();
-                            if q_len > 0 {
-                                ui.separator();
-                                ui.label(
-                                    RichText::new(format!("Queue: {}", q_len))
-                                        .small()
-                                        .color(Color32::YELLOW),
-                                );
-                            }
-                        }
+                        self.render_status_system(ui);
 
                         ui.separator();
 
-                        // 8. Network health
-                        if let Some(engine) = &self.engine {
-                            let health = engine.price_stream.connection_health();
-                            let (icon, color) = if health >= 90.0 {
-                                ("🟢", Color32::from_rgb(0, 200, 0))
-                            } else if health >= 50.0 {
-                                ("🟡", Color32::from_rgb(200, 200, 0))
-                            } else {
-                                ("🔴", Color32::from_rgb(200, 0, 0))
-                            };
-                            ui.metric(
-                                &format!("{} Live Prices", icon),
-                                &format!("{:.0}% connected", health),
-                                color,
-                            );
-                        }
+                        // 6. Network
+                        self.render_status_network(ui);
                     });
                 });
             });
+    }
+
+    fn render_status_mode(&self, ui: &mut Ui) {
+        if let Some(pair) = &self.selected_pair {
+            if self.is_simulation_mode() {
+                #[cfg(target_arch = "wasm32")]
+                let label = "WEB DEMO (OFFLINE)";
+                #[cfg(not(target_arch = "wasm32"))]
+                let label = "SIMULATION MODE";
+                
+                // Use Warning/Orange for Sim Mode
+                ui.label(RichText::new(label).strong().color(PLOT_CONFIG.color_short)); 
+                ui.separator();
+
+                ui.label(RichText::new(format!("{}", self.sim_direction)).small().color(PLOT_CONFIG.color_info));
+                ui.separator();
+                ui.label(RichText::new(format!("| Step: {}", self.sim_step_size)).small().color(PLOT_CONFIG.color_profit));
+                ui.separator();
+
+                if let Some(sim_price) = self.simulated_prices.get(pair) {
+                    ui.label(RichText::new(format!("💰 {}", format_price(*sim_price))).strong().color(PLOT_CONFIG.color_warning));
+                }
+            } else {
+                // Live Mode
+                ui.label(RichText::new("🟢 LIVE MODE").small().color(PLOT_CONFIG.color_profit));
+                ui.separator();
+
+                if let Some(price) = self.get_display_price(pair) {
+                    ui.label(RichText::new(format!("💰 {}", format_price(price))).strong().color(PLOT_CONFIG.color_profit));
+                } else {
+                    ui.label("Connecting...");
+                }
+            }
+        }
+    }
+
+    fn render_status_zone_info(&self, ui: &mut Ui) {
+        if let Some(engine) = &self.engine {
+            if let Some(pair) = &self.selected_pair {
+                if let Some(model) = engine.get_model(pair) {
+                    let cva = &model.cva;
+                    let zone_size = (cva.price_range.end_range - cva.price_range.start_range) / cva.zone_count as f64;
+
+                    ui.metric(
+                        "📏 Zone Size",
+                        &format!("{} (N={})", format_price(zone_size), cva.zone_count),
+                        PLOT_CONFIG.color_info, // Light Blue
+                    );
+                    ui.separator();
+                }
+            }
+        }
+    }
+
+    fn render_status_coverage(&self, ui: &mut Ui) {
+        if let Some(engine) = &self.engine {
+            if let Some(pair) = &self.selected_pair {
+                if let Some(model) = engine.get_model(pair) {
+                    // Helper closure for coverage colors
+                    let cov_color = |pct: f64| {
+                        if pct > 30.0 { PLOT_CONFIG.color_loss }      // Red (Too Cluttered)
+                        else if pct < 5.0 { PLOT_CONFIG.color_warning } // Yellow (Too sparse)
+                        else { PLOT_CONFIG.color_profit }             // Green (Good)
+                    };
+
+                    ui.label_subdued("Coverage");
+                    ui.metric("Sticky", &format!("{:.0}%", model.coverage.sticky_pct), cov_color(model.coverage.sticky_pct));
+                    ui.metric("R-Sup", &format!("{:.0}%", model.coverage.support_pct), cov_color(model.coverage.support_pct));
+                    ui.metric("R-Res", &format!("{:.0}%", model.coverage.resistance_pct), cov_color(model.coverage.resistance_pct));
+                    ui.separator();
+                }
+            }
+        }
+    }
+
+    fn render_status_candles(&self, ui: &mut Ui) {
+        if let Some(engine) = &self.engine {
+            if let Some(pair) = &self.selected_pair {
+                if let Some(model) = engine.get_model(pair) {
+                    ui.separator();
+
+                    let relevant = model.cva.relevant_candle_count;
+                    let total = model.cva.total_candles;
+                    let pct = if total > 0 { (relevant as f64 / total as f64) * 100.0 } else { 0.0 };
+                    let time_str = TimeUtils::interval_to_string(model.cva.interval_ms);
+
+                    ui.metric(
+                        UI_TEXT.label_candle_count,
+                        &format!("{}/{} ({:.1}%) {}", relevant, total, pct, time_str),
+                        PLOT_CONFIG.color_text_neutral,
+                    );
+
+                    ui.separator();
+
+                    ui.metric(
+                        UI_TEXT.label_volatility,
+                        &format!("{:.3}%", model.cva.volatility_pct),
+                        PLOT_CONFIG.color_warning, // Volatility is attention-worthy
+                    );
+                }
+            }
+        }
+    }
+
+   fn render_status_system(&self, ui: &mut Ui) {
+        if let Some(engine) = &self.engine {
+            let total_pairs = engine.get_active_pair_count();
+            ui.metric("📊 Pairs", &format!("{}", total_pairs), PLOT_CONFIG.color_text_neutral);
+
+            if let Some(msg) = engine.get_worker_status_msg() {
+                ui.separator();
+                ui.label(RichText::new(format!("⚙ {}", msg)).small().color(PLOT_CONFIG.color_short));
+            }
+
+            let q_len = engine.get_queue_len();
+            if q_len > 0 {
+                ui.separator();
+                ui.label(RichText::new(format!("Queue: {}", q_len)).small().color(PLOT_CONFIG.color_warning));
+            }
+        }
+    }
+
+    fn render_status_network(&self, ui: &mut Ui) {
+        if let Some(engine) = &self.engine {
+            let health = engine.price_stream.connection_health();
+            let (icon, color) = if health >= 90.0 {
+                ("🟢", PLOT_CONFIG.color_profit)
+            } else if health >= 50.0 {
+                ("🟡", PLOT_CONFIG.color_warning)
+            } else {
+                ("🔴", PLOT_CONFIG.color_loss)
+            };
+            ui.metric(
+                &format!("{} Live Prices", icon),
+                &format!("{:.0}% connected", health),
+                color,
+            );
+        }
     }
 
     fn render_shortcut_rows(ui: &mut Ui, rows: &[(&str, &str)]) {
@@ -876,11 +838,13 @@ fn render_fullscreen_message(ui: &mut Ui, title: &str, subtitle: &str, is_error:
 
         ui.add_space(6.0);
 
-        let text = RichText::new(subtitle).color(if is_error {
-            Color32::LIGHT_RED
+        let color = if is_error {
+            PLOT_CONFIG.color_loss
         } else {
-            Color32::from_gray(190)
-        });
+            PLOT_CONFIG.color_text_neutral
+        };
+
+        let text = RichText::new(subtitle).color(color);
 
         ui.label(text);
     });

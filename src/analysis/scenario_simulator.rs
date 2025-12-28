@@ -1,7 +1,11 @@
-use crate::models::OhlcvTimeSeries;
-use crate::analysis::market_state::MarketState;
 use std::cmp::Ordering;
 use rayon::prelude::*;
+
+use crate::analysis::market_state::MarketState;
+
+use crate::models::OhlcvTimeSeries;
+use crate::models::trading_view::TradeDirection;
+
 
 #[derive(Debug, Clone)]
 pub struct ScenarioConfig {
@@ -83,7 +87,7 @@ impl ScenarioSimulator {
         target_price: f64,
         stop_price: f64,
         max_duration: usize,
-        direction: &str,
+        direction: TradeDirection,
     ) -> Option<SimulationResult> {
         
         if matches.is_empty() {
@@ -148,7 +152,7 @@ impl ScenarioSimulator {
         target: f64, 
         stop: f64, 
         duration: usize, 
-        direction: &str
+        direction: TradeDirection,
     ) -> Outcome {
         let start_candle = ts.get_candle(start_idx);
         let hist_entry = start_candle.close_price;
@@ -168,18 +172,10 @@ impl ScenarioSimulator {
             let low_change = (c.low_price - hist_entry) / hist_entry;
             let high_change = (c.high_price - hist_entry) / hist_entry;
 
-            let hit_target;
-            let hit_stop;
-
-            if direction == "Long" {
-                // Long: High >= Target, Low <= Stop
-                hit_target = high_change >= target_dist;
-                hit_stop = low_change <= stop_dist;
-            } else {
-                // Short: Low <= Target, High >= Stop
-                hit_target = low_change <= target_dist;
-                hit_stop = high_change >= stop_dist;
-            }
+            let (hit_target, hit_stop) = match direction {
+                TradeDirection::Long => (high_change >= target_dist, low_change <= stop_dist),
+                TradeDirection::Short => (low_change <= target_dist, high_change >= stop_dist),
+            };
 
             // Pessimistic: If both hit in same candle, assume Stop Hit first
             if hit_target && hit_stop { return Outcome::StopHit(i); } 

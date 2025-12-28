@@ -1,7 +1,7 @@
 //! Analysis and computation configuration
 
-use std::time::Duration;
-use serde::{Deserialize, Serialize}; // Add Import
+use serde::{Deserialize, Serialize};
+use std::time::Duration; // Add Import
 
 use crate::utils::TimeUtils;
 
@@ -89,6 +89,7 @@ pub struct JourneySettings {
     pub max_journey_time: std::time::Duration,
     pub sample_count: usize,
     pub min_win_rate: f64,
+    pub risk_reward_tests: &'static [f64],
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
@@ -136,7 +137,6 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
 
     cva: CvaSettings {
         price_recalc_threshold_pct: 0.01,
-        // price_recalc_threshold_pct: 0.00001,
         min_candles_for_analysis: 100,
         segment_merge_tolerance_ms: TimeUtils::MS_IN_D, // Merging time segments. Set 1 Day default.
     },
@@ -149,9 +149,11 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     },
 
     journey: JourneySettings {
-        stop_loss_pct: 5.0,  
+        stop_loss_pct: 5.0,
         max_journey_time: Duration::from_secs(86400 * 7),
         sample_count: 50,
         min_win_rate: 0.40,
+        // NEW: The Tournament Ratios
+        risk_reward_tests: &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0],
     },
 };

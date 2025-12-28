@@ -42,6 +42,41 @@ pub struct PlotConfig {
 
     pub plot_y_padding_pct: f64, // Y-Axis Padding factor (e.g. 0.05 = 5% padding top and bottom)
     pub plot_x_padding_pct: f64,
+
+    // --- SEMANTIC COLORS ---
+    pub color_profit: Color32,
+    pub color_loss: Color32,
+    pub color_long: Color32,
+    pub color_short: Color32,
+    pub color_stop_loss: Color32,
+
+    pub color_info: Color32,
+    pub color_warning: Color32,
+
+    pub color_text_neutral: Color32, // Main values (white)
+    pub color_text_primary: Color32, // For the galley tint (Light Gray)
+    pub color_text_subdued: Color32,
+    /// Explanations/Context (Darker Gray)
+    // --- VISUAL CONSTANTS (Opacity/Dimming) ---
+    pub opacity_scope_base: f32, // Main circle intensity
+    pub opacity_scope_crosshair: f32, // Crosshair relative to scope
+    pub opacity_path_line: f32,       // Path line relative to scope
+
+    // GAP SEMANTICS
+    pub color_separator: Color32,
+    pub color_gap_above: Color32,   // Price went > PH (Resistance-ish)
+    pub color_gap_below: Color32,   // Price went < PH (Support-ish)
+    pub color_gap_missing: Color32, // Exchange down / Data hole
+    pub opacity_separator: f32,
+
+    // HEATMAP LEGEND COLORS
+    pub color_heatmap_low: Color32,  // Deep Purple
+    pub color_heatmap_med: Color32,  // Orange/Red
+    pub color_heatmap_high: Color32, // Bright Yellow
+
+    // UI WIDGET STYLES
+    pub color_widget_background: Color32, // Dark background for custom widgets
+    pub color_widget_border: Color32,     // Subtle border
 }
 
 pub const PLOT_CONFIG: PlotConfig = PlotConfig {
@@ -109,4 +144,42 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     // 2% of the width is added to Left and Right.
     // E.g. if viewing 100 candles, this adds 2 "empty" candles of space on each side.
     plot_x_padding_pct: 0.02,
+
+    // SEMANTICS
+    color_profit: Color32::from_rgb(100, 255, 100),
+    color_loss: Color32::from_rgb(255, 80, 80),
+    color_long: Color32::from_rgb(0, 191, 255),
+    color_short: Color32::from_rgb(255, 165, 0),
+
+    // NEW DEFINITIONS
+    color_info: Color32::from_rgb(173, 216, 230), // Light Blue (Volatility)
+    color_warning: Color32::from_rgb(255, 215, 0), // Gold/Yellow (High Vol)
+
+    color_text_primary: Color32::WHITE,
+    color_text_neutral: Color32::LIGHT_GRAY,
+    color_text_subdued: Color32::GRAY,
+
+    color_stop_loss: Color32::from_rgb(255, 80, 80),
+
+    // VISUAL CONSTANTS
+    opacity_scope_base: 0.8,
+    opacity_scope_crosshair: 1.0, // relative to base (0.8 * 1.0)
+    opacity_path_line: 0.6,       // relative to base (0.8 * 0.6)
+
+    color_separator: Color32::from_gray(80), // Subtle vertical separator line on plot
+    // GAP COLORS
+    color_gap_above: Color32::from_rgb(100, 255, 100), // Green (Candles are Above)
+    color_gap_below: Color32::from_rgb(255, 100, 100), // Red (Candles are Below)
+    color_gap_missing: Color32::from_rgb(180, 100, 255), // Purple
+    // VISUAL CONSTANTS
+    opacity_separator: 0.25, // Very subtle (25% opacity)
+
+    // HEATMAP LEGEND
+    color_heatmap_low: Color32::from_rgb(45, 11, 89),
+    color_heatmap_med: Color32::from_rgb(237, 105, 37),
+    color_heatmap_high: Color32::from_rgb(251, 180, 26),
+
+    // UI WIDGETS
+    color_widget_background: Color32::from_black_alpha(40),
+    color_widget_border: Color32::from_gray(60),
 };

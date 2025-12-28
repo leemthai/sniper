@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, self};
 use std::collections::BTreeMap;
 
-use eframe::egui::{Context, CentralPanel, RichText, Key, Grid, ScrollArea, Color32, Align, Layout, ProgressBar, Ui};
+use eframe::egui::{Context, CentralPanel, RichText, Key, Grid, ScrollArea, Align, Layout, ProgressBar, Ui};
 use eframe::{Frame, Storage};
 use serde::{Deserialize, Serialize};
 
 use crate::Cli;
 
+use crate::config::plot::PLOT_CONFIG;
 use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
 
 use crate::data::fetch_pair_data;
@@ -505,24 +506,24 @@ impl ZoneSniperApp {
                         // Determine Color/Text based on Status
                         let (color, status_text, status_color) = match status {
                             SyncStatus::Pending => (
-                                Color32::from_gray(80), 
+                                PLOT_CONFIG.color_text_subdued, 
                                 "-".to_string(), 
-                                Color32::from_gray(80)
+                                PLOT_CONFIG.color_text_subdued
                             ),
                             SyncStatus::Syncing => (
-                                Color32::YELLOW, 
+                                PLOT_CONFIG.color_warning, 
                                 "Syncing".to_string(), 
-                                Color32::YELLOW
+                                PLOT_CONFIG.color_warning
                             ),
                             SyncStatus::Completed(n) => (
-                                Color32::WHITE, 
+                                PLOT_CONFIG.color_text_primary, 
                                 format!("+{}", n),
-                                Color32::GREEN
+                                PLOT_CONFIG.color_profit
                             ),
                             SyncStatus::Failed(_) => (
-                                Color32::RED, 
+                                PLOT_CONFIG.color_loss, 
                                 "FAILED".to_string(), 
-                                Color32::RED
+                                PLOT_CONFIG.color_loss
                             ),
                         };
 
@@ -565,7 +566,7 @@ impl ZoneSniperApp {
                     RichText::new("ZONE SNIPER INITIALIZATION")
                         .size(24.0)
                         .strong()
-                        .color(Color32::from_rgb(255, 215, 0))
+                        .color(PLOT_CONFIG.color_warning)
                 ); 
 
                 // Subtitle / Info
@@ -576,7 +577,7 @@ impl ZoneSniperApp {
                         interval_str
                     ))
                     .italics()
-                    .color(Color32::LIGHT_GRAY)
+                    .color(PLOT_CONFIG.color_text_neutral)
                 );
 
                 ui.add_space(20.0);
@@ -600,7 +601,7 @@ impl ZoneSniperApp {
                     ui.add_space(5.0);
                     ui.label(
                         RichText::new(format!("⚠ {} Failures", state.failed))
-                            .color(Color32::RED)
+                            .color(PLOT_CONFIG.color_loss)
                     );
                 }
                 

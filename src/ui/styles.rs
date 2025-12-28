@@ -1,5 +1,39 @@
 use eframe::egui::{Color32, RichText, Ui};
+
+use crate::config::plot::PLOT_CONFIG;
+use crate::models::trading_view::TradeDirection;
 use crate::ui::config::UI_CONFIG;
+
+
+/// Extension trait to map Data Models to UI Colors
+pub trait DirectionColor {
+    fn color(&self) -> Color32;
+}
+
+impl DirectionColor for TradeDirection {
+    fn color(&self) -> Color32 {
+        match self {
+            TradeDirection::Long => PLOT_CONFIG.color_long,
+            TradeDirection::Short => PLOT_CONFIG.color_short,
+        }
+    }
+}
+
+/// Applies a semantic opacity factor to a color.
+/// Wraps the internal egui logic to keep rendering code clean.
+pub fn apply_opacity(color: Color32, factor: f32) -> Color32 {
+    color.linear_multiply(factor)
+}
+
+// Helper for values
+pub fn get_outcome_color(value: f64) -> Color32 {
+    if value > 0.0 {
+        PLOT_CONFIG.color_profit
+    } else {
+        PLOT_CONFIG.color_loss
+    }
+}
+
 
 /// Extension trait to add semantic styling methods directly to `egui::Ui`.
 pub trait UiStyleExt {

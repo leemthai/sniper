@@ -88,7 +88,7 @@ impl<'a> CandleRangePanel<'a> {
                 .current_range_idx
                 .map_or(false, |i| i < self.segments.len() - 1);
             if ui
-                .add_enabled(next_enabled, eframe::egui::Button::new("➡"))
+                .add_enabled(next_enabled, Button::new("➡"))
                 .clicked()
             {
                 if let Some(curr) = self.current_range_idx {
@@ -102,7 +102,7 @@ impl<'a> CandleRangePanel<'a> {
         ui.separator();
 
         // --- COMPACT LIST ---
-        eframe::egui::ScrollArea::vertical()
+        ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 eframe::egui::Grid::new("cr_grid")
@@ -133,9 +133,12 @@ impl<'a> CandleRangePanel<'a> {
                                     }
                                 );
 
+                                // Use Semantic Colors for Gaps
                                 let gap_color = match seg.gap_reason {
-                                    GapReason::MissingSourceData => Color32::ORANGE,
-                                    _ => Color32::from_gray(90),
+                                    GapReason::MissingSourceData => PLOT_CONFIG.color_gap_missing,
+                                    GapReason::PriceAbovePH => PLOT_CONFIG.color_gap_above,
+                                    GapReason::PriceBelowPH => PLOT_CONFIG.color_gap_below,
+                                    _ => PLOT_CONFIG.color_text_subdued,
                                 };
 
                                 ui.label(
@@ -164,7 +167,7 @@ impl<'a> CandleRangePanel<'a> {
                             if i == self.segments.len() - 1 {
                                 ui.label(
                                     RichText::new(UI_TEXT.cr_label_live)
-                                        .color(Color32::GREEN)
+                                        .color(PLOT_CONFIG.color_profit)
                                         .strong()
                                         .small(),
                                 );
@@ -172,7 +175,7 @@ impl<'a> CandleRangePanel<'a> {
                                 ui.label(
                                     RichText::new(UI_TEXT.cr_label_historical)
                                         .small()
-                                        .color(Color32::GRAY),
+                                        .color(PLOT_CONFIG.color_text_subdued),
                                 );
                             }
                             ui.end_row();
@@ -295,10 +298,10 @@ impl<'a> DataGenerationPanel<'a> {
                         for (col_name, density, sig) in UI_TEXT.ph_help_density_rows {
                             // Manual coloring for the help text to match the gradient approx
                             let color = match *col_name {
-                                "Deep Purple" => Color32::from_rgb(45, 11, 89),
-                                "Orange/Red" => Color32::from_rgb(237, 105, 37),
-                                "Bright Yellow" => Color32::from_rgb(251, 180, 26),
-                                _ => Color32::GRAY,
+                                "Deep Purple" => PLOT_CONFIG.color_heatmap_low,
+                                "Orange/Red" => PLOT_CONFIG.color_heatmap_med,
+                                "Bright Yellow" => PLOT_CONFIG.color_heatmap_high,
+                                _ => PLOT_CONFIG.color_text_subdued, // Gray fallback
                             };
 
                             ui.label(RichText::new(*col_name).color(color));
@@ -324,7 +327,7 @@ impl<'a> DataGenerationPanel<'a> {
 
                         for (range, style, focus) in UI_TEXT.ph_help_scope_rows {
                             ui.label(*range); // <--- Added *
-                            ui.label(RichText::new(*style).strong().color(Color32::LIGHT_BLUE));
+                            ui.label(RichText::new(*style).strong().color(PLOT_CONFIG.color_info));
                             ui.label(*focus);
                             ui.end_row();
                         }
@@ -535,11 +538,11 @@ impl<'a> DataGenerationPanel<'a> {
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter();
-            painter.rect_filled(rect, 2.0, Color32::from_black_alpha(40));
+            painter.rect_filled(rect, 2.0, PLOT_CONFIG.color_widget_background);
             painter.rect_stroke(
                 rect,
                 2.0,
-                Stroke::new(1.0, Color32::from_gray(60)),
+                Stroke::new(1.0, PLOT_CONFIG.color_widget_border),
                 StrokeKind::Inside,
             );
             painter.text(
@@ -547,7 +550,7 @@ impl<'a> DataGenerationPanel<'a> {
                 Align2::CENTER_CENTER,
                 UI_TEXT.ph_startup,
                 FontId::proportional(12.0),
-                Color32::GRAY,
+                PLOT_CONFIG.color_text_subdued,
             );
         }
     }
@@ -562,7 +565,8 @@ impl<'a> DataGenerationPanel<'a> {
                     UI_TEXT.ph_label_horizon_prefix,
                     current_pct * 100.0
                 ))
-                .strong(),
+                .strong()
+                .color(PLOT_CONFIG.color_text_primary),
             );
 
             if let Some(bucket) = profile.buckets.iter().min_by(|a, b| {
@@ -604,7 +608,7 @@ impl<'a> DataGenerationPanel<'a> {
                     ui.label(
                         RichText::new(format!("{}:", UI_TEXT.ph_label_evidence))
                             .small()
-                            .color(Color32::GRAY),
+                            .color(PLOT_CONFIG.color_text_subdued),
                     );
                     ui.label(
                         RichText::new(format!(
@@ -613,7 +617,7 @@ impl<'a> DataGenerationPanel<'a> {
                             format_candle_count(count)
                         ))
                         .strong()
-                        .color(Color32::LIGHT_GRAY),
+                        .color(PLOT_CONFIG.color_text_neutral),
                     );
                 });
 
@@ -622,11 +626,11 @@ impl<'a> DataGenerationPanel<'a> {
                     ui.label(
                         RichText::new(format!("{}:", UI_TEXT.ph_label_history))
                             .small()
-                            .color(Color32::GRAY),
+                            .color(PLOT_CONFIG.color_text_subdued),
                     );
                     ui.label(
                         RichText::new(format_duration_context(history_days))
-                            .color(Color32::LIGHT_BLUE),
+                            .color(PLOT_CONFIG.color_info),
                     );
                 });
 
@@ -635,14 +639,15 @@ impl<'a> DataGenerationPanel<'a> {
                     ui.label(
                         RichText::new(format!("{}:", UI_TEXT.ph_label_density))
                             .small()
-                            .color(Color32::GRAY),
+                            .color(PLOT_CONFIG.color_text_subdued),
                     );
+                    // Semantic Density Coloring
                     let density_color = if density_pct > 90.0 {
-                        Color32::GREEN
+                        PLOT_CONFIG.color_profit // Green
                     } else if density_pct > 50.0 {
-                        Color32::YELLOW
+                        PLOT_CONFIG.color_warning // Yellow
                     } else {
-                        Color32::LIGHT_RED
+                        PLOT_CONFIG.color_loss // Red
                     };
                     ui.label(RichText::new(format!("{:.1}%", density_pct)).color(density_color));
                 });

@@ -1,4 +1,7 @@
-use eframe::egui::{Align2, Color32, Id, LayerId, Order::Tooltip, RichText, Stroke, Ui, Vec2, Order, FontId, Painter, Pos2, Rect};
+use eframe::egui::{
+    Align2, Color32, FontId, Id, LayerId, Order, Order::Tooltip, Painter, Pos2, Rect, RichText,
+    Stroke, Ui, Vec2,
+};
 
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
@@ -6,6 +9,8 @@ use eframe::egui::show_tooltip_at_pointer;
 use eframe::egui::text::{LayoutJob, TextFormat};
 
 use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
+
+use crate::analysis::range_gap_finder::GapReason;
 
 use crate::config::ANALYSIS;
 use crate::config::plot::PLOT_CONFIG;
@@ -15,6 +20,7 @@ use crate::models::cva::ScoreType;
 use crate::models::trading_view::{SuperZone, TradingModel};
 
 use crate::ui::app::{CandleResolution, PlotVisibility};
+use crate::ui::styles::{DirectionColor, get_outcome_color, apply_opacity};
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
@@ -26,55 +32,75 @@ pub struct OpportunityLayer;
 
 impl PlotLayer for OpportunityLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        if !ctx.visibility.opportunities { return; }
+        if !ctx.visibility.opportunities {
+            return;
+        }
 
         // 1. Valid Price Check
         let current_price = match ctx.current_price {
             Some(p) if p > f64::EPSILON => p,
-            _ => return, 
+            _ => return,
         };
 
         // 2. Find Best Opportunity
-        if let Some(best_opp) = ctx.trading_model.opportunities.iter()            // Filter out obviously bad ROI (negative expectancy) before sorting
-            .filter(|op| op.expected_roi() > 0.0) 
-                        // Sort by Expected ROI instead of just Success Rate
-            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap()) 
+        if let Some(best_opp) = ctx
+            .trading_model
+            .opportunities
+            .iter() // Filter out obviously bad ROI (negative expectancy) before sorting
+            .filter(|op| op.expected_roi() > 0.0)
+            // Sort by Expected ROI instead of just Success Rate
+            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
         {
             let win_rate = best_opp.simulation.success_rate;
-            if win_rate < ANALYSIS.journey.min_win_rate { return; }
+            if win_rate < ANALYSIS.journey.min_win_rate {
+                return;
+            }
 
             // 3. Setup Foreground Painter
             // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
             // FIX: Create Painter with Clipping
             // This ensures the HUD never bleeds outside the plot area
-            let painter = plot_ui.ctx()
+            let painter = plot_ui
+                .ctx()
                 .layer_painter(LayerId::new(Order::Foreground, Id::new("sniper_hud")))
                 .with_clip_rect(ctx.clip_rect);
 
             // 4. Coordinates (Time/Price -> Screen Pixels)
             let x_center_plot = (ctx.x_min + ctx.x_max) / 2.0;
-            
-            // Map key points to screen space
-            let current_pos_screen = plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, current_price));
-            let target_pos_screen = plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, best_opp.target_price));
-            let sl_pos_screen = plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, best_opp.stop_price));
 
-            // Colors for GEOMETRY (Lines/Circles) - Keep Red/Green for Long/Short visual
-            let is_long = best_opp.direction == "Long";
-            let geom_color = if is_long { Color32::GREEN } else { Color32::RED };
-            let dimmed_geom = geom_color.linear_multiply(0.8);
-            let sl_color = Color32::from_rgb(255, 80, 80); 
+            // Map key points to screen space
+            let current_pos_screen =
+                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, current_price));
+            let target_pos_screen =
+                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, best_opp.target_price));
+            let sl_pos_screen =
+                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, best_opp.stop_price));
+
+            // Calculate ROI first so we can use it for color selection
+            let roi = best_opp.expected_roi();
+
+            // --- 1. RESOLVE SEMANTIC COLORS & STYLES ---
+            let direction_color = best_opp.direction.color();
+            let outcome_color = get_outcome_color(roi);
+            let sl_color = PLOT_CONFIG.color_stop_loss;
+            let neutral_text_color = PLOT_CONFIG.color_text_neutral;
+            let primary_text_color = PLOT_CONFIG.color_text_primary;
+
+            // Resolve Dimming levels via Config
+            let scope_color = apply_opacity(direction_color, PLOT_CONFIG.opacity_scope_base);
+            let crosshair_color = apply_opacity(scope_color, PLOT_CONFIG.opacity_scope_crosshair);
+            let path_color = apply_opacity(scope_color, PLOT_CONFIG.opacity_path_line);
 
             // --- A. PATH LINE ---
             painter.line_segment(
                 [current_pos_screen, target_pos_screen],
-                Stroke::new(2.0, dimmed_geom.linear_multiply(0.6))
+                Stroke::new(2.0, path_color),
             );
 
             // --- B. STOP LOSS ---
             let screen_rect = plot_ui.response().rect;
-            let sl_width_px = screen_rect.width() * 0.4; 
-            
+            let sl_width_px = screen_rect.width() * 0.4;
+
             let sl_left = sl_pos_screen - Vec2::new(sl_width_px / 2.0, 0.0);
             let sl_right = sl_pos_screen + Vec2::new(sl_width_px / 2.0, 0.0);
 
@@ -84,80 +110,91 @@ impl PlotLayer for OpportunityLayer {
                 Align2::LEFT_BOTTOM,
                 "STOP LOSS",
                 FontId::proportional(10.0),
-                sl_color
+                sl_color,
             );
-            
+
             // --- C. SCOPE ---
-            painter.circle_stroke(target_pos_screen, 15.0, Stroke::new(2.0, dimmed_geom));
+            painter.circle_stroke(target_pos_screen, 15.0, Stroke::new(2.0, scope_color));
             let hair_len = 20.0;
-            let faint_stroke = Stroke::new(1.0, dimmed_geom.linear_multiply(0.8));
-            
+            let faint_stroke = Stroke::new(1.0, crosshair_color);
+
             painter.line_segment(
-                [target_pos_screen - Vec2::new(0.0, hair_len), target_pos_screen + Vec2::new(0.0, hair_len)],
-                faint_stroke
+                [
+                    target_pos_screen - Vec2::new(0.0, hair_len),
+                    target_pos_screen + Vec2::new(0.0, hair_len),
+                ],
+                faint_stroke,
             );
             painter.line_segment(
-                [target_pos_screen - Vec2::new(hair_len, 0.0), target_pos_screen + Vec2::new(hair_len, 0.0)],
-                faint_stroke
+                [
+                    target_pos_screen - Vec2::new(hair_len, 0.0),
+                    target_pos_screen + Vec2::new(hair_len, 0.0),
+                ],
+                faint_stroke,
             );
-            painter.circle_filled(target_pos_screen, 3.0, dimmed_geom);
-            
+            painter.circle_filled(target_pos_screen, 3.0, scope_color);
+
             // --- D. DATA LABEL & CALCULATION ---
-            
+
             // 1. Calculate Expected ROI % (Per Trade)
             let roi = maths_utils::calculate_expected_roi_pct(
                 current_price,
                 best_opp.target_price,
                 best_opp.stop_price,
-                win_rate
+                win_rate,
             );
 
             // 2. Build Rich Text Layout
             let mut job = LayoutJob::default();
             let font_id = FontId::proportional(14.0);
-            
+
             // Block 1: Neutral Info
             job.append(
-                &format!("{}\nWin: {:.1}%\nR:R: {:.2}\n", 
-                    best_opp.direction.to_uppercase(),
+                &format!(
+                    "{}\nWin: {:.1}%\nR:R: {:.2}\n",
+                    best_opp.direction.to_string().to_uppercase(),
                     win_rate * 100.0,
                     best_opp.simulation.risk_reward_ratio
                 ),
                 0.0,
-                TextFormat { color: Color32::LIGHT_GRAY, font_id: font_id.clone(), ..Default::default() }
+                TextFormat {
+                    color: neutral_text_color,
+                    font_id: font_id.clone(),
+                    ..Default::default()
+                },
             );
 
-            // Block 2: ROI (Colored)
-            let roi_color = if roi > 0.0 { Color32::GREEN } else { Color32::from_rgb(255, 100, 100) };
             // Note: We use {:.2}% precision because per-trade EV can be small (e.g. 0.05%)
             job.append(
                 &format!("RoI: {:+.2}%", roi),
                 0.0,
-                TextFormat { color: roi_color, font_id: font_id, ..Default::default() }
+                TextFormat {
+                    color: outcome_color,
+                    font_id: font_id,
+                    ..Default::default()
+                },
             );
 
             // 3. Render it (FIXED: Use painter.layout_job)
             let galley = painter.layout_job(job);
             // We manually center it vertically since we can't use Align2 with galleys
             let text_pos = target_pos_screen + Vec2::new(18.0, -galley.size().y / 2.0);
-            painter.galley(text_pos, galley, Color32::WHITE);
-
+            painter.galley(text_pos, galley, primary_text_color);
         }
     }
 }
 
 impl PlotLayer for HorizonLinesLayer {
-
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-    
         let (ph_min, ph_max) = ctx.ph_bounds;
-        
+
         // Foreground Painter + Clipping
-        let painter = plot_ui.ctx()
+        let painter = plot_ui
+            .ctx()
             .layer_painter(LayerId::new(Order::Foreground, Id::new("horizon_lines")))
             .with_clip_rect(ctx.clip_rect);
 
-        let stroke = Stroke::new(2.0, Color32::WHITE);
+        let stroke = Stroke::new(2.0, PLOT_CONFIG.color_text_primary);
         let dash = 10.0;
         let gap = 10.0;
 
@@ -175,7 +212,7 @@ impl PlotLayer for HorizonLinesLayer {
             Pos2::new(x_right, y_screen_max),
             stroke,
             dash,
-            gap
+            gap,
         );
 
         // Bottom Line
@@ -185,7 +222,7 @@ impl PlotLayer for HorizonLinesLayer {
             Pos2::new(x_right, y_screen_min),
             stroke,
             dash,
-            gap
+            gap,
         );
     }
 }
@@ -552,40 +589,56 @@ pub struct SegmentSeparatorLayer;
 
 impl PlotLayer for SegmentSeparatorLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        if ctx.trading_model.segments.is_empty() { return; }
+        if ctx.trading_model.segments.is_empty() {
+            return;
+        }
 
         let gap_width = PLOT_CONFIG.segment_gap_width;
         let mut visual_x = 0.0;
         let step_size = ctx.resolution.step_size();
 
         // Foreground Painter + Clipping
-        let painter = plot_ui.ctx()
+        let painter = plot_ui
+            .ctx()
             .layer_painter(LayerId::new(Order::Foreground, Id::new("separators")))
             .with_clip_rect(ctx.clip_rect);
-            
-        let stroke = Stroke::new(1.0, Color32::from_gray(80)); 
+
+        // let stroke = Stroke::new(1.0, PLOT_CONFIG.color_separator);
         let y_top = ctx.clip_rect.top();
         let y_bot = ctx.clip_rect.bottom();
 
         for (seg_idx, segment) in ctx.trading_model.segments.iter().enumerate() {
-            let seg_candles_vis = ((segment.end_idx - segment.start_idx) as f64 / step_size as f64).ceil();
+            let seg_candles_vis =
+                ((segment.end_idx - segment.start_idx) as f64 / step_size as f64).ceil();
             visual_x += seg_candles_vis;
 
             if seg_idx < ctx.trading_model.segments.len() - 1 {
                 let line_plot_x = visual_x + (gap_width / 2.0);
-                
+
                 // Map X to Screen
                 let x_screen = plot_ui.screen_from_plot(PlotPoint::new(line_plot_x, 0.0)).x;
 
                 // Only draw if within horizontal bounds of the plot rect
                 if x_screen >= ctx.clip_rect.left() && x_screen <= ctx.clip_rect.right() {
+
+                    let next_segment = &ctx.trading_model.segments[seg_idx+1];
+
+                    let base_color = match next_segment.gap_reason {
+                        GapReason::PriceAbovePH => PLOT_CONFIG.color_gap_above,
+                        GapReason::PriceBelowPH => PLOT_CONFIG.color_gap_below,
+                        GapReason::MissingSourceData => PLOT_CONFIG.color_gap_missing,
+                        _ => PLOT_CONFIG.color_separator, // Mixed/Generic -> Default Gray
+                    };
+
+                    let stroke = Stroke::new(1.0, apply_opacity(base_color, PLOT_CONFIG.opacity_separator));
+
                     draw_dashed_line(
                         &painter,
                         Pos2::new(x_screen, y_top),
                         Pos2::new(x_screen, y_bot),
                         stroke,
                         5.0, // Dash
-                        5.0  // Gap
+                        5.0, // Gap
                     );
                 }
 
@@ -604,23 +657,24 @@ impl PlotLayer for PriceLineLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         if let Some(price) = ctx.current_price {
             // Foreground Painter + Clipping
-            let painter = plot_ui.ctx()
+            let painter = plot_ui
+                .ctx()
                 .layer_painter(LayerId::new(Order::Foreground, Id::new("price_line")))
                 .with_clip_rect(ctx.clip_rect);
 
             let color = PLOT_CONFIG.current_price_color;
             let width = PLOT_CONFIG.current_price_line_width; // Use standard width
-            
+
             // Map Price to Screen Y
             let y_screen = plot_ui.screen_from_plot(PlotPoint::new(0.0, price)).y;
-            
+
             // Draw Simple Solid Line across width
             painter.line_segment(
                 [
-                    Pos2::new(ctx.clip_rect.left(), y_screen), 
-                    Pos2::new(ctx.clip_rect.right(), y_screen)
+                    Pos2::new(ctx.clip_rect.left(), y_screen),
+                    Pos2::new(ctx.clip_rect.right(), y_screen),
                 ],
-                Stroke::new(width, color)
+                Stroke::new(width, color),
             );
         }
     }
@@ -732,24 +786,26 @@ fn draw_superzone(
 
 /// Helper: Manually draws a dashed line between two screen points.
 fn draw_dashed_line(
-    painter: &Painter, 
-    p1: Pos2, 
-    p2: Pos2, 
-    stroke: Stroke, 
-    dash_len: f32, 
-    gap_len: f32
+    painter: &Painter,
+    p1: Pos2,
+    p2: Pos2,
+    stroke: Stroke,
+    dash_len: f32,
+    gap_len: f32,
 ) {
     let vec = p2 - p1;
     let total_len = vec.length();
-    
-    if total_len < 0.1 { return; }
+
+    if total_len < 0.1 {
+        return;
+    }
 
     let dir = vec / total_len;
     let mut current_dist = 0.0;
 
     while current_dist < total_len {
         let end_dist = (current_dist + dash_len).min(total_len);
-        
+
         let start_pos = p1 + (dir * current_dist);
         let end_pos = p1 + (dir * end_dist);
 

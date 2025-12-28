@@ -1,5 +1,5 @@
 use std::sync::Arc;
-
+use std::fmt;
 
 // User crates
 use crate::analysis::zone_scoring::find_target_zones;
@@ -15,10 +15,28 @@ use crate::models::OhlcvTimeSeries;
 
 use crate::utils::maths_utils::{normalize_max, smooth_data, calculate_stats, calculate_expected_roi_pct};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TradeDirection {
+    Long,
+    Short,
+}
+
+// Helper for UI display
+impl fmt::Display for TradeDirection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TradeDirection::Long => write!(f, "Long"),
+            TradeDirection::Short => write!(f, "Short"),
+        }
+    }
+}
+
+
 #[derive(Debug, Clone)]
 pub struct TradeOpportunity {
+    pub pair_name: String,
     pub target_zone_id: usize,
-    pub direction: String, // "Long" or "Short"
+    pub direction: TradeDirection,
     pub start_price: f64,
     pub target_price: f64,
     pub stop_price: f64,
