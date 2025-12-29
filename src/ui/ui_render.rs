@@ -35,7 +35,7 @@ impl ZoneSniperApp {
         // 2. Get Data (Thread-safe)
         let Some(pair) = self.selected_pair.clone() else { return; };
         let Some(model) = self.engine.as_ref().and_then(|e| e.get_model(&pair)) else { return; };
-        // let current_price = self.get_display_price(&pair).unwrap_or(0.0);
+        let current_price = self.get_display_price(&pair).unwrap_or(0.0);
 
         // 3. Find the "Current Opportunity" (Same logic as HUD)
         let best_opp = model.opportunities.iter()
@@ -52,6 +52,7 @@ impl ZoneSniperApp {
             .show(ctx, |ui| {
                 if let Some(op) = best_opp {
 
+                    let calc_price = if current_price > f64::EPSILON { current_price } else { op.start_price };
                     let sim = &op.simulation;
                     // --- LOOKUP TARGET ZONE FOR TITLE ---
                     // Try to find the zone definition to get its bounds
@@ -82,16 +83,14 @@ impl ZoneSniperApp {
                     let lookback_ms = lookback_candles as i64 * interval_ms;
                     let lookback_str = TimeUtils::format_duration(lookback_ms);
 
-                    // 3. Get Actual Max Journey Time (From Config, NOT derived)
-                    // let max_time = self.app_config.journey.max_journey_time;
-                    // let max_time_str = TimeUtils::format_duration(max_time.as_millis() as i64);
-
-                    let max_time_str = TimeUtils::format_duration(op.max_duration_ms);
-
+                    // FIX: Get Dynamic Duration from the Opportunity itself
+                    let max_time_ms = op.max_duration_ms;
+                    let max_time_str = TimeUtils::format_duration(max_time_ms);
+                    let max_candles = if interval_ms > 0 { max_time_ms / interval_ms } else { 0 };
 
                     // SECTION 1: THE MATH
                     ui.label_subheader("Expectancy & Return");
-                    let roi = op.expected_roi();
+                    let roi = op.live_roi(calc_price);
                     let roi_color = get_outcome_color(roi);
                     
                     ui.metric("RoI (per trade)", &format!("{:+.2}%", roi), roi_color);
@@ -138,23 +137,47 @@ impl ZoneSniperApp {
                     ui.label_subheader("Trade Setup");
                     
                     // Entry / Target can stay standard
-                    ui.metric("Entry", &format_price(op.start_price), PLOT_CONFIG.color_text_neutral);
+                    ui.metric("Entry", &format_price(calc_price), PLOT_CONFIG.color_text_neutral);
                     ui.metric("Target", &format_price(op.target_price), PLOT_CONFIG.color_profit);
                     
-                    // Stop Loss (Inline Explanation)
-                    let target_dist = calculate_percent_diff(op.target_price, op.start_price);
-                    let stop_dist = calculate_percent_diff(op.stop_price, op.start_price);
+                    let target_dist = calculate_percent_diff(op.target_price, calc_price);
+                    let stop_dist = calculate_percent_diff(op.stop_price, calc_price);
 
+                    // TARGET ROW (Green)
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.label(RichText::new("Target:").small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(format_price(op.target_price)).small().color(PLOT_CONFIG.color_profit));
+                        
+                        // Percentage inline
+                        ui.label(RichText::new(format!("(+{:.2}%)", target_dist))
+                            .small()
+                            .color(PLOT_CONFIG.color_profit));
+                    });
+
+                    // STOP LOSS ROW (Red)
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
                         ui.label(RichText::new("Stop Loss:").small().color(PLOT_CONFIG.color_text_subdued));
                         ui.label(RichText::new(format_price(op.stop_price)).small().color(PLOT_CONFIG.color_stop_loss));
                         
-                        ui.label(RichText::new(format!(
-                            "(Target {:.2}% / Stop {:.2}%)", 
-                            target_dist, stop_dist
-                        )).small().color(PLOT_CONFIG.color_text_subdued));
+                        // Percentage inline
+                        ui.label(RichText::new(format!("(-{:.2}%)", stop_dist))
+                            .small()
+                            .color(PLOT_CONFIG.color_stop_loss));
                     });
+
+
+                    // NEW: Time Limit Block
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.label(RichText::new("Time Limit:").small().color(PLOT_CONFIG.color_text_subdued));
+                        // Use Info Color (Blue) or Primary (White) to make it distinct from price levels
+                        ui.label(RichText::new(&max_time_str).small().color(PLOT_CONFIG.color_info));
+                        
+                        ui.label(RichText::new(format!("(~{} candles)", max_candles)).small().color(PLOT_CONFIG.color_text_subdued));
+                    });
+
 
                     ui.add_space(15.0);
                     ui.separator();

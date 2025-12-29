@@ -31,6 +31,16 @@ impl fmt::Display for TradeDirection {
     }
 }
 
+/// A wrapper around TradeOpportunity that includes real-time calculations
+/// based on the current live price.
+#[derive(Debug, Clone)]
+pub struct LiveOpportunity {
+    pub opportunity: TradeOpportunity,
+    pub current_price: f64,
+    pub live_roi: f64,
+    pub risk_pct: f64,   // Distance to Stop
+    pub reward_pct: f64, // Distance to Target
+}
 
 #[derive(Debug, Clone)]
 pub struct TradeOpportunity {
@@ -51,6 +61,15 @@ impl TradeOpportunity {
     pub fn expected_roi(&self) -> f64 {
         calculate_expected_roi_pct(
             self.start_price,
+            self.target_price,
+            self.stop_price,
+            self.simulation.success_rate
+        )
+    }
+    /// Calculates the Expected ROI % using a dynamic live price.
+    pub fn live_roi(&self, current_price: f64) -> f64 {
+        calculate_expected_roi_pct(
+            current_price,
             self.target_price,
             self.stop_price,
             self.simulation.success_rate

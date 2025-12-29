@@ -13,7 +13,9 @@ use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::pair_context::PairContext;
-use crate::models::trading_view::TradingModel;
+use crate::models::trading_view::{TradingModel, LiveOpportunity};
+
+use crate::utils::maths_utils::calculate_percent_diff;
 
 use super::messages::{JobRequest, JobResult};
 use super::state::PairState;
@@ -53,6 +55,42 @@ pub struct SniperEngine {
 }
 
 impl SniperEngine {
+
+    pub fn get_all_live_opportunities(&self) -> Vec<LiveOpportunity> {
+        let mut results = Vec::new();
+
+        for (pair, state) in &self.pairs {
+            // 1. Need both a valid Model and a Live Price
+            if let (Some(model), Some(price)) = (&state.model, self.price_stream.get_price(pair)) {
+                
+                for opp in &model.opportunities {
+                    // 2. Calculate Live Stats
+                    let live_roi = opp.live_roi(price);
+                    
+                    // Filter: Optional - hide negative ROI trades? 
+                    // For now, let's return everything and let the UI filter.
+                    
+                    let risk_pct = calculate_percent_diff(opp.stop_price, price);
+                    let reward_pct = calculate_percent_diff(opp.target_price, price);
+
+                    results.push(LiveOpportunity {
+                        opportunity: opp.clone(), // Cheap clone (contains string + floats)
+                        current_price: price,
+                        live_roi,
+                        risk_pct,
+                        reward_pct,
+                    });
+                }
+            }
+        }
+
+        // 3. Global Sort (Best Opportunity First)
+        // Sort by ROI descending
+        results.sort_by(|a, b| b.live_roi.partial_cmp(&a.live_roi).unwrap_or(std::cmp::Ordering::Equal));
+
+        results
+    }
+
     /// Initialize the engine, spawn workers, and start the price stream.
     pub fn new(timeseries: TimeSeriesCollection) -> Self {
         let timeseries_arc = Arc::new(timeseries);
