@@ -118,7 +118,7 @@ fn run_pathfinder_simulations(
             let (total, d_vol, d_mom, d_vol_ratio) = current_market_state.debug_score_components(&best_hist_state, &config.similarity);
             
             // This log tells you EXACTLY what is driving the similarity
-            log::info!("🧬 MATCH ANATOMY (Score: {:.4}):", total);
+            log::info!("🧬 MATCH ANATOMY for {}: (Score: {:.4}):", ohlcv.pair_interval.name().to_string(), total);
             log::info!("   - Volatility: {:.4} (Weight {:.1})", d_vol, config.similarity.weight_volatility);
             log::info!("   - Momentum:   {:.4} (Weight {:.1})", d_mom, config.similarity.weight_momentum);
             log::info!("   - Rel. Volume:{:.4} (Weight {:.1})", d_vol_ratio, config.similarity.weight_volume);

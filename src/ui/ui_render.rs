@@ -112,8 +112,9 @@ impl ZoneSniperApp {
                         ui.label(RichText::new("Momentum:").small().color(PLOT_CONFIG.color_text_subdued));
                         ui.label(RichText::new(format!("{:+.2}%", state.momentum_pct * 100.0)).small().color(get_outcome_color(state.momentum_pct)));
                         
+                        // FIX: Updated phrasing
                         ui.label(RichText::new(format!(
-                            "(Price change over the last {}. Adaptive lookback based on Price Horizon {:.3}%)", 
+                            "(Trend measured over the last {}. Length of Trend Window derived from PH {:.2}%)", 
                             lookback_str, ph_pct * 100.0
                         )).small().color(PLOT_CONFIG.color_text_subdued));
                     });
