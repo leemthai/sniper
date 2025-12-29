@@ -1,6 +1,16 @@
 use argminmax::ArgMinMax;
 use std::cmp::{max, min};
 use std::f64;
+use std::time::Duration; // Ensure this import exists
+
+
+/// Converts a Duration into a specific number of candles based on the interval.
+pub fn duration_to_candles(duration: Duration, interval_ms: i64) -> usize {
+    if interval_ms <= 0 { return 0; }
+    (duration.as_millis() as i64 / interval_ms) as usize
+}
+
+
 
 #[derive(serde::Deserialize, serde::Serialize, Default, Debug, Clone)]
 pub struct RangeF64 {

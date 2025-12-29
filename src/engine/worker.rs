@@ -25,8 +25,11 @@ use crate::models::trading_view::{SuperZone, TradeDirection, TradeOpportunity};
 
 use crate::TradingModel;
 
-use crate::utils::maths_utils::calculate_expected_roi_pct;
+use crate::utils::maths_utils::{calculate_expected_roi_pct, duration_to_candles};
 use crate::utils::time_utils::AppInstant;
+
+#[cfg(debug_assertions)]
+use crate::utils::TimeUtils;
 
 #[cfg(debug_assertions)]
 use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::calculate_percent_diff};
@@ -60,27 +63,38 @@ fn run_pathfinder_simulations(
 ) -> Vec<TradeOpportunity> {
     let mut opportunities = Vec::new();
 
-    // 1. Setup
-    let lookback =
-        AdaptiveParameters::calculate_trend_lookback_candles(config.price_horizon.threshold_pct);
-    let interval_ms = ohlcv.pair_interval.interval_ms;
-    let duration_candles =
-        (config.journey.max_journey_time.as_millis() as i64 / interval_ms) as usize;
+    // 1. Setup & Adaptive Lookback
+    let ph_pct = config.price_horizon.threshold_pct;
+    let trend_lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
     let current_idx = ohlcv.klines().saturating_sub(1);
 
-    #[cfg(debug_assertions)]
-    log::info!(
-        "PATHFINDER START: Scanning {} zones. Lookback: {} candles.",
-        sticky_zones.len(),
-        lookback
+    // --- NEW: USE CENTRALIZED METHOD ---
+    // Calculate volatility over the lookback period (Recent Context)
+    let start_vol_idx = current_idx.saturating_sub(trend_lookback);
+    let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol_idx, current_idx);
+
+    // B. Calculate Duration (Time) using Adaptive Logic
+    let duration_time = AdaptiveParameters::calculate_dynamic_journey_duration(
+        ph_pct, 
+        avg_volatility, 
+        ohlcv.pair_interval.interval_ms
     );
+    
+    // C. Convert to Candles for Simulation
+    let duration_candles = duration_to_candles(duration_time, ohlcv.pair_interval.interval_ms);
+    // -------------------------------------
+
+    #[cfg(debug_assertions)]
+    log::info!("PATHFINDER START for {}: Scanning {} zones. Lookback: {} candles. Max Duration: {:?} ({} candles, Vol: {:.3}%. PH: {:.2}%)", 
+        ohlcv.pair_interval.name().to_string(),sticky_zones.len(), trend_lookback, TimeUtils::format_duration(duration_time.as_millis() as i64), duration_candles, avg_volatility * 100.0, ph_pct*100.);
+
 
     // 2. Heavy Lift: Find Historical Matches ONCE
     let (historical_matches, current_market_state) =
         match ScenarioSimulator::find_historical_matches(
             ohlcv,
             current_idx,
-            lookback,
+            trend_lookback,
             duration_candles,
             config.journey.sample_count,
             &config.similarity,
@@ -90,7 +104,7 @@ fn run_pathfinder_simulations(
                 #[cfg(debug_assertions)]
                 log::warn!(
                     "PATHFINDER ABORT: Insufficient data or matches (Lookback {}).",
-                    lookback
+                    trend_lookback
                 );
                 return Vec::new();
             }
@@ -100,7 +114,7 @@ fn run_pathfinder_simulations(
     // --- DEBUG: ANALYZE THE MATCH QUALITY ---
     #[cfg(debug_assertions)]
     if let Some((best_idx, _best_score)) = historical_matches.first() {
-        if let Some(best_hist_state) = MarketState::calculate(ohlcv, *best_idx, lookback) {
+        if let Some(best_hist_state) = MarketState::calculate(ohlcv, *best_idx, trend_lookback) {
             let (total, d_vol, d_mom, d_vol_ratio) = current_market_state.debug_score_components(&best_hist_state, &config.similarity);
             
             // This log tells you EXACTLY what is driving the similarity
@@ -149,6 +163,7 @@ fn run_pathfinder_simulations(
                     direction,
                     target_price,
                     stop_price: best_stop,
+                    max_duration_ms: duration_time.as_millis() as i64,
                     simulation: best_result,
                 });
             }

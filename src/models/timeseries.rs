@@ -54,7 +54,33 @@ pub fn find_matching_ohlcv<'a>(
 }
 
 impl OhlcvTimeSeries {
-    // In impl OhlcvTimeSeries ...
+
+    /// Calculates the Average Volatility ((High-Low)/Close) over a range of indices.
+    /// Returns 0.0 if range is invalid or empty.
+    pub fn calculate_volatility_in_range(&self, start_idx: usize, end_idx: usize) -> f64 {
+        if start_idx >= end_idx || end_idx > self.close_prices.len() {
+            return 0.0;
+        }
+        
+        let mut sum_vol = 0.0;
+        let mut count = 0;
+
+        for i in start_idx..end_idx {
+            let close = self.close_prices[i];
+            if close > f64::EPSILON {
+                let high = self.high_prices[i];
+                let low = self.low_prices[i];
+                sum_vol += (high - low) / close;
+                count += 1;
+            }
+        }
+
+        if count > 0 {
+            sum_vol / count as f64
+        } else {
+            0.0
+        }
+    }
 
     /// Create a TimeSeries from a list of Candles (Loaded from DB)
     pub fn from_candles(pair_interval: PairInterval, candles: Vec<Candle>) -> Self {

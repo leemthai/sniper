@@ -40,6 +40,7 @@ pub struct TradeOpportunity {
     pub start_price: f64,
     pub target_price: f64,
     pub stop_price: f64,
+    pub max_duration_ms: i64,
     pub simulation: SimulationResult,
 }
 

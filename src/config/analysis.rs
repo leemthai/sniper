@@ -94,12 +94,16 @@ pub struct AnalysisConfig {
 #[derive(Clone, Debug)]
 pub struct JourneySettings {
     // Stop-loss threshold (percentage move against position)
-    pub stop_loss_pct: f64,
+    // pub stop_loss_pct: f64,
     // Max duration for the trade simulation
-    pub max_journey_time: std::time::Duration,
     pub sample_count: usize,
-    pub min_win_rate: f64,
+    // pub min_win_rate: f64,
     pub risk_reward_tests: &'static [f64],
+
+    // NEW: Dynamic Time Settings
+    pub volatility_zigzag_factor: f64, // Multiplier for "Straight Line" time (e.g. 6.0)
+    pub min_journey_duration: Duration, // Floor (e.g. 1 Hour)
+    pub max_journey_time: Duration,    // Ceiling (increased to 90 days)
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
@@ -109,6 +113,21 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     // 2. Derive the default automatically
     // 2. Use the Constant
     time_decay_factor: DEFAULT_TIME_DECAY,
+
+    journey: JourneySettings {
+        // stop_loss_pct: 5.0,
+        sample_count: 50,
+        // min_win_rate: 0.05,
+        // NEW: The Tournament Ratios
+        risk_reward_tests: &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0],
+        // Cap at 90 Days (Quarterly). Dynamic logic will usually result in much less.
+        max_journey_time: Duration::from_secs(86400 * 90),
+        // Markets move 6x slower than a straight line on average
+        volatility_zigzag_factor: 6.0,
+
+        // Floor at 1 Hour. Don't simulate 5-minute trades.
+        min_journey_duration: Duration::from_secs(3600),
+    },
 
     similarity: SimilaritySettings {
         weight_volatility: 10.0,
@@ -163,14 +182,5 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         min_threshold_pct: 0.001, // = 0.10% minimum - seems fine for stablecoins even, let's see
         max_threshold_pct: 1.0, // 1.0 = 100% Range (From 0 to 2x Current Price. Can increase this if we want to set range higher than 2x current price).
         profiler_steps: 1000,   // With 50% range, this is 0.05% per bucket
-    },
-
-    journey: JourneySettings {
-        stop_loss_pct: 5.0,
-        max_journey_time: Duration::from_secs(86400 * 7),
-        sample_count: 50,
-        min_win_rate: 0.05,
-        // NEW: The Tournament Ratios
-        risk_reward_tests: &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0],
     },
 };

@@ -83,8 +83,10 @@ impl ZoneSniperApp {
                     let lookback_str = TimeUtils::format_duration(lookback_ms);
 
                     // 3. Get Actual Max Journey Time (From Config, NOT derived)
-                    let max_time = self.app_config.journey.max_journey_time;
-                    let max_time_str = TimeUtils::format_duration(max_time.as_millis() as i64);
+                    // let max_time = self.app_config.journey.max_journey_time;
+                    // let max_time_str = TimeUtils::format_duration(max_time.as_millis() as i64);
+
+                    let max_time_str = TimeUtils::format_duration(op.max_duration_ms);
 
 
                     // SECTION 1: THE MATH
@@ -187,7 +189,6 @@ impl ZoneSniperApp {
                         let win_count = (sim.success_rate * sim.sample_size as f64).round() as usize;
                         let win_pct = sim.success_rate * 100.0;
                         
-                        // FIXED: Specific Phrasing
                         ui.label(RichText::new(format!(
                             "4. In {} of those {} cases, price hit the Target first. This produces the {:.1}% {} you see above.",
                             win_count, sim.sample_size, win_pct, UI_TEXT.label_success_rate,
