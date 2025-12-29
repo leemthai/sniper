@@ -89,6 +89,23 @@ pub struct UiText {
 
     pub label_success_rate: &'static str,
 
+    // TRADE FINDER / OPPORTUNITIES
+    pub tf_header: &'static str,
+    pub tf_scope_all: &'static str,
+    pub tf_scope_selected: &'static str, // Prefix for "BTCUSDT ONLY"
+    
+    // METRICS & LABELS
+    pub label_roi: &'static str,
+    pub label_aroi: &'static str,        // "AROI"
+    pub label_sl_variants: &'static str, // "SL Variants"
+    pub label_target: &'static str,
+    pub label_stop: &'static str,
+    
+    // ICONS / SYMBOLS
+    pub icon_long: &'static str,
+    pub icon_short: &'static str,
+
+
 }
 
 pub const UI_TEXT: UiText = UiText {
@@ -232,5 +249,20 @@ pub const UI_TEXT: UiText = UiText {
     cr_nav_return_live: "RETURN TO LIVE",
 
     label_success_rate: "Success Rate",
+
+    tf_header: "TRADE FINDER",
+    tf_scope_all: "ALL PAIRS",
+    tf_scope_selected: "ONLY", // e.g. "BTCUSDT ONLY"
+    
+    label_roi: "ROI",
+    label_aroi: "AROI",
+    label_sl_variants: "SL Variants",
+    label_target: "Target",
+    label_stop: "Stop",
+    
+    // Using standard unicode arrows which usually render well. 
+    // If these fail, we can switch to "L" / "S" text.
+    icon_long: "▲", 
+    icon_short: "▼", 
 
 };

@@ -1,8 +1,9 @@
 use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
-use eframe::egui::{Color32, Ui, Vec2b, Rect};
+use eframe::egui::{Color32, Ui, Vec2b, Rect, PointerButton};
 use egui_plot::{Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotUi, VPlacement, PlotPoint};
+// use futures::select;
 
 use crate::analysis::range_gap_finder::DisplaySegment;
 
@@ -12,7 +13,7 @@ use crate::engine::SniperEngine;
 
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::timeseries::find_matching_ohlcv;
-use crate::models::trading_view::TradingModel;
+use crate::models::trading_view::{TradeOpportunity, TradingModel};
 
 use crate::ui::app::CandleResolution;
 use crate::ui::app::PlotVisibility;
@@ -337,6 +338,7 @@ impl PlotView {
         resolution: CandleResolution,
         current_segment_idx: Option<usize>,
         auto_scale_y: bool,
+        selected_opportunity: Option<TradeOpportunity>,
     ) -> PlotInteraction {
         // 1. Fetch OHLCV Data (Required for Candle Layer)
         // We assume the pair exists since we have a model for it.
@@ -423,6 +425,7 @@ impl PlotView {
                     resolution: resolution,
                     ph_bounds: (ph_min, ph_max),
                     clip_rect,
+                    selected_opportunity: &selected_opportunity,
                 };
 
                 // 2. Define Layer Stack (Dynamic)
@@ -484,8 +487,8 @@ impl PlotView {
         // 2. Dragging -> Break Lock (Unlock)
         // Note: we explicitly check if Y drag is allowed by config,
         // though we hardcoded it in Plot::new anyway.
-        if r.dragged_by(eframe::egui::PointerButton::Primary)
-            || r.dragged_by(eframe::egui::PointerButton::Secondary)
+        if r.dragged_by(PointerButton::Primary)
+            || r.dragged_by(PointerButton::Secondary)
         {
             // Only trigger if we actually moved in Y to avoid accidental clicks?
             // Actually, any drag intent should unlock it.

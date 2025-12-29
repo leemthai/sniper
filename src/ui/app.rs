@@ -18,6 +18,7 @@ use crate::engine::SniperEngine;
 
 use crate::models::pair_context::PairContext;
 use crate::models::{SyncStatus, ProgressEvent};
+use crate::models::trading_view::{TradeOpportunity, DirectionFilter};
 
 use crate::ui::ui_plot_view::PlotView;
 use crate::ui::utils::setup_custom_visuals;
@@ -61,9 +62,6 @@ pub struct LoadingState {
     pub completed: usize,
     pub failed: usize,
 }
-
-
-
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PlotVisibility {
@@ -154,7 +152,13 @@ pub struct ZoneSniperApp {
     pub show_debug_help: bool,
     pub show_ph_help: bool,
     pub candle_resolution: CandleResolution,
+    // TradeFinder State
+    pub tf_filter_pair_only: bool,      // True = Current Pair, False = All
+    pub tf_filter_direction: DirectionFilter,
 
+
+    #[serde(skip)]
+    pub selected_opportunity: Option<TradeOpportunity>, // Specific TF selection
     #[serde(skip)]
     pub app_config: AnalysisConfig,
     #[serde(skip)]
@@ -212,6 +216,9 @@ impl Default for ZoneSniperApp {
             ticker_state: TickerState::default(),
             last_frame_time: None,
             show_opportunity_details: false,
+            tf_filter_direction: DirectionFilter::All,
+            tf_filter_pair_only: false,
+            selected_opportunity: None,
         }
     }
 }
@@ -297,7 +304,7 @@ impl ZoneSniperApp {
 
     pub fn handle_pair_selection(&mut self, new_pair: String) {
 
-        log::info!("UI: handle_pair_selection called for {}", new_pair);
+        // log::info!("UI: handle_pair_selection called for {}", new_pair);
         
         // 1. Save current config for the OLD pair
         if let Some(old_pair) = &self.selected_pair {
@@ -349,6 +356,25 @@ impl ZoneSniperApp {
                 engine.force_recalc(&new_pair, price, "USER PAIR SELECTION");
             }
         }
+
+        // --- NEW: AUTO-SELECT BEST OPPORTUNITY ---
+        // If the new pair has a valid opportunity, select it automatically.
+        // This ensures the Plot HUD and TradeFinder highlight it immediately.
+        self.selected_opportunity = None; // Reset first
+        
+        if let Some(engine) = &self.engine {
+            if let Some(model) = engine.get_model(&new_pair) {
+                // Find best by Static ROI (same sort logic as TradeFinder)
+                let best = model.opportunities.iter()
+                    .filter(|op| op.expected_roi() > 0.0)
+                    .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap());
+                
+                if let Some(op) = best {
+                    self.selected_opportunity = Some(op.clone());
+                }
+            }
+        }
+
         
     }
 
@@ -622,6 +648,8 @@ impl ZoneSniperApp {
         self.render_top_panel(ctx); // Render before left/right if we want to occupy full app screen space
         self.render_left_panel(ctx);
         self.render_right_panel(ctx);
+        self.render_trade_finder_panel(ctx);
+
         self.render_ticker_panel(ctx);
         self.render_status_panel(ctx);
         self.render_central_panel(ctx);

@@ -68,6 +68,8 @@ fn run_pathfinder_simulations(
     let trend_lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
     let current_idx = ohlcv.klines().saturating_sub(1);
 
+    let interval_ms = ohlcv.pair_interval.interval_ms; 
+
     // --- NEW: USE CENTRALIZED METHOD ---
     // Calculate volatility over the lookback period (Recent Context)
     let start_vol_idx = current_idx.saturating_sub(trend_lookback);
@@ -81,7 +83,7 @@ fn run_pathfinder_simulations(
     );
     
     // C. Convert to Candles for Simulation
-    let duration_candles = duration_to_candles(duration_time, ohlcv.pair_interval.interval_ms);
+    let duration_candles = duration_to_candles(duration_time, interval_ms);
     // -------------------------------------
 
     #[cfg(debug_assertions)]
@@ -111,26 +113,6 @@ fn run_pathfinder_simulations(
         };
     // ----------------
 
-    // --- DEBUG: ANALYZE THE MATCH QUALITY ---
-    #[cfg(debug_assertions)]
-    if let Some((best_idx, _best_score)) = historical_matches.first() {
-        if let Some(best_hist_state) = MarketState::calculate(ohlcv, *best_idx, trend_lookback) {
-            let (total, d_vol, d_mom, d_vol_ratio) = current_market_state.debug_score_components(&best_hist_state, &config.similarity);
-            
-            // This log tells you EXACTLY what is driving the similarity
-            log::info!("🧬 MATCH ANATOMY for {}: (Score: {:.4}):", ohlcv.pair_interval.name().to_string(), total);
-            log::info!("   - Volatility: {:.4} (Weight {:.1})", d_vol, config.similarity.weight_volatility);
-            log::info!("   - Momentum:   {:.4} (Weight {:.1})", d_mom, config.similarity.weight_momentum);
-            log::info!("   - Rel. Volume:{:.4} (Weight {:.1})", d_vol_ratio, config.similarity.weight_volume);
-            
-            if d_vol_ratio > d_vol && d_vol_ratio > d_mom {
-                log::warn!("   ⚠️ Volume is dominating the score! Consider lowering weight_volume.");
-            }
-        }
-    }
-
-
-
     // 3. Scan Zones
     for (i, zone) in sticky_zones.iter().enumerate() {
         // IDIOMATIC: Determine Setup using Option<(Price, Direction)>
@@ -145,7 +127,7 @@ fn run_pathfinder_simulations(
 
         if let Some((target_price, direction)) = setup {
             // 4. Run Tournament to find best Stop Loss
-            if let Some((best_result, best_stop)) = run_stop_loss_tournament(
+            if let Some((best_result, best_stop, count)) = run_stop_loss_tournament(
                 ohlcv,
                 &historical_matches,
                 current_market_state,
@@ -156,6 +138,11 @@ fn run_pathfinder_simulations(
                 config.journey.risk_reward_tests,
                 i, // zone index for debug logging
             ) {
+
+                // Calculate Average Duration in MS
+                let avg_candles = best_result.avg_duration;
+                let avg_ms = (avg_candles * interval_ms as f64).round() as i64;
+
                 opportunities.push(TradeOpportunity {
                     pair_name: ohlcv.pair_interval.name().to_string(),
                     start_price: current_price,
@@ -164,6 +151,8 @@ fn run_pathfinder_simulations(
                     target_price,
                     stop_price: best_stop,
                     max_duration_ms: duration_time.as_millis() as i64,
+                    avg_duration_ms: avg_ms,
+                    variant_count: count,
                     simulation: best_result,
                 });
             }
@@ -183,9 +172,12 @@ fn run_stop_loss_tournament(
     duration_candles: usize,
     risk_tests: &[f64],
     _zone_idx: usize,
-) -> Option<(SimulationResult, f64)> {
+) -> Option<(SimulationResult, f64, usize)> {
+
     let mut best_roi = f64::NEG_INFINITY;
     let mut best_result: Option<(SimulationResult, f64, f64)> = None; // (Result, Stop, Ratio)
+    let mut valid_variant_count = 0;
+
     let target_dist_abs = (target_price - current_price).abs();
 
     // 1. Safety Check: Volatility Floor
@@ -208,16 +200,16 @@ fn run_stop_loss_tournament(
         );
     }
 
-    for &_ratio in risk_tests {
+    for &ratio in risk_tests {
         // 2. Calculate Candidate Stop
-        let stop_dist = target_dist_abs / _ratio;
+        let stop_dist = target_dist_abs / ratio;
 
         if stop_dist < min_stop_dist {
             #[cfg(debug_assertions)]
             if debug {
                 log::info!(
                     "   [R:R {:.1}] 🛑 SKIPPED: Stop distance {:.4} < Volatility Floor {:.4}",
-                    _ratio,
+                    ratio,
                     stop_dist,
                     min_stop_dist
                 );
@@ -248,12 +240,22 @@ fn run_stop_loss_tournament(
                 result.success_rate,
             );
 
+            if roi > 0.0 {
+                valid_variant_count += 1; // Count positive expectancy variants
+            }
+
+            if roi > best_roi {
+                best_roi = roi;
+                best_result = Some((result.clone(), candidate_stop, ratio));
+            }
+
+
             #[cfg(debug_assertions)]
             if debug {
                 let risk_pct = calculate_percent_diff(candidate_stop, current_price);
                 log::info!(
                     "   [R:R {:.1}] Stop: {:.4} | {}: {:.1}% | ROI: {:+.2}% | Risk: {:.2}%",
-                    _ratio,
+                    ratio,
                     candidate_stop,
                     UI_TEXT.label_success_rate, // "Success Rate"
                     result.success_rate * 100.0,
@@ -264,17 +266,18 @@ fn run_stop_loss_tournament(
 
             if roi > best_roi {
                 best_roi = roi;
-                best_result = Some((result, candidate_stop, _ratio));
+                best_result = Some((result, candidate_stop, ratio));
             }
         }
     }
 
-    if let Some((res, stop, _ratio)) = best_result {
+    // Return Winner + Count
+    if let Some((res, stop, ratio)) = best_result {
         #[cfg(debug_assertions)]
         if debug {
-            log::info!("   🏆 WINNER: R:R {:.1} with ROI {:+.2}%", _ratio, best_roi);
+            log::info!("   🏆 WINNER: R:R {:.1} with ROI {:+.2}% ({} variants)", ratio, best_roi, valid_variant_count);
         }
-        Some((res, stop))
+        Some((res, stop, valid_variant_count))
     } else {
         None
     }

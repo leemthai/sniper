@@ -66,6 +66,7 @@ impl SniperEngine {
                 for opp in &model.opportunities {
                     // 2. Calculate Live Stats
                     let live_roi = opp.live_roi(price);
+                    let annualized_roi = opp.live_annualized_roi(price);
                     
                     // Filter: Optional - hide negative ROI trades? 
                     // For now, let's return everything and let the UI filter.
@@ -77,6 +78,7 @@ impl SniperEngine {
                         opportunity: opp.clone(), // Cheap clone (contains string + floats)
                         current_price: price,
                         live_roi,
+                        annualized_roi,
                         risk_pct,
                         reward_pct,
                     });

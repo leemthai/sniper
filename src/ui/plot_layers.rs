@@ -12,12 +12,11 @@ use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 
 use crate::analysis::range_gap_finder::GapReason;
 
-// use crate::config::ANALYSIS;
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::ScoreType;
-use crate::models::trading_view::{SuperZone, TradingModel};
+use crate::models::trading_view::{SuperZone, TradingModel, TradeOpportunity};
 
 use crate::ui::app::{CandleResolution, PlotVisibility};
 use crate::ui::styles::{DirectionColor, get_outcome_color, apply_opacity};
@@ -29,6 +28,13 @@ use crate::utils::maths_utils::{self, calculate_percent_diff};
 pub struct HorizonLinesLayer;
 
 pub struct OpportunityLayer;
+
+// Helper to find the default "Best" op if nothing is selected
+fn find_best_opportunity(model: &TradingModel) -> Option<&TradeOpportunity> {
+    model.opportunities.iter()
+        .filter(|op| op.expected_roi() > 0.0)
+        .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
+}
 
 impl PlotLayer for OpportunityLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
@@ -42,19 +48,23 @@ impl PlotLayer for OpportunityLayer {
             _ => return,
         };
 
+        // --- SELECTION LOGIC START ---
+        // Determine which Op to show: Selected (if matches pair) OR Best (Fallback)
+        let target_opp = if let Some(selected) = ctx.selected_opportunity {
+            // Is the selected op for THIS pair?
+            if selected.pair_name == ctx.trading_model.cva.pair_name {
+                Some(selected)
+            } else {
+                find_best_opportunity(ctx.trading_model)
+            }
+        } else {
+            find_best_opportunity(ctx.trading_model)
+        };
+
         // 2. Find Best Opportunity
-        if let Some(best_opp) = ctx
-            .trading_model
-            .opportunities
-            .iter() // Filter out obviously bad ROI (negative expectancy) before sorting
-            .filter(|op| op.expected_roi() > 0.0)
-            // Sort by Expected ROI instead of just Success Rate
-            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
+        if let Some(best_opp) = target_opp
         {
             let win_rate = best_opp.simulation.success_rate;
-            // if win_rate < ANALYSIS.journey.min_win_rate {
-                // return;
-            // }
 
             // 3. Setup Foreground Painter
             // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
@@ -78,6 +88,7 @@ impl PlotLayer for OpportunityLayer {
 
             // Calculate ROI first so we can use it for color selection
             let roi = best_opp.expected_roi();
+            let ann_roi = best_opp.live_annualized_roi(current_price);
 
             // --- 1. RESOLVE SEMANTIC COLORS & STYLES ---
             let direction_color = best_opp.direction.color();
@@ -180,9 +191,21 @@ impl PlotLayer for OpportunityLayer {
                 },
             );
 
-            // Block 3: Stop Info (Loss Color)
+            // Block 3: Stop Info
+            // Format: Stop: $Price (-%) (N SL Variants)
+            let variant_text = if best_opp.variant_count > 1 {
+                format!(" ({} {})", best_opp.variant_count, UI_TEXT.label_sl_variants)
+            } else {
+                String::new()
+            };
+
             job.append(
-                &format!("Stop: {} (-{:.2}%)\n", format_price(best_opp.stop_price), stop_dist_pct),
+                &format!("{}: {} (-{:.2}%){}\n", 
+                    UI_TEXT.label_stop, 
+                    format_price(best_opp.stop_price), 
+                    stop_dist_pct,
+                    variant_text
+                ),
                 0.0,
                 TextFormat {
                     color: PLOT_CONFIG.color_stop_loss,
@@ -193,7 +216,7 @@ impl PlotLayer for OpportunityLayer {
 
             // Block 4: RoI (Outcome Color)
             job.append(
-                &format!("RoI: {:+.2}%", roi),
+                &format!("{}: {:+.2}%", UI_TEXT.label_roi, roi),
                 0.0,
                 TextFormat {
                     color: outcome_color,
@@ -202,7 +225,16 @@ impl PlotLayer for OpportunityLayer {
                 },
             );
 
-
+            // Add Annualized Line (Smaller)
+            job.append(
+                &format!(" (AROI: {:+.0}%)", ann_roi),
+                0.0,
+                TextFormat { 
+                    color: outcome_color.linear_multiply(0.8), // Slightly dimmed 
+                    font_id: FontId::proportional(12.0), // Smaller font
+                    ..Default::default() 
+                },
+            );
 
             // 3. Render it (FIXED: Use painter.layout_job)
             let galley = painter.layout_job(job);
@@ -454,6 +486,7 @@ pub struct LayerContext<'a> {
     pub resolution: CandleResolution,
     pub ph_bounds: (f64, f64), // (min, max) of the Price Horizon,
     pub clip_rect: Rect,
+    pub selected_opportunity: &'a Option<TradeOpportunity>,
 }
 
 /// A standardized layer in the plot stack.

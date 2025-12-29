@@ -3,12 +3,24 @@ use std::cmp::{max, min};
 use std::f64;
 use std::time::Duration; // Ensure this import exists
 
+pub const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
+
+/// Calculates Annualized ROI % (Simple Projection).
+/// Formula: ROI * (Year / Duration)
+#[inline]
+pub fn calculate_annualized_roi(roi_pct: f64, duration_ms: f64) -> f64 {
+    if duration_ms < 1000.0 { return 0.0; } // Avoid weirdness for <1s trades
+    let factors_per_year = MS_IN_YEAR / duration_ms;
+    roi_pct * factors_per_year
+}
+
 
 /// Converts a Duration into a specific number of candles based on the interval.
 pub fn duration_to_candles(duration: Duration, interval_ms: i64) -> usize {
     if interval_ms <= 0 { return 0; }
     (duration.as_millis() as i64 / interval_ms) as usize
 }
+
 
 
 

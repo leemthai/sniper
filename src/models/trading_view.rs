@@ -1,22 +1,35 @@
-use std::sync::Arc;
 use std::fmt;
+use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
 
 // User crates
-use crate::analysis::zone_scoring::find_target_zones;
-use crate::analysis::range_gap_finder::{RangeGapFinder, DisplaySegment};
+use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
+use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{ANALYSIS, AnalysisConfig};
 use crate::config::ZoneParams;
+use crate::config::{ANALYSIS, AnalysisConfig};
 
+use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::horizon_profile::HorizonProfile;
-use crate::models::OhlcvTimeSeries;
 
-use crate::utils::maths_utils::{normalize_max, smooth_data, calculate_stats, calculate_expected_roi_pct};
+
+use crate::utils::maths_utils::{
+    calculate_annualized_roi, calculate_expected_roi_pct, calculate_stats, normalize_max,
+    smooth_data,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TradeDirection {
+    Long,
+    Short,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DirectionFilter {
+    All,
     Long,
     Short,
 }
@@ -38,6 +51,7 @@ pub struct LiveOpportunity {
     pub opportunity: TradeOpportunity,
     pub current_price: f64,
     pub live_roi: f64,
+    pub annualized_roi: f64,
     pub risk_pct: f64,   // Distance to Stop
     pub reward_pct: f64, // Distance to Target
 }
@@ -51,6 +65,8 @@ pub struct TradeOpportunity {
     pub target_price: f64,
     pub stop_price: f64,
     pub max_duration_ms: i64,
+    pub avg_duration_ms: i64, // Expected "time to win"
+    pub variant_count: usize, // How many valid SL variants were found
     pub simulation: SimulationResult,
 }
 
@@ -63,7 +79,7 @@ impl TradeOpportunity {
             self.start_price,
             self.target_price,
             self.stop_price,
-            self.simulation.success_rate
+            self.simulation.success_rate,
         )
     }
     /// Calculates the Expected ROI % using a dynamic live price.
@@ -72,8 +88,14 @@ impl TradeOpportunity {
             current_price,
             self.target_price,
             self.stop_price,
-            self.simulation.success_rate
+            self.simulation.success_rate,
         )
+    }
+
+    /// Calculates Annualized ROI based on LIVE price and AVERAGE duration.
+    pub fn live_annualized_roi(&self, current_price: f64) -> f64 {
+        let roi = self.live_roi(current_price);
+        calculate_annualized_roi(roi, self.avg_duration_ms as f64)
     }
 }
 
@@ -234,24 +256,19 @@ pub struct ZoneCoverageStats {
 impl TradingModel {
     /// Create a new trading model from CVA results and optional current price
     pub fn from_cva(
-        cva: Arc<CVACore>, 
+        cva: Arc<CVACore>,
         profile: HorizonProfile,
         ohlcv: &OhlcvTimeSeries,
         config: &AnalysisConfig,
     ) -> Self {
         let (classified, stats) = Self::classify_zones(&cva);
-        
+
         // CALCULATE SEGMENTS (On Worker Thread)
         // 1 Day tolerance merges small "Price < PH" dips, but keeps structural data holes.
         let bounds = cva.price_range.min_max();
         let merge_ms = config.cva.segment_merge_tolerance_ms;
-        
-        let segments = RangeGapFinder::analyze(
-            ohlcv, 
-            &cva.included_ranges, 
-            bounds, 
-            merge_ms
-        );
+
+        let segments = RangeGapFinder::analyze(ohlcv, &cva.included_ranges, bounds, merge_ms);
 
         Self {
             cva,
@@ -271,24 +288,30 @@ impl TradingModel {
 
         crate::trace_time!("Classify & Cluster Zones", 1000, {
             // Helper closure
-            let process_layer = |raw_data: &[f64], params: ZoneParams, resource_total: f64, _layer_name: &str| {
-                
+            let process_layer = |raw_data: &[f64],
+                                 params: ZoneParams,
+                                 resource_total: f64,
+                                 _layer_name: &str| {
                 // STEP 1: VIABILITY GATE (Absolute)
                 // Filter out bins that represent insignificant noise relative to the total.
                 let viable_data: Vec<f64> = if resource_total > 0.0 {
-                    raw_data.iter().map(|&x| {
-                        if (x / resource_total) >= params.viability_pct {
-                            x
-                        } else {
-                            0.0
-                        }
-                    }).collect()
+                    raw_data
+                        .iter()
+                        .map(|&x| {
+                            if (x / resource_total) >= params.viability_pct {
+                                x
+                            } else {
+                                0.0
+                            }
+                        })
+                        .collect()
                 } else {
                     raw_data.to_vec()
                 };
 
                 // STEP 2: SMOOTH
-                let smooth_window = ((zone_count as f64 * params.smooth_pct).ceil() as usize).max(1) | 1;
+                let smooth_window =
+                    ((zone_count as f64 * params.smooth_pct).ceil() as usize).max(1) | 1;
                 let smoothed = smooth_data(&viable_data, smooth_window);
 
                 // STEP 3: NORMALIZE (Max)
@@ -296,19 +319,21 @@ impl TradingModel {
 
                 // STEP 4: ADAPTIVE THRESHOLD (Relative)
                 let (mean, std_dev) = calculate_stats(&normalized);
-                
+
                 // Threshold = Mean + (Sigma * StdDev)
-                // We clamp it between 0.05 and 0.95 to prevent 
+                // We clamp it between 0.05 and 0.95 to prevent
                 // "Selecting Everything" (if flat) or "Selecting Nothing" (if extreme outliers).
                 let adaptive_threshold = (mean + (params.sigma * std_dev)).clamp(0.05, 0.95);
 
                 // --- DIAGNOSTIC LOGGING ---
                 // #[cfg(debug_assertions)]
-                if false
-                {
+                if false {
                     let count = normalized.len();
-                    let above = normalized.iter().filter(|&&v| v >= adaptive_threshold).count();
-                    
+                    let above = normalized
+                        .iter()
+                        .filter(|&&v| v >= adaptive_threshold)
+                        .count();
+
                     // Count how many bins survived the Viability Gate
                     let pre_gate_nonzero = raw_data.iter().filter(|&&x| x > 0.0).count();
                     let post_gate_nonzero = viable_data.iter().filter(|&&x| x > 0.0).count();
@@ -316,16 +341,29 @@ impl TradingModel {
 
                     log::info!(
                         "STATS [{}] for {}: TotalRes={:.1}  | Viable Threshold={:.1} | Mean={:.3} | StdDev={:.3} | Sigma={:.1}",
-                        _layer_name, cva.pair_name, resource_total, resource_total * params.viability_pct, mean, std_dev, params.sigma
+                        _layer_name,
+                        cva.pair_name,
+                        resource_total,
+                        resource_total * params.viability_pct,
+                        mean,
+                        std_dev,
+                        params.sigma
                     );
-                    
+
                     if killed_by_gate > 0 {
-                        log::warn!("   🛑 VIABILITY GATE: Killed {} bins (Noise below {:.4})", killed_by_gate, params.viability_pct);
+                        log::warn!(
+                            "   🛑 VIABILITY GATE: Killed {} bins (Noise below {:.4})",
+                            killed_by_gate,
+                            params.viability_pct
+                        );
                     }
 
                     log::info!(
                         "   -> Adaptive Cutoff: {:.4} | Passing: {}/{} ({:.1}%)",
-                        adaptive_threshold, above, count, (above as f64 / count as f64) * 100.0
+                        adaptive_threshold,
+                        above,
+                        count,
+                        (above as f64 / count as f64) * 100.0
                     );
                 }
                 // --------------------------
@@ -349,24 +387,24 @@ impl TradingModel {
             // --- Sticky Zones ---
             // Resource: Total Volume in this range
             let total_volume: f64 = cva.get_scores_ref(ScoreType::FullCandleTVW).iter().sum();
-            
+
             let (sticky, sticky_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::FullCandleTVW),
                 ANALYSIS.zones.sticky,
                 total_volume,
-                "STICKY"
+                "STICKY",
             );
 
             // --- Reversal Zones ---
             // Resource: Total Candles (Opportunity count)
             // Note: Use total_candles, NOT sum of scores (which is inflated by width)
-            
+
             // 1. Low Wicks
             let (low_wicks, low_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::LowWickCount),
                 ANALYSIS.zones.reversal,
                 total_candles,
-                "LOW WICKS"
+                "LOW WICKS",
             );
 
             // 2. High Wicks
@@ -374,12 +412,14 @@ impl TradingModel {
                 cva.get_scores_ref(ScoreType::HighWickCount),
                 ANALYSIS.zones.reversal,
                 total_candles,
-                "HIGH WICKS"
+                "HIGH WICKS",
             );
 
             // --- Calculate Coverage Statistics ---
             let calc_coverage = |zones: &[Zone]| -> f64 {
-                if zone_count == 0 { return 0.0; }
+                if zone_count == 0 {
+                    return 0.0;
+                }
                 (zones.len() as f64 / zone_count as f64) * 100.0
             };
 

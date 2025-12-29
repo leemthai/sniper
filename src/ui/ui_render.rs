@@ -1,12 +1,16 @@
 use eframe::egui::{
     CentralPanel, Context, Grid, RichText, ScrollArea, SidePanel, TopBottomPanel,
-    Ui, Window, Order,
+    Ui, Window, Order, Align, Layout, Color32, Frame, Sense, CursorIcon,
 };
 
 use crate::analysis::adaptive::AdaptiveParameters;
+
 use crate::config::{ANALYSIS};
 use crate::config::TICKER;
+
 use crate::models::cva::ScoreType;
+use crate::models::trading_view::{LiveOpportunity, DirectionFilter, TradeDirection};
+
 
 use crate::ui::app::CandleResolution;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
@@ -22,7 +26,7 @@ use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
-use crate::utils::maths_utils::calculate_percent_diff;
+use crate::utils::maths_utils::{calculate_percent_diff, calculate_annualized_roi};
 
 use super::app::ZoneSniperApp;
 
@@ -91,9 +95,15 @@ impl ZoneSniperApp {
                     // SECTION 1: THE MATH
                     ui.label_subheader("Expectancy & Return");
                     let roi = op.live_roi(calc_price);
+                    let ann_roi = op.live_annualized_roi(calc_price);
                     let roi_color = get_outcome_color(roi);
                     
-                    ui.metric("RoI (per trade)", &format!("{:+.2}%", roi), roi_color);
+                    ui.metric(
+                        &format!("{} (per trade)", UI_TEXT.label_roi),
+                        &format!("{:+.2}%", roi), 
+                        roi_color
+                    );
+                    ui.metric("AROI (Annualized RoI)", &format!("{:+.0}%", ann_roi), roi_color);
                     ui.metric(UI_TEXT.label_success_rate, &format!("{:.1}%", sim.success_rate * 100.0), PLOT_CONFIG.color_text_primary);
                     ui.metric("R:R Ratio", &format!("{:.2}", sim.risk_reward_ratio), PLOT_CONFIG.color_text_primary);
 
@@ -156,16 +166,24 @@ impl ZoneSniperApp {
                             .color(PLOT_CONFIG.color_profit));
                     });
 
-                    // STOP LOSS ROW (Red)
+                    // Stop Loss Row + Variants
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.label(RichText::new("Stop Loss:").small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.label(RichText::new(format!("{}:", UI_TEXT.label_stop)).small().color(PLOT_CONFIG.color_text_subdued));
                         ui.label(RichText::new(format_price(op.stop_price)).small().color(PLOT_CONFIG.color_stop_loss));
                         
-                        // Percentage inline
-                        ui.label(RichText::new(format!("(-{:.2}%)", stop_dist))
-                            .small()
-                            .color(PLOT_CONFIG.color_stop_loss));
+                        ui.label(RichText::new(format!(
+                            "(Target {:.2}% / Stop {:.2}%)", 
+                            target_dist, stop_dist
+                        )).small().color(PLOT_CONFIG.color_text_subdued));
+
+                        // NEW: Variants Info
+                        if op.variant_count > 1 {
+                            ui.label(RichText::new(format!("- {} {}", op.variant_count, UI_TEXT.label_sl_variants))
+                                .small()
+                                .italics()
+                                .color(PLOT_CONFIG.color_text_subdued));
+                        }
                     });
 
 
@@ -271,6 +289,209 @@ impl ZoneSniperApp {
                     }
                 }
             });
+    }
+
+    /// Renders the Trade Finder as a dedicated Side Panel.
+    /// Call this AFTER 'render_right_panel' in app.rs if you want it to sit to the LEFT of the nav panel.
+    pub(super) fn render_trade_finder_panel(&mut self, ctx: &Context) {
+        let frame = UI_CONFIG.side_panel_frame();
+
+        SidePanel::right("trade_finder_panel") // <--- UNIQUE ID IS CRITICAL
+            .min_width(320.0) // Wider for data visibility
+            .resizable(true)  // Let user drag it
+            .frame(frame)
+            .show(ctx, |ui| {
+                self.render_trade_finder_content(ui);
+            });
+    }
+
+    fn render_trade_finder_content(&mut self, ui: &mut Ui) {
+        // --- 1. HEADER ---
+        ui.add_space(5.0);
+        ui.heading(UI_TEXT.tf_header); 
+        ui.add_space(5.0);
+
+        // --- 2. SCOPE TOGGLE (Selectable Row) ---
+        ui.horizontal(|ui| {
+            ui.label("Scope:");
+            ui.style_mut().spacing.item_spacing.x = 5.0; 
+            
+            // Button 1: ALL PAIRS
+            if ui.selectable_label(!self.tf_filter_pair_only, UI_TEXT.tf_scope_all).clicked() {
+                self.tf_filter_pair_only = false;
+            }
+            
+            // Button 2: PAIR ONLY
+            let pair_label = if let Some(p) = &self.selected_pair { 
+                format!("{} {}", p, UI_TEXT.tf_scope_selected) 
+            } else { 
+                format!("SELECTED {}", UI_TEXT.tf_scope_selected) 
+            };
+            
+            if ui.selectable_label(self.tf_filter_pair_only, pair_label).clicked() {
+                self.tf_filter_pair_only = true;
+            }
+        });
+        ui.separator();
+
+        // --- 2. DIRECTION FILTER ---
+        ui.horizontal(|ui| {
+            ui.label("Filter:");
+            ui.style_mut().spacing.item_spacing.x = 5.0;
+            
+            let f = &mut self.tf_filter_direction;
+            if ui.selectable_label(*f == DirectionFilter::All, "ALL").clicked() { *f = DirectionFilter::All; }
+            if ui.selectable_label(*f == DirectionFilter::Long, "LONG").clicked() { *f = DirectionFilter::Long; }
+            if ui.selectable_label(*f == DirectionFilter::Short, "SHORT").clicked() { *f = DirectionFilter::Short; }
+        });
+        ui.separator();
+
+        // --- 3. AGGREGATION ---
+        let mut opportunities = if let Some(eng) = &self.engine {
+            eng.get_all_live_opportunities()
+        } else {
+            vec![]
+        };
+
+        // Filter: Scope
+        if self.tf_filter_pair_only {
+            if let Some(current) = &self.selected_pair {
+                opportunities.retain(|op| op.opportunity.pair_name == *current);
+            }
+        }
+
+        // Filter: Direction
+        match self.tf_filter_direction {
+            DirectionFilter::Long => opportunities.retain(|op| op.opportunity.direction == TradeDirection::Long),
+            DirectionFilter::Short => opportunities.retain(|op| op.opportunity.direction == TradeDirection::Short),
+            DirectionFilter::All => {},
+        }
+
+        // Filter: Positive ROI Only (Remove losers)
+        // We filter based on the LIVE ROI to be safe (if it drifted negative, hide it)
+        opportunities.retain(|op| op.opportunity.expected_roi() > 0.0);
+
+        // Sort: STABLE SORT (Use Static Metrics)
+        // We calculate the AROI based on the *Start Price* (Static), not *Live Price*
+        opportunities.sort_by(|a, b| {
+            let a_static_roi = a.opportunity.expected_roi(); // Uses start_price
+            let a_static_aroi = calculate_annualized_roi(a_static_roi, a.opportunity.avg_duration_ms as f64);
+            
+            let b_static_roi = b.opportunity.expected_roi();
+            let b_static_aroi = calculate_annualized_roi(b_static_roi, b.opportunity.avg_duration_ms as f64);
+            
+            b_static_aroi.partial_cmp(&a_static_aroi).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // --- 4. RENDER LIST ---
+        ScrollArea::vertical().id_salt("tf_list_scroll").show(ui, |ui| {
+            if opportunities.is_empty() {
+                ui.add_space(20.0);
+                ui.centered_and_justified(|ui| ui.label("No active opportunities found. Please reset filters."));
+                return;
+            }
+
+            for live_op in opportunities {
+                self.render_trade_card(ui, live_op);
+            }
+        });
+    }
+
+    fn render_trade_card(&mut self, ui: &mut Ui, live_op: LiveOpportunity) {
+        let op = &live_op.opportunity;
+        
+        // Match selection
+        let is_selected = self.selected_opportunity.as_ref().map_or(false, |sel| 
+            sel.target_zone_id == op.target_zone_id && sel.pair_name == op.pair_name
+        );
+
+        // Higher contrast selection color
+        let card_color = if is_selected { 
+            Color32::from_white_alpha(30) // Stronger highlight
+        } else { 
+            Color32::TRANSPARENT 
+        };
+
+        // FRAME is the Button
+        let inner_response = Frame::new()
+            .fill(card_color)
+            .inner_margin(6.0) // More padding
+            .corner_radius(4.0)     // Rounded corners
+            .show(ui, |ui| {
+                
+                ui.horizontal(|ui| {
+                    // COLUMN A: Pair & Direction
+                    ui.vertical(|ui| {
+                        ui.set_min_width(90.0); // Fixed width for alignment
+                        
+                        // Pair Name
+                        ui.label(RichText::new(&op.pair_name).strong().size(14.0).color(PLOT_CONFIG.color_text_primary));
+                        
+                        // Direction Icon
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            let dir_color = op.direction.color();
+                            let arrow = match op.direction {
+                                TradeDirection::Long => UI_TEXT.icon_long,
+                                TradeDirection::Short => UI_TEXT.icon_short,
+                            };
+                            ui.label(RichText::new(arrow).color(dir_color));
+                            ui.label(RichText::new(op.direction.to_string().to_uppercase()).small().color(dir_color));
+                        });
+                    });
+
+                    // COLUMN B: ROI Stats
+                    ui.vertical(|ui| {
+                        ui.set_min_width(80.0);
+                        
+                        let roi_color = get_outcome_color(live_op.live_roi);
+                        ui.label(RichText::new(format!("{}: {:+.2}%", UI_TEXT.label_roi, live_op.live_roi)).strong().color(roi_color));
+                        
+                        // AROI
+                        ui.label(RichText::new(format!("{}: {:+.0}%", UI_TEXT.label_aroi, live_op.annualized_roi))
+                            .small()
+                            .color(roi_color.linear_multiply(0.8)));
+                    });
+
+                    // COLUMN C: Info Badges
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if op.variant_count > 1 {
+                            ui.label(RichText::new(format!("({} {})", op.variant_count, UI_TEXT.label_sl_variants))
+                                .small()
+                                .italics()
+                                .color(PLOT_CONFIG.color_text_subdued));
+                        }
+                    });
+                });
+                
+                ui.add_space(2.0);
+
+                // FOOTER: Targets
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("T: +{:.2}%", live_op.reward_pct)).small().color(PLOT_CONFIG.color_profit));
+                    ui.label(RichText::new("|").small().color(PLOT_CONFIG.color_text_subdued));
+                    ui.label(RichText::new(format!("S: -{:.2}%", live_op.risk_pct)).small().color(PLOT_CONFIG.color_stop_loss));
+                });
+            });
+
+        // HANDLE INTERACTION
+        // 1. Make the whole frame clickable
+        let response = inner_response.response.interact(Sense::click());
+
+        // 2. FIX: Force "Arrow" cursor (Default) on hover
+        // This overrides the text-selection "Caret" cursor that appears over labels.
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::Default);
+        }
+
+        // 3. Handle Click
+        if response.clicked() {
+            self.handle_pair_selection(op.pair_name.clone());
+            self.scroll_to_pair = Some(op.pair_name.clone());
+            self.selected_opportunity = Some(op.clone());
+        }
+        
+        ui.separator();
     }
 
     pub(super) fn render_left_panel(&mut self, ctx: &Context) {
@@ -475,6 +696,7 @@ impl ZoneSniperApp {
                         self.candle_resolution,
                         nav_state.current_segment_idx,
                         self.auto_scale_y,
+                        self.selected_opportunity.clone(),
                     );
 
                     // HANDLE INTERACTION
