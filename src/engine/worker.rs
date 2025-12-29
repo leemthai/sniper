@@ -120,12 +120,13 @@ fn run_pathfinder_simulations(
     // 3. Scan Zones
     for (i, zone) in sticky_zones.iter().enumerate() {
         // IDIOMATIC: Determine Setup using Option<(Price, Direction)>
+        // CHANGED: Target is now zone.price_center for both cases
         let setup = if current_price < zone.price_bottom {
-            Some((zone.price_bottom, TradeDirection::Long))
+             Some((zone.price_center, TradeDirection::Long))
         } else if current_price > zone.price_top {
-            Some((zone.price_top, TradeDirection::Short))
+             Some((zone.price_center, TradeDirection::Short))
         } else {
-            None
+             None
         };
 
         if let Some((target_price, direction)) = setup {

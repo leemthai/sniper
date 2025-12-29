@@ -240,7 +240,7 @@ fn process_new_klines(
     bn_klines.pop();
     if bn_klines.is_empty() {
         // Rare case: the batch had a single item prior to duplicate removal.
-        log::debug!(
+        log::warn!(
             "Rare case where new klines was single item before duplicate removal for {}.",
             pair_interval
         );

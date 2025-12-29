@@ -189,8 +189,8 @@ impl ZoneSniperApp {
                         
                         // FIXED: Specific Phrasing
                         ui.label(RichText::new(format!(
-                            "4. In {} of those {} cases, price hit the Target first. This produces the {:.1}% Win Rate you see above.",
-                            win_count, sim.sample_size, win_pct
+                            "4. In {} of those {} cases, price hit the Target first. This produces the {:.1}% {} you see above.",
+                            win_count, sim.sample_size, win_pct, UI_TEXT.label_success_rate,
                         )).small().color(story_color).italics());
                     });
 
