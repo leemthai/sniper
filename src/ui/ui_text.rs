@@ -13,6 +13,8 @@ pub const ICON_SCOPE: &str      = "\u{f05b}"; //  (Crosshair)
 pub const ICON_CLOCK: &str      = "\u{f017}"; //  (Clock)
 pub const ICON_GLOBE: &str      = "\u{f0ac}"; //  (Globe)
 
+pub const ICON_CANDLE:&str  = "\u{f05e2}";
+
 pub struct UiText {
 
     pub data_generation_heading: &'static str,
@@ -44,18 +46,13 @@ pub struct UiText {
     pub label_help_sim_jump_higher_wicks: &'static str,
 
     // Status Bar Labels
-    pub label_candle_count: &'static str,
+    pub label_candle: &'static str,
     pub label_volatility: &'static str,
 
     // Error Messages
     pub error_insufficient_data_title: &'static str,
     pub error_insufficient_data_body: &'static str,
 
-    // Add generic terms (reusable across Status Bar and Slider)
-    pub word_candle_singular: &'static str,
-    pub word_candle_plural: &'static str,
-
-    // pub ph_label_context: &'static str,
     pub ph_label_evidence: &'static str,
     pub ph_label_history: &'static str,
     pub ph_label_density: &'static str,
@@ -170,16 +167,14 @@ pub const UI_TEXT: UiText = UiText {
     label_help_sim_jump_lower_wicks: "Jump to next Demand Zone",
     label_help_sim_jump_higher_wicks: "Jump to next Supply Zone",
 
-    label_candle_count: "Candles",
     label_volatility: "Volatility (Avg True Range)",
-
+    
     error_insufficient_data_title: "Analysis Paused: Range Too Narrow",
-
+    
     error_insufficient_data_body: "The current Price Horizon does not capture enough price history to identify reliable zones.\n\n\
-                                   👉 Action: Drag the Price Horizon slider to the right (aim for High Density / Yellow areas).",
-
-    word_candle_singular: "Candle",
-    word_candle_plural: "Candles",
+    👉 Action: Drag the Price Horizon slider to the right (aim for High Density / Yellow areas).",
+    
+    label_candle: ICON_CANDLE,
 
     ph_label_evidence: "Evidence", // Active Duration
     ph_label_history: "History",   // Span

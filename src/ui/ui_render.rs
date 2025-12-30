@@ -852,7 +852,7 @@ impl ZoneSniperApp {
                     let time_str = TimeUtils::interval_to_string(model.cva.interval_ms);
 
                     ui.metric(
-                        UI_TEXT.label_candle_count,
+                        UI_TEXT.label_candle,
                         &format!("{}/{} ({:.1}%) {}", relevant, total, pct, time_str),
                         PLOT_CONFIG.color_text_neutral,
                     );

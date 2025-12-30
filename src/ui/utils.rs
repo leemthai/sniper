@@ -3,14 +3,9 @@ use eframe::egui::{Context, Visuals};
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::config::UI_CONFIG;
 
-/// Returns "1 Candle" or "5 Candles" based on count.
 pub fn format_candle_count(count: usize) -> String {
-    let label = if count == 1 {
-        UI_TEXT.word_candle_singular
-    } else {
-        UI_TEXT.word_candle_plural
-    };
-    format!("{} {}", count, label)
+    // let label = UI_TEXT.label_candle;
+    format!("{} {}", count, UI_TEXT.label_candle)
 }
 
 pub fn format_duration_context(days: f64) -> String {

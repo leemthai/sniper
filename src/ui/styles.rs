@@ -5,7 +5,7 @@ use crate::models::trading_view::TradeDirection;
 use crate::ui::config::UI_CONFIG;
 
 
-/// Creates a colored heading with uppercase text and monospace font
+/// Creates a colored heading with uppercase text (not mono anymore, but can put back for stylisting reasons if requried)
 pub fn colored_heading(text: impl Into<String>) -> RichText {
     let uppercase_text = text.into().to_uppercase() + ":";
     RichText::new(uppercase_text)
