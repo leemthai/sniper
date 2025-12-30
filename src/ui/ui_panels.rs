@@ -14,13 +14,12 @@ use crate::domain::pair_interval::PairInterval;
 
 use crate::models::cva::ScoreType;
 use crate::models::horizon_profile::HorizonProfile;
-use crate::models::{PairContext, ZoneType};
 
 use crate::ui::config::UI_TEXT;
-use crate::ui::styles::UiStyleExt;
+use crate::ui::styles::{UiStyleExt,section_heading, spaced_separator, colored_subsection_heading};
+
 use crate::ui::utils::{
-    colored_subsection_heading, format_candle_count, format_duration_context, section_heading,
-    spaced_separator,
+    format_candle_count, format_duration_context,
 };
 
 use crate::utils::TimeUtils;
@@ -661,7 +660,7 @@ impl<'a> DataGenerationPanel<'a> {
 
         ui.label(colored_subsection_heading(UI_TEXT.pair_selector_heading));
         ScrollArea::vertical()
-            .max_height(160.)
+            .max_height(ui.available_height() - 50.0)
             .id_salt("pair_selector")
             .show(ui, |ui| {
                 for item in &self.available_pairs {
@@ -774,65 +773,64 @@ impl Panel for ViewPanel {
     }
 }
 
-/// Panel showing trading opportunities across all monitored pairs
-pub struct SignalsPanel<'a> {
-    signals: Vec<&'a PairContext>,
-}
+// pub struct SignalsPanel<'a> {
+//     signals: Vec<&'a PairContext>,
+// }
 
-impl<'a> SignalsPanel<'a> {
-    pub fn new(signals: Vec<&'a PairContext>) -> Self {
-        Self { signals }
-    }
-}
+// impl<'a> SignalsPanel<'a> {
+//     pub fn new(signals: Vec<&'a PairContext>) -> Self {
+//         Self { signals }
+//     }
+// }
 
-impl<'a> Panel for SignalsPanel<'a> {
-    type Event = String; // Returns pair name if clicked
+// impl<'a> Panel for SignalsPanel<'a> {
+//     type Event = String; // Returns pair name if clicked
 
-    fn render(&mut self, ui: &mut Ui, _show_help: &mut bool) -> Vec<Self::Event> {
-        let mut events = Vec::new();
-        section_heading(ui, UI_TEXT.signals_heading);
+//     fn render(&mut self, ui: &mut Ui, _show_help: &mut bool) -> Vec<Self::Event> {
+//         let mut events = Vec::new();
+//         section_heading(ui, UI_TEXT.signals_heading);
 
-        if self.signals.is_empty() {
-            ui.label(
-                RichText::new("No high-interest signals")
-                    .small()
-                    .color(Color32::GRAY),
-            );
-        } else {
-            ui.label(
-                RichText::new(format!("{} active", self.signals.len()))
-                    .small()
-                    .color(Color32::from_rgb(100, 200, 255)),
-            );
-            ui.add_space(5.0);
+//         if self.signals.is_empty() {
+//             ui.label(
+//                 RichText::new("No high-interest signals")
+//                     .small()
+//                     .color(Color32::GRAY),
+//             );
+//         } else {
+//             ui.label(
+//                 RichText::new(format!("{} active", self.signals.len()))
+//                     .small()
+//                     .color(Color32::from_rgb(100, 200, 255)),
+//             );
+//             ui.add_space(5.0);
 
-            for opp in &self.signals {
-                ui.group(|ui| {
-                    // Pair name as clickable button
-                    let pair_label = format!("📌 {}", opp.pair_name);
-                    if ui.button(pair_label).clicked() {
-                        events.push(opp.pair_name.clone());
-                    }
+//             for opp in &self.signals {
+//                 ui.group(|ui| {
+//                     // Pair name as clickable button
+//                     let pair_label = format!("📌 {}", opp.pair_name);
+//                     if ui.button(pair_label).clicked() {
+//                         events.push(opp.pair_name.clone());
+//                     }
 
-                    // Current zone types (as lng as it is sticky)
-                    for (zone_index, zone_type) in &opp.current_zones {
-                        let zone_label = match zone_type {
-                            ZoneType::Sticky => Some((
-                                format!("🔑 Sticky superzone {}", zone_index),
-                                PLOT_CONFIG.sticky_zone_color,
-                            )),
-                            _ => None,
-                        };
+//                     // Current zone types (as lng as it is sticky)
+//                     for (zone_index, zone_type) in &opp.current_zones {
+//                         let zone_label = match zone_type {
+//                             ZoneType::Sticky => Some((
+//                                 format!("🔑 Sticky superzone {}", zone_index),
+//                                 PLOT_CONFIG.sticky_zone_color,
+//                             )),
+//                             _ => None,
+//                         };
 
-                        if let Some((text, color)) = zone_label {
-                            ui.label(RichText::new(text).small().color(color));
-                        }
-                    }
-                });
-                ui.add_space(3.0);
-            }
-        }
-        ui.add_space(10.0);
-        events
-    }
-}
+//                         if let Some((text, color)) = zone_label {
+//                             ui.label(RichText::new(text).small().color(color));
+//                         }
+//                     }
+//                 });
+//                 ui.add_space(3.0);
+//             }
+//         }
+//         ui.add_space(10.0);
+//         events
+//     }
+// }

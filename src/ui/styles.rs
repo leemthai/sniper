@@ -5,6 +5,34 @@ use crate::models::trading_view::TradeDirection;
 use crate::ui::config::UI_CONFIG;
 
 
+/// Creates a colored heading with uppercase text and monospace font
+pub fn colored_heading(text: impl Into<String>) -> RichText {
+    let uppercase_text = text.into().to_uppercase() + ":";
+    RichText::new(uppercase_text)
+        .color(UI_CONFIG.colors.heading)
+        // .monospace()
+}
+
+/// Creates a colored sub-section headingusing the configured label color
+pub fn colored_subsection_heading(text: impl Into<String>) -> RichText {
+    RichText::new(text.into()).color(UI_CONFIG.colors.subsection_heading)
+}
+
+/// Creates a section heading with standard spacing
+pub fn section_heading(ui: &mut Ui, text: impl Into<String>) {
+    ui.add_space(10.0);
+    ui.heading(colored_heading(text));
+    ui.add_space(5.0);
+}
+
+/// Creates a separator with standard spacing
+pub fn spaced_separator(ui: &mut Ui) {
+    ui.add_space(10.0);
+    ui.separator();
+    ui.add_space(10.0);
+}
+
+
 /// Extension trait to map Data Models to UI Colors
 pub trait DirectionColor {
     fn color(&self) -> Color32;
@@ -80,11 +108,11 @@ impl UiStyleExt for Ui {
 
     fn label_header(&mut self, text: impl Into<String>) {
         let text = text.into().to_uppercase();
-        self.heading(RichText::new(text).color(UI_CONFIG.colors.heading).monospace());
+        self.heading(colored_heading(text));
     }
 
     fn label_subheader(&mut self, text: impl Into<String>) {
-        self.label(RichText::new(text).color(UI_CONFIG.colors.subsection_heading));
+        self.label(colored_subsection_heading(text));
     }
 
     fn label_error(&mut self, text: impl Into<String>) {

@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, self};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use eframe::egui::{Context, CentralPanel, RichText, Key, Grid, ScrollArea, Align, Layout, ProgressBar, Ui};
+use eframe::egui::{Context, CentralPanel, RichText, Key, Grid, ScrollArea, Align, Layout, ProgressBar, Ui, FontDefinitions, FontFamily, FontData};
 use eframe::{Frame, Storage};
 use serde::{Deserialize, Serialize};
 
@@ -237,12 +238,62 @@ impl ZoneSniperApp {
     }
 
 
+    /// Helper to load and configure custom fonts (Nerd Fonts)
+    fn configure_fonts(ctx: &Context) {
+        let mut fonts = FontDefinitions::default();
+
+        // 1. Load the MONO Font (For Data/Tables)
+        // Keep scale at 0.85 or tweak as needed
+        let mut font_data_mono = FontData::from_static(include_bytes!(
+            "../fonts/HackNerdFont-Regular.ttf"
+        ));
+        font_data_mono.tweak.scale = 0.85;
+
+        // 2. Load the PROPO Font (For General UI)
+        // This is the new file you downloaded
+        let mut font_data_propo = FontData::from_static(include_bytes!(
+            "../fonts/HackNerdFontPropo-Regular.ttf"
+        ));
+        font_data_propo.tweak.scale = 0.85; // Match scale so they look consistent
+
+        // 3. Register them
+        fonts.font_data.insert(
+            "hack_mono".to_owned(),
+            Arc::new(font_data_mono),
+        );
+        fonts.font_data.insert(
+            "hack_propo".to_owned(),
+            Arc::new(font_data_propo),
+        );
+
+        // 4. Prioritize!
+        
+        // A. MONOSPACE Family -> Use "hack_mono"
+        if let Some(family) = fonts.families.get_mut(&FontFamily::Monospace) {
+            family.insert(0, "hack_mono".to_owned());
+        }
+
+        // B. PROPORTIONAL Family -> Use "hack_propo"
+        if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
+            family.insert(0, "hack_propo".to_owned());
+        }
+
+        // 5. Apply
+        ctx.set_fonts(fonts);
+    }
+
+
+
     pub fn new(cc: &eframe::CreationContext<'_>, args: Cli) -> Self {
         let mut app: ZoneSniperApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Self::default()
         };
+
+
+        // --- 1. SETUP FONTS ---
+        Self::configure_fonts(&cc.egui_ctx);
 
         // RESTORE STATE:
         // Overwrite the default config's PH with the saved user preference.
@@ -556,7 +607,7 @@ impl ZoneSniperApp {
                         // Render Cell
                         ui.horizontal(|ui| {
                             ui.set_min_width(240.0);
-                            ui.label(RichText::new(pair).monospace().strong().color(color));
+                            ui.label(RichText::new(pair).strong().color(color));
                             
                             // Clean Layout syntax using imports
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

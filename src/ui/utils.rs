@@ -1,4 +1,4 @@
-use eframe::egui::{Context, RichText, Ui, Visuals};
+use eframe::egui::{Context, Visuals};
 
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::config::UI_CONFIG;
@@ -62,19 +62,8 @@ pub fn format_duration_context(days: f64) -> String {
 }
 
 
-/// Creates a colored heading with uppercase text and monospace font
-pub fn colored_heading(text: impl Into<String>) -> RichText {
-    let uppercase_text = text.into().to_uppercase() + ":";
-    RichText::new(uppercase_text)
-        .color(UI_CONFIG.colors.heading)
-        .monospace()
-}
 
-/// Creates a colored sub-section headingusing the configured label color
-// Why is this still monospace?
-pub fn colored_subsection_heading(text: impl Into<String>) -> RichText {
-    RichText::new(text.into()).color(UI_CONFIG.colors.subsection_heading)
-}
+
 
 /// Sets up custom visuals for the entire application
 pub fn setup_custom_visuals(ctx: &Context) {
@@ -94,19 +83,6 @@ pub fn setup_custom_visuals(ctx: &Context) {
     ctx.set_visuals(visuals);
 }
 
-/// Creates a section heading with standard spacing
-pub fn section_heading(ui: &mut Ui, text: impl Into<String>) {
-    ui.add_space(10.0);
-    ui.heading(colored_heading(text));
-    ui.add_space(5.0);
-}
-
-/// Creates a separator with standard spacing
-pub fn spaced_separator(ui: &mut Ui) {
-    ui.add_space(10.0);
-    ui.separator();
-    ui.add_space(10.0);
-}
 
 /// Formats a price with "Trader Precision".
 /// - Large (>1000): 2 decimals ($95,123.50)

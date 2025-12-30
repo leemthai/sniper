@@ -19,7 +19,7 @@ use crate::ui::styles::{UiStyleExt, get_outcome_color, DirectionColor};
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::ui::ui_panels::{
-    CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel, SignalsPanel,
+    CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel,
 };
 use crate::ui::ui_plot_view::PlotInteraction;
 
@@ -297,7 +297,7 @@ impl ZoneSniperApp {
         let frame = UI_CONFIG.side_panel_frame();
 
         SidePanel::right("trade_finder_panel") // <--- UNIQUE ID IS CRITICAL
-            .min_width(320.0) // Wider for data visibility
+            .min_width(280.0) // Wider for data visibility
             .resizable(true)  // Let user drag it
             .frame(frame)
             .show(ctx, |ui| {
@@ -313,7 +313,7 @@ impl ZoneSniperApp {
 
         // --- 2. SCOPE TOGGLE (Selectable Row) ---
         ui.horizontal(|ui| {
-            ui.label("Scope:");
+            ui.label(RichText::new(UI_TEXT.label_scope_icon).size(16.0).color(PLOT_CONFIG.color_text_neutral));
             ui.style_mut().spacing.item_spacing.x = 5.0; 
             
             // Button 1: ALL PAIRS
@@ -336,13 +336,16 @@ impl ZoneSniperApp {
 
         // --- 2. DIRECTION FILTER ---
         ui.horizontal(|ui| {
-            ui.label("Filter:");
-            ui.style_mut().spacing.item_spacing.x = 5.0;
+            // ICON: Filter Funnel
+            ui.label(RichText::new(UI_TEXT.label_filter_icon).size(16.0).color(PLOT_CONFIG.color_text_neutral));
+            ui.style_mut().spacing.item_spacing.x = 5.0; 
             
             let f = &mut self.tf_filter_direction;
-            if ui.selectable_label(*f == DirectionFilter::All, "ALL").clicked() { *f = DirectionFilter::All; }
-            if ui.selectable_label(*f == DirectionFilter::Long, "LONG").clicked() { *f = DirectionFilter::Long; }
-            if ui.selectable_label(*f == DirectionFilter::Short, "SHORT").clicked() { *f = DirectionFilter::Short; }
+            
+            // Buttons using UI_TEXT fields (with icons embedded)
+            if ui.selectable_label(*f == DirectionFilter::All, UI_TEXT.tf_btn_all).clicked() { *f = DirectionFilter::All; }
+            if ui.selectable_label(*f == DirectionFilter::Long, UI_TEXT.tf_btn_long).clicked() { *f = DirectionFilter::Long; }
+            if ui.selectable_label(*f == DirectionFilter::Short, UI_TEXT.tf_btn_short).clicked() { *f = DirectionFilter::Short; }
         });
         ui.separator();
 
@@ -502,20 +505,8 @@ impl ZoneSniperApp {
             .resizable(false)
             .frame(frame)
             .show(ctx, |ui| {
-                let mut opp_events = Vec::new();
 
                 let data_events = self.data_generation_panel(ui);
-
-                ScrollArea::vertical()
-                    .max_height(500.)
-                    .id_salt("signal_panel")
-                    .show(ui, |ui| {
-                        opp_events = self.signals_panel(ui);
-                    });
-                for pair_name in opp_events {
-                    self.handle_pair_selection(pair_name.clone());
-                    self.scroll_to_pair = Some(pair_name);
-                }
 
                 for event in data_events {
                     match event {
@@ -562,7 +553,7 @@ impl ZoneSniperApp {
                 // --- TOP TOOLBAR ---
                 ui.horizontal(|ui| {
                     // 1. CANDLE RESOLUTION
-                    ui.label("Res:");
+                    ui.label(RichText::new(UI_TEXT.label_res_icon).size(16.0).color(PLOT_CONFIG.color_text_neutral));
                     ui.selectable_value(&mut self.candle_resolution, CandleResolution::M5, "5m");
                     ui.selectable_value(&mut self.candle_resolution, CandleResolution::M15, "15m");
                     ui.selectable_value(&mut self.candle_resolution, CandleResolution::H1, "1h");
@@ -1025,12 +1016,12 @@ impl ZoneSniperApp {
             });
     }
 
-    fn signals_panel(&mut self, ui: &mut Ui) -> Vec<String> {
-        // Use the wrapper method we added to App
-        let signals = self.get_signals();
-        let mut panel = SignalsPanel::new(signals);
-        panel.render(ui, &mut false)
-    }
+    // fn signals_panel(&mut self, ui: &mut Ui) -> Vec<String> {
+    //     // Use the wrapper method we added to App
+    //     let signals = self.get_signals();
+    //     let mut panel = SignalsPanel::new(signals);
+    //     panel.render(ui, &mut false)
+    // }
 
     fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
         // 1. Get Data from Engine

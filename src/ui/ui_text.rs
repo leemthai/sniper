@@ -1,11 +1,25 @@
+pub const ICON_CROSSHAIR: &str  = "\u{f05b}"; //  (Crosshairs)
+pub const ICON_BAN: &str        = "\u{f05e}"; //  (Ban)
+// pub const ICON_LIST: &str       = "\u{f03a}"; //  (List)
+pub const ICON_LIST: &str       = "\u{f0ca}"; //  (List)
+pub const ICON_FILTER: &str     = "\u{f0b0}"; //  (Filter)
+pub const ICON_DNA: &str        = "\u{f471}"; //  (DNA)
+
+pub const ICON_TREND_UP: &str   = "\u{f0d8}"; // d (Caret Up / Triangle Up)
+pub const ICON_TREND_DOWN: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
+
+// --- NEW ICONS (FontAwesome) ---
+pub const ICON_SCOPE: &str      = "\u{f05b}"; //  (Crosshair)
+pub const ICON_CLOCK: &str      = "\u{f017}"; //  (Clock)
+pub const ICON_GLOBE: &str      = "\u{f0ac}"; //  (Globe)
+
 pub struct UiText {
+
     pub data_generation_heading: &'static str,
     pub price_horizon_heading: &'static str,
-    pub time_horizon_heading: &'static str,
     pub pair_selector_heading: &'static str,
     pub view_options_heading: &'static str,
     pub view_data_source_heading: &'static str,
-    pub signals_heading: &'static str,
     pub price_horizon_helper_prefix: &'static str,
     pub price_horizon_helper_suffix: &'static str,
     pub time_horizon_helper_prefix: &'static str,
@@ -19,15 +33,9 @@ pub struct UiText {
     pub label_volume: &'static str,
     pub label_reversal_support: &'static str,
     pub label_reversal_resistance: &'static str,
-    pub label_lower_wick_count: &'static str,
-    pub label_upper_wick_count: &'static str,
     pub label_hvz: &'static str,
     pub label_lower_wick_zones: &'static str,
     pub label_upper_wick_zones: &'static str,
-    pub label_hvz_above: &'static str,
-    pub label_hvz_beneath: &'static str,
-    pub label_hvz_within: &'static str,
-    // pub label_help_background: &'static str,
     pub label_help_sim_toggle_direction: &'static str,
     pub label_help_sim_step_size: &'static str,
     pub label_help_sim_activate_price_change: &'static str,
@@ -105,17 +113,37 @@ pub struct UiText {
     pub icon_long: &'static str,
     pub icon_short: &'static str,
 
+    // LABELS REPLACED BY ICONS
+    pub label_res_icon: &'static str,    // Replaces "Res:"
+    pub label_scope_icon: &'static str,  // Replaces "Scope:"
+    pub label_filter_icon: &'static str, // Replaces "Filter:"
+    
+    // BUTTON TEXT
+    pub tf_btn_all: &'static str,
+    pub tf_btn_long: &'static str,
+    pub tf_btn_short: &'static str,
+
 
 }
 
 pub const UI_TEXT: UiText = UiText {
+
+        // ICONS
+    label_res_icon:    ICON_CLOCK,
+    label_scope_icon:  ICON_SCOPE,
+    label_filter_icon: ICON_FILTER,
+
+    // BUTTONS (With embedded icons)
+    tf_btn_all:   "ALL", 
+    tf_btn_long:  "LONG",
+    tf_btn_short: "SHORT",
+
+
     data_generation_heading: "Shape Your Trades",
     price_horizon_heading: "Price Horizon",
-    time_horizon_heading: "Time Horizon",
     pair_selector_heading: "Select Plot Pair",
     view_options_heading: "View Options",
     view_data_source_heading: "Data Source",
-    signals_heading: "🎯 Signals",
 
     price_horizon_helper_prefix: "Focus on price action within ±",
     price_horizon_helper_suffix: "% of current price",
@@ -128,18 +156,13 @@ pub const UI_TEXT: UiText = UiText {
     plot_this_zone_is: "This zone is",
 
     label_volume: "Trading Volume",
-    label_lower_wick_count: "Lower Wick Strength",
-    label_upper_wick_count: "Upper Wick Strength",
+    
     label_hvz: "High Volume Zones",
     label_lower_wick_zones: "Lower Wick Zones",
     label_upper_wick_zones: "Upper Wick Zones",
     label_reversal_support: "Demand Zone (Buyers Here)",
     label_reversal_resistance: "Supply Zone (Sellers Here)",
-    label_hvz_above: "`High Volume Zone` is above (if bullish, acts as future target price)",
-    label_hvz_beneath: "`High Volume Zone` is below (if bearish, acts as future target price)",
-    label_hvz_within: "Inside `High Volume Zone` now (consolidating...)",
 
-    // label_help_background: "Rotate Background Data Selection (between (1) Trading Volume, (2) Lower Wick Strength (Find Demand Zones), (3) Upper Wick Strength (Find Supply Zones)",
     label_help_sim_toggle_direction: "Toggle direction (⬆️ UP / ⬇️ DOWN)",
     label_help_sim_step_size: "Cycle step size (0.1% → 1% → 5% → 10%)",
     label_help_sim_activate_price_change: "Activate price change in current direction",
@@ -260,9 +283,7 @@ pub const UI_TEXT: UiText = UiText {
     label_target: "Target",
     label_stop: "Stop",
     
-    // Using standard unicode arrows which usually render well. 
-    // If these fail, we can switch to "L" / "S" text.
-    icon_long: "▲", 
-    icon_short: "▼", 
+    icon_long: ICON_TREND_UP, 
+    icon_short: ICON_TREND_DOWN, 
 
 };
