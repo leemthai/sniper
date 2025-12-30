@@ -2,10 +2,12 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, self};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::fmt;
 
 use eframe::egui::{Context, CentralPanel, RichText, Key, Grid, ScrollArea, Align, Layout, ProgressBar, Ui, FontDefinitions, FontFamily, FontData};
 use eframe::{Frame, Storage};
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
 
 use crate::Cli;
 
@@ -97,7 +99,7 @@ impl Default for PlotVisibility {
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
 pub enum CandleResolution {
     M5,
     M15,
@@ -113,8 +115,26 @@ impl Default for CandleResolution {
     fn default() -> Self { Self::D1 } // Default to 1D candles for plot candles
 }
 
+
+impl fmt::Display for CandleResolution {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::M5 => write!(f, "5m"),
+            Self::M15 => write!(f, "15m"),
+            Self::H1 => write!(f, "1h"),
+            Self::H4 => write!(f, "4h"),
+            Self::D1 => write!(f, "1D"),
+            Self::D3 => write!(f, "3D"),
+            Self::W1 => write!(f, "1W"),
+            Self::M1 => write!(f, "1M"),
+        }
+    }
+}
+
+
 // NEW: Centralized Logic
 impl CandleResolution {
+
     pub fn step_size(&self) -> usize {
         match self {
             Self::M5 => 1,
@@ -156,7 +176,7 @@ pub struct ZoneSniperApp {
     // TradeFinder State
     pub tf_filter_pair_only: bool,      // True = Current Pair, False = All
     pub tf_filter_direction: DirectionFilter,
-
+    pub show_candle_range: bool, // <--- NEW FIELD
 
     #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>, // Specific TF selection
@@ -220,6 +240,7 @@ impl Default for ZoneSniperApp {
             tf_filter_direction: DirectionFilter::All,
             tf_filter_pair_only: false,
             selected_opportunity: None,
+            show_candle_range: false,
         }
     }
 }
@@ -551,10 +572,12 @@ impl ZoneSniperApp {
             if i.key_pressed(Key::S) {
                 self.toggle_simulation_mode();
             }
-            // NEW: Toggle Opportunity Explainer
+            // Toggle Opportunity Explainer
             if i.key_pressed(Key::E) { 
                 self.show_opportunity_details = !self.show_opportunity_details;
             }
+            if i.key_pressed(Key::T) { self.show_candle_range = !self.show_candle_range; }
+
             if i.key_pressed(Key::Num4) { self.jump_to_next_zone("sticky"); }
             if i.key_pressed(Key::Num5) { self.jump_to_next_zone("low-wick"); }
             if i.key_pressed(Key::Num6) { self.jump_to_next_zone("high-wick"); }
@@ -698,7 +721,9 @@ impl ZoneSniperApp {
 
         self.render_top_panel(ctx); // Render before left/right if we want to occupy full app screen space
         self.render_left_panel(ctx);
-        self.render_right_panel(ctx);
+        if self.show_candle_range {
+            self.render_right_panel(ctx);
+        }
         self.render_trade_finder_panel(ctx);
 
         self.render_ticker_panel(ctx);

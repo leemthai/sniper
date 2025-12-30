@@ -11,10 +11,12 @@ use crate::analysis::zone_scoring::find_target_zones;
 use crate::config::ZoneParams;
 use crate::config::{ANALYSIS, AnalysisConfig};
 
+
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
 use crate::models::horizon_profile::HorizonProfile;
 
+use crate::ui::config::UI_TEXT;
 
 use crate::utils::maths_utils::{
     calculate_annualized_roi, calculate_expected_roi_pct, calculate_stats, normalize_max,
@@ -38,8 +40,8 @@ pub enum DirectionFilter {
 impl fmt::Display for TradeDirection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TradeDirection::Long => write!(f, "Long"),
-            TradeDirection::Short => write!(f, "Short"),
+            TradeDirection::Long => write!(f, "{}", UI_TEXT.label_long),
+            TradeDirection::Short => write!(f, "{}", UI_TEXT.label_short),
         }
     }
 }

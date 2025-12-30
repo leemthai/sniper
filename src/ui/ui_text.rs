@@ -1,284 +1,318 @@
-pub const ICON_CROSSHAIR: &str  = "\u{f05b}"; //  (Crosshairs)
-pub const ICON_BAN: &str        = "\u{f05e}"; //  (Ban)
-// pub const ICON_LIST: &str       = "\u{f03a}"; //  (List)
-pub const ICON_LIST: &str       = "\u{f0ca}"; //  (List)
-pub const ICON_FILTER: &str     = "\u{f0b0}"; //  (Filter)
-pub const ICON_DNA: &str        = "\u{f471}"; //  (DNA)
+use std::sync::LazyLock;
 
-pub const ICON_TREND_UP: &str   = "\u{f0d8}"; // d (Caret Up / Triangle Up)
-pub const ICON_TREND_DOWN: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
+pub const ICON_CROSSHAIR: &str  = "\u{f05b}"; // (Crosshairs)
+pub const ICON_BAN: &str        = "\u{f05e}"; // (Ban)
 
-// --- NEW ICONS (FontAwesome) ---
-pub const ICON_SCOPE: &str      = "\u{f05b}"; //  (Crosshair)
-pub const ICON_CLOCK: &str      = "\u{f017}"; //  (Clock)
-pub const ICON_GLOBE: &str      = "\u{f0ac}"; //  (Globe)
+pub const ICON_FILTER: &str     = "\u{f0b0}"; // (Filter)
+
+// These 2 unused yet but will be useful in future - up and down triangles
+pub const ICON_GAIN: &str   = "\u{f0d8}"; // d (Caret Up / Triangle Up)
+pub const ICON_LOSS: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
+
+pub const ICON_TREND_UP: &str   = "\u{f0535}"; 
+pub const ICON_TREND_DOWN: &str = "\u{f0533}"; 
+
+pub const ICON_TARGET: &str      = "\u{f04fe}"; // nf-md-target
+pub const ICON_CLOCK: &str      = "\u{f017}"; // (Clock)
+pub const ICON_GLOBE: &str      = "\u{f0ac}"; // (Globe)
 
 pub const ICON_CANDLE:&str  = "\u{f05e2}";
 
+pub const ICON_POINT_RIGHT: &str = "\u{f02c7}";
+
+pub const ICON_TIME_LAPSE: &str = "\u{f051a}";
+
+pub const ICON_TWO_HORIZONTAL: &str = "\u{f12f0}";
+pub const ICON_ONE_HORIZONTAL: &str = "\u{f45b}";
+
+pub const ICON_CHART: &str = "\u{f1918}";
+
+pub const ICON_LOCKED: &str = "\u{ea75}";
+pub const ICON_UNLOCKED: &str = "\u{eb74}";
+pub const ICON_Y_AXIS: &str  = "\u{f0e79}";
+
+
 pub struct UiText {
+    // --- GENERAL ---
+    pub data_generation_heading: String,
+    pub price_horizon_heading: String,
+    pub pair_selector_heading: String,
+    pub view_options_heading: String,
+    pub view_data_source_heading: String,
+    
+    // --- PLOT LABELS ---
+    pub plot_x_axis: String,
+    pub plot_y_axis: String,
+    
+    // --- STATUS ---
+    pub label_volatility_atr: String,
 
-    pub data_generation_heading: &'static str,
-    pub price_horizon_heading: &'static str,
-    pub pair_selector_heading: &'static str,
-    pub view_options_heading: &'static str,
-    pub view_data_source_heading: &'static str,
-    pub price_horizon_helper_prefix: &'static str,
-    pub price_horizon_helper_suffix: &'static str,
-    pub time_horizon_helper_prefix: &'static str,
-    pub time_horizon_helper_suffix: &'static str,
+    // --- BUTTONS (Dynamic) ---
+    pub tf_btn_all: String,
 
-    pub plot_x_axis: &'static str,
-    pub plot_y_axis: &'static str,
-    pub plot_strongest_zone: &'static str,
-    pub plot_this_zone_is: &'static str,
+    // --- ICONS/LABELS ---
+    pub label_filter_icon: String,
+    
+    pub label_long: String,
+    pub label_short: String,
+    pub icon_long: String,
+    pub icon_short: String,
 
-    pub label_volume: &'static str,
-    pub label_reversal_support: &'static str,
-    pub label_reversal_resistance: &'static str,
-    pub label_hvz: &'static str,
-    pub label_lower_wick_zones: &'static str,
-    pub label_upper_wick_zones: &'static str,
-    pub label_help_sim_toggle_direction: &'static str,
-    pub label_help_sim_step_size: &'static str,
-    pub label_help_sim_activate_price_change: &'static str,
-    pub label_help_sim_jump_hvz: &'static str,
-    pub label_help_sim_jump_lower_wicks: &'static str,
-    pub label_help_sim_jump_higher_wicks: &'static str,
+    // --- ERRORS ---
+    pub error_insufficient_data_title: String,
+    pub error_insufficient_data_body: String,
 
-    // Status Bar Labels
-    pub label_candle: &'static str,
-    pub label_volatility: &'static str,
-
-    // Error Messages
-    pub error_insufficient_data_title: &'static str,
-    pub error_insufficient_data_body: &'static str,
-
-    pub ph_label_evidence: &'static str,
-    pub ph_label_history: &'static str,
-    pub ph_label_density: &'static str,
-
-    pub ph_label_horizon_prefix: &'static str,
-
-    pub ph_startup: &'static str,
-
-    pub ph_help_title: &'static str,
-    pub ph_help_metrics_title: &'static str,
-    pub ph_help_colors_title: &'static str,
-    pub ph_help_tuning_title: &'static str,
-
+    // --- PH HELP (Keep simple static slices for tables) ---
     pub ph_help_density_header: (&'static str, &'static str, &'static str),
     pub ph_help_density_rows: &'static [(&'static str, &'static str, &'static str)],
-
     pub ph_help_scope_header: (&'static str, &'static str, &'static str),
     pub ph_help_scope_rows: &'static [(&'static str, &'static str, &'static str)],
-
     pub ph_help_definitions: &'static [(&'static str, &'static str)],
+    pub ph_label_evidence: String,
+    pub ph_label_history: String,
+    pub ph_label_density: String,
+    pub ph_label_horizon_prefix: String,
+    pub ph_startup: String,
 
-    pub cr_title_1: &'static str,
-    pub cr_title_2: &'static str,
-    pub cr_header_id: &'static str,
-    pub cr_header_date: &'static str,
-    pub cr_header_len: &'static str,
-    pub cr_header_ctx: &'static str,
-    pub cr_label_live: &'static str,
-    pub cr_label_historical: &'static str,
-    pub cr_gap_price_mismatch: &'static str,
-    pub cr_gap_missing_source: &'static str,
-    pub cr_gap_price_above: &'static str,
-    pub cr_gap_price_below: &'static str,
-    pub cr_gap_mixed: &'static str,
+    // --- CR NAVIGATOR ---
+    pub cr_title_1: String,
+    pub cr_title_2: String,
+    pub cr_label_live: String,
+    pub cr_label_historical: String,
+    pub cr_nav_show_all: String,
+    pub cr_nav_return_prefix: String,
+    pub cr_nav_return_live: String,
 
-    pub cr_nav_show_all: &'static str,
-    pub cr_nav_return_prefix: &'static str,
-    pub cr_nav_return_live: &'static str,
-
-    pub label_success_rate: &'static str,
-
-    // TRADE FINDER / OPPORTUNITIES
-    pub tf_header: &'static str,
-    pub tf_scope_all: &'static str,
-    pub tf_scope_selected: &'static str, // Prefix for "BTCUSDT ONLY"
+    pub ph_help_title: String,
     
-    // METRICS & LABELS
-    pub label_roi: &'static str,
-    pub label_aroi: &'static str,        // "AROI"
-    pub label_sl_variants: &'static str, // "SL Variants"
-    pub label_target: &'static str,
-    pub label_stop: &'static str,
+    pub label_hvz: String,
+    pub label_lower_wick_zones: String,
+    pub label_upper_wick_zones: String,
+    pub label_reversal_support: String,
+    pub label_reversal_resistance: String,
+
+    pub label_help_sim_toggle_direction: String,
+    pub label_help_sim_step_size: String,
+    pub label_help_sim_activate_price_change: String,
+    pub label_help_sim_jump_hvz: String,
+    pub label_help_sim_jump_lower_wicks: String,
+    pub label_help_sim_jump_higher_wicks: String,
+
+    pub tb_ghost_candles: String,
+    pub tb_sticky: String,
+    pub tb_low_wicks: String,
+    pub tb_high_wicks: String,
+    pub tb_volume_hist: String,
+    pub tb_candles: String,
+    pub tb_time: String,
+    pub tb_gaps: String,
+    pub tb_price_limits: String,
+    pub tb_live_price: String,
+    pub tb_targets: String,
+    pub tb_y_locked: String,
+    pub tb_y_unlocked: String,
     
-    // ICONS / SYMBOLS
-    pub icon_long: &'static str,
-    pub icon_short: &'static str,
+    // --- TRADE FINDER ---
+    pub tf_header: String,
+    pub tf_scope_all: String,
+    pub tf_scope_selected: String,
+    pub tf_btn_all_trades: String,
 
-    // LABELS REPLACED BY ICONS
-    pub label_res_icon: &'static str,    // Replaces "Res:"
-    pub label_scope_icon: &'static str,  // Replaces "Scope:"
-    pub label_filter_icon: &'static str, // Replaces "Filter:"
-    
-    // BUTTON TEXT
-    pub tf_btn_all: &'static str,
-    pub tf_btn_long: &'static str,
-    pub tf_btn_short: &'static str,
+    pub tf_target: String,
 
+    // General use
+    pub label_candle: String,
+    pub label_momentum: String,
+    pub label_volatility: String,
+    pub label_success_rate: String,
+    pub label_roi: String,
+    pub label_aroi: String,
+    pub label_aroi_long: String,
+    pub label_sl_variants: String,
+    pub label_target: String,
+    pub label_target_text: String,
+    pub label_stop_loss: String,
+    pub label_stop_loss_short: String,
+    pub label_risk_reward: String,
+    pub label_risk_reward_short: String,
+    pub label_limit: String,
+    pub label_no_opps: String,
 
+    pub opp_exp_current_opp: String,
+    pub opp_exp_setup_type: String,
+    pub opp_exp_expectancy: String,
+    pub opp_exp_market_context: String,
+    pub opp_exp_trend_measured: String,
+    pub opp_exp_trend_length: String,
+    pub opp_exp_relative_volume: String,
+    pub opp_exp_relative_volume_explainer: String,
+    pub opp_exp_trade_setup: String,
+    pub opp_exp_trade_entry: String,
+    pub opp_exp_order_time_limit: String,
+    pub opp_exp_how_this_works: String,
+    pub opp_expr_we_fingerprinted: String,
+    pub opp_exp_scanned_history_one: String,
+    pub opp_exp_scanned_history_two: String,
+    pub opp_exp_scanned_history_three: String,
+    pub opp_exp_scanned_history_four: String,
+    pub opp_exp_simulate_one: String,
+    pub opp_exp_simulate_two: String,
+    pub opp_exp_simulate_three: String,
+    pub opp_exp_out_of_time: String,
+    pub opp_exp_cases_one: String,
+    pub opp_exp_cases_two: String,
+    pub opp_exp_cases_three: String,
+    pub opp_exp_cases_four: String,
+    pub opp_exp_cases_five: String,
 }
 
-pub const UI_TEXT: UiText = UiText {
+// THE SINGLETON
+pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
+    UiText {
 
-        // ICONS
-    label_res_icon:    ICON_CLOCK,
-    label_scope_icon:  ICON_SCOPE,
-    label_filter_icon: ICON_FILTER,
+        // Toolbar
+        tb_time: ICON_TIME_LAPSE.to_string(),
+        tb_ghost_candles: "Ghost ".to_string() + &ICON_CANDLE,
+        tb_sticky: "Sticky".to_string(),
+        tb_low_wicks: "Demand".to_string(),
+        tb_high_wicks: "Supply".to_string(),
+        tb_volume_hist: "Volume Hist".to_string(),
+        tb_candles: ICON_CHART.to_string(),
+        tb_gaps: "Data Gap".to_string(),  
+        tb_price_limits: "PH Limits ".to_string() + ICON_TWO_HORIZONTAL, 
+        tb_live_price: "Live Price ".to_string() + ICON_ONE_HORIZONTAL,
+        tb_targets: ICON_TARGET.to_string(),
+        tb_y_locked:  ICON_Y_AXIS.to_string() + " " + ICON_LOCKED,
+        tb_y_unlocked: ICON_Y_AXIS.to_string() + " " + ICON_UNLOCKED,
 
-    // BUTTONS (With embedded icons)
-    tf_btn_all:   "ALL", 
-    tf_btn_long:  "LONG",
-    tf_btn_short: "SHORT",
+        // Price Horion Help Panel
+        ph_help_title: "Price Horizon Guide".to_string(),
+        ph_label_evidence: "Evidence".to_string(),
+        ph_label_history: "History".to_string(),
+        ph_label_density: "Density".to_string(),
+        ph_label_horizon_prefix: "Horizon: ±".to_string(),
+        ph_startup: "Analyzing Price Structure...".to_string(),
+        ph_help_density_header: ("Color", "Density", "Significance"),
+        ph_help_density_rows: &[
+            ("Deep Purple", "Low (< 10%)", "Insignificant (noise)"),
+            ("Orange/Red", "Medium", "Standard Confidence"),
+            ("Bright Yellow", "High (> 80%)", "High Significance"),
+        ],
+        ph_help_scope_header: ("Horizon %", "Style", "Focus"),
+        ph_help_scope_rows: &[
+            ("< 5%", "Sniper / Scalp", "Immediate price action"),
+            ("5% - 15%", "Swing Trade", "Balanced history"),
+            ("> 15%", "Macro / Invest", "Deep structure"),
+        ],
+        ph_help_definitions: &[
+            ("Evidence", "Total duration of actual data."),
+            ("History", "Calendar time elapsed."),
+            ("Density", "Ratio of Evidence to History."),
+        ],
 
 
-    data_generation_heading: "Shape Your Trades",
-    price_horizon_heading: "Price Horizon",
-    pair_selector_heading: "Select Plot Pair",
-    view_options_heading: "View Options",
-    view_data_source_heading: "Data Source",
+        // Main Help Panel
+        label_hvz: "High Volume Zones".to_string(),
+        label_lower_wick_zones: "Lower Wick Zones".to_string(),
+        label_upper_wick_zones: "Upper Wick Zones".to_string(),
+        label_reversal_support: "Demand Zone (Buyers Here)".to_string(),
+        label_reversal_resistance: "Supply Zone (Sellers Here)".to_string(),
+        // Simulation help text (part of main help panel)
+        label_help_sim_toggle_direction: "Toggle direction (UP / DOWN)".to_string(),
+        label_help_sim_step_size: "Cycle step size (0.1% -> 1% -> 5% -> 10%)".to_string(),
+        label_help_sim_activate_price_change: "Activate price change".to_string(),
+        label_help_sim_jump_hvz: "Jump to next High Volume Zone".to_string(),
+        label_help_sim_jump_lower_wicks: "Jump to next Demand Zone".to_string(),
+        label_help_sim_jump_higher_wicks: "Jump to next Supply Zone".to_string(),
 
-    price_horizon_helper_prefix: "Focus on price action within ±",
-    price_horizon_helper_suffix: "% of current price",
-    time_horizon_helper_prefix: "Focus on trades that complete within ",
-    time_horizon_helper_suffix: " days",
 
-    plot_y_axis: "Price",
-    plot_x_axis: "Key Zone Strength (0 % of the strongest zone)",
-    plot_strongest_zone: "of strongest zone",
-    plot_this_zone_is: "This zone is",
+        // Opportunity explainer
+        opp_exp_current_opp: "Current Opportunity".to_string(),
+        opp_exp_setup_type: "Setup Type".to_string(),
+        opp_exp_expectancy: "Expectancy & Return".to_string(),
+        opp_exp_market_context: "Market Context (The 'DNA')".to_string(),
+        opp_exp_trend_measured: "Trend measured over the last".to_string(),
+        opp_exp_trend_length: "Trend window length derived from PH of".to_string(), 
+        opp_exp_relative_volume: "Relative Volume".to_string(),
+        opp_exp_relative_volume_explainer: " (Ratio of Current Volume vs Recent Average.)".to_string(),
+        opp_exp_trade_setup: "Trade Setup".to_string(),
+        opp_exp_trade_entry: "Entry".to_string(),
+        opp_exp_order_time_limit: "Order Time Limit".to_string(),
+        opp_exp_how_this_works: "How This Works".to_string(),
+        opp_expr_we_fingerprinted: "1. We fingerprinted the market right now".to_string(),
+        opp_exp_scanned_history_one: "2. We scanned history and found exactly".to_string(),
+        opp_exp_scanned_history_two: "periods that matched this fingerprint.".to_string(),
+        opp_exp_scanned_history_three: "2. We scanned history and found many matches, but we kept only the top".to_string(),
+        opp_exp_scanned_history_four: "closest matches.".to_string(),
+        opp_exp_simulate_one: "3. We simulated these".to_string(),
+        opp_exp_simulate_two: "scenarios. We checked if price hit the".to_string(),
+        opp_exp_simulate_three: "or ran out of time".to_string(),
+        opp_exp_out_of_time: "or ran out of time".to_string(),
+        opp_exp_cases_one: "4. In".to_string(),
+        opp_exp_cases_two: "of those".to_string(),
+        opp_exp_cases_three: "cases, price hit the".to_string(),
+        opp_exp_cases_four: "first. This produces the".to_string(),
+        opp_exp_cases_five: "you see above.".to_string(),
 
-    label_volume: "Trading Volume",
-    
-    label_hvz: "High Volume Zones",
-    label_lower_wick_zones: "Lower Wick Zones",
-    label_upper_wick_zones: "Upper Wick Zones",
-    label_reversal_support: "Demand Zone (Buyers Here)",
-    label_reversal_resistance: "Supply Zone (Sellers Here)",
 
-    label_help_sim_toggle_direction: "Toggle direction (⬆️ UP / ⬇️ DOWN)",
-    label_help_sim_step_size: "Cycle step size (0.1% → 1% → 5% → 10%)",
-    label_help_sim_activate_price_change: "Activate price change in current direction",
-    label_help_sim_jump_hvz: "Jump to next High Volume Zone",
-    label_help_sim_jump_lower_wicks: "Jump to next Demand Zone",
-    label_help_sim_jump_higher_wicks: "Jump to next Supply Zone",
+        // General use labels (not specific to one pane)
+        label_volatility: "Volatility".to_string(),
+        label_target:  ICON_TARGET.to_string(),
+        label_target_text: "Target".to_string(),
+        label_momentum: "Momentum".to_string(),
+        label_success_rate: "Success Rate".to_string(),
+        label_roi: "ROI".to_string(),
+        label_aroi: "AROI".to_string(),
+        label_aroi_long: "AROI (Annualized RoI)".to_string(),
+        label_sl_variants: "SL Variants".to_string(),
+        label_stop_loss: "Stop Loss".to_string(),
+        label_stop_loss_short: "SL".to_string(),
+        label_risk_reward: "Risk/Reward Ratio".to_string(),
+        label_risk_reward_short: "R:R".to_string(),
+        label_long:  format!("LONG {}", ICON_TREND_UP), 
+        label_short: format!("SHORT {}", ICON_TREND_DOWN),
+        label_limit: "Limit".to_string(),
+        icon_long:         ICON_TREND_UP.to_string(),
+        icon_short:        ICON_TREND_DOWN.to_string(),
+        label_no_opps: "No valid opportunities found. Please reset filters or select a different pair.".to_string(),
 
-    label_volatility: "Volatility (Avg True Range)",
-    
-    error_insufficient_data_title: "Analysis Paused: Range Too Narrow",
-    
-    error_insufficient_data_body: "The current Price Horizon does not capture enough price history to identify reliable zones.\n\n\
-    👉 Action: Drag the Price Horizon slider to the right (aim for High Density / Yellow areas).",
-    
-    label_candle: ICON_CANDLE,
 
-    ph_label_evidence: "Evidence", // Active Duration
-    ph_label_history: "History",   // Span
-    ph_label_density: "Density",   // Quality
+        // TradeFinder: ICONS ---
+        tf_header: "TRADE FINDER".to_string(),
+        tf_scope_all: "ALL PAIRS".to_string(),
+        tf_scope_selected: "ONLY".to_string(),
+        label_filter_icon: ICON_FILTER.to_string(),
+        label_candle:      ICON_CANDLE.to_string(),
+        tf_btn_all:   "ALL".to_string(),
+        tf_btn_all_trades: "ALL TRADES".to_string(),
+        tf_target: ICON_TARGET.to_string(),
 
-    ph_label_horizon_prefix: "Horizon: ±",
+        // --- Main control panel ---
+        data_generation_heading: "Shape Your Trades".to_string(),
+        price_horizon_heading: "Price Horizon".to_string(),
+        pair_selector_heading: "Select Plot Pair".to_string(),
+        view_options_heading: "View Options".to_string(),
+        view_data_source_heading: "Data Source".to_string(),
 
-    ph_startup: "Analyzing Price Structure...",
+        // Plotting
+        plot_y_axis: "Price".to_string(),
+        plot_x_axis: "Key Zone Strength (0 % of the strongest zone)".to_string(),
+        // --- ERRORS ---
+        error_insufficient_data_title: "Analysis Paused: Range Too Narrow".to_string(),
+        error_insufficient_data_body: "The current Price Horizon does not capture enough price history.\n\n".to_string() + ICON_POINT_RIGHT +  " Drag the Price Horizon slider to the right.",
 
-    ph_help_title: "Price Horizon Guide",
-    ph_help_metrics_title: "Metrics",
-    ph_help_colors_title: "Signal Quality",
-    ph_help_tuning_title: "Tuning Guide",
 
-    // Table 1: HEATMAP (Density)
-    ph_help_density_header: ("Color", "Density", "Significance"),
-    ph_help_density_rows: &[
-        (
-            "Deep Purple",
-            "Low (< 10%)",
-            "Statistically Insignificant (noise)",
-        ),
-        ("Orange/Red", "Medium", "Standard Statistical Confidence"),
-        (
-            "Bright Yellow",
-            "High (> 80%)",
-            "High Statistical Significance",
-        ),
-    ],
+        // Status bar
+        label_volatility_atr: "Volatility (Avg True Range)".to_string(),
 
-    // Table 2: SCOPE (Trade Style)
-    ph_help_scope_header: ("Horizon %", "Style", "Focus"),
-    ph_help_scope_rows: &[
-        (
-            "< 5%",
-            "Sniper / Scalp",
-            "Immediate price action",
-        ),
-        (
-            "5% - 15%",
-            "Swing Trade",
-            "Balanced recent history",
-        ),
-        (
-            "> 15%",
-            "Macro / Invest",
-            "Deep historical structure",
-        ),
-    ],
 
-    ph_help_definitions: &[
-        (
-            "Evidence",
-            "Total duration of actual data (candle count * interval).",
-        ),
-        (
-            "History",
-            "Calendar time elapsed between the first and last candle within this price range.",
-        ),
-        (
-            "Density",
-            "Ratio of Evidence to History. (Yellow = highest data quality).",
-        ),
-    ],
-
-    // --- CANDLE RANGE NAVIGATOR (CR) ---
-    cr_title_1: "Time Machine",
-    cr_title_2: "Candle Ranges Intersect PH Range",
-
-    // Headers
-    cr_header_id: "#",
-    cr_header_date: "Date Range",
-    cr_header_len: "Length",
-    cr_header_ctx: "Context",
-
-    // Context Labels
-    cr_label_live: "LIVE",
-    cr_label_historical: "Historical",
-
-    // Gap Reasons
-    cr_gap_price_mismatch: "Price out of Range",
-    cr_gap_missing_source: "Data missing from Exchange)",
-    cr_gap_price_above: "Price > Horizon",
-    cr_gap_price_below: "Price < Horizon",
-    cr_gap_mixed: "Mixed Gap",
-
-    // NAVIGATION
-    cr_nav_show_all: "SHOW ALL RANGES",
-    cr_nav_return_prefix: "RETURN TO SEGMENT",
-    cr_nav_return_live: "RETURN TO LIVE",
-
-    label_success_rate: "Success Rate",
-
-    tf_header: "TRADE FINDER",
-    tf_scope_all: "ALL PAIRS",
-    tf_scope_selected: "ONLY", // e.g. "BTCUSDT ONLY"
-    
-    label_roi: "ROI",
-    label_aroi: "AROI",
-    label_sl_variants: "SL Variants",
-    label_target: "Target",
-    label_stop: "Stop",
-    
-    icon_long: ICON_TREND_UP, 
-    icon_short: ICON_TREND_DOWN, 
-
-};
+        // --- Candle Range (Time Machine) NAVIGATOR ---
+        cr_title_1: "Time Machine".to_string(),
+        cr_title_2: "Candle Ranges".to_string(),
+        cr_label_live: "LIVE".to_string(),
+        cr_label_historical: "Historical".to_string(),
+        cr_nav_show_all: "SHOW ALL RANGES".to_string(),
+        cr_nav_return_prefix: "RETURN TO SEGMENT".to_string(),
+        cr_nav_return_live: "RETURN TO LIVE".to_string(),
+    }
+});

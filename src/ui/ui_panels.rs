@@ -1,9 +1,8 @@
 use colorgrad::Gradient;
 use eframe::egui::{
-    Align, Align2, Button, Color32, ComboBox, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
+    Align, Align2, Button, Color32, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
     RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2, Order,
 };
-use strum::IntoEnumIterator;
 
 use crate::analysis::range_gap_finder::{DisplaySegment, GapReason};
 
@@ -12,7 +11,6 @@ use crate::config::{ANALYSIS, PriceHorizonConfig};
 
 use crate::domain::pair_interval::PairInterval;
 
-use crate::models::cva::ScoreType;
 use crate::models::horizon_profile::HorizonProfile;
 
 use crate::ui::config::UI_TEXT;
@@ -75,7 +73,7 @@ impl<'a> CandleRangePanel<'a> {
                 };
                 (ui.button_text_secondary(text), Some(safe_target))
             } else {
-                (ui.button_text_primary(UI_TEXT.cr_nav_show_all), None)
+                (ui.button_text_primary(&UI_TEXT.cr_nav_show_all), None)
             };
 
             if ui.button(btn_label).clicked() {
@@ -165,14 +163,14 @@ impl<'a> CandleRangePanel<'a> {
                             // Column 2: Context
                             if i == self.segments.len() - 1 {
                                 ui.label(
-                                    RichText::new(UI_TEXT.cr_label_live)
+                                    RichText::new(&UI_TEXT.cr_label_live)
                                         .color(PLOT_CONFIG.color_profit)
                                         .strong()
                                         .small(),
                                 );
                             } else {
                                 ui.label(
-                                    RichText::new(UI_TEXT.cr_label_historical)
+                                    RichText::new(&UI_TEXT.cr_label_historical)
                                         .small()
                                         .color(PLOT_CONFIG.color_text_subdued),
                                 );
@@ -263,7 +261,7 @@ impl<'a> DataGenerationPanel<'a> {
     }
 
     pub fn render_ph_help_window(ctx: &Context, open: &mut bool) {
-        Window::new(UI_TEXT.ph_help_title)
+        Window::new(&UI_TEXT.ph_help_title)
             .open(open)
             .resizable(false)
             .order(Order::Tooltip)
@@ -344,7 +342,7 @@ impl<'a> DataGenerationPanel<'a> {
         ui.add_space(5.0);
 
         ui.horizontal(|ui| {
-            ui.label(colored_subsection_heading(UI_TEXT.price_horizon_heading));
+            ui.label(colored_subsection_heading(&UI_TEXT.price_horizon_heading));
 
             if ui.button("(?)").on_hover_cursor(CursorIcon::Help).clicked() {
                 *show_help = !*show_help;
@@ -547,7 +545,7 @@ impl<'a> DataGenerationPanel<'a> {
             painter.text(
                 rect.center(),
                 Align2::CENTER_CENTER,
-                UI_TEXT.ph_startup,
+                &UI_TEXT.ph_startup,
                 FontId::proportional(12.0),
                 PLOT_CONFIG.color_text_subdued,
             );
@@ -658,7 +656,7 @@ impl<'a> DataGenerationPanel<'a> {
         let mut changed = None;
         let previously_selected_pair = self.selected_pair.clone();
 
-        ui.label(colored_subsection_heading(UI_TEXT.pair_selector_heading));
+        ui.label(colored_subsection_heading(&UI_TEXT.pair_selector_heading));
         ScrollArea::vertical()
             .max_height(ui.available_height() - 50.0)
             .id_salt("pair_selector")
@@ -709,7 +707,7 @@ impl<'a> Panel for DataGenerationPanel<'a> {
     type Event = DataGenerationEventChanged;
     fn render(&mut self, ui: &mut Ui, show_help: &mut bool) -> Vec<Self::Event> {
         let mut events = Vec::new();
-        section_heading(ui, UI_TEXT.data_generation_heading);
+        section_heading(ui, &UI_TEXT.data_generation_heading);
 
         // Price Horizon display (always enabled)
         if let Some(threshold) = self.render_price_horizon_display(ui, show_help) {
@@ -730,107 +728,3 @@ impl<'a> Panel for DataGenerationPanel<'a> {
         events
     }
 }
-
-/// Panel for view options
-pub struct ViewPanel {
-    selected_score_type: ScoreType,
-}
-
-impl ViewPanel {
-    pub fn new(score_type: ScoreType) -> Self {
-        Self {
-            selected_score_type: score_type,
-        }
-    }
-}
-
-impl Panel for ViewPanel {
-    type Event = ScoreType;
-    fn render(&mut self, ui: &mut Ui, _show_help: &mut bool) -> Vec<Self::Event> {
-        let mut events = Vec::new();
-        section_heading(ui, UI_TEXT.view_options_heading);
-
-        ui.label(colored_subsection_heading(UI_TEXT.view_data_source_heading));
-        ComboBox::from_id_salt("Score Type")
-            .selected_text(self.selected_score_type.to_string())
-            .show_ui(ui, |ui| {
-                for score_type_variant in ScoreType::iter() {
-                    if ui
-                        .selectable_value(
-                            &mut self.selected_score_type,
-                            score_type_variant,
-                            score_type_variant.to_string(),
-                        )
-                        .clicked()
-                    {
-                        events.push(self.selected_score_type);
-                    }
-                }
-            });
-
-        ui.add_space(20.0);
-        events
-    }
-}
-
-// pub struct SignalsPanel<'a> {
-//     signals: Vec<&'a PairContext>,
-// }
-
-// impl<'a> SignalsPanel<'a> {
-//     pub fn new(signals: Vec<&'a PairContext>) -> Self {
-//         Self { signals }
-//     }
-// }
-
-// impl<'a> Panel for SignalsPanel<'a> {
-//     type Event = String; // Returns pair name if clicked
-
-//     fn render(&mut self, ui: &mut Ui, _show_help: &mut bool) -> Vec<Self::Event> {
-//         let mut events = Vec::new();
-//         section_heading(ui, UI_TEXT.signals_heading);
-
-//         if self.signals.is_empty() {
-//             ui.label(
-//                 RichText::new("No high-interest signals")
-//                     .small()
-//                     .color(Color32::GRAY),
-//             );
-//         } else {
-//             ui.label(
-//                 RichText::new(format!("{} active", self.signals.len()))
-//                     .small()
-//                     .color(Color32::from_rgb(100, 200, 255)),
-//             );
-//             ui.add_space(5.0);
-
-//             for opp in &self.signals {
-//                 ui.group(|ui| {
-//                     // Pair name as clickable button
-//                     let pair_label = format!("📌 {}", opp.pair_name);
-//                     if ui.button(pair_label).clicked() {
-//                         events.push(opp.pair_name.clone());
-//                     }
-
-//                     // Current zone types (as lng as it is sticky)
-//                     for (zone_index, zone_type) in &opp.current_zones {
-//                         let zone_label = match zone_type {
-//                             ZoneType::Sticky => Some((
-//                                 format!("🔑 Sticky superzone {}", zone_index),
-//                                 PLOT_CONFIG.sticky_zone_color,
-//                             )),
-//                             _ => None,
-//                         };
-
-//                         if let Some((text, color)) = zone_label {
-//                             ui.label(RichText::new(text).small().color(color));
-//                         }
-//                     }
-//                 });
-//                 ui.add_space(3.0);
-//             }
-//         }
-//         ui.add_space(10.0);
-//         events
-//     }
-// }

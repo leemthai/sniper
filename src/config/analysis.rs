@@ -173,7 +173,7 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
 
     cva: CvaSettings {
         price_recalc_threshold_pct: 0.01,
-        min_candles_for_analysis: 100,
+        min_candles_for_analysis: 200,
         segment_merge_tolerance_ms: TimeUtils::MS_IN_D, // Merging time segments. Set 1 Day default.
     },
 

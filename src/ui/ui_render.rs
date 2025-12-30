@@ -3,6 +3,9 @@ use eframe::egui::{
     Ui, Window, Order, Align, Layout, Color32, Frame, Sense, CursorIcon,
 };
 
+use strum::IntoEnumIterator;
+use std::cmp::Ordering;
+
 use crate::analysis::adaptive::AdaptiveParameters;
 
 use crate::config::{ANALYSIS};
@@ -65,11 +68,11 @@ impl ZoneSniperApp {
                         .map(|z| format!("{} - {}", format_price(z.price_bottom), format_price(z.price_top)))
                         .unwrap_or_else(|| format!("Zone #{}", op.target_zone_id)); // Fallback
 
-                    ui.heading(format!("Best Opportunity: {}", zone_info));
+                    ui.heading(format!("{}: {}", UI_TEXT.opp_exp_current_opp, zone_info));
                     // "Setup Type: LONG" (with encoded color)
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.label_subdued("Setup Type:");
+                        ui.label_subdued(format!("{}", UI_TEXT.opp_exp_setup_type));
                         ui.label(RichText::new(op.direction.to_string().to_uppercase())
                             .strong()
                             .color(op.direction.color())); // Uses PLOT_CONFIG via trait
@@ -93,63 +96,65 @@ impl ZoneSniperApp {
                     let max_candles = if interval_ms > 0 { max_time_ms / interval_ms } else { 0 };
 
                     // SECTION 1: THE MATH
-                    ui.label_subheader("Expectancy & Return");
+                    ui.label_subheader(&UI_TEXT.opp_exp_expectancy);
                     let roi = op.live_roi(calc_price);
                     let ann_roi = op.live_annualized_roi(calc_price);
                     let roi_color = get_outcome_color(roi);
                     
                     ui.metric(
-                        &format!("{} (per trade)", UI_TEXT.label_roi),
+                        &format!("{}", UI_TEXT.label_roi),
                         &format!("{:+.2}%", roi), 
                         roi_color
                     );
-                    ui.metric("AROI (Annualized RoI)", &format!("{:+.0}%", ann_roi), roi_color);
-                    ui.metric(UI_TEXT.label_success_rate, &format!("{:.1}%", sim.success_rate * 100.0), PLOT_CONFIG.color_text_primary);
-                    ui.metric("R:R Ratio", &format!("{:.2}", sim.risk_reward_ratio), PLOT_CONFIG.color_text_primary);
+                    ui.metric(&UI_TEXT.label_aroi_long, &format!("{:+.0}%", ann_roi), roi_color);
+                    ui.metric(&UI_TEXT.label_success_rate, &format!("{:.1}%", sim.success_rate * 100.0), PLOT_CONFIG.color_text_primary);
+                    ui.metric(&UI_TEXT.label_risk_reward, &format!("1:{:.0}", sim.risk_reward_ratio), PLOT_CONFIG.color_text_primary);
 
                     ui.add_space(10.0);
 
                     // SECTION 2: MARKET CONTEXT (INLINE STYLE)
-                    ui.label_subheader("Market Context (The 'DNA')");
+                    ui.label_subheader(&UI_TEXT.opp_exp_market_context);
                     let state = &sim.market_state;
                     
                     // Volatility (Standard metric is fine)
-                    ui.metric("Volatility", &format!("{:.2}%", state.volatility_pct * 100.0), PLOT_CONFIG.color_info);
+                    ui.metric(&UI_TEXT.label_volatility, &format!("{:.2}%", state.volatility_pct * 100.0), PLOT_CONFIG.color_info);
                     
                     // Momentum (Inline Explanation)
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(RichText::new("Momentum:").small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(UI_TEXT.label_momentum.to_string() + ":").small().color(PLOT_CONFIG.color_text_subdued));
                         ui.label(RichText::new(format!("{:+.2}%", state.momentum_pct * 100.0)).small().color(get_outcome_color(state.momentum_pct)));
                         
-                        // FIX: Updated phrasing
                         ui.label(RichText::new(format!(
-                            "(Trend measured over the last {}. Length of Trend Window derived from PH {:.2}%)", 
-                            lookback_str, ph_pct * 100.0
+                            " ({} {}. {} {:.2}%)", 
+                            UI_TEXT.opp_exp_trend_measured,
+                            lookback_str,
+                            UI_TEXT.opp_exp_trend_length,
+                            ph_pct * 100.0,
                         )).small().color(PLOT_CONFIG.color_text_subdued));
                     });
 
                     // Rel Volume (Inline Explanation)
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(RichText::new("Rel. Volume:").small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(UI_TEXT.opp_exp_relative_volume.to_string() + ":").small().color(PLOT_CONFIG.color_text_subdued));
                         let vol_color = if state.relative_volume > 1.0 { 
                             PLOT_CONFIG.color_warning 
                         } else { 
                             PLOT_CONFIG.color_text_subdued 
                         };
                         ui.label(RichText::new(format!("{:.2}x", state.relative_volume)).small().color(vol_color));
-                        ui.label(RichText::new("(Ratio of Current Volume vs Recent Average.)").small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(UI_TEXT.opp_exp_relative_volume_explainer.to_string()).small().color(PLOT_CONFIG.color_text_subdued));
                     });
 
                     ui.add_space(10.0);
 
                   // SECTION 3: TRADE SETUP
-                    ui.label_subheader("Trade Setup");
+                    ui.label_subheader(&UI_TEXT.opp_exp_trade_setup);
                     
                     // Entry / Target can stay standard
-                    ui.metric("Entry", &format_price(calc_price), PLOT_CONFIG.color_text_neutral);
-                    ui.metric("Target", &format_price(op.target_price), PLOT_CONFIG.color_profit);
+                    ui.metric(&UI_TEXT.opp_exp_trade_entry, &format_price(calc_price), PLOT_CONFIG.color_text_neutral);
+                    // ui.metric(&UI_TEXT.label_target, &format_price(op.target_price), PLOT_CONFIG.color_profit);
                     
                     let target_dist = calculate_percent_diff(op.target_price, calc_price);
                     let stop_dist = calculate_percent_diff(op.stop_price, calc_price);
@@ -157,7 +162,7 @@ impl ZoneSniperApp {
                     // TARGET ROW (Green)
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.label(RichText::new("Target:").small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(UI_TEXT.label_target_text.to_string() + ":").small().color(PLOT_CONFIG.color_text_subdued));
                         ui.label(RichText::new(format_price(op.target_price)).small().color(PLOT_CONFIG.color_profit));
                         
                         // Percentage inline
@@ -169,17 +174,20 @@ impl ZoneSniperApp {
                     // Stop Loss Row + Variants
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(RichText::new(format!("{}:", UI_TEXT.label_stop)).small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(format!("{}:", UI_TEXT.label_stop_loss)).small().color(PLOT_CONFIG.color_text_subdued));
                         ui.label(RichText::new(format_price(op.stop_price)).small().color(PLOT_CONFIG.color_stop_loss));
                         
                         ui.label(RichText::new(format!(
-                            "(Target {:.2}% / Stop {:.2}%)", 
-                            target_dist, stop_dist
+                            "({} {:.2}% / {} {:.2}%)",
+                            UI_TEXT.label_target_text,
+                            target_dist,
+                            UI_TEXT.label_stop_loss_short,
+                            stop_dist
                         )).small().color(PLOT_CONFIG.color_text_subdued));
 
                         // NEW: Variants Info
                         if op.variant_count > 1 {
-                            ui.label(RichText::new(format!("- {} {}", op.variant_count, UI_TEXT.label_sl_variants))
+                            ui.label(RichText::new(format!(" ({} {})", op.variant_count, UI_TEXT.label_sl_variants))
                                 .small()
                                 .italics()
                                 .color(PLOT_CONFIG.color_text_subdued));
@@ -190,11 +198,11 @@ impl ZoneSniperApp {
                     // NEW: Time Limit Block
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(RichText::new("Time Limit:").small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(format!("{}:", UI_TEXT.opp_exp_order_time_limit)).small().color(PLOT_CONFIG.color_text_subdued));
                         // Use Info Color (Blue) or Primary (White) to make it distinct from price levels
                         ui.label(RichText::new(&max_time_str).small().color(PLOT_CONFIG.color_info));
                         
-                        ui.label(RichText::new(format!("(~{} candles)", max_candles)).small().color(PLOT_CONFIG.color_text_subdued));
+                        ui.label(RichText::new(format!("(~{} {})", max_candles, UI_TEXT.label_candle)).small().color(PLOT_CONFIG.color_text_subdued));
                     });
 
 
@@ -203,28 +211,38 @@ impl ZoneSniperApp {
                     ui.add_space(5.0);
 
                     // SECTION 4: THE STORY
-                    ui.label_subheader("How this works");
+                    ui.label_subheader(&UI_TEXT.opp_exp_how_this_works);
                     ui.vertical(|ui| {
                         ui.style_mut().spacing.item_spacing.y = 4.0;
                         let story_color = PLOT_CONFIG.color_text_neutral;
                         
                         ui.label(RichText::new(format!(
-                            "1. We fingerprinted the market right now (Vol = {:.2}%, Momentum = {:+.2}%, Rel.Vol = {:.2}x).",
+                            "{} ({} = {:.2}%, {} = {:+.2}%, {} = {:.2}x)",
+                            UI_TEXT.opp_expr_we_fingerprinted,
+                            UI_TEXT.label_volatility,
                             state.volatility_pct * 100.0,
+                            UI_TEXT.label_momentum,
                             state.momentum_pct * 100.0,
+                            UI_TEXT.opp_exp_relative_volume,
                             state.relative_volume
                         )).small().color(story_color).italics());
                         
                         let match_text = if sim.sample_size < 50 {
-                            format!("2. We scanned history and found exactly {} periods that matched this fingerprint.", sim.sample_size)
+                            format!("{} {} {}", UI_TEXT.opp_exp_scanned_history_one, sim.sample_size, UI_TEXT.opp_exp_scanned_history_two)
                         } else {
-                            format!("2. We scanned history and found many matches, but we kept only the Top {} closest matches.", sim.sample_size)
+                            format!("{} {} {}", UI_TEXT.opp_exp_scanned_history_three, sim.sample_size, UI_TEXT.opp_exp_scanned_history_four)
                         };
                         ui.label(RichText::new(match_text).small().color(story_color).italics());
 
                         ui.label(RichText::new(format!(
-                            "3. We simulated these {} scenarios. We checked if price hit the Target, the Stop, or ran out of time (Limit: {}).",
+                            "{} {} {} {}, the {}, the {} ({}: {}).",
+                            UI_TEXT.opp_exp_simulate_one,
                             sim.sample_size,
+                            UI_TEXT.opp_exp_simulate_two,
+                            UI_TEXT.label_target_text,
+                            UI_TEXT.label_stop_loss,
+                            UI_TEXT.opp_exp_out_of_time,
+                            UI_TEXT.label_limit,
                             max_time_str
                         )).small().color(story_color).italics());
                         
@@ -232,13 +250,22 @@ impl ZoneSniperApp {
                         let win_pct = sim.success_rate * 100.0;
                         
                         ui.label(RichText::new(format!(
-                            "4. In {} of those {} cases, price hit the Target first. This produces the {:.1}% {} you see above.",
-                            win_count, sim.sample_size, win_pct, UI_TEXT.label_success_rate,
+                            "{} {} {} {} {} {} {} {:.1}% {} {}",
+                            UI_TEXT.opp_exp_cases_one,
+                            win_count,
+                            UI_TEXT.opp_exp_cases_two,
+                            sim.sample_size,
+                            UI_TEXT.opp_exp_cases_three,
+                            UI_TEXT.label_target_text,
+                            UI_TEXT.opp_exp_cases_four,
+                            win_pct,
+                            UI_TEXT.label_success_rate,
+                            UI_TEXT.opp_exp_cases_five,
                         )).small().color(story_color).italics());
                     });
 
                 } else {
-                    ui.label("No valid opportunities found. Check your settings or try a different pair.");
+                    ui.label(&UI_TEXT.label_no_opps);
                 }
             });
     }
@@ -308,16 +335,16 @@ impl ZoneSniperApp {
     fn render_trade_finder_content(&mut self, ui: &mut Ui) {
         // --- 1. HEADER ---
         ui.add_space(5.0);
-        ui.heading(UI_TEXT.tf_header); 
+        ui.heading(&UI_TEXT.tf_header); 
         ui.add_space(5.0);
 
         // --- 2. SCOPE TOGGLE (Selectable Row) ---
         ui.horizontal(|ui| {
-            ui.label(RichText::new(UI_TEXT.label_scope_icon).size(16.0).color(PLOT_CONFIG.color_text_neutral));
+            ui.label(RichText::new(&UI_TEXT.label_target).size(16.0).color(PLOT_CONFIG.color_text_neutral));
             ui.style_mut().spacing.item_spacing.x = 5.0; 
             
             // Button 1: ALL PAIRS
-            if ui.selectable_label(!self.tf_filter_pair_only, UI_TEXT.tf_scope_all).clicked() {
+            if ui.selectable_label(!self.tf_filter_pair_only, &UI_TEXT.tf_scope_all).clicked() {
                 self.tf_filter_pair_only = false;
             }
             
@@ -337,15 +364,15 @@ impl ZoneSniperApp {
         // --- 2. DIRECTION FILTER ---
         ui.horizontal(|ui| {
             // ICON: Filter Funnel
-            ui.label(RichText::new(UI_TEXT.label_filter_icon).size(16.0).color(PLOT_CONFIG.color_text_neutral));
+            ui.label(RichText::new(&UI_TEXT.label_filter_icon).size(16.0).color(PLOT_CONFIG.color_text_neutral));
             ui.style_mut().spacing.item_spacing.x = 5.0; 
             
             let f = &mut self.tf_filter_direction;
             
             // Buttons using UI_TEXT fields (with icons embedded)
-            if ui.selectable_label(*f == DirectionFilter::All, UI_TEXT.tf_btn_all).clicked() { *f = DirectionFilter::All; }
-            if ui.selectable_label(*f == DirectionFilter::Long, UI_TEXT.tf_btn_long).clicked() { *f = DirectionFilter::Long; }
-            if ui.selectable_label(*f == DirectionFilter::Short, UI_TEXT.tf_btn_short).clicked() { *f = DirectionFilter::Short; }
+            if ui.selectable_label(*f == DirectionFilter::All, &UI_TEXT.tf_btn_all_trades).clicked() { *f = DirectionFilter::All; }
+            if ui.selectable_label(*f == DirectionFilter::Long, &UI_TEXT.label_long).clicked() { *f = DirectionFilter::Long; }
+            if ui.selectable_label(*f == DirectionFilter::Short, &UI_TEXT.label_short).clicked() { *f = DirectionFilter::Short; }
         });
         ui.separator();
 
@@ -383,14 +410,14 @@ impl ZoneSniperApp {
             let b_static_roi = b.opportunity.expected_roi();
             let b_static_aroi = calculate_annualized_roi(b_static_roi, b.opportunity.avg_duration_ms as f64);
             
-            b_static_aroi.partial_cmp(&a_static_aroi).unwrap_or(std::cmp::Ordering::Equal)
+            b_static_aroi.partial_cmp(&a_static_aroi).unwrap_or(Ordering::Equal)
         });
 
         // --- 4. RENDER LIST ---
         ScrollArea::vertical().id_salt("tf_list_scroll").show(ui, |ui| {
             if opportunities.is_empty() {
                 ui.add_space(20.0);
-                ui.centered_and_justified(|ui| ui.label("No active opportunities found. Please reset filters."));
+                ui.centered_and_justified(|ui| ui.label(&UI_TEXT.label_no_opps));
                 return;
             }
 
@@ -435,8 +462,8 @@ impl ZoneSniperApp {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             let dir_color = op.direction.color();
                             let arrow = match op.direction {
-                                TradeDirection::Long => UI_TEXT.icon_long,
-                                TradeDirection::Short => UI_TEXT.icon_short,
+                                TradeDirection::Long => &UI_TEXT.icon_long,
+                                TradeDirection::Short => &UI_TEXT.icon_short,
                             };
                             ui.label(RichText::new(arrow).color(dir_color));
                             ui.label(RichText::new(op.direction.to_string().to_uppercase()).small().color(dir_color));
@@ -471,9 +498,9 @@ impl ZoneSniperApp {
 
                 // FOOTER: Targets
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("T: +{:.2}%", live_op.reward_pct)).small().color(PLOT_CONFIG.color_profit));
+                    ui.label(RichText::new(format!("{}: +{:.2}%", &UI_TEXT.tf_target, live_op.reward_pct)).small().color(PLOT_CONFIG.color_profit));
                     ui.label(RichText::new("|").small().color(PLOT_CONFIG.color_text_subdued));
-                    ui.label(RichText::new(format!("S: -{:.2}%", live_op.risk_pct)).small().color(PLOT_CONFIG.color_stop_loss));
+                    ui.label(RichText::new(format!("{}: -{:.2}%", &UI_TEXT.label_stop_loss_short, live_op.risk_pct)).small().color(PLOT_CONFIG.color_stop_loss));
                 });
             });
 
@@ -553,39 +580,35 @@ impl ZoneSniperApp {
                 // --- TOP TOOLBAR ---
                 ui.horizontal(|ui| {
                     // 1. CANDLE RESOLUTION
-                    ui.label(RichText::new(UI_TEXT.label_res_icon).size(16.0).color(PLOT_CONFIG.color_text_neutral));
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M5, "5m");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M15, "15m");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::H1, "1h");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::H4, "4h");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::D1, "1D");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::D3, "3D");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::W1, "1W");
-                    ui.selectable_value(&mut self.candle_resolution, CandleResolution::M1, "1M");
+                    ui.label(RichText::new(&UI_TEXT.tb_time).size(16.0).color(PLOT_CONFIG.color_text_neutral));
+
+                    for res in CandleResolution::iter() {
+                        ui.selectable_value(&mut self.candle_resolution, res, res.to_string());
+                     }
 
                     ui.separator();
 
                     // 2. LAYER VISIBILITY
-                    ui.checkbox(&mut self.plot_visibility.sticky, "Sticky");
-                    ui.checkbox(&mut self.plot_visibility.low_wicks, "Demand");
-                    ui.checkbox(&mut self.plot_visibility.high_wicks, "Supply");
-                    ui.checkbox(&mut self.plot_visibility.background, "Volume Hist");
-                    ui.checkbox(&mut self.plot_visibility.candles, "Candles");
+                    ui.checkbox(&mut self.plot_visibility.sticky, &UI_TEXT.tb_sticky);
+                    ui.checkbox(&mut self.plot_visibility.low_wicks, &UI_TEXT.tb_low_wicks);
+                    ui.checkbox(&mut self.plot_visibility.high_wicks, &UI_TEXT.tb_high_wicks);
+                    ui.checkbox(&mut self.plot_visibility.background, &UI_TEXT.tb_volume_hist);
+                    ui.checkbox(&mut self.plot_visibility.candles, &UI_TEXT.tb_candles);
 
                     ui.separator();
 
                     // CONTEXT
-                    ui.checkbox(&mut self.plot_visibility.ghost_candles, "Ghost Candles"); // Toggle faint candles
-                    ui.checkbox(&mut self.plot_visibility.separators, "TM Separators"); // Toggle segment separators
-                    ui.checkbox(&mut self.plot_visibility.horizon_lines, "Price Horizon Limits"); // Toggle dashed horizontal PH border lines
-                    ui.checkbox(&mut self.plot_visibility.price_line, "Price");
-                    ui.checkbox(&mut self.plot_visibility.opportunities, "Targets");
+                    ui.checkbox(&mut self.plot_visibility.ghost_candles, &UI_TEXT.tb_ghost_candles);
+                    ui.checkbox(&mut self.plot_visibility.separators, &UI_TEXT.tb_gaps);
+                    ui.checkbox(&mut self.plot_visibility.horizon_lines, &UI_TEXT.tb_price_limits);
+                    ui.checkbox(&mut self.plot_visibility.price_line, &UI_TEXT.tb_live_price);
+                    ui.checkbox(&mut self.plot_visibility.opportunities, &UI_TEXT.tb_targets);
 
                     // STATUS INDICATOR (TEMP but very useful)
                     if self.auto_scale_y {
-                        ui.label(RichText::new("🔒 Y-LOCKED").small().color(PLOT_CONFIG.color_profit));
+                        ui.label(RichText::new(&UI_TEXT.tb_y_locked).small().color(PLOT_CONFIG.color_profit));
                     } else {
-                        ui.label(RichText::new("🔓 MANUAL Y").small().color(PLOT_CONFIG.color_warning));
+                        ui.label(RichText::new(&UI_TEXT.tb_y_unlocked).small().color(PLOT_CONFIG.color_warning));
                     }
                 });
             });
@@ -852,7 +875,7 @@ impl ZoneSniperApp {
                     let time_str = TimeUtils::interval_to_string(model.cva.interval_ms);
 
                     ui.metric(
-                        UI_TEXT.label_candle,
+                        &UI_TEXT.label_candle,
                         &format!("{}/{} ({:.1}%) {}", relevant, total, pct, time_str),
                         PLOT_CONFIG.color_text_neutral,
                     );
@@ -860,7 +883,7 @@ impl ZoneSniperApp {
                     ui.separator();
 
                     ui.metric(
-                        UI_TEXT.label_volatility,
+                        &UI_TEXT.label_volatility,
                         &format!("{:.3}%", model.cva.volatility_pct),
                         PLOT_CONFIG.color_warning, // Volatility is attention-worthy
                     );
@@ -964,12 +987,12 @@ impl ZoneSniperApp {
                     ui.add_space(5.0);
 
                     let mut _sim_shortcuts = vec![
-                        ("D", UI_TEXT.label_help_sim_toggle_direction),
-                        ("X", UI_TEXT.label_help_sim_step_size),
-                        ("A", UI_TEXT.label_help_sim_activate_price_change),
-                        ("4", UI_TEXT.label_help_sim_jump_hvz),
-                        ("5", UI_TEXT.label_help_sim_jump_lower_wicks),
-                        ("6", UI_TEXT.label_help_sim_jump_higher_wicks),
+                        ("D", UI_TEXT.label_help_sim_toggle_direction.as_str()),
+                        ("X", UI_TEXT.label_help_sim_step_size.as_str()),
+                        ("A", UI_TEXT.label_help_sim_activate_price_change.as_str()),
+                        ("4", UI_TEXT.label_help_sim_jump_hvz.as_str()),
+                        ("5", UI_TEXT.label_help_sim_jump_lower_wicks.as_str()),
+                        ("6", UI_TEXT.label_help_sim_jump_higher_wicks.as_str()),
                     ];
 
                     // Only add 'S' for Native

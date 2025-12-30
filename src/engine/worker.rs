@@ -272,10 +272,10 @@ fn run_stop_loss_tournament(
     }
 
     // Return Winner + Count
-    if let Some((res, stop, ratio)) = best_result {
+    if let Some((res, stop, _ratio)) = best_result {
         #[cfg(debug_assertions)]
         if debug {
-            log::info!("   🏆 WINNER: R:R {:.1} with ROI {:+.2}% ({} variants)", ratio, best_roi, valid_variant_count);
+            log::info!("   🏆 WINNER: R:R {:.1} with ROI {:+.2}% ({} variants)", _ratio, best_roi, valid_variant_count);
         }
         Some((res, stop, valid_variant_count))
     } else {

@@ -163,13 +163,14 @@ impl PlotLayer for OpportunityLayer {
             let mut job = LayoutJob::default();
             let font_id = FontId::proportional(14.0);
 
-            // Block 1: Neutral Info
+            // Block 1: Trade Info
             job.append(
                 &format!(
-                    "{}\n{}: {:.1}%\nR:R: {:.2}\n",
+                    "{}\n{}: {:.1}%\n{}: 1:{:.0}\n",
                     best_opp.direction.to_string().to_uppercase(),
                     UI_TEXT.label_success_rate,
                     win_rate * 100.0,
+                    UI_TEXT.label_risk_reward,
                     best_opp.simulation.risk_reward_ratio
                 ),
                 0.0,
@@ -182,7 +183,7 @@ impl PlotLayer for OpportunityLayer {
 
             // Block 2: Target Info (Profit Color)
             job.append(
-                &format!("Target: {} (+{:.2}%)\n", format_price(best_opp.target_price), target_dist_pct),
+                &format!("{}: {} (+{:.2}%)\n", UI_TEXT.label_target, format_price(best_opp.target_price), target_dist_pct),
                 0.0,
                 TextFormat {
                     color: PLOT_CONFIG.color_profit,
@@ -201,7 +202,7 @@ impl PlotLayer for OpportunityLayer {
 
             job.append(
                 &format!("{}: {} (-{:.2}%){}\n", 
-                    UI_TEXT.label_stop, 
+                    UI_TEXT.label_stop_loss, 
                     format_price(best_opp.stop_price), 
                     stop_dist_pct,
                     variant_text
@@ -227,7 +228,7 @@ impl PlotLayer for OpportunityLayer {
 
             // Add Annualized Line (Smaller)
             job.append(
-                &format!(" (AROI: {:+.0}%)", ann_roi),
+                &format!(" ({}: {:+.0}%)", UI_TEXT.label_aroi, ann_roi),
                 0.0,
                 TextFormat { 
                     color: outcome_color.linear_multiply(0.8), // Slightly dimmed 
@@ -597,7 +598,7 @@ impl PlotLayer for ReversalZoneLayer {
                 //     .unwrap_or(false);
 
                 let color = PLOT_CONFIG.low_wicks_zone_color;
-                let label = UI_TEXT.label_reversal_support;
+                let label = &UI_TEXT.label_reversal_support;
                 let stroke = get_stroke(superzone, current_price, color);
 
                 draw_superzone(
@@ -605,7 +606,7 @@ impl PlotLayer for ReversalZoneLayer {
                     superzone,
                     ctx.x_min,
                     ctx.x_max,
-                    label,
+                    &label,
                     color,
                     stroke,
                     0.5,
@@ -624,7 +625,7 @@ impl PlotLayer for ReversalZoneLayer {
 
                 // if is_relevant {
                 let color = PLOT_CONFIG.high_wicks_zone_color;
-                let label = UI_TEXT.label_reversal_resistance;
+                let label = &UI_TEXT.label_reversal_resistance;
                 let stroke = get_stroke(superzone, current_price, color);
 
                 draw_superzone(
@@ -632,7 +633,7 @@ impl PlotLayer for ReversalZoneLayer {
                     superzone,
                     ctx.x_min,
                     ctx.x_max,
-                    label,
+                    &label,
                     color,
                     stroke,
                     0.5,
