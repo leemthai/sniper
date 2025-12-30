@@ -1,4 +1,4 @@
-use eframe::egui::{Color32, RichText, Ui};
+use eframe::egui::{Color32, RichText, Ui, Button, CursorIcon, Vec2, Stroke, CornerRadius};
 
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::trading_view::TradeDirection;
@@ -90,10 +90,48 @@ pub trait UiStyleExt {
     /// Generates RichText styled specifically for a Secondary Action Button (White/Bold).
     fn button_text_secondary(&self, text: impl Into<String>) -> RichText;
 
+    /// For help buttons
+    fn help_button(&mut self, text: &str) -> bool; // Returns true if clicked
 
 }
 
 impl UiStyleExt for Ui {
+
+fn help_button(&mut self, text: &str) -> bool {
+        // 1. Use a Scope to modify styles for just this button
+        self.scope(|ui| {
+            let visuals = ui.visuals_mut();
+
+            // --- A. BORDER (BG Stroke) COLOR ---
+            visuals.widgets.inactive.bg_stroke = Stroke::new(2.0, PLOT_CONFIG.color_help_bg);
+            visuals.widgets.hovered.bg_stroke  = Stroke::new(2.0, PLOT_CONFIG.color_help_bg_hover);
+            visuals.widgets.active.bg_stroke   = Stroke::new(2.0, PLOT_CONFIG.color_help_bg_hover);
+
+            // --- B. ICON (Text) COLOR ---
+            visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, PLOT_CONFIG.color_help_bg);
+            visuals.widgets.hovered.fg_stroke  = Stroke::new(1.0, PLOT_CONFIG.color_help_bg);
+            visuals.widgets.active.fg_stroke   = Stroke::new(1.0, PLOT_CONFIG.color_help_bg_hover);
+
+            // Prevent expansion animation if you want it rock solid
+            visuals.widgets.hovered.expansion = 0.0;
+            visuals.widgets.active.expansion = 0.0;
+
+            // 2. Create Content WITHOUT explicit .color()
+            // We rely on the 'visuals...fg_stroke' settings above to color it.
+            let content = RichText::new(text).strong();
+
+            // 3. Render
+            let btn = Button::new(content)
+                .fill(PLOT_CONFIG.color_help_fg)
+                .corner_radius(CornerRadius::same(12))
+                .min_size(Vec2::new(16.0, 16.0));
+
+            ui.add(btn)
+                .on_hover_cursor(CursorIcon::Help)
+                .clicked()
+        }).inner
+    }
+
     fn label_subdued(&mut self, text: impl Into<String>) {
         self.label(RichText::new(text).small().color(Color32::GRAY));
     }

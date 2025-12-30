@@ -337,7 +337,6 @@ impl PlotLayer for CandlestickLayer {
                     low,
                     close,
                     ctx.ph_bounds,
-                    ctx.visibility.ghost_candles,
                     ctx.x_min,
                 );
 
@@ -357,7 +356,6 @@ fn draw_split_candle(
     low: f64,
     close: f64,
     ph_bounds: (f64, f64),
-    show_ghosts: bool,
     min_x_limit: f64,
 ) {
     let (ph_min, ph_max) = ph_bounds;
@@ -369,21 +367,20 @@ fn draw_split_candle(
         PLOT_CONFIG.candle_bearish_color
     };
 
-    // VISUAL FIX 2: Ghost Color
-    // Make it look "Dead" / Desaturated.
+    // VISUAL FIX 2: Ghost Color - make it look "Dead" / Desaturated.
     // We use a very high transparency (0.2) so it recedes into the background.
     let ghost_color = base_color.linear_multiply(0.2);
 
     // 1. Draw Wicks
     // Top Ghost
-    if show_ghosts && high > ph_max {
+    if high > ph_max {
         let bottom = low.max(ph_max);
         if high > bottom {
             draw_wick_line(ui, x, high, bottom, ghost_color, min_x_limit);
         }
     }
     // Bottom Ghost
-    if show_ghosts && low < ph_min {
+    if low < ph_min {
         let top = high.min(ph_min);
         if top > low {
             draw_wick_line(ui, x, top, low, ghost_color, min_x_limit);
@@ -408,14 +405,14 @@ fn draw_split_candle(
     let body_bot = body_bot_raw;
 
     // Top Ghost Body
-    if show_ghosts && body_top > ph_max {
+    if body_top > ph_max {
         let b = body_bot.max(ph_max);
         if body_top > b {
             draw_body_rect(ui, x, body_top, b, ghost_color, min_x_limit);
         }
     }
     // Bottom Ghost Body
-    if show_ghosts && body_bot < ph_min {
+    if body_bot < ph_min {
         let t = body_top.min(ph_min);
         if t > body_bot {
             draw_body_rect(ui, x, t, body_bot, ghost_color, min_x_limit);

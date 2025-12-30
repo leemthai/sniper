@@ -77,7 +77,6 @@ pub struct PlotVisibility {
     pub opportunities: bool,
 
     pub horizon_lines: bool,
-    pub ghost_candles: bool,
     pub separators: bool,
 }
 
@@ -92,7 +91,6 @@ impl Default for PlotVisibility {
             candles: true,
             opportunities: true,
             horizon_lines: true,
-            ghost_candles: true,
             separators: true,
         }
     }

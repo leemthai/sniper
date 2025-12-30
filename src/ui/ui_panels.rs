@@ -1,6 +1,6 @@
 use colorgrad::Gradient;
 use eframe::egui::{
-    Align, Align2, Button, Color32, Context, CursorIcon, FontId, Grid, Key, Layout, Rect,
+    Align, Align2, Button, Color32, Context, FontId, Grid, Key, Layout, Rect,
     RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, Window, pos2, vec2, Order,
 };
 
@@ -226,8 +226,8 @@ pub trait Panel {
 
 /// Panel for data generation options
 pub struct DataGenerationPanel<'a> {
-    #[allow(dead_code)]
-    zone_count: usize,
+    // #[allow(dead_code)]
+    // zone_count: usize,
     selected_pair: Option<String>,
     available_pairs: Vec<String>,
     price_horizon_config: &'a PriceHorizonConfig,
@@ -239,7 +239,6 @@ pub struct DataGenerationPanel<'a> {
 
 impl<'a> DataGenerationPanel<'a> {
     pub fn new(
-        zone_count: usize,
         selected_pair: Option<String>,
         available_pairs: Vec<String>,
         price_horizon_config: &'a PriceHorizonConfig,
@@ -249,7 +248,6 @@ impl<'a> DataGenerationPanel<'a> {
         scroll_to_pair_requested: &'a mut Option<String>,
     ) -> Self {
         Self {
-            zone_count,
             selected_pair,
             available_pairs,
             price_horizon_config,
@@ -344,7 +342,7 @@ impl<'a> DataGenerationPanel<'a> {
         ui.horizontal(|ui| {
             ui.label(colored_subsection_heading(&UI_TEXT.price_horizon_heading));
 
-            if ui.button("(?)").on_hover_cursor(CursorIcon::Help).clicked() {
+            if ui.help_button(&UI_TEXT.help_icon) {
                 *show_help = !*show_help;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

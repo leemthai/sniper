@@ -16,7 +16,8 @@ pub const ICON_TARGET: &str      = "\u{f04fe}"; // nf-md-target
 pub const ICON_CLOCK: &str      = "\u{f017}"; // (Clock)
 pub const ICON_GLOBE: &str      = "\u{f0ac}"; // (Globe)
 
-pub const ICON_CANDLE:&str  = "\u{f05e2}";
+// pub const ICON_CANDLE:&str  = "\u{f05e2}"; // This is more like a full chart 
+pub const ICON_CANDLE:&str  = "\u{f11c9}";
 
 pub const ICON_POINT_RIGHT: &str = "\u{f02c7}";
 
@@ -31,8 +32,25 @@ pub const ICON_LOCKED: &str = "\u{ea75}";
 pub const ICON_UNLOCKED: &str = "\u{eb74}";
 pub const ICON_Y_AXIS: &str  = "\u{f0e79}";
 
+pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
+
+pub const ICON_RUST: &str = "\u{e7a8}";
+
+pub const ICON_DOLLAR_BAG: &str = "\u{ef8d}";
+
+pub const ICON_PULSE: &str = "\u{e234}";
+
+pub const ICON_RULER: &str = "\u{e21b}"; // "measuring" 
+
+pub const ICON_COG: &str = "\u{f013}";  // "working" 
+
+pub const ICON_QUEUE: &str = "\u{f1571}"; // queue sizes...
+
+pub const ICON_HELP:  &str = "\u{f02d6}";
+
 
 pub struct UiText {
+
     // --- GENERAL ---
     pub data_generation_heading: String,
     pub price_horizon_heading: String,
@@ -44,8 +62,7 @@ pub struct UiText {
     pub plot_x_axis: String,
     pub plot_y_axis: String,
     
-    // --- STATUS ---
-    pub label_volatility_atr: String,
+
 
     // --- BUTTONS (Dynamic) ---
     pub tf_btn_all: String,
@@ -91,14 +108,7 @@ pub struct UiText {
     pub label_reversal_support: String,
     pub label_reversal_resistance: String,
 
-    pub label_help_sim_toggle_direction: String,
-    pub label_help_sim_step_size: String,
-    pub label_help_sim_activate_price_change: String,
-    pub label_help_sim_jump_hvz: String,
-    pub label_help_sim_jump_lower_wicks: String,
-    pub label_help_sim_jump_higher_wicks: String,
 
-    pub tb_ghost_candles: String,
     pub tb_sticky: String,
     pub tb_low_wicks: String,
     pub tb_high_wicks: String,
@@ -137,6 +147,11 @@ pub struct UiText {
     pub label_risk_reward_short: String,
     pub label_limit: String,
     pub label_no_opps: String,
+    pub label_connecting: String,
+    pub label_connected: String,
+    pub label_working: String,
+    pub label_queue: String,
+    pub help_icon: String,
 
     pub opp_exp_current_opp: String,
     pub opp_exp_setup_type: String,
@@ -164,23 +179,84 @@ pub struct UiText {
     pub opp_exp_cases_three: String,
     pub opp_exp_cases_four: String,
     pub opp_exp_cases_five: String,
+
+    // --- STATUS Panel ---
+    pub sp_price: String,
+    pub sp_live_mode: String,
+    pub sp_zone_size: String,
+    pub sp_coverage: String,
+    pub sp_coverage_sticky: String,
+    pub sp_coverage_support: String,
+    pub sp_coverage_resistance: String,
+    pub sp_stream_status: String,
+
+    // Simulation stuff
+    #[cfg(target_arch = "wasm32")]
+    pub sp_simulation_mode: String,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub sp_simulation_mode: String,
+
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub sp_toggle_sim_mode: String,
+
+    pub sim_help_sim_toggle_direction: String,
+    pub sim_help_sim_step_size: String,
+    pub sim_help_sim_activate_price_change: String,
+    pub sim_help_sim_jump_hvz: String,
+    pub sim_help_sim_jump_lower_wicks: String,
+    pub sim_help_sim_jump_higher_wicks: String,
+    pub sim_mode_controls: String,
+    pub sim_step: String,
+
 }
 
 // THE SINGLETON
 pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
     UiText {
 
+        // Status panel
+        sp_price: ICON_DOLLAR_BAG.to_string(),
+        sp_live_mode: ICON_PULSE.to_string() + " LIVE MODE",
+                        
+        sp_zone_size: ICON_RULER.to_string() + " Zone Size",
+        sp_coverage: "Coverage".to_string(),
+        sp_coverage_sticky:"High Volume".to_string(),
+        sp_coverage_support: "Support".to_string(),
+        sp_coverage_resistance: "Resist.".to_string(),
+        sp_stream_status: "Stream Status".to_string(),
+
+        // Simulation
+        sp_simulation_mode: if cfg!(target_arch = "wasm32") {
+            "WEB DEMO (OFFLINE)"
+        } else {
+            "SIMULATION MODE"
+        }.to_string(),
+
+        #[cfg(not(target_arch = "wasm32"))]
+        sp_toggle_sim_mode: "Toggle Simulation Mode".to_string(),
+
+        // Simulation help text (part of main help panel)
+        sim_help_sim_toggle_direction: "Toggle price direction (UP / DOWN)".to_string(),
+        sim_help_sim_step_size: "Cycle step size (0.1% -> 1% -> 5% -> 10%)".to_string(),
+        sim_help_sim_activate_price_change: "Activate price change".to_string(),
+        sim_help_sim_jump_hvz: "Jump to next High Volume Zone".to_string(),
+        sim_help_sim_jump_lower_wicks: "Jump to next Demand Zone".to_string(),
+        sim_help_sim_jump_higher_wicks: "Jump to next Supply Zone".to_string(),
+        sim_mode_controls: "Simulation Mode Controls".to_string(),
+        sim_step: "Step".to_string(),
+
+
         // Toolbar
         tb_time: ICON_TIME_LAPSE.to_string(),
-        tb_ghost_candles: "Ghost ".to_string() + &ICON_CANDLE,
         tb_sticky: "Sticky".to_string(),
         tb_low_wicks: "Demand".to_string(),
         tb_high_wicks: "Supply".to_string(),
         tb_volume_hist: "Volume Hist".to_string(),
-        tb_candles: ICON_CHART.to_string(),
+        tb_candles: ICON_CANDLE.to_string(),
         tb_gaps: "Data Gap".to_string(),  
-        tb_price_limits: "PH Limits ".to_string() + ICON_TWO_HORIZONTAL, 
-        tb_live_price: "Live Price ".to_string() + ICON_ONE_HORIZONTAL,
+        tb_price_limits: "PH Boundary".to_string() + " " + ICON_TWO_HORIZONTAL, 
+        tb_live_price: "Live Price".to_string() + " " + ICON_ONE_HORIZONTAL,
         tb_targets: ICON_TARGET.to_string(),
         tb_y_locked:  ICON_Y_AXIS.to_string() + " " + ICON_LOCKED,
         tb_y_unlocked: ICON_Y_AXIS.to_string() + " " + ICON_UNLOCKED,
@@ -217,13 +293,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_upper_wick_zones: "Upper Wick Zones".to_string(),
         label_reversal_support: "Demand Zone (Buyers Here)".to_string(),
         label_reversal_resistance: "Supply Zone (Sellers Here)".to_string(),
-        // Simulation help text (part of main help panel)
-        label_help_sim_toggle_direction: "Toggle direction (UP / DOWN)".to_string(),
-        label_help_sim_step_size: "Cycle step size (0.1% -> 1% -> 5% -> 10%)".to_string(),
-        label_help_sim_activate_price_change: "Activate price change".to_string(),
-        label_help_sim_jump_hvz: "Jump to next High Volume Zone".to_string(),
-        label_help_sim_jump_lower_wicks: "Jump to next Demand Zone".to_string(),
-        label_help_sim_jump_higher_wicks: "Jump to next Supply Zone".to_string(),
+
 
 
         // Opportunity explainer
@@ -255,7 +325,11 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         opp_exp_cases_five: "you see above.".to_string(),
 
 
-        // General use labels (not specific to one pane)
+        // General use labels (not specific to one panel)
+        label_queue: ICON_QUEUE.to_string(),
+        label_working: ICON_COG.to_string(),
+        label_connecting: "Connecting".to_string(),
+        label_connected: "connected".to_string(),
         label_volatility: "Volatility".to_string(),
         label_target:  ICON_TARGET.to_string(),
         label_target_text: "Target".to_string(),
@@ -277,17 +351,17 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_no_opps: "No valid opportunities found. Please reset filters or select a different pair.".to_string(),
 
 
-        // TradeFinder: ICONS ---
+        // TradeFinder Pane
         tf_header: "TRADE FINDER".to_string(),
         tf_scope_all: "ALL PAIRS".to_string(),
         tf_scope_selected: "ONLY".to_string(),
         label_filter_icon: ICON_FILTER.to_string(),
-        label_candle:      ICON_CANDLE.to_string(),
+        label_candle: ICON_CANDLE.to_string(),
         tf_btn_all:   "ALL".to_string(),
         tf_btn_all_trades: "ALL TRADES".to_string(),
         tf_target: ICON_TARGET.to_string(),
 
-        // --- Main control panel ---
+        // --- Left Panel ---
         data_generation_heading: "Shape Your Trades".to_string(),
         price_horizon_heading: "Price Horizon".to_string(),
         pair_selector_heading: "Select Plot Pair".to_string(),
@@ -301,11 +375,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         error_insufficient_data_title: "Analysis Paused: Range Too Narrow".to_string(),
         error_insufficient_data_body: "The current Price Horizon does not capture enough price history.\n\n".to_string() + ICON_POINT_RIGHT +  " Drag the Price Horizon slider to the right.",
 
-
-        // Status bar
-        label_volatility_atr: "Volatility (Avg True Range)".to_string(),
-
-
         // --- Candle Range (Time Machine) NAVIGATOR ---
         cr_title_1: "Time Machine".to_string(),
         cr_title_2: "Candle Ranges".to_string(),
@@ -314,5 +383,8 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         cr_nav_show_all: "SHOW ALL RANGES".to_string(),
         cr_nav_return_prefix: "RETURN TO SEGMENT".to_string(),
         cr_nav_return_live: "RETURN TO LIVE".to_string(),
+
+        // General help
+        help_icon: ICON_HELP.to_string(),
     }
 });

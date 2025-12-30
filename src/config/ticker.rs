@@ -40,7 +40,7 @@ pub const TICKER: TickerConfig = TickerConfig {
     // Define your messages here
     custom_messages: &[
         ("🎄 MERRY CHRISTMAS 🎄", None),
-        ("Built with Rust", Some("https://www.rust-lang.org")),
+        ("Built with Rust \u{e7a8}", Some("https://www.rust-lang.org")),
         (
             "Zone Sniper Pro",
             Some("https://github.com/leemthai/sniper"),

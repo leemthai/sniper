@@ -8,7 +8,6 @@ use std::cmp::Ordering;
 
 use crate::analysis::adaptive::AdaptiveParameters;
 
-use crate::config::{ANALYSIS};
 use crate::config::TICKER;
 
 use crate::models::cva::ScoreType;
@@ -461,11 +460,7 @@ impl ZoneSniperApp {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             let dir_color = op.direction.color();
-                            let arrow = match op.direction {
-                                TradeDirection::Long => &UI_TEXT.icon_long,
-                                TradeDirection::Short => &UI_TEXT.icon_short,
-                            };
-                            ui.label(RichText::new(arrow).color(dir_color));
+                            // ui.label(RichText::new(arrow).color(dir_color));
                             ui.label(RichText::new(op.direction.to_string().to_uppercase()).small().color(dir_color));
                         });
                     });
@@ -598,7 +593,6 @@ impl ZoneSniperApp {
                     ui.separator();
 
                     // CONTEXT
-                    ui.checkbox(&mut self.plot_visibility.ghost_candles, &UI_TEXT.tb_ghost_candles);
                     ui.checkbox(&mut self.plot_visibility.separators, &UI_TEXT.tb_gaps);
                     ui.checkbox(&mut self.plot_visibility.horizon_lines, &UI_TEXT.tb_price_limits);
                     ui.checkbox(&mut self.plot_visibility.price_line, &UI_TEXT.tb_live_price);
@@ -793,32 +787,27 @@ impl ZoneSniperApp {
     fn render_status_mode(&self, ui: &mut Ui) {
         if let Some(pair) = &self.selected_pair {
             if self.is_simulation_mode() {
-                #[cfg(target_arch = "wasm32")]
-                let label = "WEB DEMO (OFFLINE)";
-                #[cfg(not(target_arch = "wasm32"))]
-                let label = "SIMULATION MODE";
+                let label = &UI_TEXT.sp_simulation_mode;
                 
-                // Use Warning/Orange for Sim Mode
+                // SIM Mode - Use Warning/Orange for Sim Mode
                 ui.label(RichText::new(label).strong().color(PLOT_CONFIG.color_short)); 
                 ui.separator();
-
                 ui.label(RichText::new(format!("{}", self.sim_direction)).small().color(PLOT_CONFIG.color_info));
                 ui.separator();
-                ui.label(RichText::new(format!("| Step: {}", self.sim_step_size)).small().color(PLOT_CONFIG.color_profit));
+                ui.label(RichText::new(format!("{}: {}", UI_TEXT.sim_step, self.sim_step_size)).small().color(PLOT_CONFIG.color_profit));
                 ui.separator();
-
                 if let Some(sim_price) = self.simulated_prices.get(pair) {
-                    ui.label(RichText::new(format!("💰 {}", format_price(*sim_price))).strong().color(PLOT_CONFIG.color_warning));
+                    ui.label(RichText::new(format!("{} {}", UI_TEXT.sp_price, format_price(*sim_price))).strong().color(PLOT_CONFIG.color_short));
                 }
             } else {
                 // Live Mode
-                ui.label(RichText::new("🟢 LIVE MODE").small().color(PLOT_CONFIG.color_profit));
+                ui.label(RichText::new(format!("{} ",&UI_TEXT.sp_live_mode)).small().color(PLOT_CONFIG.color_profit));
                 ui.separator();
 
                 if let Some(price) = self.get_display_price(pair) {
-                    ui.label(RichText::new(format!("💰 {}", format_price(price))).strong().color(PLOT_CONFIG.color_profit));
+                    ui.label(RichText::new(format!("{} {}", UI_TEXT.sp_price, format_price(price))).strong().color(PLOT_CONFIG.color_text_primary));
                 } else {
-                    ui.label("Connecting...");
+                    ui.label(format!("{} ...", UI_TEXT.label_connecting));
                 }
             }
         }
@@ -830,11 +819,10 @@ impl ZoneSniperApp {
                 if let Some(model) = engine.get_model(pair) {
                     let cva = &model.cva;
                     let zone_size = (cva.price_range.end_range - cva.price_range.start_range) / cva.zone_count as f64;
-
                     ui.metric(
-                        "📏 Zone Size",
-                        &format!("{} (N={})", format_price(zone_size), cva.zone_count),
-                        PLOT_CONFIG.color_info, // Light Blue
+                        &UI_TEXT.sp_zone_size,
+                        &format!("{}", format_price(zone_size)),
+                        PLOT_CONFIG.color_info,
                     );
                     ui.separator();
                 }
@@ -852,11 +840,10 @@ impl ZoneSniperApp {
                         else if pct < 5.0 { PLOT_CONFIG.color_warning } // Yellow (Too sparse)
                         else { PLOT_CONFIG.color_profit }             // Green (Good)
                     };
-
-                    ui.label_subdued("Coverage");
-                    ui.metric("Sticky", &format!("{:.0}%", model.coverage.sticky_pct), cov_color(model.coverage.sticky_pct));
-                    ui.metric("R-Sup", &format!("{:.0}%", model.coverage.support_pct), cov_color(model.coverage.support_pct));
-                    ui.metric("R-Res", &format!("{:.0}%", model.coverage.resistance_pct), cov_color(model.coverage.resistance_pct));
+                    ui.label_subdued(&UI_TEXT.sp_coverage);
+                    ui.metric(&UI_TEXT.sp_coverage_sticky, &format!("{:.1}%", model.coverage.sticky_pct), cov_color(model.coverage.sticky_pct));
+                    ui.metric(&UI_TEXT.sp_coverage_support, &format!("{:.1}%", model.coverage.support_pct), cov_color(model.coverage.support_pct));
+                    ui.metric(&UI_TEXT.sp_coverage_resistance, &format!("{:.1}%", model.coverage.resistance_pct), cov_color(model.coverage.resistance_pct));
                     ui.separator();
                 }
             }
@@ -872,11 +859,10 @@ impl ZoneSniperApp {
                     let relevant = model.cva.relevant_candle_count;
                     let total = model.cva.total_candles;
                     let pct = if total > 0 { (relevant as f64 / total as f64) * 100.0 } else { 0.0 };
-                    let time_str = TimeUtils::interval_to_string(model.cva.interval_ms);
 
                     ui.metric(
                         &UI_TEXT.label_candle,
-                        &format!("{}/{} ({:.1}%) {}", relevant, total, pct, time_str),
+                        &format!("{}/{} ({:.1}%)", relevant, total, pct),
                         PLOT_CONFIG.color_text_neutral,
                     );
 
@@ -894,18 +880,15 @@ impl ZoneSniperApp {
 
    fn render_status_system(&self, ui: &mut Ui) {
         if let Some(engine) = &self.engine {
-            let total_pairs = engine.get_active_pair_count();
-            ui.metric("📊 Pairs", &format!("{}", total_pairs), PLOT_CONFIG.color_text_neutral);
-
             if let Some(msg) = engine.get_worker_status_msg() {
                 ui.separator();
-                ui.label(RichText::new(format!("⚙ {}", msg)).small().color(PLOT_CONFIG.color_short));
+                ui.label(RichText::new(format!("{} {}", UI_TEXT.label_working, msg)).small().color(PLOT_CONFIG.color_short));
             }
 
             let q_len = engine.get_queue_len();
             if q_len > 0 {
                 ui.separator();
-                ui.label(RichText::new(format!("Queue: {}", q_len)).small().color(PLOT_CONFIG.color_warning));
+                ui.label(RichText::new(format!("{}: {}", UI_TEXT.label_queue, q_len)).small().color(PLOT_CONFIG.color_warning));
             }
         }
     }
@@ -913,16 +896,16 @@ impl ZoneSniperApp {
     fn render_status_network(&self, ui: &mut Ui) {
         if let Some(engine) = &self.engine {
             let health = engine.price_stream.connection_health();
-            let (icon, color) = if health >= 90.0 {
-                ("🟢", PLOT_CONFIG.color_profit)
+            let color = if health >= 90.0 {
+                PLOT_CONFIG.color_profit
             } else if health >= 50.0 {
-                ("🟡", PLOT_CONFIG.color_warning)
+                PLOT_CONFIG.color_warning
             } else {
-                ("🔴", PLOT_CONFIG.color_loss)
+                PLOT_CONFIG.color_loss
             };
             ui.metric(
-                &format!("{} Live Prices", icon),
-                &format!("{:.0}% connected", health),
+                &UI_TEXT.sp_stream_status,
+                &format!("{:.0}% {}", health, UI_TEXT.label_connected),
                 color,
             );
         }
@@ -981,18 +964,18 @@ impl ZoneSniperApp {
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(5.0);
-                    ui.heading("Simulation Mode Controls");
+                    ui.heading(&UI_TEXT.sim_mode_controls);
                     ui.add_space(5.0);
 
                     ui.add_space(5.0);
 
                     let mut _sim_shortcuts = vec![
-                        ("D", UI_TEXT.label_help_sim_toggle_direction.as_str()),
-                        ("X", UI_TEXT.label_help_sim_step_size.as_str()),
-                        ("A", UI_TEXT.label_help_sim_activate_price_change.as_str()),
-                        ("4", UI_TEXT.label_help_sim_jump_hvz.as_str()),
-                        ("5", UI_TEXT.label_help_sim_jump_lower_wicks.as_str()),
-                        ("6", UI_TEXT.label_help_sim_jump_higher_wicks.as_str()),
+                        ("D", UI_TEXT.sim_help_sim_toggle_direction.as_str()),
+                        ("X", UI_TEXT.sim_help_sim_step_size.as_str()),
+                        ("A", UI_TEXT.sim_help_sim_activate_price_change.as_str()),
+                        ("4", UI_TEXT.sim_help_sim_jump_hvz.as_str()),
+                        ("5", UI_TEXT.sim_help_sim_jump_lower_wicks.as_str()),
+                        ("6", UI_TEXT.sim_help_sim_jump_higher_wicks.as_str()),
                     ];
 
                     // Only add 'S' for Native
@@ -1039,17 +1022,8 @@ impl ZoneSniperApp {
             });
     }
 
-    // fn signals_panel(&mut self, ui: &mut Ui) -> Vec<String> {
-    //     // Use the wrapper method we added to App
-    //     let signals = self.get_signals();
-    //     let mut panel = SignalsPanel::new(signals);
-    //     panel.render(ui, &mut false)
-    // }
-
     fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
         // 1. Get Data from Engine
-        // We clone the Profile to avoid holding an immutable borrow on 'engine'
-        // which would prevent us from passing 'self' fields (like auto_duration_config) to the panel.
         let (available_pairs, profile, actual_count) = if let Some(engine) = &self.engine {
             let pairs = engine.get_all_pair_names();
 
@@ -1066,7 +1040,6 @@ impl ZoneSniperApp {
 
         // 2. Render Panel
         let mut panel = DataGenerationPanel::new(
-            ANALYSIS.zone_count,
             self.selected_pair.clone(),
             available_pairs,
             &self.app_config.price_horizon,

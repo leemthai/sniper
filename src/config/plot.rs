@@ -77,6 +77,11 @@ pub struct PlotConfig {
     // UI WIDGET STYLES
     pub color_widget_background: Color32, // Dark background for custom widgets
     pub color_widget_border: Color32,     // Subtle border
+
+    // HELP COLORS
+    pub color_help_fg: Color32,
+    pub color_help_bg: Color32,
+    pub color_help_bg_hover: Color32,
 }
 
 pub const PLOT_CONFIG: PlotConfig = PlotConfig {
@@ -154,6 +159,10 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     // NEW DEFINITIONS
     color_info: Color32::from_rgb(173, 216, 230), // Light Blue (Volatility)
     color_warning: Color32::from_rgb(255, 215, 0), // Gold/Yellow (High Vol)
+
+    color_help_fg: Color32::from_rgb(120, 170, 240), // help fg
+    color_help_bg: Color32::WHITE, // help background
+    color_help_bg_hover: Color32::ORANGE, // help background on hover
 
     color_text_primary: Color32::WHITE,
     color_text_neutral: Color32::LIGHT_GRAY,
