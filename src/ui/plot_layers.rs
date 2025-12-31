@@ -590,12 +590,9 @@ impl PlotLayer for ReversalZoneLayer {
         // A. Low Wicks (Support)
         if ctx.visibility.low_wicks {
             for superzone in &ctx.trading_model.zones.low_wicks_superzones {
-                // let is_relevant = current_price
-                //     .map(|p| superzone.contains(p) || superzone.price_center < p)
-                //     .unwrap_or(false);
 
                 let color = PLOT_CONFIG.low_wicks_zone_color;
-                let label = &UI_TEXT.label_reversal_support;
+                let label = "";
                 let stroke = get_stroke(superzone, current_price, color);
 
                 draw_superzone(
@@ -616,13 +613,10 @@ impl PlotLayer for ReversalZoneLayer {
         // B. High Wicks (Resistance)
         if ctx.visibility.high_wicks {
             for superzone in &ctx.trading_model.zones.high_wicks_superzones {
-                // let is_relevant = current_price
-                //     .map(|p| superzone.contains(p) || superzone.price_center > p)
-                //     .unwrap_or(false);
 
                 // if is_relevant {
                 let color = PLOT_CONFIG.high_wicks_zone_color;
-                let label = &UI_TEXT.label_reversal_resistance;
+                let label = "";
                 let stroke = get_stroke(superzone, current_price, color);
 
                 draw_superzone(

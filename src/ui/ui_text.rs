@@ -1,75 +1,62 @@
 use std::sync::LazyLock;
 
-pub const ICON_CROSSHAIR: &str  = "\u{f05b}"; // (Crosshairs)
-pub const ICON_BAN: &str        = "\u{f05e}"; // (Ban)
-
-pub const ICON_FILTER: &str     = "\u{f0b0}"; // (Filter)
-
-// These 2 unused yet but will be useful in future - up and down triangles
-pub const ICON_GAIN: &str   = "\u{f0d8}"; // d (Caret Up / Triangle Up)
-pub const ICON_LOSS: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
-
-pub const ICON_TREND_UP: &str   = "\u{f0535}"; 
-pub const ICON_TREND_DOWN: &str = "\u{f0533}"; 
-
-pub const ICON_TARGET: &str      = "\u{f04fe}"; // nf-md-target
-pub const ICON_CLOCK: &str      = "\u{f017}"; // (Clock)
-pub const ICON_GLOBE: &str      = "\u{f0ac}"; // (Globe)
-
-// pub const ICON_CANDLE:&str  = "\u{f05e2}"; // This is more like a full chart 
-pub const ICON_CANDLE:&str  = "\u{f11c9}";
-
+pub const ICON_BAN: &str = "\u{f05e}"; // (Ban)
+pub const ICON_FILTER: &str = "\u{f0b0}"; // (Filter)
+pub const ICON_TREND_UP: &str = "\u{f0535}";
+pub const ICON_TREND_DOWN: &str = "\u{f0533}";
+pub const ICON_TARGET: &str = "\u{f04fe}";
+pub const ICON_CLOCK: &str = "\u{f0954}"; // (Clock)
+// pub const ICON_CANDLE:&str  = "\u{f05e2}"; // This is more like a full chart
+pub const ICON_CANDLE: &str = "\u{f11c9}";
 pub const ICON_POINT_RIGHT: &str = "\u{f02c7}";
-
-pub const ICON_TIME_LAPSE: &str = "\u{f051a}";
-
 pub const ICON_TWO_HORIZONTAL: &str = "\u{f12f0}";
 pub const ICON_ONE_HORIZONTAL: &str = "\u{f45b}";
-
 pub const ICON_CHART: &str = "\u{f1918}";
-
 pub const ICON_LOCKED: &str = "\u{ea75}";
 pub const ICON_UNLOCKED: &str = "\u{eb74}";
-pub const ICON_Y_AXIS: &str  = "\u{f0e79}";
+pub const ICON_Y_AXIS: &str = "\u{f0e79}";
+pub const ICON_RUST: &str = "\u{e7a8}";
+pub const ICON_DOLLAR_BAG: &str = "\u{ef8d}";
+pub const ICON_PULSE: &str = "\u{e234}";
+pub const ICON_RULER: &str = "\u{e21b}"; // "measuring" 
+pub const ICON_COG: &str = "\u{f013}"; // "working" 
+pub const ICON_QUEUE: &str = "\u{f1571}"; // queue sizes...
+pub const ICON_HELP: &str = "\u{f02d6}";
+pub const ICON_KEYBOARD: &str = "\u{f0313}";
+pub const ICON_EYE: &str = "\u{f0208}";
+// pub const ICON_CLOSE: &str = "\u{f00d}";
+pub const ICON_CLOSE_ALL: &str = "\u{eac1}";
+pub const ICON_TIME_MACHINE: &str = "\u{f11ef}";
+pub const ICON_SIMULATE: &str = "\u{e63b}";
+pub const ICON_EXPLAINER: &str = "\u{f00e}"; // Zoom in / inspect / explain
 
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
-pub const ICON_RUST: &str = "\u{e7a8}";
-
-pub const ICON_DOLLAR_BAG: &str = "\u{ef8d}";
-
-pub const ICON_PULSE: &str = "\u{e234}";
-
-pub const ICON_RULER: &str = "\u{e21b}"; // "measuring" 
-
-pub const ICON_COG: &str = "\u{f013}";  // "working" 
-
-pub const ICON_QUEUE: &str = "\u{f1571}"; // queue sizes...
-
-pub const ICON_HELP:  &str = "\u{f02d6}";
-
+// pub const ICON_CROSSHAIR: &str  = "\u{f05b}"; // (Crosshairs)
+// pub const ICON_GLOBE: &str      = "\u{f0ac}"; // (Globe)
+// pub const ICON_TIME_LAPSE: &str = "\u{f051a}";
+// These 2 unused yet but will be useful in future - up and down triangles
+// pub const ICON_GAIN: &str   = "\u{f0d8}"; // d (Caret Up / Triangle Up)
+// pub const ICON_LOSS: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
 
 pub struct UiText {
-
     // --- GENERAL ---
     pub data_generation_heading: String,
     pub price_horizon_heading: String,
     pub pair_selector_heading: String,
     pub view_options_heading: String,
     pub view_data_source_heading: String,
-    
+
     // --- PLOT LABELS ---
     pub plot_x_axis: String,
     pub plot_y_axis: String,
-    
-
 
     // --- BUTTONS (Dynamic) ---
     pub tf_btn_all: String,
 
     // --- ICONS/LABELS ---
     pub label_filter_icon: String,
-    
+
     pub label_long: String,
     pub label_short: String,
     pub icon_long: String,
@@ -101,14 +88,8 @@ pub struct UiText {
     pub cr_nav_return_live: String,
 
     pub ph_help_title: String,
-    
-    pub label_hvz: String,
-    pub label_lower_wick_zones: String,
-    pub label_upper_wick_zones: String,
-    pub label_reversal_support: String,
-    pub label_reversal_resistance: String,
 
-
+    pub tb_name: String,
     pub tb_sticky: String,
     pub tb_low_wicks: String,
     pub tb_high_wicks: String,
@@ -121,7 +102,7 @@ pub struct UiText {
     pub tb_targets: String,
     pub tb_y_locked: String,
     pub tb_y_unlocked: String,
-    
+
     // --- TRADE FINDER ---
     pub tf_header: String,
     pub tf_scope_all: String,
@@ -151,7 +132,10 @@ pub struct UiText {
     pub label_connected: String,
     pub label_working: String,
     pub label_queue: String,
-    pub help_icon: String,
+    pub label_toggle: String,
+
+    // Icons
+    pub icon_help: String,
 
     pub opp_exp_current_opp: String,
     pub opp_exp_setup_type: String,
@@ -196,10 +180,6 @@ pub struct UiText {
     #[cfg(not(target_arch = "wasm32"))]
     pub sp_simulation_mode: String,
 
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub sp_toggle_sim_mode: String,
-
     pub sim_help_sim_toggle_direction: String,
     pub sim_help_sim_step_size: String,
     pub sim_help_sim_activate_price_change: String,
@@ -207,21 +187,39 @@ pub struct UiText {
     pub sim_help_sim_jump_lower_wicks: String,
     pub sim_help_sim_jump_higher_wicks: String,
     pub sim_mode_controls: String,
+    // pub sim_mode_name: String,
     pub sim_step: String,
 
+    pub kbs_name_long: String,
+    pub kbs_name_icon: String,
+    pub kbs_name: String,
+    pub kbs_open_close: String,
+    pub kbs_close_all_panes: String,
+    pub kbs_view_opp_explainer: String,
+    pub kbs_view_time_machine: String,
+    pub kbs_toolbar_shortcut_hvz: String,
+    pub kbs_toolbar_shortcut_low_wick: String,
+    pub kbs_toolbar_shortcut_high_wick: String,
+    pub kbs_toolbar_shortcut_histogram: String,
+    pub kbs_toolbar_shortcut_candles: String,
+    pub kbs_toolbar_shortcut_gap: String,
+    pub kbs_toolbar_shortcut_price_limits: String,
+    pub kbs_toolbar_shortcut_live_price: String,
+    pub kbs_toolbar_shortcut_targets: String,
+
+    pub kbs_sim_mode: String,
 }
 
 // THE SINGLETON
 pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
     UiText {
-
         // Status panel
         sp_price: ICON_DOLLAR_BAG.to_string(),
         sp_live_mode: ICON_PULSE.to_string() + " LIVE MODE",
-                        
+
         sp_zone_size: ICON_RULER.to_string() + " Zone Size",
         sp_coverage: "Coverage".to_string(),
-        sp_coverage_sticky:"High Volume".to_string(),
+        sp_coverage_sticky: "High Volume".to_string(),
         sp_coverage_support: "Support".to_string(),
         sp_coverage_resistance: "Resist.".to_string(),
         sp_stream_status: "Stream Status".to_string(),
@@ -231,35 +229,19 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
             "WEB DEMO (OFFLINE)"
         } else {
             "SIMULATION MODE"
-        }.to_string(),
-
-        #[cfg(not(target_arch = "wasm32"))]
-        sp_toggle_sim_mode: "Toggle Simulation Mode".to_string(),
+        }
+        .to_string(),
 
         // Simulation help text (part of main help panel)
+        // sim_mode_name: "Simulation Mode".to_string(),
+        sim_mode_controls: "Simulation Mode Controls".to_string(),
         sim_help_sim_toggle_direction: "Toggle price direction (UP / DOWN)".to_string(),
         sim_help_sim_step_size: "Cycle step size (0.1% -> 1% -> 5% -> 10%)".to_string(),
         sim_help_sim_activate_price_change: "Activate price change".to_string(),
         sim_help_sim_jump_hvz: "Jump to next High Volume Zone".to_string(),
         sim_help_sim_jump_lower_wicks: "Jump to next Demand Zone".to_string(),
         sim_help_sim_jump_higher_wicks: "Jump to next Supply Zone".to_string(),
-        sim_mode_controls: "Simulation Mode Controls".to_string(),
         sim_step: "Step".to_string(),
-
-
-        // Toolbar
-        tb_time: ICON_TIME_LAPSE.to_string(),
-        tb_sticky: "Sticky".to_string(),
-        tb_low_wicks: "Demand".to_string(),
-        tb_high_wicks: "Supply".to_string(),
-        tb_volume_hist: "Volume Hist".to_string(),
-        tb_candles: ICON_CANDLE.to_string(),
-        tb_gaps: "Data Gap".to_string(),  
-        tb_price_limits: "PH Boundary".to_string() + " " + ICON_TWO_HORIZONTAL, 
-        tb_live_price: "Live Price".to_string() + " " + ICON_ONE_HORIZONTAL,
-        tb_targets: ICON_TARGET.to_string(),
-        tb_y_locked:  ICON_Y_AXIS.to_string() + " " + ICON_LOCKED,
-        tb_y_unlocked: ICON_Y_AXIS.to_string() + " " + ICON_UNLOCKED,
 
         // Price Horion Help Panel
         ph_help_title: "Price Horizon Guide".to_string(),
@@ -286,25 +268,16 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
             ("Density", "Ratio of Evidence to History."),
         ],
 
-
-        // Main Help Panel
-        label_hvz: "High Volume Zones".to_string(),
-        label_lower_wick_zones: "Lower Wick Zones".to_string(),
-        label_upper_wick_zones: "Upper Wick Zones".to_string(),
-        label_reversal_support: "Demand Zone (Buyers Here)".to_string(),
-        label_reversal_resistance: "Supply Zone (Sellers Here)".to_string(),
-
-
-
         // Opportunity explainer
         opp_exp_current_opp: "Current Opportunity".to_string(),
         opp_exp_setup_type: "Setup Type".to_string(),
         opp_exp_expectancy: "Expectancy & Return".to_string(),
         opp_exp_market_context: "Market Context (The 'DNA')".to_string(),
         opp_exp_trend_measured: "Trend measured over the last".to_string(),
-        opp_exp_trend_length: "Trend window length derived from PH of".to_string(), 
+        opp_exp_trend_length: "Trend window length derived from PH of".to_string(),
         opp_exp_relative_volume: "Relative Volume".to_string(),
-        opp_exp_relative_volume_explainer: " (Ratio of Current Volume vs Recent Average.)".to_string(),
+        opp_exp_relative_volume_explainer: " (Ratio of Current Volume vs Recent Average.)"
+            .to_string(),
         opp_exp_trade_setup: "Trade Setup".to_string(),
         opp_exp_trade_entry: "Entry".to_string(),
         opp_exp_order_time_limit: "Order Time Limit".to_string(),
@@ -312,7 +285,8 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         opp_expr_we_fingerprinted: "1. We fingerprinted the market right now".to_string(),
         opp_exp_scanned_history_one: "2. We scanned history and found exactly".to_string(),
         opp_exp_scanned_history_two: "periods that matched this fingerprint.".to_string(),
-        opp_exp_scanned_history_three: "2. We scanned history and found many matches, but we kept only the top".to_string(),
+        opp_exp_scanned_history_three:
+            "2. We scanned history and found many matches, but we kept only the top".to_string(),
         opp_exp_scanned_history_four: "closest matches.".to_string(),
         opp_exp_simulate_one: "3. We simulated these".to_string(),
         opp_exp_simulate_two: "scenarios. We checked if price hit the".to_string(),
@@ -324,14 +298,13 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         opp_exp_cases_four: "first. This produces the".to_string(),
         opp_exp_cases_five: "you see above.".to_string(),
 
-
         // General use labels (not specific to one panel)
         label_queue: ICON_QUEUE.to_string(),
         label_working: ICON_COG.to_string(),
         label_connecting: "Connecting".to_string(),
         label_connected: "connected".to_string(),
         label_volatility: "Volatility".to_string(),
-        label_target:  ICON_TARGET.to_string(),
+        label_target: ICON_TARGET.to_string(),
         label_target_text: "Target".to_string(),
         label_momentum: "Momentum".to_string(),
         label_success_rate: "Success Rate".to_string(),
@@ -343,13 +316,15 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_stop_loss_short: "SL".to_string(),
         label_risk_reward: "Risk/Reward Ratio".to_string(),
         label_risk_reward_short: "R:R".to_string(),
-        label_long:  format!("LONG {}", ICON_TREND_UP), 
+        label_long: format!("LONG {}", ICON_TREND_UP),
         label_short: format!("SHORT {}", ICON_TREND_DOWN),
         label_limit: "Limit".to_string(),
-        icon_long:         ICON_TREND_UP.to_string(),
-        icon_short:        ICON_TREND_DOWN.to_string(),
-        label_no_opps: "No valid opportunities found. Please reset filters or select a different pair.".to_string(),
-
+        icon_long: ICON_TREND_UP.to_string(),
+        icon_short: ICON_TREND_DOWN.to_string(),
+        label_no_opps:
+            "No valid opportunities found. Please reset filters or select a different pair."
+                .to_string(),
+        label_toggle: "Toggle".to_string(),
 
         // TradeFinder Pane
         tf_header: "TRADE FINDER".to_string(),
@@ -357,7 +332,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         tf_scope_selected: "ONLY".to_string(),
         label_filter_icon: ICON_FILTER.to_string(),
         label_candle: ICON_CANDLE.to_string(),
-        tf_btn_all:   "ALL".to_string(),
+        tf_btn_all: "ALL".to_string(),
         tf_btn_all_trades: "ALL TRADES".to_string(),
         tf_target: ICON_TARGET.to_string(),
 
@@ -373,7 +348,10 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         plot_x_axis: "Key Zone Strength (0 % of the strongest zone)".to_string(),
         // --- ERRORS ---
         error_insufficient_data_title: "Analysis Paused: Range Too Narrow".to_string(),
-        error_insufficient_data_body: "The current Price Horizon does not capture enough price history.\n\n".to_string() + ICON_POINT_RIGHT +  " Drag the Price Horizon slider to the right.",
+        error_insufficient_data_body:
+            "The current Price Horizon does not capture enough price history.\n\n".to_string()
+                + ICON_POINT_RIGHT
+                + " Drag the Price Horizon slider to the right.",
 
         // --- Candle Range (Time Machine) NAVIGATOR ---
         cr_title_1: "Time Machine".to_string(),
@@ -384,7 +362,45 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         cr_nav_return_prefix: "RETURN TO SEGMENT".to_string(),
         cr_nav_return_live: "RETURN TO LIVE".to_string(),
 
-        // General help
-        help_icon: ICON_HELP.to_string(),
+        // Icons
+        icon_help: ICON_HELP.to_string(),
+
+        // Toolbar
+        tb_name: "Toolbar".to_string(),
+        tb_time: ICON_CLOCK.to_string(),
+        tb_sticky: "High Volume".to_string(),
+        tb_low_wicks: "Lower Wicks".to_string(),
+        tb_high_wicks: "Higher Wicks".to_string(),
+        tb_volume_hist: "Volume Hist.".to_string(),
+        tb_candles: ICON_CANDLE.to_string(),
+        tb_gaps: "Data Gap".to_string(),
+        tb_price_limits: "PH Boundary".to_string() + " " + ICON_TWO_HORIZONTAL,
+        tb_live_price: "Live Price".to_string() + " " + ICON_ONE_HORIZONTAL,
+        tb_targets: ICON_TARGET.to_string(),
+        tb_y_locked: ICON_Y_AXIS.to_string() + " " + ICON_LOCKED,
+        tb_y_unlocked: ICON_Y_AXIS.to_string() + " " + ICON_UNLOCKED,
+
+        // Keyboard Shortcuts Pane
+        kbs_name_long: ICON_KEYBOARD.to_string() + " Keyboard Shortcuts",
+        kbs_name_icon: ICON_KEYBOARD.to_string(),
+        kbs_name: "Keyboard Shortcuts".to_string(),
+
+        kbs_toolbar_shortcut_hvz: format!("{} High Volume Zones", ICON_EYE),
+        kbs_toolbar_shortcut_low_wick: format!("{} Lower Wick Zones", ICON_EYE),
+        kbs_toolbar_shortcut_high_wick: format!("{} Higher Wick Zones", ICON_EYE),
+
+        kbs_toolbar_shortcut_histogram: format!("{} Volume Hist.", ICON_EYE),
+        kbs_toolbar_shortcut_candles: format!("{} {}", ICON_CANDLE, ICON_EYE),
+        kbs_toolbar_shortcut_gap: format!("{} Data Gap", ICON_EYE),
+        kbs_toolbar_shortcut_price_limits: format!("{} PH Boundary", ICON_EYE),
+        kbs_toolbar_shortcut_live_price: format!("{} Live Price", ICON_EYE),
+        kbs_toolbar_shortcut_targets: format!("{} Targets", ICON_EYE),
+
+        kbs_view_opp_explainer: format!("{} Opportunity Explainer", ICON_EXPLAINER),
+        kbs_close_all_panes: format!("{} Close all open overlay panes", ICON_CLOSE_ALL),
+        kbs_open_close: format!("{} Keyboard Shortcuts", ICON_KEYBOARD),
+        kbs_view_time_machine: format!("{} Time Machine Pane", ICON_TIME_MACHINE),
+
+        kbs_sim_mode: format!("{} Simulation Mode", ICON_SIMULATE),
     }
 });

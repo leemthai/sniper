@@ -558,36 +558,48 @@ impl ZoneSniperApp {
             return;
         }
 
-
         ctx.input(|i| {
             if i.key_pressed(Key::Num1) { self.plot_visibility.sticky = !self.plot_visibility.sticky; }
             if i.key_pressed(Key::Num2) { self.plot_visibility.low_wicks = !self.plot_visibility.low_wicks; }
             if i.key_pressed(Key::Num3) { self.plot_visibility.high_wicks = !self.plot_visibility.high_wicks; }
-            if i.key_pressed(Key::H) { self.show_debug_help = !self.show_debug_help; }
+            if i.key_pressed(Key::Num4) { self.plot_visibility.background = !self.plot_visibility.background; }
+            if i.key_pressed(Key::Num5) { self.plot_visibility.candles = !self.plot_visibility.candles; }
+            if i.key_pressed(Key::Num6) { self.plot_visibility.separators = !self.plot_visibility.separators; }
+            if i.key_pressed(Key::Num7) { self.plot_visibility.horizon_lines = !self.plot_visibility.horizon_lines; }
+            if i.key_pressed(Key::Num8) { self.plot_visibility.price_line = !self.plot_visibility.price_line; }
+            if i.key_pressed(Key::Num9) { self.plot_visibility.opportunities = !self.plot_visibility.opportunities; }
+            if i.key_pressed(Key::K) || i.key_pressed(Key::H) { self.show_debug_help = !self.show_debug_help; }
             if i.key_pressed(Key::Escape) { self.show_debug_help = false; self.show_ph_help = false; self.show_opportunity_details = false}
+
             // Gate the 'S' key so it only works on Native
             #[cfg(not(target_arch = "wasm32"))]
             if i.key_pressed(Key::S) {
                 self.toggle_simulation_mode();
             }
-            // Toggle Opportunity Explainer
-            if i.key_pressed(Key::E) { 
+            
+            // Toggle 'O'pportunity Explainer
+            if i.key_pressed(Key::O) { 
                 self.show_opportunity_details = !self.show_opportunity_details;
             }
+
+            // Toggle 'T'ime Machine Panel
             if i.key_pressed(Key::T) { self.show_candle_range = !self.show_candle_range; }
 
-            if i.key_pressed(Key::Num4) { self.jump_to_next_zone("sticky"); }
-            if i.key_pressed(Key::Num5) { self.jump_to_next_zone("low-wick"); }
-            if i.key_pressed(Key::Num6) { self.jump_to_next_zone("high-wick"); }
-            if i.key_pressed(Key::D) { 
-                 self.sim_direction = match self.sim_direction { SimDirection::Up => SimDirection::Down, SimDirection::Down => SimDirection::Up };
+            if self.is_simulation_mode() {
+                if i.key_pressed(Key::Y) { self.jump_to_next_zone("sticky"); }
+                if i.key_pressed(Key::L) { self.jump_to_next_zone("low-wick"); }
+                if i.key_pressed(Key::W) { self.jump_to_next_zone("high-wick"); }
+                if i.key_pressed(Key::D) { 
+                    self.sim_direction = match self.sim_direction { SimDirection::Up => SimDirection::Down, SimDirection::Down => SimDirection::Up };
+                }
+                if i.key_pressed(Key::X) { self.sim_step_size.cycle(); }
+                if i.key_pressed(Key::A) { 
+                    let percent = self.sim_step_size.as_percentage();
+                    let adj = match self.sim_direction { SimDirection::Up => percent, SimDirection::Down => -percent };
+                    self.adjust_simulated_price_by_percent(adj);
+                }
             }
-            if i.key_pressed(Key::X) { self.sim_step_size.cycle(); }
-            if i.key_pressed(Key::A) { 
-                 let percent = self.sim_step_size.as_percentage();
-                 let adj = match self.sim_direction { SimDirection::Up => percent, SimDirection::Down => -percent };
-                 self.adjust_simulated_price_by_percent(adj);
-            }
+
         });
     }
 

@@ -922,35 +922,39 @@ impl ZoneSniperApp {
     pub(super) fn render_help_panel(&mut self, ctx: &Context) {
         let is_sim_mode = self.is_simulation_mode();
 
-        Window::new("⌨️ Keyboard Shortcuts")
+        Window::new(&UI_TEXT.kbs_name_long)
             .open(&mut self.show_debug_help)
             .resizable(false)
             .order(Order::Tooltip) // Need to set this because Plot draws elements on Order::Foreground (and redraws them every second) so we need be a higher-level than Foreground even
             .collapsible(false)
             .default_width(400.0)
             .show(ctx, |ui| {
-                ui.heading("Keyboard Shortcuts (Press key to execute commands listed)");
+                ui.heading("Press keys to execute commands");
                 ui.add_space(10.0);
 
-                // Pre-calculate dynamic strings so they live long enough for the Vec
-                let l_sticky = "Toggle ".to_owned() + &UI_TEXT.label_hvz;
-                let l_low = "Toggle ".to_owned() + &UI_TEXT.label_lower_wick_zones;
-                let l_high = "Toggle ".to_owned() + &UI_TEXT.label_upper_wick_zones;
-
                 // 1. General Shortcuts
-                // Use vec![] to create a growable Vector (Arrays [...] are fixed size)
                 let mut _general_shortcuts = vec![
-                    ("H", "Toggle this help panel"),
-                    ("ESC", "Close all open Help Windows"),
-                    // ("B", UI_TEXT.label_help_background),
-                    ("1", l_sticky.as_str()),
-                    ("2", l_low.as_str()),
-                    ("3", l_high.as_str()),
+                    ("ESC", UI_TEXT.kbs_close_all_panes.as_str()),
+                    ("K (or H)", UI_TEXT.kbs_open_close.as_str()),
+                    ("1", UI_TEXT.kbs_toolbar_shortcut_hvz.as_str()),
+                    ("2", UI_TEXT.kbs_toolbar_shortcut_low_wick.as_str()),
+                    ("3", UI_TEXT.kbs_toolbar_shortcut_low_wick.as_str()),
+
+                    ("4", UI_TEXT.kbs_toolbar_shortcut_histogram.as_str()),
+                    ("5", UI_TEXT.kbs_toolbar_shortcut_candles.as_str()),
+                    ("6", UI_TEXT.kbs_toolbar_shortcut_gap.as_str()),
+                    ("7", UI_TEXT.kbs_toolbar_shortcut_price_limits.as_str()),
+                    ("8", UI_TEXT.kbs_toolbar_shortcut_live_price.as_str()),
+                    ("9", UI_TEXT.kbs_toolbar_shortcut_targets.as_str()),
+                    // Note, can use '0' as well here ie numeric zero, if we need antoher one
+
+                    ("O", UI_TEXT.kbs_view_opp_explainer.as_str()),
+                    ("T", UI_TEXT.kbs_view_time_machine.as_str()),
                 ];
 
                 // Only add 'S' for Native
                 #[cfg(not(target_arch = "wasm32"))]
-                _general_shortcuts.insert(1, ("S", "Toggle Simulation Mode"));
+                _general_shortcuts.push(("S", &UI_TEXT.kbs_sim_mode));
 
                 Grid::new("general_shortcuts_grid")
                     .num_columns(2)
@@ -973,14 +977,10 @@ impl ZoneSniperApp {
                         ("D", UI_TEXT.sim_help_sim_toggle_direction.as_str()),
                         ("X", UI_TEXT.sim_help_sim_step_size.as_str()),
                         ("A", UI_TEXT.sim_help_sim_activate_price_change.as_str()),
-                        ("4", UI_TEXT.sim_help_sim_jump_hvz.as_str()),
-                        ("5", UI_TEXT.sim_help_sim_jump_lower_wicks.as_str()),
-                        ("6", UI_TEXT.sim_help_sim_jump_higher_wicks.as_str()),
+                        ("Y", UI_TEXT.sim_help_sim_jump_hvz.as_str()),
+                        ("L", UI_TEXT.sim_help_sim_jump_lower_wicks.as_str()),
+                        ("W", UI_TEXT.sim_help_sim_jump_higher_wicks.as_str()),
                     ];
-
-                    // Only add 'S' for Native
-                    #[cfg(not(target_arch = "wasm32"))]
-                    _sim_shortcuts.insert(0, ("S", "Enter/Exit Simulation Mode"));
 
                     Grid::new("sim_shortcuts_grid")
                         .num_columns(2)
@@ -993,7 +993,7 @@ impl ZoneSniperApp {
 
                 #[cfg(debug_assertions)]
                 {
-                    // Note: any keys added here have to be hand-inserted in handle_global_shortcuts, too
+                    // Note: any keys added here have to be hand-inserted in handle_global_shortcuts to activate them, too
                     let debug_shortcuts = [(
                         "INSERT-HERE",
                         "Insert future debug only key-trigger operation here",

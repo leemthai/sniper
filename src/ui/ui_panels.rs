@@ -342,7 +342,7 @@ impl<'a> DataGenerationPanel<'a> {
         ui.horizontal(|ui| {
             ui.label(colored_subsection_heading(&UI_TEXT.price_horizon_heading));
 
-            if ui.help_button(&UI_TEXT.help_icon) {
+            if ui.help_button(&UI_TEXT.icon_help) {
                 *show_help = !*show_help;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
