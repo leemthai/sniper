@@ -12,6 +12,7 @@ use strum_macros::EnumIter;
 use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
+
 use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
 
 use crate::data::fetch_pair_data;
@@ -23,6 +24,7 @@ use crate::models::pair_context::PairContext;
 use crate::models::{SyncStatus, ProgressEvent};
 use crate::models::trading_view::{TradeOpportunity, DirectionFilter};
 
+use crate::ui::config::UI_TEXT;
 use crate::ui::ui_plot_view::PlotView;
 use crate::ui::utils::setup_custom_visuals;
 use crate::ui::app_simulation::{SimStepSize, SimDirection};
@@ -622,7 +624,7 @@ impl ZoneSniperApp {
                             ),
                             SyncStatus::Syncing => (
                                 PLOT_CONFIG.color_warning, 
-                                "Syncing".to_string(), 
+                                UI_TEXT.ls_syncing.to_string(), 
                                 PLOT_CONFIG.color_warning
                             ),
                             SyncStatus::Completed(n) => (
@@ -632,7 +634,7 @@ impl ZoneSniperApp {
                             ),
                             SyncStatus::Failed(_) => (
                                 PLOT_CONFIG.color_loss, 
-                                "FAILED".to_string(), 
+                                UI_TEXT.ls_failed.to_string(), 
                                 PLOT_CONFIG.color_loss
                             ),
                         };
@@ -673,7 +675,7 @@ impl ZoneSniperApp {
                 
                 // Title
                 ui.heading(
-                    RichText::new("ZONE SNIPER INITIALIZATION")
+                    RichText::new(&UI_TEXT.ls_title)
                         .size(24.0)
                         .strong()
                         .color(PLOT_CONFIG.color_warning)
@@ -683,8 +685,10 @@ impl ZoneSniperApp {
                 let interval_str = TimeUtils::interval_to_string(ANALYSIS.interval_width_ms);
                 ui.label(
                     RichText::new(format!(
-                        "Syncing {} klines from Binance Public API. Please be patient. This may take some time if it hasn't been run for a while or you are collecting many pairs. Subsequent runs will complete much quicker.", 
-                        interval_str
+                        "{} {} {}", 
+                        UI_TEXT.ls_syncing,
+                        interval_str,
+                        UI_TEXT.ls_main,
                     ))
                     .italics()
                     .color(PLOT_CONFIG.color_text_neutral)
@@ -693,7 +697,6 @@ impl ZoneSniperApp {
                 ui.add_space(20.0);
 
                 // Progress Bar Logic
-                // Note: state.pairs is BTreeMap<usize, ...> so len() is correct for total
                 let total = state.total_pairs; 
                 let done = state.completed + state.failed;
                 let progress = if total > 0 { done as f32 / total as f32 } else { 0.0 };
@@ -710,7 +713,7 @@ impl ZoneSniperApp {
                 if state.failed > 0 {
                     ui.add_space(5.0);
                     ui.label(
-                        RichText::new(format!("⚠ {} Failures", state.failed))
+                        RichText::new(format!("{} {} {}", UI_TEXT.label_warning, state.failed, UI_TEXT.label_failures))
                             .color(PLOT_CONFIG.color_loss)
                     );
                 }

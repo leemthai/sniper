@@ -98,7 +98,7 @@ fn main() -> eframe::Result {
         .filter(None, global_level) // Default for everyone
         .filter(Some("zone_sniper"), my_code_level) // Override for us
         
-        // NUCLEAR OPTION: Explicitly silence the noisy neighbors
+        // NUCLEAR OPTION: Explicitly silence the noisy neighbors (TEMP but this fails as well I think)
         .filter_module("reqwest", log::LevelFilter::Error) 
         .filter_module("hyper", log::LevelFilter::Error)
         .filter_module("tungstenite", log::LevelFilter::Error)

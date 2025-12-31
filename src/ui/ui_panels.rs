@@ -9,8 +9,6 @@ use crate::analysis::range_gap_finder::{DisplaySegment, GapReason};
 use crate::config::plot::PLOT_CONFIG;
 use crate::config::{ANALYSIS, PriceHorizonConfig};
 
-use crate::domain::pair_interval::PairInterval;
-
 use crate::models::horizon_profile::HorizonProfile;
 
 use crate::ui::config::UI_TEXT;
@@ -102,14 +100,14 @@ impl<'a> CandleRangePanel<'a> {
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                eframe::egui::Grid::new("cr_grid")
+                Grid::new("cr_grid")
                     .striped(true)
                     .num_columns(2) // Reduced to 2
                     .spacing([10.0, 8.0]) // Tighter spacing
                     .show(ui, |ui| {
                         // Compact Headers
-                        ui.label(RichText::new("Date Range").strong().small());
-                        ui.label(RichText::new("Context").strong().small());
+                        ui.label(RichText::new(&UI_TEXT.cr_date_range).strong().small());
+                        ui.label(RichText::new(&UI_TEXT.cr_context).strong().small());
                         ui.end_row();
 
                         for (i, seg) in self.segments.iter().enumerate().rev() {
@@ -119,14 +117,15 @@ impl<'a> CandleRangePanel<'a> {
                             if i > 0 {
                                 // Merged Gap Info (Duration + Reason)
                                 let gap_text = format!(
-                                    "-- {} Gap ({}) --",
+                                    "-- {} {} ({}) --",
                                     seg.gap_duration_str,
+                                    &UI_TEXT.cr_gap,
                                     match seg.gap_reason {
-                                        GapReason::PriceMismatch => "Price",
-                                        GapReason::MissingSourceData => "Missing",
-                                        GapReason::PriceAbovePH => "High",
-                                        GapReason::PriceBelowPH => "Low",
-                                        _ => "Mixed",
+                                        GapReason::PriceMismatch => &UI_TEXT.cr_price,
+                                        GapReason::MissingSourceData => &UI_TEXT.cr_missing,
+                                        GapReason::PriceAbovePH => &UI_TEXT.cr_high,
+                                        GapReason::PriceBelowPH => &UI_TEXT.cr_low,
+                                        _ => &UI_TEXT.cr_mixed,
                                     }
                                 );
 
@@ -268,7 +267,7 @@ impl<'a> DataGenerationPanel<'a> {
                 ui.set_max_width(600.0);
 
                 // 1. METRICS DEFINITIONS
-                ui.label(RichText::new("Definitions").strong());
+                ui.label(RichText::new(&UI_TEXT.ph_definitions).strong());
                 for (term, def) in UI_TEXT.ph_help_definitions {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(format!("• {}:", term)).strong());
@@ -279,7 +278,7 @@ impl<'a> DataGenerationPanel<'a> {
                 ui.separator();
 
                 // 2. HEATMAP LEGEND (Colors)
-                ui.label(RichText::new("1. Reading the Heatmap (Data Density)").strong());
+                ui.label(RichText::new(&UI_TEXT.ph_read_heatmap).strong());
                 Grid::new("ph_help_density")
                     .striped(true)
                     .spacing([20.0, 8.0])
@@ -309,7 +308,7 @@ impl<'a> DataGenerationPanel<'a> {
                 ui.add_space(10.0);
                 ui.separator();
                 // 3. SCOPE LEGEND (Trade Styles)
-                ui.label(RichText::new("2. Selecting your Scope (Trade Style)").strong());
+                ui.label(RichText::new(&UI_TEXT.ph_select_trade_style).strong());
                 Grid::new("ph_help_scope")
                     .striped(true)
                     .spacing([20.0, 8.0])
@@ -421,7 +420,7 @@ impl<'a> DataGenerationPanel<'a> {
                 colorgrad::Color::from_html("#fcffa4").unwrap(), // Pale Yellow
             ])
             .build::<colorgrad::LinearGradient>() // Explicit linear interpolation
-            .expect("Failed to build Price Horizon Gradient");
+            .expect(&UI_TEXT.lp_failed_gradient);
 
         // Define Color Function
         let get_color = move |count: usize| -> Color32 {
@@ -449,7 +448,6 @@ impl<'a> DataGenerationPanel<'a> {
             if response.dragged() || response.clicked() {
                 if let Some(pointer_pos) = response.interact_pointer_pos() {
                     let x_frac = ((pointer_pos.x - rect.min.x) / rect.width()) as f64;
-                    // FIX: Use Mapper to convert Fraction -> Value
                     let new_val = mapper.frac_to_value(x_frac);
                     current_pct = new_val.clamp(min_pct, max_pct);
                     changed = Some(current_pct);
@@ -704,6 +702,7 @@ pub enum DataGenerationEventChanged {
 impl<'a> Panel for DataGenerationPanel<'a> {
     type Event = DataGenerationEventChanged;
     fn render(&mut self, ui: &mut Ui, show_help: &mut bool) -> Vec<Self::Event> {
+
         let mut events = Vec::new();
         section_heading(ui, &UI_TEXT.data_generation_heading);
 
@@ -716,13 +715,13 @@ impl<'a> Panel for DataGenerationPanel<'a> {
         if let Some(pair) = self.render_pair_selector(ui) {
             events.push(DataGenerationEventChanged::Pair(pair));
         }
-        if let Some(pair) = &self.selected_pair {
-            ui.label(format!(
-                "Selected: {:?}",
-                PairInterval::split_pair_name(pair)
-            ));
-        }
-        ui.add_space(20.0);
+        // if let Some(pair) = &self.selected_pair {
+        //     ui.label(format!(
+        //         "Selected: {:?}",
+        //         PairInterval::split_pair_name(pair)
+        //     ));
+        // }
+        // ui.add_space(20.0);
         events
     }
 }

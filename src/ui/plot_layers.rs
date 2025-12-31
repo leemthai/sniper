@@ -119,7 +119,7 @@ impl PlotLayer for OpportunityLayer {
             painter.text(
                 sl_left + Vec2::new(0.0, -4.0),
                 Align2::LEFT_BOTTOM,
-                "STOP LOSS",
+                &UI_TEXT.label_stop_loss,
                 FontId::proportional(10.0),
                 sl_color,
             );
@@ -548,16 +548,16 @@ impl PlotLayer for StickyZoneLayer {
 
         for superzone in &ctx.trading_model.zones.sticky_superzones {
             // 1. Determine Identity (Color/Label) based on price position
-            let (label, color) = if let Some(price) = current_price {
+            let (_, color) = if let Some(price) = current_price {
                 if superzone.contains(price) {
-                    ("Active Sticky", PLOT_CONFIG.sticky_zone_color)
+                    ("", PLOT_CONFIG.sticky_zone_color)
                 } else if superzone.price_center < price {
-                    ("Support", PLOT_CONFIG.support_zone_color)
+                    ("", PLOT_CONFIG.support_zone_color)
                 } else {
-                    ("Resistance", PLOT_CONFIG.resistance_zone_color)
+                    ("", PLOT_CONFIG.resistance_zone_color)
                 }
             } else {
-                ("Sticky", PLOT_CONFIG.sticky_zone_color)
+                ("", PLOT_CONFIG.sticky_zone_color)
             };
 
             let stroke = get_stroke(superzone, current_price, color);
@@ -567,7 +567,7 @@ impl PlotLayer for StickyZoneLayer {
                 superzone,
                 ctx.x_min,
                 ctx.x_max,
-                label,
+                "label",
                 color,
                 stroke,
                 1.0,
@@ -592,7 +592,6 @@ impl PlotLayer for ReversalZoneLayer {
             for superzone in &ctx.trading_model.zones.low_wicks_superzones {
 
                 let color = PLOT_CONFIG.low_wicks_zone_color;
-                let label = "";
                 let stroke = get_stroke(superzone, current_price, color);
 
                 draw_superzone(
@@ -600,7 +599,7 @@ impl PlotLayer for ReversalZoneLayer {
                     superzone,
                     ctx.x_min,
                     ctx.x_max,
-                    &label,
+                    "",
                     color,
                     stroke,
                     0.5,
@@ -616,7 +615,6 @@ impl PlotLayer for ReversalZoneLayer {
 
                 // if is_relevant {
                 let color = PLOT_CONFIG.high_wicks_zone_color;
-                let label = "";
                 let stroke = get_stroke(superzone, current_price, color);
 
                 draw_superzone(
@@ -624,7 +622,7 @@ impl PlotLayer for ReversalZoneLayer {
                     superzone,
                     ctx.x_min,
                     ctx.x_max,
-                    &label,
+                    "",
                     color,
                     stroke,
                     0.5,

@@ -302,16 +302,13 @@ impl ZoneSniperApp {
                                 self.set_nav_state(nav);
 
                                 self.auto_scale_y = true;
-                                // Maybe trigger a repaint or scroll?
                                 ctx.request_repaint();
-                                #[cfg(debug_assertions)]
-                                log::info!("Clicked Segment Index: {:?}", new_idx);
                             }
                         } else {
-                            ui.label("No model loaded.");
+                            ui.label(&UI_TEXT.error_no_model);
                         }
                     } else {
-                        ui.label("No pair selected.");
+                        ui.label(&UI_TEXT.error_no_pair_selected);
                     }
                 }
             });
@@ -639,7 +636,6 @@ impl ZoneSniperApp {
         }
 
     pub(super) fn render_central_panel(&mut self, ctx: &Context) {
-        // let central_panel_frame = Frame::new().fill(UI_CONFIG.colors.central_panel);
         let central_panel_frame = UI_CONFIG.central_panel_frame();
 
         CentralPanel::default()
@@ -653,8 +649,8 @@ impl ZoneSniperApp {
                 let Some(engine) = &self.engine else {
                     render_fullscreen_message(
                         ui,
-                        "System Starting...",
-                        "Initializing Engine",
+                        &UI_TEXT.cp_system_starting,
+                        &UI_TEXT.cp_init_engine,
                         false,
                     );
                     return;
@@ -664,8 +660,8 @@ impl ZoneSniperApp {
                 let Some(pair) = self.selected_pair.clone() else {
                     render_fullscreen_message(
                         ui,
-                        "No Pair Selected",
-                        "Select a pair on the left.",
+                        &UI_TEXT.error_no_pair_selected,
+                        &UI_TEXT.cp_please_select_pair,
                         false,
                     );
                     return;
@@ -677,18 +673,14 @@ impl ZoneSniperApp {
                 let (is_calculating, last_error) = engine.get_pair_status(&pair);
 
                 // PRIORITY 1: ERRORS
-                // If the most recent calculation failed (e.g. "Insufficient Data" at 1%),
-                // we must show the error, even if we have an old cached model.
-                // The old model is valid for the OLD settings, not the CURRENT ones.
+                // If the most recent calculation failed (e.g. "Insufficient Data" at 1%), show the error, even if we have an old cached model.
                 if let Some(err_msg) = last_error {
-                    // Use rich error format
                     let body = if err_msg.contains("Insufficient data") {
-                        // Use our detailed help text
                         format!("{}\n\n{}", UI_TEXT.error_insufficient_data_body, err_msg)
                     } else {
                         err_msg.to_string()
                     };
-                    render_fullscreen_message(ui, "Analysis Failed", &body, true);
+                    render_fullscreen_message(ui, &UI_TEXT.error_analysis_failed, &body, true);
                 }
                 // PRIORITY 2: VALID MODEL
                 // If no error, and we have data, draw it.
@@ -724,8 +716,8 @@ impl ZoneSniperApp {
                 else if is_calculating {
                     render_fullscreen_message(
                         ui,
-                        &format!("Analyzing {}...", pair),
-                        "Calculating Zones...",
+                        &format!("{} {}...", UI_TEXT.cp_analyzing, pair),
+                        &UI_TEXT.cp_calculating_zones,
                         false,
                     );
                 }
@@ -733,8 +725,8 @@ impl ZoneSniperApp {
                 else if current_price.is_some() {
                     render_fullscreen_message(
                         ui,
-                        &format!("Queued: {}...", pair),
-                        "Waiting for worker thread...",
+                        &format!("{}: {}...", UI_TEXT.cp_queued, pair),
+                        &UI_TEXT.cp_wait_thread,
                         false,
                     );
                 }
@@ -742,8 +734,8 @@ impl ZoneSniperApp {
                 else {
                     render_fullscreen_message(
                         ui,
-                        "Waiting for Price...",
-                        "Listening to Binance Stream...",
+                        &UI_TEXT.cp_wait_prices,
+                        &UI_TEXT.cp_listen_binance_stream,
                         false,
                     );
                 }
@@ -1064,7 +1056,7 @@ fn render_fullscreen_message(ui: &mut Ui, title: &str, subtitle: &str, is_error:
         ui.add_space(40.0);
 
         if is_error {
-            ui.heading(format!("⚠ {}", title));
+            ui.heading(format!("{} {}", UI_TEXT.label_warning, title));
         } else {
             ui.spinner();
             ui.add_space(12.0);

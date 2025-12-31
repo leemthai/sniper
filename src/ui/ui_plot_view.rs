@@ -91,7 +91,7 @@ fn create_time_axis(
     let agg_interval_ms = resolution.interval_ms();
 
     AxisHints::new(Axis::X)
-        .label("Time")
+        .label(&UI_TEXT.plot_x_axis)
         .formatter(move |mark, _range| {
             let visual_x = mark.value;
             let mut current_visual_start = 0.0;
@@ -118,7 +118,7 @@ fn create_time_axis(
                 current_visual_start = current_visual_end + gap_width;
 
                 if visual_x < current_visual_start {
-                    return "GAP".to_string();
+                    return UI_TEXT.plot_x_axis_gap.to_string();
                 }
             }
             String::new()
@@ -347,7 +347,7 @@ impl PlotView {
             &cva_results.pair_name,
             cva_results.interval_ms,
         )
-        .expect("OHLCV data missing for current model");
+        .expect(&UI_TEXT.plot_missing_klines);
 
         // 2. Calculate Bounds (Using Helper)
         let (view_min, view_max, total_visual_width) =

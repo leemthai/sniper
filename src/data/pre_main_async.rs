@@ -152,8 +152,6 @@ pub async fn fetch_pair_data(
         }
         // --------------------
 
-        // log::info!("Starting Delta Sync for {} pairs...", supply_pairs.len());
-
         // 3. INITIALIZE UI LIST
         // Tell the UI about all pairs immediately so they appear as "Pending"
         if let Some(ref tx) = progress_tx {

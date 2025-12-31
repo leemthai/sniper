@@ -29,6 +29,8 @@ pub const ICON_CLOSE_ALL: &str = "\u{eac1}";
 pub const ICON_TIME_MACHINE: &str = "\u{f11ef}";
 pub const ICON_SIMULATE: &str = "\u{e63b}";
 pub const ICON_EXPLAINER: &str = "\u{f00e}"; // Zoom in / inspect / explain
+pub const ICON_WARNING: &str = "\u{ea6c}";
+pub const ICON_SEGMENTED_TIME: &str = "\u{f084e}";
 
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
@@ -40,16 +42,17 @@ pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 // pub const ICON_LOSS: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
 
 pub struct UiText {
-    // --- GENERAL ---
+    // --- Left panel ---
     pub data_generation_heading: String,
     pub price_horizon_heading: String,
     pub pair_selector_heading: String,
-    pub view_options_heading: String,
-    pub view_data_source_heading: String,
+    pub lp_failed_gradient: String,
 
     // --- PLOT LABELS ---
     pub plot_x_axis: String,
+    pub plot_x_axis_gap: String,
     pub plot_y_axis: String,
+    pub plot_missing_klines: String,
 
     // --- BUTTONS (Dynamic) ---
     pub tf_btn_all: String,
@@ -62,9 +65,24 @@ pub struct UiText {
     pub icon_long: String,
     pub icon_short: String,
 
+    // Center panel
+    pub cp_system_starting: String,
+    pub cp_init_engine: String,
+    pub cp_please_select_pair: String,
+    pub cp_analyzing: String,
+    pub cp_calculating_zones: String,
+    pub cp_queued: String,
+    pub cp_wait_thread: String,
+    pub cp_wait_prices: String,
+    pub cp_listen_binance_stream: String,
+
     // --- ERRORS ---
+    pub error_insufficient_data: String,
     pub error_insufficient_data_title: String,
     pub error_insufficient_data_body: String,
+    pub error_no_model: String,
+    pub error_no_pair_selected: String,
+    pub error_analysis_failed: String,
 
     // --- PH HELP (Keep simple static slices for tables) ---
     pub ph_help_density_header: (&'static str, &'static str, &'static str),
@@ -77,8 +95,11 @@ pub struct UiText {
     pub ph_label_density: String,
     pub ph_label_horizon_prefix: String,
     pub ph_startup: String,
+    pub ph_definitions: String,
+    pub ph_read_heatmap: String,
+    pub ph_select_trade_style: String,
 
-    // --- CR NAVIGATOR ---
+    // --- CR (Time Machine) NAVIGATOR ---
     pub cr_title_1: String,
     pub cr_title_2: String,
     pub cr_label_live: String,
@@ -86,6 +107,14 @@ pub struct UiText {
     pub cr_nav_show_all: String,
     pub cr_nav_return_prefix: String,
     pub cr_nav_return_live: String,
+    pub cr_date_range: String,
+    pub cr_context: String,
+    pub cr_price: String,
+    pub cr_missing: String,
+    pub cr_high: String,
+    pub cr_low: String,
+    pub cr_gap: String,
+    pub cr_mixed: String,
 
     pub ph_help_title: String,
 
@@ -133,6 +162,8 @@ pub struct UiText {
     pub label_working: String,
     pub label_queue: String,
     pub label_toggle: String,
+    pub label_warning: String,
+    pub label_failures: String,
 
     // Icons
     pub icon_help: String,
@@ -187,7 +218,6 @@ pub struct UiText {
     pub sim_help_sim_jump_lower_wicks: String,
     pub sim_help_sim_jump_higher_wicks: String,
     pub sim_mode_controls: String,
-    // pub sim_mode_name: String,
     pub sim_step: String,
 
     pub kbs_name_long: String,
@@ -208,6 +238,11 @@ pub struct UiText {
     pub kbs_toolbar_shortcut_targets: String,
 
     pub kbs_sim_mode: String,
+
+    pub ls_title: String,
+    pub ls_syncing: String,
+    pub ls_main: String,
+    pub ls_failed: String,
 }
 
 // THE SINGLETON
@@ -250,6 +285,10 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         ph_label_density: "Density".to_string(),
         ph_label_horizon_prefix: "Horizon: ±".to_string(),
         ph_startup: "Analyzing Price Structure...".to_string(),
+        ph_definitions: "Definitions".to_string(),
+        ph_read_heatmap: "1. Reading the Heatmap (Data Density)".to_string(),
+        ph_select_trade_style: "2. Selecting your Scope (Trade Style)".to_string(),
+
         ph_help_density_header: ("Color", "Density", "Significance"),
         ph_help_density_rows: &[
             ("Deep Purple", "Low (< 10%)", "Insignificant (noise)"),
@@ -325,6 +364,8 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
             "No valid opportunities found. Please reset filters or select a different pair."
                 .to_string(),
         label_toggle: "Toggle".to_string(),
+        label_warning: ICON_WARNING.to_string(),
+        label_failures: "failures".to_string(),
 
         // TradeFinder Pane
         tf_header: "TRADE FINDER".to_string(),
@@ -339,17 +380,40 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         // --- Left Panel ---
         data_generation_heading: "Shape Your Trades".to_string(),
         price_horizon_heading: "Price Horizon".to_string(),
-        pair_selector_heading: "Select Plot Pair".to_string(),
-        view_options_heading: "View Options".to_string(),
-        view_data_source_heading: "Data Source".to_string(),
+        pair_selector_heading: "Select Pair to Plot ".to_string() + ICON_EYE,
+        lp_failed_gradient: "Failed to build Price Horizon Gradient".to_string(),
 
-        // Plotting
+        // Loading screen
+        ls_title: "ZONE SNIPER INITIALIZATION".to_string(),
+        ls_syncing: "Syncing".to_string(),
+        ls_failed: "FAILED".to_string(),
+        ls_main: "klines from Binance Public API. Please be patient. This may take some time if it hasn't been run for a while or you are collecting many pairs. Subsequent runs will complete much quicker.".to_string(),
+
+        // Center panel i.e. where the plot goes
+        cp_system_starting: "System Starting...".to_string(),
+        cp_init_engine: "Initializing Engine".to_string(),
+        cp_please_select_pair: "Please select a pair.".to_string(),
+        cp_analyzing: "Analyzing".to_string(),
+        cp_calculating_zones: "Calculating Zones...".to_string(),
+        cp_queued: "Queued".to_string(),
+        cp_wait_thread: "Waiting for worker thread...".to_string(),
+        cp_wait_prices: "Waiting for Prices...".to_string(),
+        cp_listen_binance_stream: "Listening to Binance Stream...".to_string(),
+
+        // Actual Plot
         plot_y_axis: "Price".to_string(),
-        plot_x_axis: "Key Zone Strength (0 % of the strongest zone)".to_string(),
+        plot_x_axis: "Segmented Time ".to_string() + ICON_SEGMENTED_TIME,
+        plot_x_axis_gap: "GAP".to_string(),
+        plot_missing_klines: "OHLCV kline data missing for current model".to_string(),
+
         // --- ERRORS ---
+        error_analysis_failed: "Analysis Failed".to_string(),
+        error_no_model: "No model loaded.".to_string(),
+        error_no_pair_selected: "No pair selected.".to_string(),
+        error_insufficient_data: "Insufficient data".to_string(),
         error_insufficient_data_title: "Analysis Paused: Range Too Narrow".to_string(),
         error_insufficient_data_body:
-            "The current Price Horizon does not capture enough price history.\n\n".to_string()
+            "The current Price Horizon does not capture enough price history for the pair in question.\n\n".to_string()
                 + ICON_POINT_RIGHT
                 + " Drag the Price Horizon slider to the right.",
 
@@ -361,6 +425,14 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         cr_nav_show_all: "SHOW ALL RANGES".to_string(),
         cr_nav_return_prefix: "RETURN TO SEGMENT".to_string(),
         cr_nav_return_live: "RETURN TO LIVE".to_string(),
+        cr_date_range: "Date Range".to_string(),
+        cr_context: "Context".to_string(),
+        cr_price: "Price".to_string(),
+        cr_missing: "Missing".to_string(),
+        cr_high: "High".to_string(),
+        cr_low: "Low".to_string(),
+        cr_gap: "Gap".to_string(),
+        cr_mixed: "Mixed".to_string(),
 
         // Icons
         icon_help: ICON_HELP.to_string(),
@@ -388,9 +460,8 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         kbs_toolbar_shortcut_hvz: format!("{} High Volume Zones", ICON_EYE),
         kbs_toolbar_shortcut_low_wick: format!("{} Lower Wick Zones", ICON_EYE),
         kbs_toolbar_shortcut_high_wick: format!("{} Higher Wick Zones", ICON_EYE),
-
         kbs_toolbar_shortcut_histogram: format!("{} Volume Hist.", ICON_EYE),
-        kbs_toolbar_shortcut_candles: format!("{} {}", ICON_CANDLE, ICON_EYE),
+        kbs_toolbar_shortcut_candles: format!("{} {}", ICON_EYE, ICON_CANDLE),
         kbs_toolbar_shortcut_gap: format!("{} Data Gap", ICON_EYE),
         kbs_toolbar_shortcut_price_limits: format!("{} PH Boundary", ICON_EYE),
         kbs_toolbar_shortcut_live_price: format!("{} Live Price", ICON_EYE),
