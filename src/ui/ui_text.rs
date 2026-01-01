@@ -31,6 +31,10 @@ pub const ICON_SIMULATE: &str = "\u{e63b}";
 pub const ICON_EXPLAINER: &str = "\u{f00e}"; // Zoom in / inspect / explain
 pub const ICON_WARNING: &str = "\u{ea6c}";
 pub const ICON_SEGMENTED_TIME: &str = "\u{f084e}";
+// (Sort arrows)
+pub const ICON_SORT_ASC: &str = "\u{f0de}"; // (Sort Up)
+pub const ICON_SORT_DESC: &str = "\u{f0dd}"; // (Sort Down)
+pub const ICON_SORT: &str      = "\u{f0dc}"; // (Sort Neutral)
 
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
@@ -42,6 +46,17 @@ pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 // pub const ICON_LOSS: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
 
 pub struct UiText {
+
+
+    pub sort_label_pair: String,
+    pub sort_label_roi: String,
+    pub sort_label_aroi: String,
+    pub sort_label_time: String,
+    pub sort_label_target: String,
+    pub sort_label_stop: String,
+    pub icon_sort_asc: String,
+    pub icon_sort_desc: String,
+
     // --- Left panel ---
     pub data_generation_heading: String,
     pub price_horizon_heading: String,
@@ -253,6 +268,18 @@ pub struct UiText {
 // THE SINGLETON
 pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
     UiText {
+
+
+        sort_label_pair: "Pair".to_string(),
+        sort_label_roi: "ROI".to_string(),
+        sort_label_aroi: "AROI".to_string(),
+        sort_label_time: "Time".to_string(),
+        sort_label_target: "Tgt %".to_string(),
+        sort_label_stop: "Risk %".to_string(),
+        
+        icon_sort_asc: ICON_SORT_ASC.to_string(),
+        icon_sort_desc: ICON_SORT_DESC.to_string(),
+
         // Status panel
         sp_price: ICON_DOLLAR_BAG.to_string(),
         sp_live_mode: ICON_PULSE.to_string() + " LIVE MODE",

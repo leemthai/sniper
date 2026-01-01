@@ -56,26 +56,32 @@ pub struct SniperEngine {
 
 impl SniperEngine {
 
-    pub fn get_all_live_opportunities(&self) -> Vec<LiveOpportunity> {
+    /// Aggregates opportunities.
+    /// overrides: If provided, uses these prices instead of live stream (For Simulation).
+    pub fn get_all_live_opportunities(&self, overrides: Option<&HashMap<String, f64>>) -> Vec<LiveOpportunity> {
         let mut results = Vec::new();
 
         for (pair, state) in &self.pairs {
-            // 1. Need both a valid Model and a Live Price
-            if let (Some(model), Some(price)) = (&state.model, self.price_stream.get_price(pair)) {
-                
+            let model_opt = &state.model;
+            
+            // PRIORITY: Check Override -> Then check Stream
+            let current_price_opt = if let Some(map) = overrides {
+                map.get(pair).copied().or_else(|| self.price_stream.get_price(pair))
+            } else {
+                self.price_stream.get_price(pair)
+            };
+
+            if let (Some(model), Some(price)) = (model_opt, current_price_opt) {
                 for opp in &model.opportunities {
-                    // 2. Calculate Live Stats
+                    // ... (Calculate Live Stats using 'price') ...
                     let live_roi = opp.live_roi(price);
                     let annualized_roi = opp.live_annualized_roi(price);
-                    
-                    // Filter: Optional - hide negative ROI trades? 
-                    // For now, let's return everything and let the UI filter.
                     
                     let risk_pct = calculate_percent_diff(opp.stop_price, price);
                     let reward_pct = calculate_percent_diff(opp.target_price, price);
 
                     results.push(LiveOpportunity {
-                        opportunity: opp.clone(), // Cheap clone (contains string + floats)
+                        opportunity: opp.clone(),
                         current_price: price,
                         live_roi,
                         annualized_roi,
@@ -86,11 +92,10 @@ impl SniperEngine {
                 }
             }
         }
-
-        // 3. Global Sort (Best Opportunity First)
-        // Sort by ROI descending
+        
+        // Sort by ROI descending (Standard)
         results.sort_by(|a, b| b.live_roi.partial_cmp(&a.live_roi).unwrap_or(std::cmp::Ordering::Equal));
-
+        
         results
     }
 

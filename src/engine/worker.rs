@@ -140,6 +140,7 @@ fn run_pathfinder_simulations(
                 direction,
                 duration_candles,
                 config.journey.risk_reward_tests,
+                config.journey.profile.min_roi,
                 i, // zone index for debug logging
             ) {
                 // Calculate Average Duration in MS
@@ -174,16 +175,17 @@ fn run_stop_loss_tournament(
     direction: TradeDirection,
     duration_candles: usize,
     risk_tests: &[f64],
+    min_roi_pct: f64,
     _zone_idx: usize,
 ) -> Option<(SimulationResult, f64, usize)> {
+
     let mut best_roi = f64::NEG_INFINITY;
     let mut best_result: Option<(SimulationResult, f64, f64)> = None; // (Result, Stop, Ratio)
     let mut valid_variant_count = 0;
 
     let target_dist_abs = (target_price - current_price).abs();
 
-    // 1. Safety Check: Volatility Floor
-    // Ensure stop is not triggered by random noise (2x Volatility)
+    // 1. Safety Check: Volatility Floor. Ensure sl is not triggered by random noise (2x Volatility)
     let vol_floor_pct = current_state.volatility_pct * 2.0;
     let min_stop_dist = current_price * vol_floor_pct;
 
@@ -245,20 +247,25 @@ fn run_stop_loss_tournament(
                 result.success_rate,
             );
 
-            if true_roi_pct > 0.0 {
+            // MWT CHECK: Does this variant meet the minimum threshold?
+            let is_worthwhile = true_roi_pct >= min_roi_pct;
+
+            if is_worthwhile {
                 valid_variant_count += 1;
             }
 
+            // if true_roi_pct > 0.0 {
+            //     valid_variant_count += 1;
+            // }
+
             #[cfg(debug_assertions)]
             if debug {
-                let risk_pct = calculate_percent_diff(
-                    candidate_stop,
-                    current_price,
-                );
-
+                let risk_pct = calculate_percent_diff(candidate_stop, current_price);
+                let status_icon = if is_worthwhile { "✅" } else { "🔻" }; // Check vs Low
                 log::debug!(
-                    "   [R:R {:.1}] Stop: {:.4} | {}: {:.1}% | ROI: {:+.2}% (Bin: {:+.2}%) | Risk: {:.2}%",
+                    "   [R:R {:.1}] {} Stop: {:.4} | {}: {:.1}% | ROI: {:+.2}% (Bin: {:+.2}%) | Risk: {:.2}%",
                     ratio,
+                    status_icon,
                     candidate_stop,
                     UI_TEXT.label_success_rate,
                     result.success_rate * 100.0,
@@ -268,8 +275,8 @@ fn run_stop_loss_tournament(
                 );
             }
 
-            // Optimize for True ROI
-            if true_roi_pct > best_roi {
+            // Optimize for True ROI, BUT only if it meets MWT
+            if is_worthwhile && true_roi_pct > best_roi {
                 best_roi = true_roi_pct;
                 best_result = Some((result.clone(), candidate_stop, ratio));
             }

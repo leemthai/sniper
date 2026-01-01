@@ -3,21 +3,20 @@ use eframe::egui::{
     ScrollArea, Sense, SidePanel, TopBottomPanel, Ui, Window,
 };
 
-use std::cmp::Ordering;
 use strum::IntoEnumIterator;
 
 use crate::analysis::adaptive::AdaptiveParameters;
 
+use crate::config::ANALYSIS;
+use crate::config::plot::PLOT_CONFIG;
 use crate::config::TICKER;
 
 use crate::models::cva::ScoreType;
-use crate::models::trading_view::{DirectionFilter, LiveOpportunity, TradeDirection};
+use crate::models::trading_view::{DirectionFilter, LiveOpportunity, TradeDirection, SortColumn, SortDirection};
 
 use crate::ui::app::CandleResolution;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::{DirectionColor, UiStyleExt, get_outcome_color};
-
-use crate::config::plot::PLOT_CONFIG;
 
 use crate::ui::ui_panels::{
     CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel,
@@ -27,11 +26,39 @@ use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
-use crate::utils::maths_utils::{calculate_annualized_roi, calculate_percent_diff};
+use crate::utils::maths_utils::{calculate_percent_diff};
 
 use super::app::ZoneSniperApp;
 
 impl ZoneSniperApp {
+
+    /// Helper to sort opportunities in-place based on current app state
+    fn sort_opportunities(&self, opps: &mut Vec<LiveOpportunity>) {
+        opps.sort_by(|a, b| {
+            let cmp = match self.tf_sort_col {
+                SortColumn::PairName => a.opportunity.pair_name.cmp(&b.opportunity.pair_name),
+                
+                // Float comparisons (handle NaN safely)
+                SortColumn::LiveRoi => a.live_roi.total_cmp(&b.live_roi),
+                SortColumn::AnnualizedRoi => a.annualized_roi.total_cmp(&b.annualized_roi),
+                
+                // Durations
+                SortColumn::AvgDuration => a.opportunity.avg_duration_ms.cmp(&b.opportunity.avg_duration_ms),
+                
+                // Distances (Magnitude)
+                SortColumn::TargetDist => a.reward_pct.total_cmp(&b.reward_pct),
+                SortColumn::StopDist => a.risk_pct.total_cmp(&b.risk_pct),
+            };
+
+            // Apply Direction
+            match self.tf_sort_dir {
+                SortDirection::Ascending => cmp,
+                SortDirection::Descending => cmp.reverse(),
+            }
+        });
+    }
+
+
     pub(super) fn render_opportunity_details_modal(&mut self, ctx: &Context) {
         // 1. Check if open
         if !self.show_opportunity_details {
@@ -471,82 +498,96 @@ impl ZoneSniperApp {
             });
     }
 
-    fn render_trade_finder_content(&mut self, ui: &mut Ui) {
-        // --- 1. HEADER ---
+       /// Helper: Renders the Header, Scope, Direction, and Sort controls
+    fn render_trade_finder_filters(&mut self, ui: &mut Ui) {
+        // --- HEADER ---
         ui.add_space(5.0);
         ui.heading(&UI_TEXT.tf_header);
         ui.add_space(5.0);
 
-        // --- 2. SCOPE TOGGLE (Selectable Row) ---
+        // --- SCOPE TOGGLE ---
         ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(&UI_TEXT.label_target)
-                    .size(16.0)
-                    .color(PLOT_CONFIG.color_text_neutral),
-            );
+            ui.label(RichText::new(&UI_TEXT.label_target).size(16.0).color(PLOT_CONFIG.color_text_neutral));
             ui.style_mut().spacing.item_spacing.x = 5.0;
 
-            // Button 1: ALL PAIRS
-            if ui
-                .selectable_label(!self.tf_filter_pair_only, &UI_TEXT.tf_scope_all)
-                .clicked()
-            {
+            if ui.selectable_label(!self.tf_filter_pair_only, &UI_TEXT.tf_scope_all).clicked() {
                 self.tf_filter_pair_only = false;
             }
 
-            // Button 2: PAIR ONLY
             let pair_label = if let Some(p) = &self.selected_pair {
                 format!("{} {}", p, UI_TEXT.tf_scope_selected)
             } else {
                 format!("SELECTED {}", UI_TEXT.tf_scope_selected)
             };
 
-            if ui
-                .selectable_label(self.tf_filter_pair_only, pair_label)
-                .clicked()
-            {
+            if ui.selectable_label(self.tf_filter_pair_only, pair_label).clicked() {
                 self.tf_filter_pair_only = true;
             }
         });
         ui.separator();
 
-        // --- 2. DIRECTION FILTER ---
+        // --- DIRECTION FILTER ---
         ui.horizontal(|ui| {
-            // ICON: Filter Funnel
-            ui.label(
-                RichText::new(&UI_TEXT.label_filter_icon)
-                    .size(16.0)
-                    .color(PLOT_CONFIG.color_text_neutral),
-            );
+            ui.label(RichText::new(&UI_TEXT.label_filter_icon).size(16.0).color(PLOT_CONFIG.color_text_neutral));
             ui.style_mut().spacing.item_spacing.x = 5.0;
 
             let f = &mut self.tf_filter_direction;
-
-            // Buttons using UI_TEXT fields (with icons embedded)
-            if ui
-                .selectable_label(*f == DirectionFilter::All, &UI_TEXT.tf_btn_all_trades)
-                .clicked()
-            {
-                *f = DirectionFilter::All;
-            }
-            if ui
-                .selectable_label(*f == DirectionFilter::Long, &UI_TEXT.label_long)
-                .clicked()
-            {
-                *f = DirectionFilter::Long;
-            }
-            if ui
-                .selectable_label(*f == DirectionFilter::Short, &UI_TEXT.label_short)
-                .clicked()
-            {
-                *f = DirectionFilter::Short;
-            }
+            if ui.selectable_label(*f == DirectionFilter::All, &UI_TEXT.tf_btn_all_trades).clicked() { *f = DirectionFilter::All; }
+            if ui.selectable_label(*f == DirectionFilter::Long, &UI_TEXT.label_long).clicked() { *f = DirectionFilter::Long; }
+            if ui.selectable_label(*f == DirectionFilter::Short, &UI_TEXT.label_short).clicked() { *f = DirectionFilter::Short; }
         });
         ui.separator();
 
-        // --- 3. AGGREGATION ---
+        // --- SORT BAR ---
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Sort:").color(PLOT_CONFIG.color_text_subdued));
+            ui.style_mut().spacing.item_spacing.x = 2.0;
+
+            // Helper closure for buttons
+            let mut sort_btn = |col: SortColumn, text: &str| {
+                let is_active = self.tf_sort_col == col;
+                let label = if is_active {
+                    let icon = match self.tf_sort_dir {
+                        SortDirection::Ascending => &UI_TEXT.icon_sort_asc,
+                        SortDirection::Descending => &UI_TEXT.icon_sort_desc,
+                    };
+                    format!("{} {}", text, icon)
+                } else {
+                    text.to_string()
+                };
+
+                if ui.selectable_label(is_active, label).clicked() {
+                    if is_active {
+                        self.tf_sort_dir = self.tf_sort_dir.toggle();
+                    } else {
+                        self.tf_sort_col = col;
+                        self.tf_sort_dir = match col {
+                            SortColumn::PairName | SortColumn::AvgDuration => SortDirection::Ascending, 
+                            _ => SortDirection::Descending,
+                        };
+                    }
+                }
+            };
+
+            sort_btn(SortColumn::PairName, &UI_TEXT.sort_label_pair);
+            sort_btn(SortColumn::LiveRoi, &UI_TEXT.sort_label_roi);
+            sort_btn(SortColumn::AnnualizedRoi, &UI_TEXT.sort_label_aroi);
+            sort_btn(SortColumn::AvgDuration, &UI_TEXT.sort_label_time);
+        });
+        ui.separator();
+    }
+
+    fn render_trade_finder_content(&mut self, ui: &mut Ui) {
+
+        // 1. Render Headers and Controls
+        self.render_trade_finder_filters(ui);
+
+        // --- 3. DATA AGGREGATION ---
         let mut opportunities = if let Some(eng) = &self.engine {
-            eng.get_all_live_opportunities()
+            // FIX: Pass the simulated prices map!
+            // If in Live Mode, this map is empty, so it falls back to stream naturally.
+            // If in Sim Mode, it uses your 'A'/'D' adjusted prices.
+            eng.get_all_live_opportunities(Some(&self.simulated_prices))
         } else {
             vec![]
         };
@@ -569,25 +610,19 @@ impl ZoneSniperApp {
             DirectionFilter::All => {}
         }
 
-        // Filter: Positive ROI Only (Remove losers)
-        // We filter based on the LIVE ROI to be safe (if it drifted negative, hide it)
-        opportunities.retain(|op| op.opportunity.expected_roi() > 0.0);
+        // Filter: MWT / Stability Fix
+        // Use STATIC Expectancy (Snapshot) for inclusion logic to stop jumping.
+        // This hides any trade that was considered "Trash" (below min_roi) at birth.
+ 
+        let profile = &ANALYSIS.journey.profile;
 
-        // Sort: STABLE SORT (Use Static Metrics)
-        // We calculate the AROI based on the *Start Price* (Static), not *Live Price*
-        opportunities.sort_by(|a, b| {
-            let a_static_roi = a.opportunity.expected_roi(); // Uses start_price
-            let a_static_aroi =
-                calculate_annualized_roi(a_static_roi, a.opportunity.avg_duration_ms as f64);
-
-            let b_static_roi = b.opportunity.expected_roi();
-            let b_static_aroi =
-                calculate_annualized_roi(b_static_roi, b.opportunity.avg_duration_ms as f64);
-
-            b_static_aroi
-                .partial_cmp(&a_static_aroi)
-                .unwrap_or(Ordering::Equal)
+        // Filter: MWT (Static Check)
+        opportunities.retain(|op| {
+            op.opportunity.is_worthwhile(profile) 
         });
+
+        // --- 4. SORTING (Clean!) ---
+        self.sort_opportunities(&mut opportunities);
 
         // --- 4. RENDER LIST ---
         ScrollArea::vertical()

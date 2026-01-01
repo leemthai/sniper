@@ -8,6 +8,17 @@ use crate::utils::TimeUtils;
 pub const DEFAULT_PH_THRESHOLD: f64 = 0.15;
 pub const DEFAULT_TIME_DECAY: f64 = 1.5; // Manually synced to match 0.15 logic
 
+#[derive(Clone, Debug)]
+pub struct TradeProfile {
+    pub min_roi: f64,       // e.g. 0.5%
+    pub min_aroi: f64,      // e.g. 20.0%
+    
+    // Scoring Weights
+    pub weight_roi: f64,    // e.g. 1.0
+    pub weight_aroi: f64,   // e.g. 0.05 (AROI is usually huge, so we dampen it)
+}
+
+
 /// Configuration for the Price Horizon.
 /// Determines the vertical price range of interest relative to the current price.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,10 +111,11 @@ pub struct JourneySettings {
     // pub min_win_rate: f64,
     pub risk_reward_tests: &'static [f64],
 
-    // NEW: Dynamic Time Settings
+    // Dynamic Time Settings
     pub volatility_zigzag_factor: f64, // Multiplier for "Straight Line" time (e.g. 6.0)
     pub min_journey_duration: Duration, // Floor (e.g. 1 Hour)
     pub max_journey_time: Duration,    // Ceiling (increased to 90 days)
+    pub profile: TradeProfile,
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
@@ -127,6 +139,15 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
 
         // Floor at 1 Hour. Don't simulate 5-minute trades.
         min_journey_duration: Duration::from_secs(3600),
+
+        profile: TradeProfile {
+            min_roi: 0.50,   // 0.5% Minimum yield
+            min_aroi: 20.0,  // 20% Annualized Minimum
+            
+            // Scoring: We value hard cash (ROI) 20x more than theoretical speed (AROI)
+            weight_roi: 1.0, 
+            weight_aroi: 0.05, 
+        },
     },
 
     similarity: SimilaritySettings {

@@ -9,7 +9,7 @@ use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
 use crate::config::ZoneParams;
-use crate::config::{ANALYSIS, AnalysisConfig};
+use crate::config::{ANALYSIS, AnalysisConfig, TradeProfile};
 
 
 use crate::models::OhlcvTimeSeries;
@@ -59,6 +59,39 @@ pub struct LiveOpportunity {
     pub max_duration_ms: i64,
 }
 
+// Update LiveOpportunity too for UI filtering convenience
+impl LiveOpportunity {
+    /// Checks if the LIVE status of the opportunity is still worthwhile.
+    pub fn is_worthwhile(&self, min_roi_pct: f64) -> bool {
+        self.live_roi >= min_roi_pct
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SortDirection {
+    Ascending,
+    Descending,
+}
+
+impl SortDirection {
+    pub fn toggle(&self) -> Self {
+        match self {
+            Self::Ascending => Self::Descending,
+            Self::Descending => Self::Ascending,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SortColumn {
+    PairName,
+    LiveRoi,
+    AnnualizedRoi,
+    AvgDuration,
+    TargetDist,
+    StopDist,
+}
+
 #[derive(Debug, Clone)]
 pub struct TradeOpportunity {
     pub pair_name: String,
@@ -74,7 +107,27 @@ pub struct TradeOpportunity {
 }
 
 impl TradeOpportunity {
-    // ... existing new/methods ...
+
+    /// Checks if the opportunity meets the "Worthwhile" criteria.
+    pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
+        let roi = self.expected_roi();
+        let aroi = calculate_annualized_roi(roi, self.avg_duration_ms as f64);
+
+        if roi < profile.min_roi { return false; }
+        if aroi < profile.min_aroi { return false; }
+        
+        true
+    }
+
+    /// Calculates a composite Quality Score (0.0 to 100.0+)
+    /// Used for "Auto-Tuning" and finding the best setups.
+    pub fn calculate_quality_score(&self, profile: &TradeProfile) -> f64 {
+        let roi = self.expected_roi();
+        let aroi = calculate_annualized_roi(roi, self.avg_duration_ms as f64);
+        
+        // Score = (ROI * 1.0) + (AROI * 0.05)
+        (roi * profile.weight_roi) + (aroi * profile.weight_aroi)
+    }
 
     /// Calculates the Expected ROI % per trade for this specific opportunity.
     pub fn expected_roi(&self) -> f64 {
