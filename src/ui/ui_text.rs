@@ -34,7 +34,7 @@ pub const ICON_SEGMENTED_TIME: &str = "\u{f084e}";
 // (Sort arrows)
 pub const ICON_SORT_ASC: &str = "\u{f0de}"; // (Sort Up)
 pub const ICON_SORT_DESC: &str = "\u{f0dd}"; // (Sort Down)
-pub const ICON_SORT: &str      = "\u{f0dc}"; // (Sort Neutral)
+pub const ICON_SORT: &str      = "\u{f07d}"; // (Sort Neutral)
 
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
@@ -56,6 +56,7 @@ pub struct UiText {
     pub sort_label_stop: String,
     pub icon_sort_asc: String,
     pub icon_sort_desc: String,
+    pub sort_label: String,
 
     // --- Left panel ---
     pub data_generation_heading: String,
@@ -277,6 +278,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         sort_label_time: "Time".to_string(),
         sort_label_target: "Tgt %".to_string(),
         sort_label_stop: "Risk %".to_string(),
+        sort_label: ICON_SORT.to_string(),
         
         icon_sort_asc: ICON_SORT_ASC.to_string(),
         icon_sort_desc: ICON_SORT_DESC.to_string(),

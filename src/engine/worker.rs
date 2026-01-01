@@ -240,6 +240,7 @@ fn run_stop_loss_tournament(
             // New: Decision metric: use the real average PnL (include Timeouts)
             let true_roi_pct = result.avg_pnl_pct * 100.0;
 
+            #[cfg(debug_assertions)]
             let binary_roi = calculate_expected_roi_pct(
                 current_price,
                 target_price,

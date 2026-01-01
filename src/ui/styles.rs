@@ -1,4 +1,4 @@
-use eframe::egui::{Color32, RichText, Ui, Button, CursorIcon, Vec2, Stroke, CornerRadius, Response, WidgetInfo, WidgetType, Sense, StrokeKind};
+use eframe::egui::{Color32, RichText, Ui, Button, CursorIcon, Vec2, Stroke, CornerRadius, Response, WidgetInfo, WidgetType, Sense, StrokeKind, FontId};
 
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::trading_view::TradeDirection;
@@ -106,8 +106,8 @@ pub trait UiStyleExt {
 impl UiStyleExt for Ui {
 
     fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color32) -> eframe::egui::Response {
-        let font_id = eframe::egui::FontId::proportional(14.0);
-        let padding = eframe::egui::Vec2::new(4.0, 2.0);
+        let font_id = FontId::proportional(14.0);
+        let padding = Vec2::new(2.0, 2.0);
 
         // 1. Calculate Size
         let galley = self.painter().layout_no_wrap(text.to_string(), font_id, idle_color);
@@ -139,7 +139,7 @@ impl UiStyleExt for Ui {
                 // FIX 2: Pass StrokeKind::Inside
                 self.painter().rect(
                     rect, 
-                    CornerRadius::same(4), // Use explicit Rounding type if needed, or just 4.0 if Into<Rounding> works
+                    CornerRadius::same(4),
                     bg_fill, 
                     Stroke::NONE,
                     StrokeKind::Inside 

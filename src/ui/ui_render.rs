@@ -539,7 +539,7 @@ impl ZoneSniperApp {
 
         // --- SORT BAR ---
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Sort:").color(PLOT_CONFIG.color_text_subdued));
+            ui.label(RichText::new(&UI_TEXT.sort_label).color(PLOT_CONFIG.color_text_subdued));
             ui.style_mut().spacing.item_spacing.x = 2.0;
 
             // Helper closure for buttons
@@ -703,13 +703,13 @@ impl ZoneSniperApp {
                 // Direction Icon
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-                    let dir_color = op.direction.color();
-                    let arrow = match op.direction {
-                        TradeDirection::Long => &UI_TEXT.icon_long,
-                        TradeDirection::Short => &UI_TEXT.icon_short,
-                    };
-                    ui.label(RichText::new(arrow).color(dir_color));
-                    ui.label(RichText::new(op.direction.to_string().to_uppercase()).small().color(dir_color));
+                    // let dir_color = op.direction.color();
+                    // let arrow = match op.direction {
+                    //     TradeDirection::Long => &UI_TEXT.icon_long,
+                    //     TradeDirection::Short => &UI_TEXT.icon_short,
+                    // };
+                    // ui.label(RichText::new(arrow).color(dir_color));
+                    ui.label(RichText::new(op.direction.to_string().to_uppercase()).small().color(op.direction.color()));
                 });
             });
 
