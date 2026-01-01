@@ -12,7 +12,7 @@ use crate::config::{ANALYSIS, PriceHorizonConfig};
 use crate::models::horizon_profile::HorizonProfile;
 
 use crate::ui::config::UI_TEXT;
-use crate::ui::styles::{UiStyleExt,section_heading, spaced_separator, colored_subsection_heading};
+use crate::ui::styles::{UiStyleExt, colored_subsection_heading};
 
 use crate::ui::utils::{
     format_candle_count, format_duration_context,
@@ -20,8 +20,8 @@ use crate::ui::utils::{
 
 use crate::utils::TimeUtils;
 
-#[cfg(debug_assertions)]
-use crate::config::DEBUG_FLAGS;
+// #[cfg(debug_assertions)]
+// use crate::config::DEBUG_FLAGS;
 
 pub struct CandleRangePanel<'a> {
     segments: &'a [DisplaySegment],
@@ -227,8 +227,8 @@ pub trait Panel {
 pub struct DataGenerationPanel<'a> {
     // #[allow(dead_code)]
     // zone_count: usize,
-    selected_pair: Option<String>,
-    available_pairs: Vec<String>,
+    // selected_pair: Option<String>,
+    // available_pairs: Vec<String>,
     price_horizon_config: &'a PriceHorizonConfig,
     profile: Option<&'a HorizonProfile>,
     actual_candle_count: usize,
@@ -238,8 +238,8 @@ pub struct DataGenerationPanel<'a> {
 
 impl<'a> DataGenerationPanel<'a> {
     pub fn new(
-        selected_pair: Option<String>,
-        available_pairs: Vec<String>,
+        // selected_pair: Option<String>,
+        // available_pairs: Vec<String>,
         price_horizon_config: &'a PriceHorizonConfig,
         profile: Option<&'a HorizonProfile>,
         actual_candle_count: usize,
@@ -247,8 +247,8 @@ impl<'a> DataGenerationPanel<'a> {
         scroll_to_pair_requested: &'a mut Option<String>,
     ) -> Self {
         Self {
-            selected_pair,
-            available_pairs,
+            // selected_pair,
+            // available_pairs,
             price_horizon_config,
             profile,
             actual_candle_count,
@@ -648,48 +648,6 @@ impl<'a> DataGenerationPanel<'a> {
         });
     }
 
-    fn render_pair_selector(&mut self, ui: &mut Ui) -> Option<String> {
-        let mut changed = None;
-        let previously_selected_pair = self.selected_pair.clone();
-
-        ui.label(colored_subsection_heading(&UI_TEXT.pair_selector_heading));
-        ScrollArea::vertical()
-            .max_height(ui.available_height() - 50.0)
-            .id_salt("pair_selector")
-            .show(ui, |ui| {
-                for item in &self.available_pairs {
-                    let is_selected = self.selected_pair.as_ref() == Some(item);
-                    let response = ui.selectable_label(is_selected, item);
-
-                    if response.clicked() {
-                        self.selected_pair = Some(item.clone());
-                        changed = Some(item.clone());
-                    }
-
-                    // NEW LOGIC: Only scroll if there is an explicit external request for THIS item
-                    if let Some(target) = self.scroll_to_pair_requested {
-                        if target == item {
-                            // Use None to "Make Visible" (minimal scrolling) instead of Center
-                            response.scroll_to_me(None);
-
-                            // Clear the request immediately so it doesn't happen again
-                            *self.scroll_to_pair_requested = None;
-                        }
-                    }
-                }
-            });
-
-        // Defensive check: catch changes even if .clicked() didn't fire
-        if self.selected_pair != previously_selected_pair {
-            changed = self.selected_pair.clone();
-            #[cfg(debug_assertions)]
-            if DEBUG_FLAGS.print_ui_interactions {
-                log::info!("A new pair was selected: {:?}", self.selected_pair);
-            }
-        }
-
-        changed
-    }
 }
 
 #[derive(Debug)]
@@ -701,27 +659,16 @@ pub enum DataGenerationEventChanged {
 
 impl<'a> Panel for DataGenerationPanel<'a> {
     type Event = DataGenerationEventChanged;
+
     fn render(&mut self, ui: &mut Ui, show_help: &mut bool) -> Vec<Self::Event> {
 
         let mut events = Vec::new();
-        section_heading(ui, &UI_TEXT.data_generation_heading);
+        // section_heading(ui, &UI_TEXT.data_generation_heading);
 
         // Price Horizon display (always enabled)
         if let Some(threshold) = self.render_price_horizon_display(ui, show_help) {
             events.push(DataGenerationEventChanged::PriceHorizonThreshold(threshold));
         }
-        spaced_separator(ui);
-
-        if let Some(pair) = self.render_pair_selector(ui) {
-            events.push(DataGenerationEventChanged::Pair(pair));
-        }
-        // if let Some(pair) = &self.selected_pair {
-        //     ui.label(format!(
-        //         "Selected: {:?}",
-        //         PairInterval::split_pair_name(pair)
-        //     ));
-        // }
-        // ui.add_space(20.0);
         events
     }
 }

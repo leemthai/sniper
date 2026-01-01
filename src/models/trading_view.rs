@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 // User crates
 use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
+use crate::analysis::market_state::MarketState;
 use crate::analysis::zone_scoring::find_target_zones;
 
 use crate::config::ZoneParams;
@@ -99,6 +100,26 @@ pub enum SortColumn {
     AvgDuration,
     TargetDist,
     StopDist,
+    QuoteVolume24h,
+    Volatility,
+    Momentum,
+    OpportunityCount,
+    VariantCount,
+}
+
+/// A row in the consolidated Trade Finder list.
+#[derive(Debug, Clone)]
+pub struct TradeFinderRow {
+    pub pair_name: String,
+    
+    // 24h Quote Volume (e.g. USDT volume). Crucial for filtering "Dead" coins.
+    pub quote_volume_24h: f64,
+    
+    // Market State (Volatility, Momentum)
+    pub market_state: Option<MarketState>, 
+    
+    pub opportunity: Option<LiveOpportunity>,
+    pub opportunity_count_total: usize,
 }
 
 #[derive(Debug, Clone)]

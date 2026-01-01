@@ -385,7 +385,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_roi: "ROI".to_string(),
         label_aroi: "AROI".to_string(),
         label_aroi_long: "AROI (Annualized RoI)".to_string(),
-        label_sl_variants: "SL Variants".to_string(),
+        label_sl_variants: "Variants".to_string(),
         label_stop_loss: "Stop Loss".to_string(),
         label_stop_loss_short: "SL".to_string(),
         label_risk_reward: "Risk/Reward Ratio".to_string(),
@@ -512,6 +512,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_avg_time: "Avg".to_string(), // Keep it short for HUD/TF
         icon_arrow_right: ICON_POINT_RIGHT.to_string(),
         label_avg_duration: "Avg Duration".to_string(),
-        label_risk_select: "Risk Profile".to_string(),
+        label_risk_select: "Stop Loss Variant (Risk)".to_string(),
     }
 });

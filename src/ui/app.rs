@@ -788,7 +788,7 @@ impl ZoneSniperApp {
         if self.show_candle_range {
             self.render_right_panel(ctx);
         }
-        self.render_trade_finder_panel(ctx);
+        // self.render_trade_finder_panel(ctx);
 
         self.render_ticker_panel(ctx);
         self.render_status_panel(ctx);

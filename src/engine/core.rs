@@ -4,7 +4,9 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::utils::time_utils::AppInstant;
 
+use crate::analysis::market_state::MarketState;
 use crate::analysis::MultiPairMonitor;
+use crate::analysis::adaptive::AdaptiveParameters;
 
 use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
 
@@ -13,7 +15,7 @@ use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::pair_context::PairContext;
-use crate::models::trading_view::{TradingModel, LiveOpportunity};
+use crate::models::trading_view::{TradingModel, LiveOpportunity, TradeFinderRow, TradeOpportunity};
 
 use crate::utils::maths_utils::calculate_percent_diff;
 
@@ -55,6 +57,94 @@ pub struct SniperEngine {
 }
 
 impl SniperEngine {
+
+    /// Generates the master list for the Trade Finder.
+
+    pub fn get_trade_finder_rows(&self, overrides: Option<&std::collections::HashMap<String, f64>>) -> Vec<TradeFinderRow> {
+        let mut rows = Vec::new();
+        
+        let ph_pct = self.current_config.price_horizon.threshold_pct;
+        let lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
+        let now_ms = crate::utils::TimeUtils::now_timestamp_ms();
+        let day_ms = 86_400_000;
+
+        for (pair, state) in &self.pairs {
+            // 1. Get Context (Price, Vol, Market State)
+            let current_price = if let Some(map) = overrides {
+                map.get(pair).copied().or_else(|| self.price_stream.get_price(pair))
+            } else {
+                self.price_stream.get_price(pair)
+            }.unwrap_or(0.0);
+
+            // Calculate Volume & State (Same as before)
+            let mut m_state = None;
+            let mut vol_24h = 0.0;
+            if let Some(ts) = self.timeseries.series_data.iter().find(|t| t.pair_interval.name() == pair) {
+                let count = ts.klines();
+                if count > 0 {
+                    let current_idx = count - 1;
+                    m_state = MarketState::calculate(ts, current_idx, lookback);
+                    for i in (0..=current_idx).rev() {
+                        let c = ts.get_candle(i);
+                        if now_ms - c.timestamp_ms > day_ms { break; }
+                        vol_24h += c.quote_asset_volume;
+                    }
+                }
+            }
+
+            // 2. Explode Opportunities
+            if let Some(model) = &state.model {
+                // Filter worthwhile trades
+                let valid_ops: Vec<&TradeOpportunity> = model.opportunities.iter()
+                    .filter(|op| op.expected_roi() > 0.0)
+                    .collect();
+
+                let total_ops = valid_ops.len();
+
+                if total_ops > 0 {
+                    // Create a ROW for EACH Opportunity
+                    for op in valid_ops {
+                        let live_opp = LiveOpportunity {
+                            opportunity: op.clone(),
+                            current_price,
+                            live_roi: op.live_roi(current_price),
+                            annualized_roi: op.live_annualized_roi(current_price),
+                            risk_pct: calculate_percent_diff(op.stop_price, current_price),
+                            reward_pct: calculate_percent_diff(op.target_price, current_price),
+                            max_duration_ms: op.max_duration_ms,
+                        };
+
+                        rows.push(TradeFinderRow {
+                            pair_name: pair.clone(),
+                            quote_volume_24h: vol_24h,
+                            market_state: m_state, // Copy state
+                            opportunity_count_total: total_ops,
+                            opportunity: Some(live_opp), // <--- Specific Op
+                        });
+                    }
+                } else {
+                    // No valid trades, push 1 placeholder row (for "All Pairs" view)
+                    rows.push(TradeFinderRow {
+                        pair_name: pair.clone(),
+                        quote_volume_24h: vol_24h,
+                        market_state: m_state,
+                        opportunity_count_total: 0,
+                        opportunity: None,
+                    });
+                }
+            } else {
+                // No model yet
+                rows.push(TradeFinderRow {
+                    pair_name: pair.clone(),
+                    quote_volume_24h: vol_24h,
+                    market_state: m_state,
+                    opportunity_count_total: 0,
+                    opportunity: None,
+                });
+            }
+        }
+        rows
+    }
 
     /// Aggregates opportunities.
     /// overrides: If provided, uses these prices instead of live stream (For Simulation).
