@@ -1,4 +1,4 @@
-use eframe::egui::{Color32, RichText, Ui, Button, CursorIcon, Vec2, Stroke, CornerRadius};
+use eframe::egui::{Color32, RichText, Ui, Button, CursorIcon, Vec2, Stroke, CornerRadius, Response, WidgetInfo, WidgetType, Sense, StrokeKind};
 
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::trading_view::TradeDirection;
@@ -65,6 +65,14 @@ pub fn get_outcome_color(value: f64) -> Color32 {
 
 /// Extension trait to add semantic styling methods directly to `egui::Ui`.
 pub trait UiStyleExt {
+
+    /// A custom label that acts like a button:
+    /// - Idle: Transparent BG, 'idle_color' text.
+    /// - Hover: Gray BG, YELLOW text.
+    /// - Selected: Blue BG, WHITE text.
+    fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color32) -> Response;
+
+
     /// Renders small, gray text (good for labels like "Coverage:").
     fn label_subdued(&mut self, text: impl Into<String>);
 
@@ -97,7 +105,57 @@ pub trait UiStyleExt {
 
 impl UiStyleExt for Ui {
 
-fn help_button(&mut self, text: &str) -> bool {
+    fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color32) -> eframe::egui::Response {
+        let font_id = eframe::egui::FontId::proportional(14.0);
+        let padding = eframe::egui::Vec2::new(4.0, 2.0);
+
+        // 1. Calculate Size
+        let galley = self.painter().layout_no_wrap(text.to_string(), font_id, idle_color);
+        let desired_size = galley.size() + padding * 2.0;
+
+        // 2. Allocate Space & Interact
+        let (rect, response) = self.allocate_exact_size(desired_size, Sense::click());
+        
+        // FIX 1: Pass 'true' for 'enabled'
+        response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, is_selected, text));
+
+        if self.is_rect_visible(rect) {
+            // 3. Determine Colors based on State
+            let visuals = self.style().visuals.clone();
+            
+            let (bg_fill, text_color) = if is_selected {
+                (visuals.selection.bg_fill, Color32::WHITE)
+            } else if response.hovered() || response.has_focus() {
+                // HOVER: Gray BG, YELLOW Text
+                (visuals.widgets.hovered.bg_fill, Color32::YELLOW)
+            } else {
+                // IDLE: Transparent BG, Configured Text Color
+                (Color32::TRANSPARENT, idle_color)
+            };
+
+            // 4. Paint Background
+            // Only paint background if not idle (or if selected) to keep the "Ghost" look
+            if is_selected || response.hovered() {
+                // FIX 2: Pass StrokeKind::Inside
+                self.painter().rect(
+                    rect, 
+                    CornerRadius::same(4), // Use explicit Rounding type if needed, or just 4.0 if Into<Rounding> works
+                    bg_fill, 
+                    Stroke::NONE,
+                    StrokeKind::Inside 
+                );
+            }
+
+            // 5. Paint Text
+            // Center the text in the rect
+            let text_pos = rect.left_top() + padding;
+            self.painter().galley(text_pos, galley, text_color);
+        }
+
+        response
+    }
+
+    fn help_button(&mut self, text: &str) -> bool {
         // 1. Use a Scope to modify styles for just this button
         self.scope(|ui| {
             let visuals = ui.visuals_mut();

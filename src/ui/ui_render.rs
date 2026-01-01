@@ -1,6 +1,6 @@
 use eframe::egui::{
-    Align, CentralPanel, Color32, Context, CursorIcon, Frame, Grid, Layout, Order, RichText,
-    ScrollArea, Sense, SidePanel, TopBottomPanel, Ui, Window,
+    Align, CentralPanel, Color32, Context, Frame, Grid, Layout, Order, RichText,
+    ScrollArea, SidePanel, TopBottomPanel, Ui, Window, Popup,
 };
 
 use strum::IntoEnumIterator;
@@ -12,7 +12,7 @@ use crate::config::plot::PLOT_CONFIG;
 use crate::config::TICKER;
 
 use crate::models::cva::ScoreType;
-use crate::models::trading_view::{DirectionFilter, LiveOpportunity, TradeDirection, SortColumn, SortDirection};
+use crate::models::trading_view::{DirectionFilter, LiveOpportunity, TradeDirection, SortColumn, SortDirection, TradeOpportunity};
 
 use crate::ui::app::CandleResolution;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
@@ -57,7 +57,6 @@ impl ZoneSniperApp {
             }
         });
     }
-
 
     pub(super) fn render_opportunity_details_modal(&mut self, ctx: &Context) {
         // 1. Check if open
@@ -311,11 +310,11 @@ impl ZoneSniperApp {
                         );
 
                         // NEW: Variants Info
-                        if op.variant_count > 1 {
+                        if op.variant_count() > 1 {
                             ui.label(
                                 RichText::new(format!(
                                     " ({} {})",
-                                    op.variant_count, UI_TEXT.label_sl_variants
+                                    op.variant_count(), UI_TEXT.label_sl_variants
                                 ))
                                 .small()
                                 .italics()
@@ -648,145 +647,173 @@ impl ZoneSniperApp {
             sel.target_zone_id == op.target_zone_id && sel.pair_name == op.pair_name
         });
 
-        // Higher contrast selection color
+        // 1. Base Card Style
         let card_color = if is_selected {
-            Color32::from_white_alpha(30) // Stronger highlight
+            Color32::from_white_alpha(30)
         } else {
             Color32::TRANSPARENT
         };
 
-        // FRAME is the Button
-        let inner_response = Frame::new()
+        // Track internal button clicks
+        let mut pair_name_clicked = false;
+
+        // FRAME
+        let _inner_response = Frame::new()
             .fill(card_color)
-            .inner_margin(6.0) // More padding
-            .corner_radius(4.0) // Rounded corners
+            .inner_margin(6.0)
+            .corner_radius(4.0)
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // COLUMN A: Pair & Direction
-                    ui.vertical(|ui| {
-                        ui.set_min_width(90.0); // Fixed width for alignment
-
-                        // Pair Name
-                        ui.label(
-                            RichText::new(&op.pair_name)
-                                .strong()
-                                .size(14.0)
-                                .color(PLOT_CONFIG.color_text_primary),
-                        );
-
-                        // Direction Icon
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 2.0;
-                            let dir_color = op.direction.color();
-                            // ui.label(RichText::new(arrow).color(dir_color));
-                            ui.label(
-                                RichText::new(op.direction.to_string().to_uppercase())
-                                    .small()
-                                    .color(dir_color),
-                            );
-                        });
-                    });
-
-                    // COLUMN B: ROI Stats
-                    ui.vertical(|ui| {
-                        ui.set_min_width(100.0); // Slightly wider for the split line
-
-                        let roi_color = get_outcome_color(live_op.live_roi);
-                        ui.label(
-                            RichText::new(format!(
-                                "{}: {:+.2}%",
-                                UI_TEXT.label_roi, live_op.live_roi
-                            ))
-                            .strong()
-                            .color(roi_color),
-                        );
-
-                        // FIX: Split AROI (Colored) and Time (Neutral)
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 2.0;
-
-                            // 1. AROI (Dimmed Outcome Color)
-                            ui.label(
-                                RichText::new(format!(
-                                    "{}: {:+.0}%",
-                                    UI_TEXT.label_aroi, live_op.annualized_roi
-                                ))
-                                .small()
-                                .color(roi_color.linear_multiply(0.8)),
-                            );
-
-                            // 2. Avg Time (Neutral Color)
-                            let avg_str = TimeUtils::format_duration(op.avg_duration_ms);
-                            ui.label(
-                                RichText::new(format!("({} {})", UI_TEXT.label_avg_time, avg_str))
-                                    .small()
-                                    .color(PLOT_CONFIG.color_text_subdued),
-                            );
-                        });
-                    });
-
-                    // COLUMN C: Info Badges
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if op.variant_count > 1 {
-                            ui.label(
-                                RichText::new(format!(
-                                    "({} {})",
-                                    op.variant_count, UI_TEXT.label_sl_variants
-                                ))
-                                .small()
-                                .italics()
-                                .color(PLOT_CONFIG.color_text_subdued),
-                            );
-                        }
-                    });
-                });
-
+                // Header (Columns A, B, C)
+                self.render_card_header(ui, &live_op, is_selected, &mut pair_name_clicked);
+                
                 ui.add_space(2.0);
 
-                // FOOTER: Targets
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(format!(
-                            "{}: +{:.2}%",
-                            &UI_TEXT.tf_target, live_op.reward_pct
-                        ))
-                        .small()
-                        .color(PLOT_CONFIG.color_profit),
-                    );
-                    ui.label(
-                        RichText::new("|")
-                            .small()
-                            .color(PLOT_CONFIG.color_text_subdued),
-                    );
-                    ui.label(
-                        RichText::new(format!(
-                            "{}: -{:.2}%",
-                            &UI_TEXT.label_stop_loss_short, live_op.risk_pct
-                        ))
-                        .small()
-                        .color(PLOT_CONFIG.color_stop_loss),
-                    );
-                });
+                // Footer (Targets)
+                self.render_card_footer(ui, &live_op);
             });
 
-        // HANDLE INTERACTION
-        // 1. Make the whole frame clickable
-        let response = inner_response.response.interact(Sense::click());
-
-        // 2. FIX: Force "Arrow" cursor (Default) on hover
-        // This overrides the text-selection "Caret" cursor that appears over labels.
-        if response.hovered() {
-            ui.ctx().set_cursor_icon(CursorIcon::Default);
-        }
-
-        // 3. Handle Click
-        if response.clicked() {
+        // ACTION: Only if the specific Pair Name button was clicked
+        if pair_name_clicked {
             self.handle_pair_selection(op.pair_name.clone());
             self.scroll_to_pair = Some(op.pair_name.clone());
             self.selected_opportunity = Some(op.clone());
         }
 
         ui.separator();
+    }
+
+    /// Helper: Renders the 3 main columns (Pair, Stats, Variants)
+    fn render_card_header(&mut self, ui: &mut Ui, live_op: &LiveOpportunity, is_selected: bool, pair_clicked: &mut bool) {
+        let op = &live_op.opportunity;
+
+        ui.horizontal(|ui| {
+            // COLUMN A: Pair & Direction
+            ui.vertical(|ui| {
+                ui.set_min_width(90.0);
+
+                // FIX: Use custom interactive_label
+                if ui.interactive_label(&op.pair_name, is_selected, PLOT_CONFIG.color_text_primary).clicked() {
+                    *pair_clicked = true;
+                    // Logic handled in parent
+                    self.handle_pair_selection(op.pair_name.clone());
+                    self.scroll_to_pair = Some(op.pair_name.clone());
+                    self.selected_opportunity = Some(op.clone());
+                }
+
+                // Direction Icon
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    let dir_color = op.direction.color();
+                    let arrow = match op.direction {
+                        TradeDirection::Long => &UI_TEXT.icon_long,
+                        TradeDirection::Short => &UI_TEXT.icon_short,
+                    };
+                    ui.label(RichText::new(arrow).color(dir_color));
+                    ui.label(RichText::new(op.direction.to_string().to_uppercase()).small().color(dir_color));
+                });
+            });
+
+            // COLUMN B: ROI Stats
+            ui.vertical(|ui| {
+                ui.set_min_width(100.0);
+                let roi_color = get_outcome_color(live_op.live_roi);
+                
+                ui.label(RichText::new(format!("{}: {:+.2}%", UI_TEXT.label_roi, live_op.live_roi)).strong().color(roi_color));
+
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.label(RichText::new(format!("{}: {:+.0}%", UI_TEXT.label_aroi, live_op.annualized_roi))
+                        .small().color(roi_color.linear_multiply(0.8)));
+
+                    let avg_str = TimeUtils::format_duration(op.avg_duration_ms);
+                    ui.label(RichText::new(format!("({} {})", UI_TEXT.label_avg_time, avg_str))
+                        .small().color(PLOT_CONFIG.color_text_subdued));
+                });
+            });
+
+            // COLUMN C: Variants Dropdown
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                self.render_card_variants(ui, op);
+            });
+        });
+    }
+
+
+    /// Helper: Renders footer stats
+    fn render_card_footer(&self, ui: &mut Ui, live_op: &LiveOpportunity) {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(format!("{}: +{:.2}%", &UI_TEXT.tf_target, live_op.reward_pct)).small().color(PLOT_CONFIG.color_profit));
+            ui.label(RichText::new("|").small().color(PLOT_CONFIG.color_text_subdued));
+            ui.label(RichText::new(format!("{}: -{:.2}%", &UI_TEXT.label_stop_loss_short, live_op.risk_pct)).small().color(PLOT_CONFIG.color_stop_loss));
+            
+            ui.label(RichText::new("|").small().color(PLOT_CONFIG.color_text_subdued));
+            let time_limit = TimeUtils::format_duration(live_op.max_duration_ms);
+            ui.label(RichText::new(format!("{}: {}", &UI_TEXT.label_limit, time_limit)).small().color(PLOT_CONFIG.color_text_subdued));
+        });
+    }
+
+fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
+        if op.variant_count() > 1 {
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                
+                // 1. Generate Label
+                let label_text = format!("{} {} ▾", op.variant_count(), UI_TEXT.label_sl_variants);
+                
+                // 2. STABILITY FIX: Create a stable ID scope based on data
+                let id_source = format!("var_menu_{}_{}", op.pair_name, op.target_zone_id);
+                
+                ui.push_id(id_source, |ui| {
+                    // 3. Draw Trigger
+                    let btn_response = ui.interactive_label(&label_text, false, PLOT_CONFIG.color_info);
+                    
+                    if btn_response.clicked() {
+                        Popup::toggle_id(ui.ctx(), btn_response.id);
+                    }
+
+                    // 4. Draw Popup
+                    Popup::from_toggle_button_response(&btn_response)
+                        .show(|ui: &mut Ui| { // <--- FIXED: No ui.ctx() here
+                            ui.set_min_width(200.0);
+                            ui.label(RichText::new(&UI_TEXT.label_risk_select).strong().small());
+                            ui.separator();
+                            
+                            let active_stop_price = if let Some(sel) = &self.selected_opportunity {
+                                if sel.pair_name == op.pair_name && sel.target_zone_id == op.target_zone_id {
+                                    sel.stop_price
+                                } else { op.stop_price }
+                            } else { op.stop_price };
+
+                            for variant in &op.variants {
+                                let risk_pct = calculate_percent_diff(variant.stop_price, op.start_price);
+                                let win_rate = variant.simulation.success_rate * 100.0;
+                                
+                                let text = format!(
+                                    "{} {:+.2}%  |  {} -{:.2}%  |  {}: {:.0}%  ({} 1:{:.1})",
+                                    UI_TEXT.label_roi, variant.roi,
+                                    UI_TEXT.label_stop_loss_short, risk_pct,
+                                    UI_TEXT.label_success_rate, win_rate, 
+                                    UI_TEXT.label_risk_reward_short, variant.ratio
+                                );
+
+                                let is_current = (variant.stop_price - active_stop_price).abs() < f64::EPSILON;
+                                
+                                if ui.selectable_label(is_current, text).clicked() {
+                                    self.handle_pair_selection(op.pair_name.clone());
+                                    self.scroll_to_pair = Some(op.pair_name.clone());
+                                    
+                                    let mut new_selected = op.clone();
+                                    new_selected.stop_price = variant.stop_price;
+                                    new_selected.simulation = variant.simulation.clone();
+                                    
+                                    self.selected_opportunity = Some(new_selected);
+                                    
+                                    ui.close(); // <--- FIXED: Modern API
+                                }
+                            }
+                        });
+                });
+            });
+        }
     }
 
     pub(super) fn render_left_panel(&mut self, ctx: &Context) {

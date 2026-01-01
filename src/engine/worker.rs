@@ -21,7 +21,7 @@ use crate::models::OhlcvTimeSeries;
 use crate::models::cva::CVACore;
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::timeseries::find_matching_ohlcv;
-use crate::models::trading_view::{SuperZone, TradeDirection, TradeOpportunity};
+use crate::models::trading_view::{SuperZone, TradeDirection, TradeOpportunity, TradeVariant};
 
 use crate::TradingModel;
 
@@ -131,7 +131,7 @@ fn run_pathfinder_simulations(
 
         if let Some((target_price, direction)) = setup {
             // 4. Run Tournament to find best Stop Loss
-            if let Some((best_result, best_stop, count)) = run_stop_loss_tournament(
+            if let Some((best_result, best_stop, variants)) = run_stop_loss_tournament(
                 ohlcv,
                 &historical_matches,
                 current_market_state,
@@ -156,8 +156,8 @@ fn run_pathfinder_simulations(
                     stop_price: best_stop,
                     max_duration_ms: duration_time.as_millis() as i64,
                     avg_duration_ms: avg_ms,
-                    variant_count: count,
                     simulation: best_result,
+                    variants,
                 });
             }
         }
@@ -177,11 +177,11 @@ fn run_stop_loss_tournament(
     risk_tests: &[f64],
     min_roi_pct: f64,
     _zone_idx: usize,
-) -> Option<(SimulationResult, f64, usize)> {
+) -> Option<(SimulationResult, f64, Vec<TradeVariant>)> {
 
     let mut best_roi = f64::NEG_INFINITY;
     let mut best_result: Option<(SimulationResult, f64, f64)> = None; // (Result, Stop, Ratio)
-    let mut valid_variant_count = 0;
+    let mut valid_variants= Vec::new();
 
     let target_dist_abs = (target_price - current_price).abs();
 
@@ -250,13 +250,21 @@ fn run_stop_loss_tournament(
             // MWT CHECK: Does this variant meet the minimum threshold?
             let is_worthwhile = true_roi_pct >= min_roi_pct;
 
-            if is_worthwhile {
-                valid_variant_count += 1;
+          if is_worthwhile {
+                // Store this variant
+                valid_variants.push(TradeVariant {
+                    ratio,
+                    stop_price: candidate_stop,
+                    roi: true_roi_pct,
+                    simulation: result.clone(),
+                });
+                
+                // Track Best
+                if true_roi_pct > best_roi {
+                    best_roi = true_roi_pct;
+                    best_result = Some((result.clone(), candidate_stop, ratio));
+                }
             }
-
-            // if true_roi_pct > 0.0 {
-            //     valid_variant_count += 1;
-            // }
 
             #[cfg(debug_assertions)]
             if debug {
@@ -289,13 +297,13 @@ fn run_stop_loss_tournament(
         #[cfg(debug_assertions)]
         if debug {
             log::info!(
-                "   🏆 WINNER: R:R {:.1} with ROI {:+.2}% ({} variants)",
+                "   🏆 WINNER: R:R {:.1} with ROI {:+.2}% ({:?} variants)",
                 _ratio,
                 best_roi,
-                valid_variant_count
+                valid_variants
             );
         }
-        Some((res, stop, valid_variant_count))
+        Some((res, stop, valid_variants))
     } else {
         None
     }

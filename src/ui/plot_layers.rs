@@ -196,8 +196,8 @@ impl PlotLayer for OpportunityLayer {
 
             // Block 3: Stop Info
             // Format: Stop: $Price (-%) (N SL Variants)
-            let variant_text = if best_opp.variant_count > 1 {
-                format!(" ({} {})", best_opp.variant_count, UI_TEXT.label_sl_variants)
+            let variant_text = if best_opp.variant_count() > 1 {
+                format!(" ({} {})", best_opp.variant_count(), UI_TEXT.label_sl_variants)
             } else {
                 String::new()
             };
@@ -236,17 +236,6 @@ impl PlotLayer for OpportunityLayer {
                     ..Default::default()
                 },
             );
-
-            // // Add Annualized Line (Smaller)
-            // job.append(
-            //     &format!(" ({}: {:+.0}%)\n", UI_TEXT.label_aroi, ann_roi),
-            //     0.0,
-            //     TextFormat { 
-            //         color: outcome_color.linear_multiply(0.8), // Slightly dimmed 
-            //         font_id: FontId::proportional(12.0), // Smaller font
-            //         ..Default::default() 
-            //     },
-            // );
 
             // Block 5: Time Limit (Kept on new line as requested)
             let time_limit_str = TimeUtils::format_duration(best_opp.max_duration_ms);

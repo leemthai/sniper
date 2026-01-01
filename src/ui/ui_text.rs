@@ -262,6 +262,7 @@ pub struct UiText {
     pub label_avg_time: String,
     pub icon_arrow_right: String,
     pub label_avg_duration: String,
+    pub label_risk_select: String,
 
 }
 
@@ -507,7 +508,8 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         kbs_sim_mode: format!("{} Simulation Mode", ICON_SIMULATE),
 
         label_avg_time: "Avg".to_string(), // Keep it short for HUD/TF
-        icon_arrow_right: ICON_POINT_RIGHT.to_string(), // Uses existing ICON_POINT_RIGHT
+        icon_arrow_right: ICON_POINT_RIGHT.to_string(),
         label_avg_duration: "Avg Duration".to_string(),
+        label_risk_select: "Risk Profile".to_string(),
     }
 });

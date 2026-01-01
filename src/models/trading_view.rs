@@ -23,6 +23,15 @@ use crate::utils::maths_utils::{
     smooth_data,
 };
 
+#[derive(Debug, Clone)]
+pub struct TradeVariant {
+    pub ratio: f64,          // e.g. 2.0
+    pub stop_price: f64,
+    pub roi: f64,            // Static snapshot ROI
+    pub simulation: SimulationResult,
+}
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TradeDirection {
     Long,
@@ -102,11 +111,18 @@ pub struct TradeOpportunity {
     pub stop_price: f64,
     pub max_duration_ms: i64,
     pub avg_duration_ms: i64, // Expected "time to win"
-    pub variant_count: usize, // How many valid SL variants were found
+    // pub variant_count: usize, // How many valid SL variants were found
     pub simulation: SimulationResult,
+    pub variants: Vec<TradeVariant>,
 }
 
 impl TradeOpportunity {
+
+    /// Helper to get number of variants (including the active one)
+    pub fn variant_count(&self) -> usize {
+        self.variants.len()
+    }
+
 
     /// Checks if the opportunity meets the "Worthwhile" criteria.
     pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
