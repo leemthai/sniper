@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 use rayon::prelude::*;
 
 use crate::analysis::market_state::MarketState;
-
 use crate::config::SimilaritySettings;
 use crate::models::OhlcvTimeSeries;
 use crate::models::trading_view::TradeDirection;
@@ -19,7 +18,7 @@ pub struct ScenarioConfig {
 pub enum Outcome {
     TargetHit(usize), // Succeeded in N candles
     StopHit(usize),   // Failed in N candles
-    TimedOut,         // Neither hit
+    TimedOut(f64),    // Neither hit nor failed. Stores % change at timeout
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +27,7 @@ pub struct SimulationResult {
     pub avg_duration: f64,    // Average candles to result
     pub risk_reward_ratio: f64, // Based on historical outcomes
     pub sample_size: usize,   // How many similar scenarios we found
+    pub avg_pnl_pct: f64, // The True Expected Retun (Continuous)
     pub market_state: MarketState,
 }
 
@@ -101,6 +101,22 @@ impl ScenarioSimulator {
         let mut wins = 0;
         let mut total_duration = 0.0;
         let mut valid_samples = 0;
+        let mut total_pnl_pct = 0.0;
+
+        // Pre-calculate theoretical max PnL for Hit/Stop
+        // Long: Target > Entry (Positive), Stop < Entry (Negative)
+        // Short: Target < Entry (Positive), Stop > Entry (Negative)
+        let (win_pnl, lose_pnl) = match direction {
+            TradeDirection::Long => (
+                (target_price - entry_price) / entry_price,
+                (stop_price - entry_price) / entry_price
+            ),
+            TradeDirection::Short => (
+                (entry_price - target_price) / entry_price,
+                (entry_price - stop_price) / entry_price
+            ),
+        };
+
 
         for &(start_idx, _score) in matches {
             let outcome = Self::replay_path(ts, start_idx, entry_price, target_price, stop_price, max_duration, direction);
@@ -110,13 +126,15 @@ impl ScenarioSimulator {
                     wins += 1;
                     total_duration += duration as f64;
                     valid_samples += 1;
+                    total_pnl_pct += win_pnl;
                 },
                 Outcome::StopHit(_) => {
                     valid_samples += 1;
+                    total_pnl_pct += lose_pnl;
                 },
-                Outcome::TimedOut => {
-                    // Treated as a loss or neutral? Currently counting as valid sample (Loss)
+                Outcome::TimedOut(final_pct) => {
                     valid_samples += 1;
+                    total_pnl_pct += final_pct; // Add the actual drift
                 }
             }
         }
@@ -139,11 +157,15 @@ impl ScenarioSimulator {
         let reward = (target_price - entry_price).abs();
         let rr = if risk > f64::EPSILON { reward / risk } else { 0.0 };
 
+        // real Average pnl (The "true" ROI of the sim)
+        let avg_pnl_pct = total_pnl_pct / valid_samples as f64;
+
         Some(SimulationResult {
             success_rate,
             avg_duration,
             risk_reward_ratio: rr,
             sample_size: valid_samples,
+            avg_pnl_pct,
             market_state: current_market_state,
         })
     }
@@ -164,29 +186,35 @@ impl ScenarioSimulator {
         // Calculate Target/Stop as % distance from entry
         let target_dist = (target - current_price_ref) / current_price_ref;
         let stop_dist = (stop - current_price_ref) / current_price_ref;
+        let mut final_pnl = 0.0;
 
         // Iterate forward from the historical start point
         for i in 1..=duration {
             let idx = start_idx + i;
-            if idx >= ts.klines() { return Outcome::TimedOut; }
+            if idx >= ts.klines() { break; }
             
             let c = ts.get_candle(idx);
             
-            // Calculate % change from the historical entry price
             let low_change = (c.low_price - hist_entry) / hist_entry;
             let high_change = (c.high_price - hist_entry) / hist_entry;
+            let close_change = (c.close_price - hist_entry) / hist_entry;
 
             let (hit_target, hit_stop) = match direction {
-                TradeDirection::Long => (high_change >= target_dist, low_change <= stop_dist),
-                TradeDirection::Short => (low_change <= target_dist, high_change >= stop_dist),
+                TradeDirection::Long => {
+                    final_pnl = close_change;
+                    (high_change >= target_dist, low_change <= stop_dist)
+                },
+                TradeDirection::Short => {
+                    final_pnl = -close_change; // Invert PnL for shorts
+                    (low_change <= target_dist, high_change >= stop_dist)
+                }
             };
 
-            // Pessimistic: If both hit in same candle, assume Stop Hit first
-            if hit_target && hit_stop { return Outcome::StopHit(i); } 
+            if hit_target && hit_stop { return Outcome::StopHit(i); }
             if hit_stop { return Outcome::StopHit(i); }
             if hit_target { return Outcome::TargetHit(i); }
         }
         
-        Outcome::TimedOut
+        Outcome::TimedOut(final_pnl)
     }
 }

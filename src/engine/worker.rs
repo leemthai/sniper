@@ -17,10 +17,10 @@ use crate::config::AnalysisConfig;
 
 use crate::domain::price_horizon;
 
+use crate::models::OhlcvTimeSeries;
 use crate::models::cva::CVACore;
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::timeseries::find_matching_ohlcv;
-use crate::models::OhlcvTimeSeries;
 use crate::models::trading_view::{SuperZone, TradeDirection, TradeOpportunity};
 
 use crate::TradingModel;
@@ -33,9 +33,6 @@ use crate::utils::TimeUtils;
 
 #[cfg(debug_assertions)]
 use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::calculate_percent_diff};
-
-
-
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -68,7 +65,7 @@ fn run_pathfinder_simulations(
     let trend_lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
     let current_idx = ohlcv.klines().saturating_sub(1);
 
-    let interval_ms = ohlcv.pair_interval.interval_ms; 
+    let interval_ms = ohlcv.pair_interval.interval_ms;
 
     // --- NEW: USE CENTRALIZED METHOD ---
     // Calculate volatility over the lookback period (Recent Context)
@@ -77,19 +74,26 @@ fn run_pathfinder_simulations(
 
     // B. Calculate Duration (Time) using Adaptive Logic
     let duration_time = AdaptiveParameters::calculate_dynamic_journey_duration(
-        ph_pct, 
-        avg_volatility, 
-        ohlcv.pair_interval.interval_ms
+        ph_pct,
+        avg_volatility,
+        ohlcv.pair_interval.interval_ms,
     );
-    
+
     // C. Convert to Candles for Simulation
     let duration_candles = duration_to_candles(duration_time, interval_ms);
     // -------------------------------------
 
     #[cfg(debug_assertions)]
-    log::info!("PATHFINDER START for {}: Scanning {} zones. Lookback: {} candles. Max Duration: {:?} ({} candles, Vol: {:.3}%. PH: {:.2}%)", 
-        ohlcv.pair_interval.name().to_string(),sticky_zones.len(), trend_lookback, TimeUtils::format_duration(duration_time.as_millis() as i64), duration_candles, avg_volatility * 100.0, ph_pct*100.);
-
+    log::info!(
+        "PATHFINDER START for {}: Scanning {} zones. Lookback: {} candles. Max Duration: {:?} ({} candles, Vol: {:.3}%. PH: {:.2}%)",
+        ohlcv.pair_interval.name().to_string(),
+        sticky_zones.len(),
+        trend_lookback,
+        TimeUtils::format_duration(duration_time.as_millis() as i64),
+        duration_candles,
+        avg_volatility * 100.0,
+        ph_pct * 100.
+    );
 
     // 2. Heavy Lift: Find Historical Matches ONCE
     let (historical_matches, current_market_state) =
@@ -118,11 +122,11 @@ fn run_pathfinder_simulations(
         // IDIOMATIC: Determine Setup using Option<(Price, Direction)>
         // CHANGED: Target is now zone.price_center for both cases
         let setup = if current_price < zone.price_bottom {
-             Some((zone.price_center, TradeDirection::Long))
+            Some((zone.price_center, TradeDirection::Long))
         } else if current_price > zone.price_top {
-             Some((zone.price_center, TradeDirection::Short))
+            Some((zone.price_center, TradeDirection::Short))
         } else {
-             None
+            None
         };
 
         if let Some((target_price, direction)) = setup {
@@ -138,7 +142,6 @@ fn run_pathfinder_simulations(
                 config.journey.risk_reward_tests,
                 i, // zone index for debug logging
             ) {
-
                 // Calculate Average Duration in MS
                 let avg_candles = best_result.avg_duration;
                 let avg_ms = (avg_candles * interval_ms as f64).round() as i64;
@@ -173,7 +176,6 @@ fn run_stop_loss_tournament(
     risk_tests: &[f64],
     _zone_idx: usize,
 ) -> Option<(SimulationResult, f64, usize)> {
-
     let mut best_roi = f64::NEG_INFINITY;
     let mut best_result: Option<(SimulationResult, f64, f64)> = None; // (Result, Stop, Ratio)
     let mut valid_variant_count = 0;
@@ -233,41 +235,45 @@ fn run_stop_loss_tournament(
             duration_candles,
             direction,
         ) {
-            let roi = calculate_expected_roi_pct(
+            // New: Decision metric: use the real average PnL (include Timeouts)
+            let true_roi_pct = result.avg_pnl_pct * 100.0;
+
+            let binary_roi = calculate_expected_roi_pct(
                 current_price,
                 target_price,
                 candidate_stop,
                 result.success_rate,
             );
 
-            if roi > 0.0 {
-                valid_variant_count += 1; // Count positive expectancy variants
+            if true_roi_pct > 0.0 {
+                valid_variant_count += 1;
             }
-
-            if roi > best_roi {
-                best_roi = roi;
-                best_result = Some((result.clone(), candidate_stop, ratio));
-            }
-
 
             #[cfg(debug_assertions)]
             if debug {
-                let risk_pct = calculate_percent_diff(candidate_stop, current_price);
-                log::info!(
-                    "   [R:R {:.1}] Stop: {:.4} | {}: {:.1}% | ROI: {:+.2}% | Risk: {:.2}%",
+                let risk_pct = calculate_percent_diff(
+                    candidate_stop,
+                    current_price,
+                );
+
+                log::debug!(
+                    "   [R:R {:.1}] Stop: {:.4} | {}: {:.1}% | ROI: {:+.2}% (Bin: {:+.2}%) | Risk: {:.2}%",
                     ratio,
                     candidate_stop,
-                    UI_TEXT.label_success_rate, // "Success Rate"
+                    UI_TEXT.label_success_rate,
                     result.success_rate * 100.0,
-                    roi,
-                    risk_pct
+                    true_roi_pct,
+                    binary_roi,
+                    risk_pct,
                 );
             }
 
-            if roi > best_roi {
-                best_roi = roi;
-                best_result = Some((result, candidate_stop, ratio));
+            // Optimize for True ROI
+            if true_roi_pct > best_roi {
+                best_roi = true_roi_pct;
+                best_result = Some((result.clone(), candidate_stop, ratio));
             }
+
         }
     }
 
@@ -275,7 +281,12 @@ fn run_stop_loss_tournament(
     if let Some((res, stop, _ratio)) = best_result {
         #[cfg(debug_assertions)]
         if debug {
-            log::info!("   🏆 WINNER: R:R {:.1} with ROI {:+.2}% ({} variants)", _ratio, best_roi, valid_variant_count);
+            log::info!(
+                "   🏆 WINNER: R:R {:.1} with ROI {:+.2}% ({} variants)",
+                _ratio,
+                best_roi,
+                valid_variant_count
+            );
         }
         Some((res, stop, valid_variant_count))
     } else {
@@ -412,9 +423,10 @@ fn build_success_result(
     #[cfg(debug_assertions)]
     if !opps.is_empty() {
         // Just log the top one to check sanity
-        if let Some(best) = opps.iter().max_by(|a, b| {
-            a.expected_roi().partial_cmp(&b.expected_roi()).unwrap()
-        }) {
+        if let Some(best) = opps
+            .iter()
+            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
+        {
             log::info!(
                 "🎯 PATHFINDER [{}]: Found {} opps. Best: {} to {:.2} ({}: {:.1}% | R:R: {:.2} | Samples: {})",
                 req.pair_name,

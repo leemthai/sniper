@@ -243,6 +243,11 @@ pub struct UiText {
     pub ls_syncing: String,
     pub ls_main: String,
     pub ls_failed: String,
+
+    pub label_avg_time: String,
+    pub icon_arrow_right: String,
+    pub label_avg_duration: String,
+
 }
 
 // THE SINGLETON
@@ -311,7 +316,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         opp_exp_current_opp: "Current Opportunity".to_string(),
         opp_exp_setup_type: "Setup Type".to_string(),
         opp_exp_expectancy: "Expectancy & Return".to_string(),
-        opp_exp_market_context: "Market Context (The 'DNA')".to_string(),
+        opp_exp_market_context: "Market Context (Used to find similar trade setups)".to_string(),
         opp_exp_trend_measured: "Trend measured over the last".to_string(),
         opp_exp_trend_length: "Trend window length derived from PH of".to_string(),
         opp_exp_relative_volume: "Relative Volume".to_string(),
@@ -473,5 +478,9 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         kbs_view_time_machine: format!("{} Time Machine Pane", ICON_TIME_MACHINE),
 
         kbs_sim_mode: format!("{} Simulation Mode", ICON_SIMULATE),
+
+        label_avg_time: "Avg".to_string(), // Keep it short for HUD/TF
+        icon_arrow_right: ICON_POINT_RIGHT.to_string(), // Uses existing ICON_POINT_RIGHT
+        label_avg_duration: "Avg Duration".to_string(),
     }
 });

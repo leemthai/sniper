@@ -56,6 +56,7 @@ pub struct LiveOpportunity {
     pub annualized_roi: f64,
     pub risk_pct: f64,   // Distance to Stop
     pub reward_pct: f64, // Distance to Target
+    pub max_duration_ms: i64,
 }
 
 #[derive(Debug, Clone)]

@@ -23,6 +23,8 @@ use crate::ui::styles::{DirectionColor, get_outcome_color, apply_opacity};
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
+
+use crate::utils::TimeUtils;
 use crate::utils::maths_utils::{self, calculate_percent_diff};
 
 pub struct HorizonLinesLayer;
@@ -215,27 +217,50 @@ impl PlotLayer for OpportunityLayer {
                 },
             );
 
-            // Block 4: RoI (Outcome Color)
+            // Block 4: RoI info
+
             job.append(
-                &format!("{}: {:+.2}%", UI_TEXT.label_roi, roi),
+                &format!("{}: {:+.2}% {} {} {:+.0}% ({} {})\n", 
+                    UI_TEXT.label_roi, 
+                    roi,
+                    UI_TEXT.icon_arrow_right, // The Arrow
+                    UI_TEXT.label_aroi, 
+                    ann_roi,
+                    UI_TEXT.label_avg_time,
+                    TimeUtils::format_duration(best_opp.avg_duration_ms),
+                ),
                 0.0,
                 TextFormat {
                     color: outcome_color,
-                    font_id: font_id,
+                    font_id: font_id.clone(),
                     ..Default::default()
                 },
             );
 
-            // Add Annualized Line (Smaller)
+            // // Add Annualized Line (Smaller)
+            // job.append(
+            //     &format!(" ({}: {:+.0}%)\n", UI_TEXT.label_aroi, ann_roi),
+            //     0.0,
+            //     TextFormat { 
+            //         color: outcome_color.linear_multiply(0.8), // Slightly dimmed 
+            //         font_id: FontId::proportional(12.0), // Smaller font
+            //         ..Default::default() 
+            //     },
+            // );
+
+            // Block 5: Time Limit (Kept on new line as requested)
+            let time_limit_str = TimeUtils::format_duration(best_opp.max_duration_ms);
+            
             job.append(
-                &format!(" ({}: {:+.0}%)", UI_TEXT.label_aroi, ann_roi),
+                &format!("{}: {}", UI_TEXT.opp_exp_order_time_limit, time_limit_str),
                 0.0,
-                TextFormat { 
-                    color: outcome_color.linear_multiply(0.8), // Slightly dimmed 
-                    font_id: FontId::proportional(12.0), // Smaller font
-                    ..Default::default() 
+                TextFormat {
+                    color: neutral_text_color,
+                    font_id: font_id.clone(),
+                    ..Default::default()
                 },
             );
+
 
             // 3. Render it (FIXED: Use painter.layout_job)
             let galley = painter.layout_job(job);

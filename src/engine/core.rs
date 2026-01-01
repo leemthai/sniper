@@ -81,6 +81,7 @@ impl SniperEngine {
                         annualized_roi,
                         risk_pct,
                         reward_pct,
+                        max_duration_ms: opp.max_duration_ms,
                     });
                 }
             }
@@ -387,8 +388,8 @@ impl SniperEngine {
 
         // Pop the tuple
         if let Some((pair, price_opt)) = self.queue.pop_front() {
-            #[cfg(debug_assertions)]
-            log::warn!("ENGINE QUEUE: Popped job for [{}]", pair); // <--- LOG THIS
+            // #[cfg(debug_assertions)]
+            // log::warn!("ENGINE QUEUE: Popped job for [{}]", pair); // <--- LOG THIS
 
             self.dispatch_job(pair, price_opt);
         }
