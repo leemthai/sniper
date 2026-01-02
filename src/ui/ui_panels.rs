@@ -14,9 +14,7 @@ use crate::models::horizon_profile::HorizonProfile;
 use crate::ui::config::UI_TEXT;
 use crate::ui::styles::{UiStyleExt, colored_subsection_heading};
 
-use crate::ui::utils::{
-    format_candle_count, format_duration_context,
-};
+use crate::ui::utils::format_duration_context;
 use crate::utils::maths_utils::{calculate_history_days, calculate_evidence_days, calculate_density_pct};
 
 use crate::utils::TimeUtils;
@@ -590,6 +588,8 @@ impl<'a> DataGenerationPanel<'a> {
             });
         }
     }
+}
+
 
 #[derive(Debug)]
 pub enum DataGenerationEventChanged {
