@@ -444,15 +444,27 @@ impl ZoneSniperApp {
     }
 
     pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
+
+        // 1. CLEAR STALE OP
+        // The old opportunity is based on old zones. It is now invalid.
+        // self.selected_opportunity = None;
+
         if let Some(pair) = self.selected_pair.clone() {
+            log::error!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
+
             let price = self.get_display_price(&pair);
             let new_config = self.app_config.price_horizon.clone();
+
+            // Update override map
             self.price_horizon_overrides
                 .insert(pair.clone(), new_config.clone());
 
             if let Some(engine) = &mut self.engine {
+                // Update global config context
                 engine.update_config(self.app_config.clone());
+                // Update specific override
                 engine.set_price_horizon_override(pair.clone(), new_config);
+                // Trigger Recalc
                 engine.force_recalc(
                     &pair,
                     price,
@@ -834,42 +846,44 @@ impl ZoneSniperApp {
         if let Some(rx) = &self.data_rx {
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
-                // 1. Validate Pair
+                // 1. Resolve Startup Pair
+                // If the persisted selected_pair is valid, use it. 
+                // Otherwise, fallback to the first available pair.
                 let available_pairs = timeseries.unique_pair_names();
-                let current_is_valid = self
-                    .selected_pair
-                    .as_ref()
-                    .map(|p| available_pairs.contains(p))
-                    .unwrap_or(false);
-
-                if !current_is_valid {
-                    if let Some(first) = available_pairs.first() {
-                        #[cfg(debug_assertions)]
-                        log::warn!(
-                            "Startup: Persisted pair {:?} not found. Switching to {}",
-                            self.selected_pair,
-                            first
-                        );
-                        self.selected_pair = Some(first.clone());
-                    }
-                }
+                
+                let startup_pair = self.selected_pair.as_ref()
+                    .filter(|p| available_pairs.contains(p))
+                    .cloned()
+                    .or_else(|| available_pairs.first().cloned())
+                    .unwrap_or_default(); // Safety for empty list
 
                 // 2. Initialize Engine
                 let mut engine = SniperEngine::new(timeseries);
                 engine.update_config(self.app_config.clone());
                 engine.set_all_overrides(self.price_horizon_overrides.clone());
-                engine.trigger_global_recalc(self.selected_pair.clone());
+                
+                // Queue up the work, prioritizing our startup pair
+                engine.trigger_global_recalc(Some(startup_pair.clone()));
 
+                // Commit Engine to App State
                 self.engine = Some(engine);
-                self.scroll_to_pair = self.selected_pair.clone();
 
-                // 3. Reset Navigation
-                if let Some(pair) = &self.selected_pair {
-                    self.nav_states
-                        .insert(pair.clone(), NavigationState::default());
-                }
+                // 3. EXECUTE SELECTION
+                // This runs your full selection logic:
+                // - Updates selected_pair
+                // - Auto-selects the Best Opportunity (if model exists instantly, usually waits for worker)
+                // - Ensures config syncing
+                self.handle_pair_selection(startup_pair.clone());
 
-                return Some(AppState::Running);
+                // Ensure list is scrolled to it
+                #[cfg(debug_assertions)]
+                log::info!("UI: Startup complete. Requesting initial scroll to {}", startup_pair);
+                self.scroll_to_pair = Some(startup_pair.clone());
+
+                // 4. Reset Navigation
+                self.nav_states.insert(startup_pair, NavigationState::default());
+
+                return Some(AppState::Running);  
             }
         }
         None
@@ -886,6 +900,11 @@ impl eframe::App for ZoneSniperApp {
         setup_custom_visuals(ctx);
 
         let mut next_state = None;
+
+        // --- FIX: GLOBAL CURSOR STRATEGY ---
+        // Disable text selection globally.
+        // This stops the I-Beam cursor appearing on labels/buttons unless it is a text edit box. THis also prevents text from being selectable
+        ctx.style_mut(|s| s.interaction.selectable_labels = false);
 
         // --- PHASE A: LOADING STATE ---
         // We use a scope block to limit the borrow of 'self.state'

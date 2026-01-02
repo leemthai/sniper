@@ -569,13 +569,13 @@ impl<'a> DataGenerationPanel<'a> {
                 ui.label(RichText::new(&UI_TEXT.ph_label_evidence).small().color(PLOT_CONFIG.color_text_subdued));
                 ui.label(RichText::new(format_duration_context(evidence_days)).small().color(PLOT_CONFIG.color_text_primary));
                 
-                ui.subtle_vertical_separator();
+                ui.separator();
 
                 // B. History
                 ui.label(RichText::new(&UI_TEXT.ph_label_history).small().color(PLOT_CONFIG.color_text_subdued));
                 ui.label(RichText::new(format_duration_context(history_days)).small().color(PLOT_CONFIG.color_info));
 
-                ui.subtle_vertical_separator();
+                ui.separator();
 
                 // C. Density
                 ui.label(RichText::new(&UI_TEXT.ph_label_density).small().color(PLOT_CONFIG.color_text_subdued));

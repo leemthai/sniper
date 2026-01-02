@@ -1,15 +1,15 @@
 use eframe::egui::{
     Align, CentralPanel, Context, FontId, Grid, Layout, Order, RichText, ScrollArea, SidePanel,
-    TopBottomPanel, Ui, Window, Key, Id, Align2, Stroke, Area, Frame
+    TopBottomPanel, Ui, Window,
 };
 
-use strum::IntoEnumIterator;
 use std::cmp::Ordering;
+use strum::IntoEnumIterator;
 
 use crate::analysis::adaptive::AdaptiveParameters;
 
-use crate::config::{TICKER, ANALYSIS};
 use crate::config::plot::PLOT_CONFIG;
+use crate::config::{ANALYSIS, TICKER};
 
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::ScoreType;
@@ -19,10 +19,10 @@ use crate::models::trading_view::{
 
 use crate::ui::app::CandleResolution;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
+use crate::ui::styles::{DirectionColor, UiStyleExt, get_outcome_color};
 use crate::ui::ui_panels::{
     CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel,
 };
-use crate::ui::styles::{DirectionColor, UiStyleExt, get_outcome_color};
 use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
@@ -251,7 +251,7 @@ impl ZoneSniperApp {
                         roi_color,
                     );
 
-                    // Avg Duration (FIX: Uses UI_TEXT and Neutral Color)
+                    // Avg Duration
                     let avg_time_str = TimeUtils::format_duration(op.avg_duration_ms);
                     ui.metric(
                         &UI_TEXT.label_avg_duration,
@@ -586,6 +586,12 @@ impl ZoneSniperApp {
                 .clicked()
             {
                 self.tf_filter_pair_only = false;
+                // LOGIC FIX: When switching to ALL, scroll to the current selection so we don't lose it
+                if let Some(p) = &self.selected_pair {
+                    #[cfg(debug_assertions)]
+                    log::info!("UI: Scope changed to ALL. Requesting scroll to {}", p);
+                    self.scroll_to_pair = Some(p.clone());
+                }
             }
 
             // "BTC ONLY"
@@ -602,11 +608,12 @@ impl ZoneSniperApp {
             {
                 self.tf_filter_pair_only = true;
             }
-        });
-        ui.separator();
+            // --- SEPARATOR ---
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(10.0);
 
-        // --- DIRECTION FILTER ---
-        ui.horizontal(|ui| {
+            // --- DIRECTION FILTER ---
             ui.label(
                 RichText::new(&UI_TEXT.label_filter_icon)
                     .size(16.0)
@@ -636,21 +643,41 @@ impl ZoneSniperApp {
                 *f = DirectionFilter::Short;
             }
         });
-        ui.separator();
     }
 
-    /// Main Entry Point for Row Rendering
-    fn render_finder_grid_row(&mut self, ui: &mut Ui, row: TradeFinderRow) {
-        // 1. Determine Selection State
-        let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
-            && match (&self.selected_opportunity, &row.opportunity) {
-                (Some(sel), Some(live_op)) => sel.target_zone_id == live_op.opportunity.target_zone_id,
-                (None, None) => true,
-                _ => false,
-            };
+    // --- ROW RENDERER (UNIFIED) ---
+    fn render_finder_grid_row(&mut self, ui: &mut Ui, row: TradeFinderRow, scroll_target_found: &mut bool, index: usize) {
+        
+        let pair_match = self.selected_pair.as_deref() == Some(&row.pair_name);
+        
+        // DEBUG: Check why selection fails (RESTORED)
+        let id_match = match (&self.selected_opportunity, &row.opportunity) {
+            (Some(sel), Some(live_op)) => {
+                let m = sel.target_zone_id == live_op.opportunity.target_zone_id;
+                if pair_match && !m {
+                    // UNGUARDED LOG
+                    // log::error!(
+                    //     "UI MISMATCH [{}]: Selected Zone {} vs Row Zone {}. (PH Changed?)",
+                    //     row.pair_name,
+                    //     sel.target_zone_id,
+                    //     live_op.opportunity.target_zone_id
+                    // );
+                }
+                m
+            }
+            (None, None) => true,
+            _ => false,
+        };
 
-        // 2. Render Columns Sequentially (Easy to Reorder)
-        self.col_pair_name(ui, &row, is_selected);
+        let is_selected = pair_match && id_match;
+
+        // 2. Render Columns Sequentially
+        
+        // COL 1: Pair Name + Direction (Merged) + Scroll Logic
+        self.col_pair_name(ui, &row, is_selected, scroll_target_found, index);
+        
+        // REMOVED: ui.label(""); // No Spacer!
+
         self.col_market_state(ui, &row);
         self.col_return_metrics(ui, &row);
         self.col_time_and_ops(ui, &row);
@@ -660,17 +687,23 @@ impl ZoneSniperApp {
         ui.end_row();
     }
 
-    /// Pair Name + Direction Icon
-    fn col_pair_name(&mut self, ui: &mut Ui, row: &TradeFinderRow, is_selected: bool) {
+    // --- COLUMN HELPERS ---
+
+    /// Column 1: Pair Name + Direction Icon (Merged)
+    fn col_pair_name(&mut self, ui: &mut Ui, row: &TradeFinderRow, is_selected: bool, scroll_target_found: &mut bool, index: usize) {
         ui.horizontal(|ui| {
-            // Button
-            if ui.interactive_label(
+            // A. Button
+            let response = ui.interactive_label(
                 &row.pair_name,
                 is_selected,
                 PLOT_CONFIG.color_text_primary,
                 FontId::proportional(14.0),
-            ).clicked() {
+            );
+
+            // Click Handler
+            if response.clicked() {
                 self.handle_pair_selection(row.pair_name.clone());
+                // If this row has a specific op, select it. Otherwise clear op selection.
                 if let Some(live_op) = &row.opportunity {
                     self.selected_opportunity = Some(live_op.opportunity.clone());
                 } else {
@@ -678,7 +711,22 @@ impl ZoneSniperApp {
                 }
             }
 
-            // Direction Arrow (Only if Op exists)
+            // --- SCROLL FIX ---
+            if let Some(target) = &self.scroll_to_pair {
+                if target == &row.pair_name {
+                    
+                    // CRITICAL FIX: Only scroll if we haven't already scrolled to this pair in this frame.
+                    // This ensures we snap to the TOP (Best) opportunity, not the bottom one.
+                    if !*scroll_target_found {
+                        log::error!("UI: Scrolling to FIRST instance of {} (Row {})", row.pair_name, index);
+
+                        response.scroll_to_me(Some(eframe::egui::Align::Center));
+                        *scroll_target_found = true; 
+                    }
+                }
+            }
+
+            // B. Direction Arrow (Merged in same cell)
             if let Some(live_op) = &row.opportunity {
                 let op = &live_op.opportunity;
                 let dir_color = op.direction.color();
@@ -691,20 +739,24 @@ impl ZoneSniperApp {
         });
     }
 
-    /// Market State (Vol/Mom) 
+    /// Market State (Vol/Mom)
     fn col_market_state(&self, ui: &mut Ui, row: &TradeFinderRow) {
         if let Some(ms) = &row.market_state {
             ui.vertical(|ui| {
                 // Volatility
-                ui.label(RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
-                    .small()
-                    .color(PLOT_CONFIG.color_info));
-                
+                ui.label(
+                    RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
+                        .small()
+                        .color(PLOT_CONFIG.color_info),
+                );
+
                 // Momentum
                 let mom_color = get_outcome_color(ms.momentum_pct);
-                ui.label(RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
-                    .small()
-                    .color(mom_color));
+                ui.label(
+                    RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
+                        .small()
+                        .color(mom_color),
+                );
             });
         } else {
             self.display_no_data(ui);
@@ -716,28 +768,39 @@ impl ZoneSniperApp {
         if let Some(live_op) = &row.opportunity {
             let roi_color = get_outcome_color(live_op.live_roi);
             ui.vertical(|ui| {
-                ui.label(RichText::new(format!("{:+.2}%", live_op.live_roi)).color(roi_color));
-                ui.label(RichText::new(format!("{:+.0}%", live_op.annualized_roi))
-                    .small()
-                    .color(roi_color.linear_multiply(0.7)));
+                ui.label(
+                    RichText::new(format!("{:+.2}%", live_op.live_roi))
+                        .small()
+                        .color(roi_color),
+                );
+                ui.label(
+                    RichText::new(format!("{:+.0}%", live_op.annualized_roi))
+                        .small()
+                        .color(roi_color.linear_multiply(0.7)),
+                );
             });
         } else {
             self.display_no_data(ui);
         }
     }
 
-
     /// Time & Ops Count - Handles Both Cases
     fn col_time_and_ops(&self, ui: &mut Ui, row: &TradeFinderRow) {
         if let Some(live_op) = &row.opportunity {
             ui.vertical(|ui| {
                 let time_str = TimeUtils::format_duration(live_op.opportunity.avg_duration_ms);
-                ui.label(RichText::new(time_str).small().color(PLOT_CONFIG.color_text_neutral));
+                ui.label(
+                    RichText::new(time_str)
+                        .small()
+                        .color(PLOT_CONFIG.color_text_neutral),
+                );
 
                 if row.opportunity_count_total > 1 {
-                    ui.label(RichText::new(format!("{} Opps", row.opportunity_count_total))
-                        .small()
-                        .color(PLOT_CONFIG.color_text_subdued));
+                    ui.label(
+                        RichText::new(format!("{} Opps", row.opportunity_count_total))
+                            .small()
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
                 }
             });
         } else {
@@ -748,7 +811,11 @@ impl ZoneSniperApp {
     ///  24h Volume - Always present (even without op)
     fn col_volume_24h(&self, ui: &mut Ui, row: &TradeFinderRow) {
         let val_str = format_volume_compact(row.quote_volume_24h);
-        ui.label(RichText::new(val_str).small().color(PLOT_CONFIG.color_text_subdued));
+        ui.label(
+            RichText::new(val_str)
+                .small()
+                .color(PLOT_CONFIG.color_text_subdued),
+        );
     }
 
     /// SL Variants - Handles Both Cases
@@ -765,153 +832,182 @@ impl ZoneSniperApp {
         ui.label("-");
     }
 
-    fn render_trade_finder_content(&mut self, ui: &mut Ui) {
-        
-        ui.style_mut().interaction.selectable_labels = false; // Disable text selection to remove Caret cursor
 
-        // 1. Controls (Filters)
+    fn render_trade_finder_content(&mut self, ui: &mut Ui) {
+        // 1. Controls
         self.render_trade_finder_filters(ui);
 
-        // 2. Data
+        // 2. Data Fetch & Filter
+        let mut rows = self.get_filtered_rows();
+
+        // 3. Auto-Heal Selection (Logic extracted)
+        self.auto_heal_selection(&rows);
+
+        // 4. Sort
+        self.sort_trade_finder_rows(&mut rows);
+
+        // 5. Render Grid
+        let mut scroll_target_found = false;
+
+        ScrollArea::vertical().id_salt("tf_grid_scroll").auto_shrink([false, false]).show(ui, |ui| {
+             if rows.is_empty() {
+                 ui.label(&UI_TEXT.label_no_opps);
+                 return;
+             }
+             
+             Grid::new("tf_results_grid")
+                .striped(true)
+                .min_col_width(0.0) 
+                .spacing([10.0, 6.0]) 
+                .show(ui, |ui| {
+                    
+                    // --- HEADER ROW ---
+                    let mut header_stack = |ui: &mut Ui, col_top: SortColumn, txt_top: &str, col_bot: Option<(SortColumn, &str)>, width: f32| {
+                        ui.vertical(|ui| {
+                            if width > 0.0 { ui.set_min_width(width); }
+                            self.render_stable_sort_label(ui, col_top, txt_top);
+                            if let Some((c, t)) = col_bot {
+                                self.render_stable_sort_label(ui, c, t);
+                            }
+                        });
+                    };
+
+                    header_stack(ui, SortColumn::PairName, &UI_TEXT.label_pair, None, 100.0);
+                    header_stack(ui, SortColumn::Volatility, &UI_TEXT.label_volatility_short, Some((SortColumn::Momentum, &UI_TEXT.label_momentum_short)), 60.0);
+                    header_stack(ui, SortColumn::LiveRoi, &UI_TEXT.label_roi, Some((SortColumn::AnnualizedRoi, &UI_TEXT.label_aroi)), 60.0);
+                    header_stack(ui, SortColumn::AvgDuration, &UI_TEXT.tf_time, Some((SortColumn::OpportunityCount, &UI_TEXT.label_opps_short)), 60.0);
+                    header_stack(ui, SortColumn::QuoteVolume24h, &UI_TEXT.label_volume_24h, None, 60.0);
+                    header_stack(ui, SortColumn::VariantCount, &UI_TEXT.label_stop_loss_short, None, 40.0);
+                    ui.end_row();
+
+                    // --- DATA ROWS ---
+                    for (i, row) in rows.into_iter().enumerate() {
+                        self.render_finder_grid_row(ui, row, &mut scroll_target_found, i);
+                    }
+                });
+        });
+
+        // 6. Scroll Acknowledgement
+        if scroll_target_found {
+            if let Some(target) = &self.scroll_to_pair {
+                // UNGUARDED LOG
+                log::info!("UI: Scroll target '{}' rendered. Clearing request.", target);
+            }
+            self.scroll_to_pair = None;
+        }
+    }
+
+    /// Helper: Fetches and Filters Rows
+    fn get_filtered_rows(&self) -> Vec<TradeFinderRow> {
         let mut rows = if let Some(eng) = &self.engine {
             eng.get_trade_finder_rows(Some(&self.simulated_prices))
         } else {
             vec![]
         };
 
-        // --- FILTERING (Same as before) ---
-        if self.tf_filter_pair_only {
-            let base = self
-                .selected_pair
-                .as_ref()
-                .and_then(|p| PairInterval::get_base(p))
-                .unwrap_or("");
-            if !base.is_empty() {
-                rows.retain(|r| r.pair_name.starts_with(base));
+        // 1. MWT (Quality Control)
+        // If a trade is "Trash", downgrade the row to "No Opportunity".
+        // We do NOT remove the row yet; we want to see the pair + market state.
+        let profile = &ANALYSIS.journey.profile;
+        for row in &mut rows {
+            if let Some(op) = &row.opportunity {
+                if !op.opportunity.is_worthwhile(profile) {
+                    row.opportunity = None; // Demote
+                }
             }
         }
 
-        match self.tf_filter_direction {
-            DirectionFilter::All => {}
-            _ => {
+        // 2. Scope Filter (Base Asset)
+        if self.tf_filter_pair_only {
+            let base = self.selected_pair.as_ref()
+                .and_then(|p| PairInterval::get_base(p))
+                .unwrap_or("");
+            
+            if !base.is_empty() { 
                 rows.retain(|r| {
+                    // Always keep selected pair, or matches base
+                    self.selected_pair.as_deref() == Some(&r.pair_name) || r.pair_name.starts_with(base)
+                }); 
+            }
+        }
+
+        // 3. Direction Filter
+        match self.tf_filter_direction {
+            DirectionFilter::All => {
+                // Keep EVERYTHING. 
+                // Rows with `opportunity: None` will render as "No Setup" with Market Stats.
+            },
+            _ => {
+                // Strict Mode: Only show matching trades (or the selected pair)
+                rows.retain(|r| {
+                    if self.selected_pair.as_deref() == Some(&r.pair_name) { return true; }
+
                     if let Some(op) = &r.opportunity {
                         match self.tf_filter_direction {
-                            DirectionFilter::Long => {
-                                op.opportunity.direction == TradeDirection::Long
-                            }
-                            DirectionFilter::Short => {
-                                op.opportunity.direction == TradeDirection::Short
-                            }
-                            _ => true,
+                            DirectionFilter::Long => op.opportunity.direction == TradeDirection::Long,
+                            DirectionFilter::Short => op.opportunity.direction == TradeDirection::Short,
+                            _ => true
                         }
                     } else {
-                        false
+                        false // Hide "No Setup" rows when filtering for specific direction
                     }
                 });
             }
         }
+        
+        rows
+    }
 
-        let profile = &ANALYSIS.journey.profile;
-        if !rows.is_empty() {
-            rows.retain(|r| {
-                if let Some(op) = &r.opportunity {
-                    op.opportunity.is_worthwhile(profile)
-                } else {
-                    true
-                }
-            });
-        }
+    /// Helper: Heals stale selection when zones change
+    fn auto_heal_selection(&mut self, rows: &[TradeFinderRow]) {
+        if let Some(pair) = &self.selected_pair {
+            if let Some(current_sel) = &self.selected_opportunity {
+                // 1. Check if the specific op still exists in the rows (matching Zone ID)
+                let exists = rows.iter().any(|r| {
+                     r.pair_name == *pair && 
+                     r.opportunity.as_ref().map_or(false, |op| op.opportunity.target_zone_id == current_sel.target_zone_id)
+                });
 
-        // 4. Sort
-        self.sort_trade_finder_rows(&mut rows);
+                if !exists {
+                    // 2. The old op is gone. Find replacement.
+                    let best_new = rows.iter()
+                        .filter(|r| r.pair_name == *pair && r.opportunity.is_some())
+                        .max_by(|a, b| {
+                             let roi_a = a.opportunity.as_ref().unwrap().live_roi;
+                             let roi_b = b.opportunity.as_ref().unwrap().live_roi;
+                             roi_a.total_cmp(&roi_b)
+                        });
 
-        // 5. Render Grid
-        ScrollArea::vertical()
-            .id_salt("tf_grid_scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                if rows.is_empty() {
-                    ui.label(&UI_TEXT.label_no_opps);
-                    return;
-                }
-
-                Grid::new("tf_results_grid")
-                    .striped(true)
-                    .min_col_width(0.0)
-                    .spacing([10.0, 6.0])
-                    .show(ui, |ui| {
-                        // --- STABLE HEADER ROW ---
-                        // Helper: Now accepts 'min_width' to stabilize specific columns
-                        let mut header_stack =
-                            |ui: &mut Ui,
-                             col_top: SortColumn,
-                             txt_top: &str,
-                             col_bot: Option<(SortColumn, &str)>,
-                             width: f32| {
-                                ui.vertical(|ui| {
-                                    // Enforce width constraint on this cell
-                                    if width > 0.0 {
-                                        ui.set_min_width(width);
-                                    }
-
-                                    self.render_stable_sort_label(ui, col_top, txt_top);
-                                    if let Some((c, t)) = col_bot {
-                                        self.render_stable_sort_label(ui, c, t);
-                                    }
-                                });
-                            };
-
-                        // Pair
-                        header_stack(
-                            ui,
-                            SortColumn::PairName,
-                            &UI_TEXT.label_pair.to_uppercase(),
-                            None,
-                            0.0,
-                        ); // Natural width
-
-                        // Market (Volatility/Momentum)
-                        header_stack(
-                            ui,
-                            SortColumn::Volatility,
-                            &UI_TEXT.label_volatility_short,
-                            Some((SortColumn::Momentum, &UI_TEXT.label_momentum_short)),
-                            60.,
-                        );
-
-                        // Return (ROI / AROI)
-                        header_stack(
-                            ui,
-                            SortColumn::LiveRoi,
-                            &UI_TEXT.label_roi,
-                            Some((SortColumn::AnnualizedRoi, &UI_TEXT.label_aroi)),
-                            60.,
-                        );
-
-                        // Time (Order Time / Opps)
-                        header_stack(
-                            ui,
-                            SortColumn::AvgDuration,
-                            &UI_TEXT.tf_time,
-                            Some((SortColumn::OpportunityCount, &UI_TEXT.label_opps_short)),
-                            60.,
-                        );
-
-                        // Vol 24h
-                        header_stack(ui, SortColumn::QuoteVolume24h, &UI_TEXT.label_volume_24h, None, 60.);
-
-                        // SL Variants
-                        header_stack(ui, SortColumn::VariantCount, &UI_TEXT.label_stop_loss_short, None, 30.);
-
-                        ui.end_row();
-
-                        // --- DATA ROWS ---
-                        for row in rows {
-                            self.render_finder_grid_row(ui, row);
+                    if let Some(new_row) = best_new {
+                        if let Some(op) = &new_row.opportunity {
+                            log::error!("UI AUTO-HEAL: Swapping stale selection for {}. New Zone: {}", pair, op.opportunity.target_zone_id);
+                            self.selected_opportunity = Some(op.opportunity.clone());
                         }
+                    } else {
+                        log::error!("UI AUTO-HEAL: Selection lost for {} (No valid trades). Clearing specific op.", pair);
+                        self.selected_opportunity = None;
+                    }
+                }
+            } 
+            else {
+                 // 3. Case: No selection (None). Try to Upgrade to Best if one appeared.
+                 // This handles the "PH Click -> Recalc -> New Trade appears" flow.
+                 let best_new = rows.iter()
+                    .filter(|r| r.pair_name == *pair && r.opportunity.is_some())
+                    .max_by(|a, b| {
+                         let roi_a = a.opportunity.as_ref().unwrap().live_roi;
+                         let roi_b = b.opportunity.as_ref().unwrap().live_roi;
+                         roi_a.total_cmp(&roi_b)
                     });
-            });
+
+                if let Some(new_row) = best_new {
+                    if let Some(op) = &new_row.opportunity {
+                        log::error!("UI AUTO-HEAL: Upgraded None -> Best Op for {}. Zone: {}", pair, op.opportunity.target_zone_id);
+                        self.selected_opportunity = Some(op.opportunity.clone());
+                    }
+                }
+            }
+        }
     }
 
     /// Renders a single sortable label using the Interactive Button style
@@ -985,7 +1081,10 @@ impl ZoneSniperApp {
                                     self.app_config.time_decay_factor = new_decay;
                                 }
                                 self.auto_scale_y = true;
-                                // -----------------------------
+                                // NEW: If we change PH, the list might shuffle. Ensure we keep our selection in view.
+                                if let Some(p) = &self.selected_pair {
+                                    self.scroll_to_pair = Some(p.clone());
+                                }
                                 self.invalidate_all_pairs_for_global_change(
                                     "price horizon threshold changed",
                                 );
@@ -1092,108 +1191,53 @@ impl ZoneSniperApp {
             });
     }
 
-fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
+    fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            
-            let label_text = format!("{} {} ▾", op.variant_count(), UI_TEXT.label_sl_variants_short);
-            
-            // Unique ID for this specific row's popup content
-            let unique_popup_id_str = format!("var_popup_{}_{}", op.pair_name, op.target_zone_id);
-            
-            // Global Key to store "Which popup is currently open?"
-            // We use this to ensure only one is open at a time and state is persistent.
-            let global_state_id = Id::new("active_trade_variant_popup");
+            let label_text = format!("{} {} ▾", op.variant_count(), UI_TEXT.label_sl_variants);
+            let id_source = format!("var_menu_{}_{}", op.pair_name, op.target_zone_id);
 
-            // 1. Draw Trigger Button
-            let btn_response = ui.interactive_label(
-                &label_text, 
-                false, 
-                PLOT_CONFIG.color_info, 
-                FontId::proportional(10.0)
-            );
-            
-            // 2. Manual Toggle Logic (Read/Write ui.data)
-            let is_open = ui.data(|d| d.get_temp::<String>(global_state_id) == Some(unique_popup_id_str.clone()));
-
-            if btn_response.clicked() {
-                if is_open {
-                    // Close
-                    ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
+            // CALL THE HELPER
+            ui.custom_dropdown(&id_source, &label_text, |ui| {
+                // --- CONTENT LOGIC ---
+                let active_stop_price = if let Some(sel) = &self.selected_opportunity {
+                    if sel.pair_name == op.pair_name && sel.target_zone_id == op.target_zone_id {
+                        sel.stop_price
+                    } else {
+                        op.stop_price
+                    }
                 } else {
-                    // Open this one
-                    ui.data_mut(|d| d.insert_temp(global_state_id, unique_popup_id_str.clone()));
+                    op.stop_price
+                };
+
+                let mut should_close = false;
+
+                for variant in &op.variants {
+                    let risk_pct = calculate_percent_diff(variant.stop_price, op.start_price);
+                    let win_rate = variant.simulation.success_rate * 100.0;
+
+                    let text = format!(
+                        "ROI {:+.2}%   Win {:.0}%   SL -{:.2}%",
+                        variant.roi, win_rate, risk_pct
+                    );
+
+                    let is_current = (variant.stop_price - active_stop_price).abs() < f64::EPSILON;
+
+                    if ui.selectable_label(is_current, text).clicked() {
+                        self.handle_pair_selection(op.pair_name.clone());
+                        self.scroll_to_pair = Some(op.pair_name.clone());
+
+                        let mut new_selected = op.clone();
+                        new_selected.stop_price = variant.stop_price;
+                        new_selected.simulation = variant.simulation.clone();
+
+                        self.selected_opportunity = Some(new_selected);
+
+                        should_close = true; // Signal the helper to close
+                    }
                 }
-            }
 
-            // 3. Render Manual Area if Open
-            if is_open {
-                Area::new(ui.make_persistent_id(&unique_popup_id_str))
-                    .order(Order::Tooltip) 
-                    .pivot(Align2::RIGHT_TOP) 
-                    .fixed_pos(btn_response.rect.right_bottom()) 
-                    .show(ui.ctx(), |ui| {
-                        Frame::popup(ui.style())
-                            .inner_margin(8.0)
-                            .stroke(Stroke::new(1.0, PLOT_CONFIG.color_widget_border))
-                            .show(ui, |ui| {
-                                // Fix sizing
-                                ui.set_min_width(220.0);
-                                ui.set_max_width(280.0);
-                                ui.style_mut().interaction.selectable_labels = false;
-                                
-                                // Header
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new(&UI_TEXT.label_risk_select).strong().small());
-                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        // Explicit Close Button
-                                        if ui.button(RichText::new(&UI_TEXT.icon_close).size(10.0)).clicked() {
-                                            ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
-                                        }
-                                    });
-                                });
-                                ui.separator();
-                                
-                                // Active Check
-                                let active_stop_price = self.selected_opportunity.as_ref()
-                                    .filter(|s| s.pair_name == op.pair_name && s.target_zone_id == op.target_zone_id)
-                                    .map(|s| s.stop_price)
-                                    .unwrap_or(op.stop_price);
-
-                                // Variants List
-                                for variant in &op.variants {
-                                    let risk_pct = calculate_percent_diff(variant.stop_price, op.start_price);
-                                    let win_rate = variant.simulation.success_rate * 100.0;
-                                    
-                                    // Use format! for alignment
-                                    let text = format!(
-                                        "ROI {:+.2}%   Win {:.0}%   SL -{:.2}%",
-                                        variant.roi, win_rate, risk_pct
-                                    );
-
-                                    let is_current = (variant.stop_price - active_stop_price).abs() < f64::EPSILON;
-                                    
-                                    if ui.selectable_label(is_current, text).clicked() {
-                                        self.handle_pair_selection(op.pair_name.clone());
-                                        self.scroll_to_pair = Some(op.pair_name.clone());
-                                        
-                                        let mut new_selected = op.clone();
-                                        new_selected.stop_price = variant.stop_price;
-                                        new_selected.simulation = variant.simulation.clone();
-                                        
-                                        self.selected_opportunity = Some(new_selected);
-                                        
-                                        // Close on select
-                                        ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
-                                    }
-                                }
-                            });
-                    });
-
-                // 4. Close on ESC
-                if ui.input(|i| i.key_pressed(Key::Escape)) {
-                    ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
-                }
-            }
+                should_close
+            });
         });
     }
 

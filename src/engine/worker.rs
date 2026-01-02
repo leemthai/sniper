@@ -31,7 +31,7 @@ use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::AppInstant;
 
 #[cfg(debug_assertions)]
-use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::{calculate_percent_diff, calculate_expected_roi_pct}, crate::utils::TimeUtils};
+use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::{calculate_percent_diff, calculate_expected_roi_pct}};
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -82,17 +82,17 @@ fn run_pathfinder_simulations(
     let duration_candles = duration_to_candles(duration_time, interval_ms);
     // -------------------------------------
 
-    #[cfg(debug_assertions)]
-    log::info!(
-        "PATHFINDER START for {}: Scanning {} zones. Lookback: {} candles. Max Duration: {:?} ({} candles, Vol: {:.3}%. PH: {:.2}%)",
-        ohlcv.pair_interval.name().to_string(),
-        sticky_zones.len(),
-        trend_lookback,
-        TimeUtils::format_duration(duration_time.as_millis() as i64),
-        duration_candles,
-        avg_volatility * 100.0,
-        ph_pct * 100.
-    );
+    // #[cfg(debug_assertions)]
+    // log::info!(
+    //     "PATHFINDER START for {}: Scanning {} zones. Lookback: {} candles. Max Duration: {:?} ({} candles, Vol: {:.3}%. PH: {:.2}%)",
+    //     ohlcv.pair_interval.name().to_string(),
+    //     sticky_zones.len(),
+    //     trend_lookback,
+    //     TimeUtils::format_duration(duration_time.as_millis() as i64),
+    //     duration_candles,
+    //     avg_volatility * 100.0,
+    //     ph_pct * 100.
+    // );
 
     // 2. Heavy Lift: Find Historical Matches ONCE
     let (historical_matches, current_market_state) =
@@ -106,11 +106,11 @@ fn run_pathfinder_simulations(
         ) {
             Some((m, s)) if !m.is_empty() => (m, s),
             _ => {
-                #[cfg(debug_assertions)]
-                log::warn!(
-                    "PATHFINDER ABORT: Insufficient data or matches (Lookback {}).",
-                    trend_lookback
-                );
+                // #[cfg(debug_assertions)]
+                // log::warn!(
+                //     "PATHFINDER ABORT: Insufficient data or matches (Lookback {}).",
+                //     trend_lookback
+                // );
                 return Vec::new();
             }
         };
@@ -190,7 +190,8 @@ fn run_stop_loss_tournament(
 
     // Logging setup
     #[cfg(debug_assertions)]
-    let debug = _zone_idx < 3;
+    // let debug = _zone_idx < 3;
+    let debug = false;// Turn debugging off for now
     #[cfg(debug_assertions)]
     if debug {
         log::info!(
@@ -435,31 +436,31 @@ fn build_success_result(
     });
 
     // --- DEBUG LOGGING ---
-    #[cfg(debug_assertions)]
-    if !opps.is_empty() {
-        // Just log the top one to check sanity
-        if let Some(best) = opps
-            .iter()
-            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
-        {
-            log::info!(
-                "🎯 PATHFINDER [{}]: Found {} opps. Best: {} to {:.2} ({}: {:.1}% | R:R: {:.2} | Samples: {})",
-                req.pair_name,
-                opps.len(),
-                best.direction,
-                best.target_price,
-                UI_TEXT.label_success_rate,
-                best.simulation.success_rate * 100.0,
-                best.simulation.risk_reward_ratio,
-                best.simulation.sample_size
-            );
-        }
-    } else {
-        log::info!(
-            "PATHFINDER [{}]: No valid setups found (Price might be inside a zone/mud).",
-            req.pair_name
-        );
-    }
+    // #[cfg(debug_assertions)]
+    // if !opps.is_empty() {
+    //     // Just log the top one to check sanity
+    //     if let Some(best) = opps
+    //         .iter()
+    //         .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
+    //     {
+    //         // log::info!(
+    //         //     "🎯 PATHFINDER [{}]: Found {} opps. Best: {} to {:.2} ({}: {:.1}% | R:R: {:.2} | Samples: {})",
+    //         //     req.pair_name,
+    //         //     opps.len(),
+    //         //     best.direction,
+    //         //     best.target_price,
+    //         //     UI_TEXT.label_success_rate,
+    //         //     best.simulation.success_rate * 100.0,
+    //         //     best.simulation.risk_reward_ratio,
+    //         //     best.simulation.sample_size
+    //         // );
+    //     }
+    // } else {
+    //     // log::info!(
+    //     //     "PATHFINDER [{}]: No valid setups found (Price might be inside a zone/mud).",
+    //     //     req.pair_name
+    //     // );
+    // }
 
     model.opportunities = opps;
 

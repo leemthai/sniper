@@ -1,6 +1,6 @@
 use eframe::egui::{
     Button, Color32, CornerRadius, CursorIcon, FontId, Response, RichText, Sense, Stroke,
-    StrokeKind, Ui, Vec2, WidgetInfo, WidgetType, Pos2,
+    StrokeKind, Ui, Vec2, WidgetInfo, WidgetType, Id, Area, Order, Align2, Frame, Layout, Align, Key,
 };
 
 use crate::config::plot::PLOT_CONFIG;
@@ -60,6 +60,8 @@ pub fn get_outcome_color(value: f64) -> Color32 {
     } else {
         PLOT_CONFIG.color_loss
     }
+
+    
 }
 
 /// Extension trait to add semantic styling methods directly to `egui::Ui`.
@@ -104,29 +106,124 @@ pub trait UiStyleExt {
     /// For help buttons
     fn help_button(&mut self, text: &str) -> bool; // Returns true if clicked
 
-    fn subtle_vertical_separator(&mut self);
+    // fn subtle_vertical_separator(&mut self);
+
+    /// Renders a custom dropdown menu.
+    /// - `id_salt`: Unique string for ID.
+    /// - `label_text`: Text on the button.
+    /// - `content`: Closure to render inside the popup. Should return `true` if we need to close the popup (e.g. selection made).
+    fn custom_dropdown(&mut self, id_salt: &str, label_text: &str, content: impl FnOnce(&mut Ui) -> bool);
+
+
 }
 
 impl UiStyleExt for Ui {
 
-    fn subtle_vertical_separator(&mut self) {
-        let height = 12.0; // Fixed height for a clean look
-        let width = 1.0;
-        let color = PLOT_CONFIG.color_widget_border; // Use theme border color
+        fn custom_dropdown(&mut self, id_salt: &str, label_text: &str, content: impl FnOnce(&mut Ui) -> bool) {
+        let popup_id = self.make_persistent_id(id_salt);
+        let global_state_id = Id::new("active_trade_variant_popup"); // Shared key to ensure only 1 opens at a time
 
-        let (rect, _resp) = self.allocate_exact_size(Vec2::new(width + 8.0, height), Sense::hover()); // 4px padding on sides
-        
-        if self.is_rect_visible(rect) {
-            let center_x = rect.center().x;
-            self.painter().line_segment(
-                [
-                    Pos2::new(center_x, rect.top()),
-                    Pos2::new(center_x, rect.bottom())
-                ],
-                Stroke::new(1.0, color)
-            );
+        // 1. Draw Trigger Button
+        // We use your 'interactive_label_small' style (size 10.0)
+        // (Assuming you have this or use your standard interactive_label with font arg)
+        let btn_response = self.interactive_label(
+            label_text, 
+            false, 
+            PLOT_CONFIG.color_info,
+            FontId::proportional(10.0)
+        );
+
+        // 2. Logic: Is this specific popup open?
+        let is_open = self.data(|d| d.get_temp::<String>(global_state_id) == Some(id_salt.to_string()));
+
+        if btn_response.clicked() {
+            if is_open {
+                // Close
+                self.data_mut(|d| d.remove_temp::<String>(global_state_id));
+            } else {
+                // Open (Overwrites any other open popup)
+                self.data_mut(|d| d.insert_temp(global_state_id, id_salt.to_string()));
+            }
+        }
+
+        // 3. Render Popup if Open
+        if is_open {
+            let area = Area::new(popup_id)
+                .order(Order::Tooltip)
+                .pivot(Align2::RIGHT_TOP)
+                .fixed_pos(btn_response.rect.right_bottom());
+
+            let area_response = area.show(self.ctx(), |ui| {
+                Frame::popup(ui.style())
+                    .stroke(eframe::egui::Stroke::new(1.0, crate::config::plot::PLOT_CONFIG.color_widget_border))
+                    .inner_margin(8.0)
+                    .show(ui, |ui| {
+                        // Formatting
+                        ui.set_min_width(220.0);
+                        ui.set_max_width(280.0);
+                        ui.style_mut().interaction.selectable_labels = false; // No cursors in popup
+
+                        // Header with Close Button
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(&crate::ui::ui_text::UI_TEXT.label_risk_select).strong().small());
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.button(RichText::new(&crate::ui::ui_text::UI_TEXT.icon_close).size(10.0)).clicked() {
+                                    ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
+                                }
+                            });
+                        });
+                        ui.separator();
+
+                        // Render Content
+                        // If content returns true, it means "Close Me"
+                        if content(ui) {
+                            ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
+                        }
+                    });
+            });
+
+            // 4. Click Outside Logic
+            if self.input(|i| i.pointer.primary_clicked()) {
+                // Did we click inside the popup?
+                let in_popup = area_response.response.rect.contains(
+                    self.input(|i| i.pointer.interact_pos().unwrap_or_default())
+                );
+                // Did we click the button that opened it? (If so, let button logic handle toggle)
+                let on_button = btn_response.rect.contains(
+                    self.input(|i| i.pointer.interact_pos().unwrap_or_default())
+                );
+
+                if !in_popup && !on_button {
+                    self.data_mut(|d| d.remove_temp::<String>(global_state_id));
+                }
+            }
+
+            // 5. Close on ESC
+            if self.input(|i| i.key_pressed(Key::Escape)) {
+                self.data_mut(|d| d.remove_temp::<String>(global_state_id));
+            }
         }
     }
+
+
+    // fn subtle_vertical_separator(&mut self) {
+    //     let height = 12.0; // Fixed height for a clean look
+    //     let width = 1.0;
+    //     let color = PLOT_CONFIG.color_widget_border; // Use theme border color
+
+    //     let (rect, _resp) = self.allocate_exact_size(Vec2::new(width + 8.0, height), Sense::hover()); // 4px padding on sides
+        
+    //     if self.is_rect_visible(rect) {
+    //         let center_x = rect.center().x;
+    //         self.painter().line_segment(
+    //             [
+    //                 Pos2::new(center_x, rect.top()),
+    //                 Pos2::new(center_x, rect.bottom())
+    //             ],
+    //             Stroke::new(1.0, color)
+    //         );
+    //     }
+    // }
 
 
     fn interactive_label(
