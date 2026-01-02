@@ -6,8 +6,6 @@ use eframe::egui::{
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
 
-// use eframe::egui::text::{LayoutJob, TextFormat};
-
 use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 
 use crate::analysis::range_gap_finder::GapReason;
@@ -23,8 +21,6 @@ use crate::ui::styles::{DirectionColor, apply_opacity};
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 use crate::ui::utils::format_price;
-
-// use crate::utils::maths_utils::{self, calculate_percent_diff};
 
 pub struct HorizonLinesLayer;
 
@@ -65,8 +61,6 @@ impl PlotLayer for OpportunityLayer {
         // 2. Find Best Opportunity
         if let Some(best_opp) = target_opp
         {
-            // let win_rate = best_opp.simulation.success_rate;
-
             // 3. Setup Foreground Painter
             // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
             // FIX: Create Painter with Clipping
@@ -87,16 +81,9 @@ impl PlotLayer for OpportunityLayer {
             let sl_pos_screen =
                 plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, best_opp.stop_price));
 
-            // Calculate ROI first so we can use it for color selection
-            // let roi = best_opp.expected_roi();
-            // let ann_roi = best_opp.live_annualized_roi(current_price);
-
             // --- 1. RESOLVE SEMANTIC COLORS & STYLES ---
             let direction_color = best_opp.direction.color();
-            // let outcome_color = get_outcome_color(roi);
             let sl_color = PLOT_CONFIG.color_stop_loss;
-            // let neutral_text_color = PLOT_CONFIG.color_text_neutral;
-            // let primary_text_color = PLOT_CONFIG.color_text_primary;
 
             // Resolve Dimming levels via Config
             let scope_color = apply_opacity(direction_color, PLOT_CONFIG.opacity_scope_base);
@@ -145,116 +132,6 @@ impl PlotLayer for OpportunityLayer {
                 faint_stroke,
             );
             painter.circle_filled(target_pos_screen, 3.0, scope_color);
-
-            // --- D. DATA LABEL & CALCULATION ---
-
-            // // 1. Calculate Expected ROI % (Per Trade)
-            // let roi = maths_utils::calculate_expected_roi_pct(
-            //     current_price,
-            //     best_opp.target_price,
-            //     best_opp.stop_price,
-            //     win_rate,
-            // );
-
-            // // NEW: Calculate dynamic distances for the HUD
-            // let target_dist_pct = calculate_percent_diff(best_opp.target_price, current_price);
-            // let stop_dist_pct = calculate_percent_diff(best_opp.stop_price, current_price);
-
-            // // 2. Build Rich Text Layout
-            // let mut job = LayoutJob::default();
-            // let font_id = FontId::proportional(14.0);
-
-            // // Block 1: Trade Info
-            // job.append(
-            //     &format!(
-            //         "{}\n{}: {:.1}%\n{}: 1:{:.0}\n",
-            //         best_opp.direction.to_string().to_uppercase(),
-            //         UI_TEXT.label_success_rate,
-            //         win_rate * 100.0,
-            //         UI_TEXT.label_risk_reward,
-            //         best_opp.simulation.risk_reward_ratio
-            //     ),
-            //     0.0,
-            //     TextFormat {
-            //         color: neutral_text_color,
-            //         font_id: font_id.clone(),
-            //         ..Default::default()
-            //     },
-            // );
-
-            // // Block 2: Target Info (Profit Color)
-            // job.append(
-            //     &format!("{}: {} (+{:.2}%)\n", UI_TEXT.label_target, format_price(best_opp.target_price), target_dist_pct),
-            //     0.0,
-            //     TextFormat {
-            //         color: PLOT_CONFIG.color_profit,
-            //         font_id: font_id.clone(),
-            //         ..Default::default()
-            //     },
-            // );
-
-            // // Block 3: Stop Info
-            // // Format: Stop: $Price (-%) (N SL Variants)
-            // let variant_text = if best_opp.variant_count() > 1 {
-            //     format!(" ({} {})", best_opp.variant_count(), UI_TEXT.label_sl_variants)
-            // } else {
-            //     String::new()
-            // };
-
-            // job.append(
-            //     &format!("{}: {} (-{:.2}%){}\n", 
-            //         UI_TEXT.label_stop_loss, 
-            //         format_price(best_opp.stop_price), 
-            //         stop_dist_pct,
-            //         variant_text
-            //     ),
-            //     0.0,
-            //     TextFormat {
-            //         color: PLOT_CONFIG.color_stop_loss,
-            //         font_id: font_id.clone(),
-            //         ..Default::default()
-            //     },
-            // );
-
-            // // Block 4: RoI info
-
-            // job.append(
-            //     &format!("{}: {:+.2}% {} {} {:+.0}% ({} {})\n", 
-            //         UI_TEXT.label_roi, 
-            //         roi,
-            //         UI_TEXT.icon_arrow_right, // The Arrow
-            //         UI_TEXT.label_aroi, 
-            //         ann_roi,
-            //         UI_TEXT.label_avg_time,
-            //         TimeUtils::format_duration(best_opp.avg_duration_ms),
-            //     ),
-            //     0.0,
-            //     TextFormat {
-            //         color: outcome_color,
-            //         font_id: font_id.clone(),
-            //         ..Default::default()
-            //     },
-            // );
-
-            // // Block 5: Time Limit (Kept on new line as requested)
-            // let time_limit_str = TimeUtils::format_duration(best_opp.max_duration_ms);
-            
-            // job.append(
-            //     &format!("{}: {}", UI_TEXT.opp_exp_order_time_limit, time_limit_str),
-            //     0.0,
-            //     TextFormat {
-            //         color: neutral_text_color,
-            //         font_id: font_id.clone(),
-            //         ..Default::default()
-            //     },
-            // );
-
-
-            // // 3. Render it (FIXED: Use painter.layout_job)
-            // let galley = painter.layout_job(job);
-            // // We manually center it vertically since we can't use Align2 with galleys
-            // let text_pos = target_pos_screen + Vec2::new(18.0, -galley.size().y / 2.0);
-            // painter.galley(text_pos, galley, primary_text_color);
         }
     }
 }
@@ -647,9 +524,7 @@ impl PlotLayer for ReversalZoneLayer {
     }
 }
 
-// ============================================================================
 // 6. SEGMENT SEPARATOR LAYER (Vertical Gaps)
-// ============================================================================
 pub struct SegmentSeparatorLayer;
 
 impl PlotLayer for SegmentSeparatorLayer {
@@ -713,9 +588,7 @@ impl PlotLayer for SegmentSeparatorLayer {
     }
 }
 
-// ============================================================================
 // 4. PRICE LINE LAYER
-// ============================================================================
 pub struct PriceLineLayer;
 
 impl PlotLayer for PriceLineLayer {
@@ -745,9 +618,7 @@ impl PlotLayer for PriceLineLayer {
     }
 }
 
-// ============================================================================
 // HELPER FUNCTIONS (Private to this module)
-// ============================================================================
 
 enum ZoneShape {
     Rectangle,

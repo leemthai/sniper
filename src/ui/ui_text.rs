@@ -34,7 +34,10 @@ pub const ICON_SEGMENTED_TIME: &str = "\u{f084e}";
 // (Sort arrows)
 pub const ICON_SORT_ASC: &str = "\u{f0de}"; // (Sort Up)
 pub const ICON_SORT_DESC: &str = "\u{f0dd}"; // (Sort Down)
-pub const ICON_SORT: &str      = "\u{f07d}"; // (Sort Neutral)
+pub const ICON_SORT: &str = "\u{f07d}"; // (Sort Neutral)
+
+// pub const ICON_24_HRS:  &str = "\u{f1478}";
+pub const ICON_CLOSE: &str = "\u{f00d}";
 
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
@@ -47,13 +50,7 @@ pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
 pub struct UiText {
 
-
-    pub sort_label_pair: String,
-    pub sort_label_roi: String,
-    pub sort_label_aroi: String,
-    pub sort_label_time: String,
-    pub sort_label_target: String,
-    pub sort_label_stop: String,
+    pub icon_close: String,
     pub icon_sort_asc: String,
     pub icon_sort_desc: String,
     pub sort_label: String,
@@ -70,8 +67,6 @@ pub struct UiText {
     pub plot_y_axis: String,
     pub plot_missing_klines: String,
 
-    // --- BUTTONS (Dynamic) ---
-    pub tf_btn_all: String,
 
     // --- ICONS/LABELS ---
     pub label_filter_icon: String,
@@ -153,18 +148,26 @@ pub struct UiText {
     pub tf_scope_all: String,
     pub tf_scope_selected: String,
     pub tf_btn_all_trades: String,
-
+    pub tf_btn_all: String,
     pub tf_target: String,
+    pub tf_time: String,
 
     // General use
+    pub label_volume: String,
+    pub label_volume_short: String,
+    pub label_volume_24h: String,
+    pub label_pair: String,
     pub label_candle: String,
     pub label_momentum: String,
+    pub label_momentum_short: String,
     pub label_volatility: String,
+    pub label_volatility_short: String,
     pub label_success_rate: String,
     pub label_roi: String,
     pub label_aroi: String,
     pub label_aroi_long: String,
     pub label_sl_variants: String,
+    pub label_sl_variants_short: String,
     pub label_target: String,
     pub label_target_text: String,
     pub label_stop_loss: String,
@@ -180,6 +183,7 @@ pub struct UiText {
     pub label_toggle: String,
     pub label_warning: String,
     pub label_failures: String,
+    pub label_opps_short: String,
 
     // Icons
     pub icon_help: String,
@@ -271,15 +275,9 @@ pub struct UiText {
 pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
     UiText {
 
-
-        sort_label_pair: "Pair".to_string(),
-        sort_label_roi: "ROI".to_string(),
-        sort_label_aroi: "AROI".to_string(),
-        sort_label_time: "Time".to_string(),
-        sort_label_target: "Tgt %".to_string(),
-        sort_label_stop: "Risk %".to_string(),
+        icon_close: ICON_CLOSE.to_string(),
+        label_pair: "Pair".to_string(),
         sort_label: ICON_SORT.to_string(),
-        
         icon_sort_asc: ICON_SORT_ASC.to_string(),
         icon_sort_desc: ICON_SORT_DESC.to_string(),
 
@@ -373,23 +371,29 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         opp_exp_cases_five: "you see above.".to_string(),
 
         // General use labels (not specific to one panel)
+        label_volume: "Volume".to_string(),
+        label_volume_short: "Vol.".to_string(),
+        label_volume_24h: format!("{}\n{}", "24h", "Vol."),
         label_queue: ICON_QUEUE.to_string(),
         label_working: ICON_COG.to_string(),
         label_connecting: "Connecting".to_string(),
         label_connected: "connected".to_string(),
         label_volatility: "Volatility".to_string(),
+        label_volatility_short: "VL".to_string(),
         label_target: ICON_TARGET.to_string(),
         label_target_text: "Target".to_string(),
         label_momentum: "Momentum".to_string(),
+        label_momentum_short: "Mom.".to_string(),
         label_success_rate: "Success Rate".to_string(),
         label_roi: "ROI".to_string(),
         label_aroi: "AROI".to_string(),
         label_aroi_long: "AROI (Annualized RoI)".to_string(),
         label_sl_variants: "Variants".to_string(),
+        label_sl_variants_short: "Vrts.".to_string(),
         label_stop_loss: "Stop Loss".to_string(),
-        label_stop_loss_short: "SL".to_string(),
+        label_stop_loss_short: "S/L".to_string(),
         label_risk_reward: "Risk/Reward Ratio".to_string(),
-        label_risk_reward_short: "R:R".to_string(),
+        label_risk_reward_short: "R/R".to_string(),
         label_long: format!("LONG {}", ICON_TREND_UP),
         label_short: format!("SHORT {}", ICON_TREND_DOWN),
         label_limit: "Limit".to_string(),
@@ -401,6 +405,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_toggle: "Toggle".to_string(),
         label_warning: ICON_WARNING.to_string(),
         label_failures: "failures".to_string(),
+        label_opps_short: "OPP".to_string(),
 
         // TradeFinder Pane
         tf_header: "TRADE FINDER".to_string(),
@@ -411,6 +416,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         tf_btn_all: "ALL".to_string(),
         tf_btn_all_trades: "ALL TRADES".to_string(),
         tf_target: ICON_TARGET.to_string(),
+        tf_time: ICON_CLOCK.to_string(),
 
         // --- Left Panel ---
         data_generation_heading: "Shape Your Trades".to_string(),
@@ -475,7 +481,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         // Toolbar
         tb_name: "Toolbar".to_string(),
         tb_time: ICON_CLOCK.to_string(),
-        tb_sticky: "High Volume".to_string(),
+        tb_sticky: "High Volume Zones".to_string(),
         tb_low_wicks: "Lower Wicks".to_string(),
         tb_high_wicks: "Higher Wicks".to_string(),
         tb_volume_hist: "Volume Hist.".to_string(),
@@ -509,9 +515,9 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
 
         kbs_sim_mode: format!("{} Simulation Mode", ICON_SIMULATE),
 
-        label_avg_time: "Avg".to_string(), // Keep it short for HUD/TF
+        label_avg_time: "Avg.".to_string(), // Keep it short for HUD/TF
         icon_arrow_right: ICON_POINT_RIGHT.to_string(),
-        label_avg_duration: "Avg Duration".to_string(),
-        label_risk_select: "Stop Loss Variant (Risk)".to_string(),
+        label_avg_duration: "Avg. Duration".to_string(),
+        label_risk_select: "Stop Loss Variants".to_string(),
     }
 });

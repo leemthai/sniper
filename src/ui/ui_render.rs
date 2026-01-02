@@ -1,6 +1,6 @@
 use eframe::egui::{
     Align, CentralPanel, Context, FontId, Grid, Layout, Order, RichText, ScrollArea, SidePanel,
-    TopBottomPanel, Ui, Window,
+    TopBottomPanel, Ui, Window, Key, Id, Align2, Stroke, Area, Frame
 };
 
 use strum::IntoEnumIterator;
@@ -10,6 +10,7 @@ use crate::analysis::adaptive::AdaptiveParameters;
 use crate::config::TICKER;
 use crate::config::plot::PLOT_CONFIG;
 
+use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::ScoreType;
 use crate::models::trading_view::{
     DirectionFilter, SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
@@ -17,13 +18,11 @@ use crate::models::trading_view::{
 
 use crate::ui::app::CandleResolution;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
-use crate::ui::styles::{DirectionColor, UiStyleExt, get_outcome_color};
-
 use crate::ui::ui_panels::{
     CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel,
 };
+use crate::ui::styles::{DirectionColor, UiStyleExt, get_outcome_color};
 use crate::ui::ui_plot_view::PlotInteraction;
-
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
@@ -276,14 +275,14 @@ impl ZoneSniperApp {
                     ui.label_subheader(&UI_TEXT.opp_exp_market_context);
                     let state = &sim.market_state;
 
-                    // Volatility (Standard metric is fine)
+                    // Volatility
                     ui.metric(
                         &UI_TEXT.label_volatility,
                         &format!("{:.2}%", state.volatility_pct * 100.0),
                         PLOT_CONFIG.color_info,
                     );
 
-                    // Momentum (Inline Explanation)
+                    // Momentum
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(
@@ -310,7 +309,7 @@ impl ZoneSniperApp {
                         );
                     });
 
-                    // Rel Volume (Inline Explanation)
+                    // Relative Volume
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(
@@ -346,12 +345,10 @@ impl ZoneSniperApp {
                         &format_price(calc_price),
                         PLOT_CONFIG.color_text_neutral,
                     );
-                    // ui.metric(&UI_TEXT.label_target, &format_price(op.target_price), PLOT_CONFIG.color_profit);
-
                     let target_dist = calculate_percent_diff(op.target_price, calc_price);
                     let stop_dist = calculate_percent_diff(op.stop_price, calc_price);
 
-                    // TARGET ROW (Green)
+                    // TARGET ROW
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
                         ui.label(
@@ -364,8 +361,6 @@ impl ZoneSniperApp {
                                 .small()
                                 .color(PLOT_CONFIG.color_profit),
                         );
-
-                        // Percentage inline
                         ui.label(
                             RichText::new(format!("(+{:.2}%)", target_dist))
                                 .small()
@@ -386,7 +381,6 @@ impl ZoneSniperApp {
                                 .small()
                                 .color(PLOT_CONFIG.color_stop_loss),
                         );
-
                         ui.label(
                             RichText::new(format!(
                                 "({} {:.2}% / {} {:.2}%)",
@@ -399,7 +393,7 @@ impl ZoneSniperApp {
                             .color(PLOT_CONFIG.color_text_subdued),
                         );
 
-                        // NEW: Variants Info
+                        // Variants Info
                         if op.variant_count() > 1 {
                             ui.label(
                                 RichText::new(format!(
@@ -414,7 +408,7 @@ impl ZoneSniperApp {
                         }
                     });
 
-                    // NEW: Time Limit Block
+                    // Time Limit Block
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(
@@ -422,13 +416,11 @@ impl ZoneSniperApp {
                                 .small()
                                 .color(PLOT_CONFIG.color_text_subdued),
                         );
-                        // Use Info Color (Blue) or Primary (White) to make it distinct from price levels
                         ui.label(
                             RichText::new(&max_time_str)
                                 .small()
                                 .color(PLOT_CONFIG.color_info),
                         );
-
                         ui.label(
                             RichText::new(format!("(~{} {})", max_candles, UI_TEXT.label_candle))
                                 .small()
@@ -483,7 +475,6 @@ impl ZoneSniperApp {
                                 .color(story_color)
                                 .italics(),
                         );
-
                         ui.label(
                             RichText::new(format!(
                                 "{} {} {} {}, the {}, the {} ({}: {}).",
@@ -548,7 +539,6 @@ impl ZoneSniperApp {
                             let max_idx = model.segments.len().saturating_sub(1);
                             let safe_last = nav.last_viewed_segment_idx.min(max_idx);
 
-                            // We pass None for current_idx for now (interactive logic comes next)
                             let mut panel =
                                 CandleRangePanel::new(&model.segments, nav.current_segment_idx);
 
@@ -558,9 +548,7 @@ impl ZoneSniperApp {
                                 if let Some(idx) = new_idx {
                                     nav.last_viewed_segment_idx = idx;
                                 }
-                                // Write back to app state
                                 self.set_nav_state(nav);
-
                                 self.auto_scale_y = true;
                                 ctx.request_repaint();
                             }
@@ -599,16 +587,14 @@ impl ZoneSniperApp {
                 self.tf_filter_pair_only = false;
             }
 
-            // "BTC ONLY" / "SELECTED ONLY" Button logic
+            // "BTC ONLY"
             let base_asset = self
                 .selected_pair
                 .as_ref()
                 .and_then(|p| crate::domain::pair_interval::PairInterval::get_base(p))
                 .unwrap_or("SELECTED");
 
-            // e.g. "BTC ONLY"
             let pair_label = format!("{} {}", base_asset, UI_TEXT.tf_scope_selected);
-
             if ui
                 .selectable_label(self.tf_filter_pair_only, pair_label)
                 .clicked()
@@ -618,9 +604,8 @@ impl ZoneSniperApp {
         });
         ui.separator();
 
-        // --- 3. DIRECTION FILTER ---
+        // --- DIRECTION FILTER ---
         ui.horizontal(|ui| {
-            // Icon
             ui.label(
                 RichText::new(&UI_TEXT.label_filter_icon)
                     .size(16.0)
@@ -653,12 +638,9 @@ impl ZoneSniperApp {
         ui.separator();
     }
 
-    // src/ui/ui_render.rs
-
     /// Renders a single row in the Trade Finder Grid
     fn render_finder_grid_row(&mut self, ui: &mut Ui, row: TradeFinderRow) {
-        // STRICT SELECTION LOGIC:
-        // Row is selected if Pair matches AND (Specific Op matches OR both are None)
+        // STRICT SELECTION LOGIC: Row is selected if Pair matches AND (Specific Op matches OR both are None)
         let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
             && match (&self.selected_opportunity, &row.opportunity) {
                 (Some(sel), Some(live_op)) => {
@@ -676,12 +658,11 @@ impl ZoneSniperApp {
                     &row.pair_name,
                     is_selected,
                     PLOT_CONFIG.color_text_primary,
-                    eframe::egui::FontId::proportional(14.0),
+                    FontId::proportional(14.0),
                 )
                 .clicked()
             {
                 self.handle_pair_selection(row.pair_name.clone());
-
                 if let Some(live_op) = &row.opportunity {
                     self.selected_opportunity = Some(live_op.opportunity.clone());
                 } else {
@@ -689,7 +670,7 @@ impl ZoneSniperApp {
                 }
             }
 
-            // B. Direction Arrow (Immediate neighbor)
+            // B. Direction Arrow
             if let Some(live_op) = &row.opportunity {
                 let op = &live_op.opportunity;
                 let dir_color = op.direction.color();
@@ -706,32 +687,17 @@ impl ZoneSniperApp {
             let op = &live_op.opportunity;
             let roi_color = get_outcome_color(live_op.live_roi);
 
-            // COL 3: ROI / AROI
-            ui.vertical(|ui| {
-                // Top: ROI (Strong)
-                ui.label(
-                    RichText::new(format!("{:+.2}%", live_op.live_roi))
-                        .strong()
-                        .color(roi_color),
-                );
-                // Bot: AROI (Dimmed)
-                ui.label(
-                    RichText::new(format!("{:+.0}%", live_op.annualized_roi))
-                        .small()
-                        .color(roi_color.linear_multiply(0.7)),
-                );
-            });
 
-            // COL 4: VOL / MOM (Market State)
+            // VOL / MOM (Market State)
             if let Some(ms) = &row.market_state {
                 ui.vertical(|ui| {
-                    // Top: Volatility (Blue)
+                    // Top: Volatility
                     ui.label(
-                        RichText::new(format!("{:.2}%", ms.volatility_pct * 100.0))
+                        RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
                             .small()
                             .color(PLOT_CONFIG.color_info),
                     );
-                    // Bot: Momentum (Green/Red)
+                    // Bot: Momentum
                     let mom_color = get_outcome_color(ms.momentum_pct);
                     ui.label(
                         RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
@@ -743,7 +709,24 @@ impl ZoneSniperApp {
                 ui.label("-");
             }
 
-            // COL 5: TIME / OPPS
+
+            // ROI / AROI
+            ui.vertical(|ui| {
+                // Top: ROI
+                ui.label(
+                    RichText::new(format!("{:+.2}%", live_op.live_roi))
+                        .strong()
+                        .color(roi_color),
+                );
+                // Bot: AROI
+                ui.label(
+                    RichText::new(format!("{:+.0}%", live_op.annualized_roi))
+                        .small()
+                        .color(roi_color.linear_multiply(0.7)),
+                );
+            });
+
+            // TIME / OPPS
             ui.vertical(|ui| {
                 // Top: Avg Duration
                 let time_str = TimeUtils::format_duration(op.avg_duration_ms);
@@ -765,7 +748,7 @@ impl ZoneSniperApp {
                 }
             });
 
-            // COL 6: 24H VOLUME
+            // 24H VOLUME
             let val = row.quote_volume_24h;
             let val_str = if val > 1_000_000.0 {
                 format!("{:.1}M", val / 1_000_000.0)
@@ -780,17 +763,13 @@ impl ZoneSniperApp {
 
             self.render_card_variants(ui, op);
         } else {
-            // --- NO OPPORTUNITY (Fallback Row) ---
-            // Just show Market State & Volume
+            // --- NO OPPORTUNITY (Fallback Row) Just show Market State & Volume
 
-            // Col 3 (ROI)
-            ui.label("-");
-
-            // Col 4 (Vol/Mom)
+            // (Volatility/Momentum)
             if let Some(ms) = &row.market_state {
                 ui.vertical(|ui| {
                     ui.label(
-                        RichText::new(format!("{:.2}%", ms.volatility_pct * 100.0))
+                        RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
                             .small()
                             .color(PLOT_CONFIG.color_info),
                     );
@@ -804,6 +783,9 @@ impl ZoneSniperApp {
             } else {
                 ui.label("-");
             }
+
+            // Col 3 (ROI)
+            ui.label("-");
 
             // Col 5 (Time)
             ui.label("-");
@@ -829,8 +811,8 @@ impl ZoneSniperApp {
     }
 
     fn render_trade_finder_content(&mut self, ui: &mut Ui) {
-        // FIX: Disable text selection to remove Caret cursor
-        ui.style_mut().interaction.selectable_labels = false;
+        
+        ui.style_mut().interaction.selectable_labels = false; // Disable text selection to remove Caret cursor
 
         // 1. Controls (Filters)
         self.render_trade_finder_filters(ui);
@@ -847,7 +829,7 @@ impl ZoneSniperApp {
             let base = self
                 .selected_pair
                 .as_ref()
-                .and_then(|p| crate::domain::pair_interval::PairInterval::get_base(p))
+                .and_then(|p| PairInterval::get_base(p))
                 .unwrap_or("");
             if !base.is_empty() {
                 rows.retain(|r| r.pair_name.starts_with(base));
@@ -901,11 +883,10 @@ impl ZoneSniperApp {
 
                 Grid::new("tf_results_grid")
                     .striped(true)
-                    .min_col_width(10.0)
+                    .min_col_width(0.0)
                     .spacing([10.0, 6.0])
                     .show(ui, |ui| {
                         // --- STABLE HEADER ROW ---
-
                         // Helper: Now accepts 'min_width' to stabilize specific columns
                         let mut header_stack =
                             |ui: &mut Ui,
@@ -926,19 +907,25 @@ impl ZoneSniperApp {
                                 });
                             };
 
-                        // Col 1: Pair
+                        // Pair
                         header_stack(
                             ui,
                             SortColumn::PairName,
-                            &UI_TEXT.sort_label_pair,
+                            &UI_TEXT.label_pair.to_uppercase(),
                             None,
                             0.0,
                         ); // Natural width
 
-                        // Col 2: Direction Spacer
-                        // ui.label("");
+                        // Market (Volatility/Momentum)
+                        header_stack(
+                            ui,
+                            SortColumn::Volatility,
+                            &UI_TEXT.label_volatility_short,
+                            Some((SortColumn::Momentum, &UI_TEXT.label_momentum_short)),
+                            60.,
+                        );
 
-                        // Col 3: Return (ROI / AROI)
+                        // Return (ROI / AROI)
                         header_stack(
                             ui,
                             SortColumn::LiveRoi,
@@ -947,29 +934,20 @@ impl ZoneSniperApp {
                             60.,
                         );
 
-                        // Col 4: Market (Vol / Mom)
-                        header_stack(
-                            ui,
-                            SortColumn::Volatility,
-                            "Vol",
-                            Some((SortColumn::Momentum, "Mom")),
-                            60.,
-                        );
-
-                        // Col 5: Time (Time / Opps)
+                        // Time (Order Time / Opps)
                         header_stack(
                             ui,
                             SortColumn::AvgDuration,
-                            "Time",
-                            Some((SortColumn::OpportunityCount, "# Ops")),
+                            &UI_TEXT.tf_time,
+                            Some((SortColumn::OpportunityCount, &UI_TEXT.label_opps_short)),
                             60.,
                         );
 
-                        // Col 6: Vol 24h
-                        header_stack(ui, SortColumn::QuoteVolume24h, "Vol.", None, 60.);
+                        // Vol 24h
+                        header_stack(ui, SortColumn::QuoteVolume24h, &UI_TEXT.label_volume_24h, None, 60.);
 
-                        // Col 7: Risk (# SL)
-                        header_stack(ui, SortColumn::VariantCount, "# SL", None, 40.);
+                        // SL Variants
+                        header_stack(ui, SortColumn::VariantCount, &UI_TEXT.label_stop_loss_short, None, 30.);
 
                         ui.end_row();
 
@@ -1024,8 +1002,8 @@ impl ZoneSniperApp {
         let frame = UI_CONFIG.side_panel_frame();
 
         SidePanel::left("left_panel")
-            .min_width(320.0)
-            .resizable(true)
+            .min_width(280.0) // I believe this is irrelevant because items we draw inside have higher total min_width
+            .resizable(false)
             .frame(frame)
             .show(ctx, |ui| {
                 let data_events = self.data_generation_panel(ui);
@@ -1162,21 +1140,21 @@ impl ZoneSniperApp {
 fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
             
-            let label_text = format!("{} {} ▾", op.variant_count(), UI_TEXT.label_sl_variants);
+            let label_text = format!("{} {} ▾", op.variant_count(), UI_TEXT.label_sl_variants_short);
             
             // Unique ID for this specific row's popup content
             let unique_popup_id_str = format!("var_popup_{}_{}", op.pair_name, op.target_zone_id);
             
             // Global Key to store "Which popup is currently open?"
             // We use this to ensure only one is open at a time and state is persistent.
-            let global_state_id = eframe::egui::Id::new("active_trade_variant_popup");
+            let global_state_id = Id::new("active_trade_variant_popup");
 
             // 1. Draw Trigger Button
             let btn_response = ui.interactive_label(
                 &label_text, 
                 false, 
                 PLOT_CONFIG.color_info, 
-                eframe::egui::FontId::proportional(10.0)
+                FontId::proportional(10.0)
             );
             
             // 2. Manual Toggle Logic (Read/Write ui.data)
@@ -1194,14 +1172,14 @@ fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
 
             // 3. Render Manual Area if Open
             if is_open {
-                eframe::egui::Area::new(ui.make_persistent_id(&unique_popup_id_str))
-                    .order(eframe::egui::Order::Tooltip) 
-                    .pivot(eframe::egui::Align2::RIGHT_TOP) 
+                Area::new(ui.make_persistent_id(&unique_popup_id_str))
+                    .order(Order::Tooltip) 
+                    .pivot(Align2::RIGHT_TOP) 
                     .fixed_pos(btn_response.rect.right_bottom()) 
                     .show(ui.ctx(), |ui| {
-                        eframe::egui::Frame::popup(ui.style())
+                        Frame::popup(ui.style())
                             .inner_margin(8.0)
-                            .stroke(eframe::egui::Stroke::new(1.0, PLOT_CONFIG.color_widget_border))
+                            .stroke(Stroke::new(1.0, PLOT_CONFIG.color_widget_border))
                             .show(ui, |ui| {
                                 // Fix sizing
                                 ui.set_min_width(220.0);
@@ -1213,7 +1191,7 @@ fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
                                     ui.label(RichText::new(&UI_TEXT.label_risk_select).strong().small());
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         // Explicit Close Button
-                                        if ui.button(RichText::new("❌").size(10.0)).clicked() {
+                                        if ui.button(RichText::new(&UI_TEXT.icon_close).size(10.0)).clicked() {
                                             ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
                                         }
                                     });
@@ -1257,7 +1235,7 @@ fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
                     });
 
                 // 4. Close on ESC
-                if ui.input(|i| i.key_pressed(eframe::egui::Key::Escape)) {
+                if ui.input(|i| i.key_pressed(Key::Escape)) {
                     ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
                 }
             }

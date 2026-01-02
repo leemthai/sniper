@@ -25,14 +25,13 @@ use crate::models::trading_view::{SuperZone, TradeDirection, TradeOpportunity, T
 
 use crate::TradingModel;
 
-use crate::utils::maths_utils::{calculate_expected_roi_pct, duration_to_candles};
+
+
+use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::AppInstant;
 
 #[cfg(debug_assertions)]
-use crate::utils::TimeUtils;
-
-#[cfg(debug_assertions)]
-use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::calculate_percent_diff};
+use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::{calculate_percent_diff, calculate_expected_roi_pct}, crate::utils::TimeUtils};
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
