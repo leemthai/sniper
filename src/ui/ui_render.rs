@@ -4,10 +4,11 @@ use eframe::egui::{
 };
 
 use strum::IntoEnumIterator;
+use std::cmp::Ordering;
 
 use crate::analysis::adaptive::AdaptiveParameters;
 
-use crate::config::TICKER;
+use crate::config::{TICKER, ANALYSIS};
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::domain::pair_interval::PairInterval;
@@ -26,7 +27,7 @@ use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
-use crate::utils::maths_utils::calculate_percent_diff;
+use crate::utils::maths_utils::{calculate_percent_diff, format_volume_compact};
 
 use super::app::ZoneSniperApp;
 
@@ -40,11 +41,11 @@ impl ZoneSniperApp {
 
             if a_has != b_has {
                 if a_has {
-                    return std::cmp::Ordering::Less;
+                    return Ordering::Less;
                 }
                 // A (Has) < B (Empty) -> A First
                 else {
-                    return std::cmp::Ordering::Greater;
+                    return Ordering::Greater;
                 }
             }
 
@@ -591,7 +592,7 @@ impl ZoneSniperApp {
             let base_asset = self
                 .selected_pair
                 .as_ref()
-                .and_then(|p| crate::domain::pair_interval::PairInterval::get_base(p))
+                .and_then(|p| PairInterval::get_base(p))
                 .unwrap_or("SELECTED");
 
             let pair_label = format!("{} {}", base_asset, UI_TEXT.tf_scope_selected);
@@ -638,30 +639,37 @@ impl ZoneSniperApp {
         ui.separator();
     }
 
-    /// Renders a single row in the Trade Finder Grid
+    /// Main Entry Point for Row Rendering
     fn render_finder_grid_row(&mut self, ui: &mut Ui, row: TradeFinderRow) {
-        // STRICT SELECTION LOGIC: Row is selected if Pair matches AND (Specific Op matches OR both are None)
+        // 1. Determine Selection State
         let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
             && match (&self.selected_opportunity, &row.opportunity) {
-                (Some(sel), Some(live_op)) => {
-                    sel.target_zone_id == live_op.opportunity.target_zone_id
-                }
+                (Some(sel), Some(live_op)) => sel.target_zone_id == live_op.opportunity.target_zone_id,
                 (None, None) => true,
                 _ => false,
             };
 
-        // --- COL 1: PAIR NAME + DIRECTION (Merged) ---
+        // 2. Render Columns Sequentially (Easy to Reorder)
+        self.col_pair_name(ui, &row, is_selected);
+        self.col_market_state(ui, &row);
+        self.col_return_metrics(ui, &row);
+        self.col_time_and_ops(ui, &row);
+        self.col_volume_24h(ui, &row);
+        self.col_sl_variants(ui, &row);
+
+        ui.end_row();
+    }
+
+    /// Pair Name + Direction Icon
+    fn col_pair_name(&mut self, ui: &mut Ui, row: &TradeFinderRow, is_selected: bool) {
         ui.horizontal(|ui| {
-            // A. Pair Name Button
-            if ui
-                .interactive_label(
-                    &row.pair_name,
-                    is_selected,
-                    PLOT_CONFIG.color_text_primary,
-                    FontId::proportional(14.0),
-                )
-                .clicked()
-            {
+            // Button
+            if ui.interactive_label(
+                &row.pair_name,
+                is_selected,
+                PLOT_CONFIG.color_text_primary,
+                FontId::proportional(14.0),
+            ).clicked() {
                 self.handle_pair_selection(row.pair_name.clone());
                 if let Some(live_op) = &row.opportunity {
                     self.selected_opportunity = Some(live_op.opportunity.clone());
@@ -670,7 +678,7 @@ impl ZoneSniperApp {
                 }
             }
 
-            // B. Direction Arrow
+            // Direction Arrow (Only if Op exists)
             if let Some(live_op) = &row.opportunity {
                 let op = &live_op.opportunity;
                 let dir_color = op.direction.color();
@@ -681,133 +689,80 @@ impl ZoneSniperApp {
                 ui.label(RichText::new(arrow).color(dir_color));
             }
         });
+    }
 
-        // --- DATA COLUMNS ---
-        if let Some(live_op) = &row.opportunity {
-            let op = &live_op.opportunity;
-            let roi_color = get_outcome_color(live_op.live_roi);
-
-
-            // VOL / MOM (Market State)
-            if let Some(ms) = &row.market_state {
-                ui.vertical(|ui| {
-                    // Top: Volatility
-                    ui.label(
-                        RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
-                            .small()
-                            .color(PLOT_CONFIG.color_info),
-                    );
-                    // Bot: Momentum
-                    let mom_color = get_outcome_color(ms.momentum_pct);
-                    ui.label(
-                        RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
-                            .small()
-                            .color(mom_color),
-                    );
-                });
-            } else {
-                ui.label("-");
-            }
-
-
-            // ROI / AROI
+    /// Market State (Vol/Mom) 
+    fn col_market_state(&self, ui: &mut Ui, row: &TradeFinderRow) {
+        if let Some(ms) = &row.market_state {
             ui.vertical(|ui| {
-                // Top: ROI
-                ui.label(
-                    RichText::new(format!("{:+.2}%", live_op.live_roi))
-                        .strong()
-                        .color(roi_color),
-                );
-                // Bot: AROI
-                ui.label(
-                    RichText::new(format!("{:+.0}%", live_op.annualized_roi))
-                        .small()
-                        .color(roi_color.linear_multiply(0.7)),
-                );
+                // Volatility
+                ui.label(RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
+                    .small()
+                    .color(PLOT_CONFIG.color_info));
+                
+                // Momentum
+                let mom_color = get_outcome_color(ms.momentum_pct);
+                ui.label(RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
+                    .small()
+                    .color(mom_color));
             });
+        } else {
+            self.display_no_data(ui);
+        }
+    }
 
-            // TIME / OPPS
+    /// Return Metrics (ROI/AROI)
+    fn col_return_metrics(&self, ui: &mut Ui, row: &TradeFinderRow) {
+        if let Some(live_op) = &row.opportunity {
+            let roi_color = get_outcome_color(live_op.live_roi);
             ui.vertical(|ui| {
-                // Top: Avg Duration
-                let time_str = TimeUtils::format_duration(op.avg_duration_ms);
-                ui.label(
-                    RichText::new(time_str)
-                        .small()
-                        .color(PLOT_CONFIG.color_text_neutral),
-                );
+                ui.label(RichText::new(format!("{:+.2}%", live_op.live_roi)).color(roi_color));
+                ui.label(RichText::new(format!("{:+.0}%", live_op.annualized_roi))
+                    .small()
+                    .color(roi_color.linear_multiply(0.7)));
+            });
+        } else {
+            self.display_no_data(ui);
+        }
+    }
 
-                // Bot: Total Ops for Pair
+
+    /// Time & Ops Count - Handles Both Cases
+    fn col_time_and_ops(&self, ui: &mut Ui, row: &TradeFinderRow) {
+        if let Some(live_op) = &row.opportunity {
+            ui.vertical(|ui| {
+                let time_str = TimeUtils::format_duration(live_op.opportunity.avg_duration_ms);
+                ui.label(RichText::new(time_str).small().color(PLOT_CONFIG.color_text_neutral));
+
                 if row.opportunity_count_total > 1 {
-                    ui.label(
-                        RichText::new(format!("{} Opps", row.opportunity_count_total))
-                            .small()
-                            .color(PLOT_CONFIG.color_text_subdued),
-                    );
-                } else {
-                    ui.label(""); // Spacer
+                    ui.label(RichText::new(format!("{} Opps", row.opportunity_count_total))
+                        .small()
+                        .color(PLOT_CONFIG.color_text_subdued));
                 }
             });
-
-            // 24H VOLUME
-            let val = row.quote_volume_24h;
-            let val_str = if val > 1_000_000.0 {
-                format!("{:.1}M", val / 1_000_000.0)
-            } else {
-                format!("{:.0}K", val / 1_000.0)
-            };
-            ui.label(
-                RichText::new(val_str)
-                    .small()
-                    .color(PLOT_CONFIG.color_text_subdued),
-            );
-
-            self.render_card_variants(ui, op);
         } else {
-            // --- NO OPPORTUNITY (Fallback Row) Just show Market State & Volume
-
-            // (Volatility/Momentum)
-            if let Some(ms) = &row.market_state {
-                ui.vertical(|ui| {
-                    ui.label(
-                        RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
-                            .small()
-                            .color(PLOT_CONFIG.color_info),
-                    );
-                    let mom_color = get_outcome_color(ms.momentum_pct);
-                    ui.label(
-                        RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
-                            .small()
-                            .color(mom_color),
-                    );
-                });
-            } else {
-                ui.label("-");
-            }
-
-            // Col 3 (ROI)
-            ui.label("-");
-
-            // Col 5 (Time)
-            ui.label("-");
-
-            // Col 6 (Vol)
-            let val = row.quote_volume_24h;
-            let val_str = if val > 1_000_000.0 {
-                format!("{:.1}M", val / 1_000_000.0)
-            } else {
-                format!("{:.0}K", val / 1_000.0)
-            };
-            ui.label(
-                RichText::new(val_str)
-                    .small()
-                    .color(PLOT_CONFIG.color_text_subdued),
-            );
-
-            // Col 7 (SL)
-            ui.label("-");
+            self.display_no_data(ui);
         }
+    }
 
-        ui.end_row();
+    ///  24h Volume - Always present (even without op)
+    fn col_volume_24h(&self, ui: &mut Ui, row: &TradeFinderRow) {
+        let val_str = format_volume_compact(row.quote_volume_24h);
+        ui.label(RichText::new(val_str).small().color(PLOT_CONFIG.color_text_subdued));
+    }
+
+    /// SL Variants - Handles Both Cases
+    fn col_sl_variants(&mut self, ui: &mut Ui, row: &TradeFinderRow) {
+        if let Some(live_op) = &row.opportunity {
+            self.render_card_variants(ui, &live_op.opportunity);
+        } else {
+            self.display_no_data(ui);
+        }
+    }
+
+    /// Helper for Empty Cells (SSOT)
+    fn display_no_data(&self, ui: &mut Ui) {
+        ui.label("-");
     }
 
     fn render_trade_finder_content(&mut self, ui: &mut Ui) {
@@ -857,7 +812,7 @@ impl ZoneSniperApp {
             }
         }
 
-        let profile = &crate::config::ANALYSIS.journey.profile;
+        let profile = &ANALYSIS.journey.profile;
         if !rows.is_empty() {
             rows.retain(|r| {
                 if let Some(op) = &r.opportunity {

@@ -38,6 +38,7 @@ pub const ICON_SORT: &str = "\u{f07d}"; // (Sort Neutral)
 
 // pub const ICON_24_HRS:  &str = "\u{f1478}";
 pub const ICON_CLOSE: &str = "\u{f00d}";
+pub const ICON_PLUS_MINUS:  &str = "\u{f14c9}";
 
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
@@ -316,7 +317,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         ph_label_evidence: "Evidence".to_string(),
         ph_label_history: "History".to_string(),
         ph_label_density: "Density".to_string(),
-        ph_label_horizon_prefix: "Horizon: ±".to_string(),
+        ph_label_horizon_prefix: ICON_PLUS_MINUS.to_string(),
         ph_startup: "Analyzing Price Structure...".to_string(),
         ph_definitions: "Definitions".to_string(),
         ph_read_heatmap: "1. Reading the Heatmap (Data Density)".to_string(),

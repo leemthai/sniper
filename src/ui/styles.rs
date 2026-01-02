@@ -1,16 +1,17 @@
-use eframe::egui::{Color32, RichText, Ui, Button, CursorIcon, Vec2, Stroke, CornerRadius, Response, WidgetInfo, WidgetType, Sense, StrokeKind, FontId};
+use eframe::egui::{
+    Button, Color32, CornerRadius, CursorIcon, FontId, Response, RichText, Sense, Stroke,
+    StrokeKind, Ui, Vec2, WidgetInfo, WidgetType, Pos2,
+};
 
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::trading_view::TradeDirection;
 use crate::ui::config::UI_CONFIG;
 
-
 /// Creates a colored heading with uppercase text (not mono anymore, but can put back for stylisting reasons if requried)
 pub fn colored_heading(text: impl Into<String>) -> RichText {
     let uppercase_text = text.into().to_uppercase() + ":";
-    RichText::new(uppercase_text)
-        .color(UI_CONFIG.colors.heading)
-        // .monospace()
+    RichText::new(uppercase_text).color(UI_CONFIG.colors.heading)
+    // .monospace()
 }
 
 /// Creates a colored sub-section headingusing the configured label color
@@ -31,7 +32,6 @@ pub fn spaced_separator(ui: &mut Ui) {
     ui.separator();
     ui.add_space(10.0);
 }
-
 
 /// Extension trait to map Data Models to UI Colors
 pub trait DirectionColor {
@@ -62,16 +62,19 @@ pub fn get_outcome_color(value: f64) -> Color32 {
     }
 }
 
-
 /// Extension trait to add semantic styling methods directly to `egui::Ui`.
 pub trait UiStyleExt {
-
     /// A custom label that acts like a button:
     /// - Idle: Transparent BG, 'idle_color' text.
     /// - Hover: Gray BG, YELLOW text.
     /// - Selected: Blue BG, WHITE text.
-    fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color32, font_id: FontId) -> Response;
-
+    fn interactive_label(
+        &mut self,
+        text: &str,
+        is_selected: bool,
+        idle_color: Color32,
+        font_id: FontId,
+    ) -> Response;
 
     /// Renders small, gray text (good for labels like "Coverage:").
     fn label_subdued(&mut self, text: impl Into<String>);
@@ -85,32 +88,61 @@ pub trait UiStyleExt {
 
     /// Renders a sub-section header using the configured global color.
     fn label_subheader(&mut self, text: impl Into<String>);
-    
+
     /// Renders an error message (Red).
     fn label_error(&mut self, text: impl Into<String>);
-    
+
     /// Renders a warning/info message (Yellow/Gold).
     fn label_warning(&mut self, text: impl Into<String>);
 
     /// Generates RichText styled specifically for a Primary Action Button (Green/Bold).
     fn button_text_primary(&self, text: impl Into<String>) -> RichText;
-    
+
     /// Generates RichText styled specifically for a Secondary Action Button (White/Bold).
     fn button_text_secondary(&self, text: impl Into<String>) -> RichText;
 
     /// For help buttons
     fn help_button(&mut self, text: &str) -> bool; // Returns true if clicked
 
+    fn subtle_vertical_separator(&mut self);
 }
 
 impl UiStyleExt for Ui {
 
-fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color32, font_id: FontId) -> Response {
+    fn subtle_vertical_separator(&mut self) {
+        let height = 12.0; // Fixed height for a clean look
+        let width = 1.0;
+        let color = PLOT_CONFIG.color_widget_border; // Use theme border color
+
+        let (rect, _resp) = self.allocate_exact_size(Vec2::new(width + 8.0, height), Sense::hover()); // 4px padding on sides
+        
+        if self.is_rect_visible(rect) {
+            let center_x = rect.center().x;
+            self.painter().line_segment(
+                [
+                    Pos2::new(center_x, rect.top()),
+                    Pos2::new(center_x, rect.bottom())
+                ],
+                Stroke::new(1.0, color)
+            );
+        }
+    }
+
+
+    fn interactive_label(
+        &mut self,
+        text: &str,
+        is_selected: bool,
+        idle_color: Color32,
+        font_id: FontId,
+    ) -> Response {
         // REMOVED hardcoded 14.0
         let padding = eframe::egui::Vec2::new(4.0, 2.0);
 
         // 1. Calculate Size
-        let galley = self.painter().layout_no_wrap(text.to_string(), font_id, idle_color);
+        let galley = self
+            .painter()
+            .layout_no_wrap(text.to_string(), font_id, idle_color);
         let desired_size = galley.size() + padding * 2.0;
 
         // 2. Allocate
@@ -119,7 +151,7 @@ fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color
 
         if self.is_rect_visible(rect) {
             let visuals = self.style().visuals.clone();
-            
+
             let (bg_fill, text_color) = if is_selected {
                 (visuals.selection.bg_fill, Color32::WHITE)
             } else if response.hovered() || response.has_focus() {
@@ -130,14 +162,14 @@ fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color
 
             if is_selected || response.hovered() {
                 self.painter().rect(
-                    rect, 
-                    CornerRadius::same(4), 
-                    bg_fill, 
-                    Stroke::NONE, 
-                    StrokeKind::Inside
+                    rect,
+                    CornerRadius::same(4),
+                    bg_fill,
+                    Stroke::NONE,
+                    StrokeKind::Inside,
                 );
             }
-            
+
             let text_pos = rect.left_top() + padding;
             self.painter().galley(text_pos, galley, text_color);
         }
@@ -152,13 +184,13 @@ fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color
 
             // --- A. BORDER (BG Stroke) COLOR ---
             visuals.widgets.inactive.bg_stroke = Stroke::new(2.0, PLOT_CONFIG.color_help_bg);
-            visuals.widgets.hovered.bg_stroke  = Stroke::new(2.0, PLOT_CONFIG.color_help_bg_hover);
-            visuals.widgets.active.bg_stroke   = Stroke::new(2.0, PLOT_CONFIG.color_help_bg_hover);
+            visuals.widgets.hovered.bg_stroke = Stroke::new(2.0, PLOT_CONFIG.color_help_bg_hover);
+            visuals.widgets.active.bg_stroke = Stroke::new(2.0, PLOT_CONFIG.color_help_bg_hover);
 
             // --- B. ICON (Text) COLOR ---
             visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, PLOT_CONFIG.color_help_bg);
-            visuals.widgets.hovered.fg_stroke  = Stroke::new(1.0, PLOT_CONFIG.color_help_bg);
-            visuals.widgets.active.fg_stroke   = Stroke::new(1.0, PLOT_CONFIG.color_help_bg_hover);
+            visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, PLOT_CONFIG.color_help_bg);
+            visuals.widgets.active.fg_stroke = Stroke::new(1.0, PLOT_CONFIG.color_help_bg_hover);
 
             // Prevent expansion animation if you want it rock solid
             visuals.widgets.hovered.expansion = 0.0;
@@ -174,10 +206,9 @@ fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color
                 .corner_radius(CornerRadius::same(12))
                 .min_size(Vec2::new(16.0, 16.0));
 
-            ui.add(btn)
-                .on_hover_cursor(CursorIcon::Help)
-                .clicked()
-        }).inner
+            ui.add(btn).on_hover_cursor(CursorIcon::Help).clicked()
+        })
+        .inner
     }
 
     fn label_subdued(&mut self, text: impl Into<String>) {
@@ -206,7 +237,11 @@ fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color
     }
 
     fn label_warning(&mut self, text: impl Into<String>) {
-         self.label(RichText::new(text).small().color(Color32::from_rgb(255, 215, 0)));
+        self.label(
+            RichText::new(text)
+                .small()
+                .color(Color32::from_rgb(255, 215, 0)),
+        );
     }
 
     fn button_text_primary(&self, text: impl Into<String>) -> RichText {
@@ -216,5 +251,4 @@ fn interactive_label(&mut self, text: &str, is_selected: bool, idle_color: Color
     fn button_text_secondary(&self, text: impl Into<String>) -> RichText {
         RichText::new(text).strong().color(Color32::WHITE).small()
     }
-
 }

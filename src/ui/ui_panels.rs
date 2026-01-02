@@ -17,11 +17,9 @@ use crate::ui::styles::{UiStyleExt, colored_subsection_heading};
 use crate::ui::utils::{
     format_candle_count, format_duration_context,
 };
+use crate::utils::maths_utils::{calculate_history_days, calculate_evidence_days, calculate_density_pct};
 
 use crate::utils::TimeUtils;
-
-// #[cfg(debug_assertions)]
-// use crate::config::DEBUG_FLAGS;
 
 pub struct CandleRangePanel<'a> {
     segments: &'a [DisplaySegment],
@@ -391,6 +389,7 @@ impl<'a> DataGenerationPanel<'a> {
                         ui.data_mut(|d| d.insert_temp(id, clean_text));
                     }
                 }
+                ui.label(&UI_TEXT.ph_label_horizon_prefix);
             });
         });
 
@@ -548,19 +547,64 @@ impl<'a> DataGenerationPanel<'a> {
         }
     }
 
-    fn render_horizon_report(&self, ui: &mut Ui, current_pct: f64, profile: &HorizonProfile) {
+        fn render_horizon_report(&self, ui: &mut Ui, current_pct: f64, profile: &HorizonProfile) {
+        // Find the relevant bucket
+        if let Some(bucket) = profile.buckets.iter().min_by(|a, b| {
+            (a.threshold_pct - current_pct).abs()
+                .partial_cmp(&(b.threshold_pct - current_pct).abs())
+                .unwrap()
+        }) {
+            ui.add_space(4.0);
+
+            // Determine Count
+            let is_current_config = (current_pct - self.price_horizon_config.threshold_pct).abs() < f64::EPSILON;
+            let count = if is_current_config { self.actual_candle_count } else { bucket.candle_count };
+
+            // 1. Perform Calculations (Using Math Utils)
+            let history_days = calculate_history_days(bucket.min_ts, bucket.max_ts);
+            let evidence_days = calculate_evidence_days(count, self.interval_ms);
+            let density_pct = calculate_density_pct(evidence_days, history_days);
+
+            // 2. Render Single Horizontal Line
+            ui.horizontal(|ui| {
+                // A. Evidence
+                ui.label(RichText::new(&UI_TEXT.ph_label_evidence).small().color(PLOT_CONFIG.color_text_subdued));
+                ui.label(RichText::new(format_duration_context(evidence_days)).small().color(PLOT_CONFIG.color_text_primary));
+                
+                ui.subtle_vertical_separator();
+
+                // B. History
+                ui.label(RichText::new(&UI_TEXT.ph_label_history).small().color(PLOT_CONFIG.color_text_subdued));
+                ui.label(RichText::new(format_duration_context(history_days)).small().color(PLOT_CONFIG.color_info));
+
+                ui.subtle_vertical_separator();
+
+                // C. Density
+                ui.label(RichText::new(&UI_TEXT.ph_label_density).small().color(PLOT_CONFIG.color_text_subdued));
+                
+                let density_color = if density_pct > 90.0 { PLOT_CONFIG.color_profit }
+                                    else if density_pct > 50.0 { PLOT_CONFIG.color_warning }
+                                    else { PLOT_CONFIG.color_loss };
+                
+                ui.label(RichText::new(format!("{:.0}%", density_pct)).small().strong().color(density_color));
+            });
+        }
+    }
+
+
+    fn render_horizon_report_old(&self, ui: &mut Ui, current_pct: f64, profile: &HorizonProfile) {
         ui.vertical(|ui| {
             ui.add_space(4.0);
 
-            ui.label(
-                RichText::new(format!(
-                    "{} {:.2}%",
-                    UI_TEXT.ph_label_horizon_prefix,
-                    current_pct * 100.0
-                ))
-                .strong()
-                .color(PLOT_CONFIG.color_text_primary),
-            );
+            // ui.label(
+            //     RichText::new(format!(
+            //         "{} {:.2}%",
+            //         UI_TEXT.ph_label_horizon_prefix,
+            //         current_pct * 100.0
+            //     ))
+            //     .strong()
+            //     .color(PLOT_CONFIG.color_text_primary),
+            // );
 
             if let Some(bucket) = profile.buckets.iter().min_by(|a, b| {
                 (a.threshold_pct - current_pct)

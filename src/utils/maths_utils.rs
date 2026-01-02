@@ -5,6 +5,37 @@ use std::time::Duration; // Ensure this import exists
 
 pub const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
 
+/// Calculates the span of time (in days) covered by a timestamp range.
+pub fn calculate_history_days(min_ts: i64, max_ts: i64) -> f64 {
+    let span_ms = max_ts.saturating_sub(min_ts);
+    span_ms as f64 / (1000.0 * 60.0 * 60.0 * 24.0)
+}
+
+/// Calculates the duration (in days) of the actual data present (candle count).
+pub fn calculate_evidence_days(count: usize, interval_ms: i64) -> f64 {
+    let evidence_ms = count as f64 * interval_ms as f64;
+    evidence_ms / (1000.0 * 60.0 * 60.0 * 24.0)
+}
+
+/// Calculates the density percentage (Evidence / History).
+pub fn calculate_density_pct(evidence_days: f64, history_days: f64) -> f64 {
+    if history_days > 0.001 {
+        (evidence_days / history_days) * 100.0
+    } else {
+        0.0
+    }
+}
+
+pub fn format_volume_compact(val: f64) -> String {
+    if val > 1_000_000.0 {
+        format!("{:.1}M", val / 1_000_000.0)
+    } else if val > 1_000.0 {
+        format!("{:.0}K", val / 1_000.0)
+    } else {
+        format!("{:.0}", val)
+    }
+}
+
 /// Calculates Annualized ROI % (Simple Projection).
 /// Formula: ROI * (Year / Duration)
 #[inline]
