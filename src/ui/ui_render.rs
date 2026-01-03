@@ -1,6 +1,6 @@
 use eframe::egui::{
-    Align, CentralPanel, Color32, Context, FontId, Grid, Layout, Order, RichText, SidePanel,
-    TopBottomPanel, Ui, Window, Sense,
+    Align, CentralPanel, Color32, Context, FontId, Grid, Layout, Order,
+    RichText, Sense, SidePanel, TopBottomPanel, Ui, Window,
 };
 
 use egui_extras::{Column, TableBuilder, TableRow};
@@ -673,37 +673,61 @@ impl ZoneSniperApp {
             return;
         }
 
-        // Available height for the table (minus headers/footers if any)
-        let available_height = ui.available_height();
-        // CAPTURE PAINTER for row highlighting (since TableBuilder borrows UI)
-        let painter = ui.painter().clone();
+        // 1. FIND SCROLL TARGET INDEX
+        let mut scroll_target_index = None;
+        if let Some(target) = &self.scroll_to_pair {
+            if let Some(idx) = rows.iter().position(|r| r.pair_name == *target) {
+                scroll_target_index = Some(idx);
+            }
+        }
 
-        TableBuilder::new(ui)
-            .striped(false)
-            .resizable(false)
-            .sense(Sense::click()) // Enable row clicks
-            .cell_layout(Layout::left_to_right(Align::Center))
-            .column(Column::exact(100.0).clip(true)) // Pair (Fixed base, resizable)
-            .column(Column::exact(55.0).clip(true)) // ROI/AROI (Strict width, clip overflow)
-            .column(Column::exact(55.0).clip(true)) // Vol/Mom
-            .column(Column::exact(55.0).clip(true)) // Time/Ops
-            .column(Column::exact(55.0).clip(true)) // Volume
-            .column(Column::exact(70.0).clip(true)) // Variant
-            .min_scrolled_height(0.0)
-            .max_scroll_height(available_height)
-            .header(36.0, |mut header| {
-                self.render_tf_table_header(&mut header);
-            })
-            .body(|mut body| {
-                for (_i, row) in rows.iter().enumerate() {
-                    // Row Height: 40.0 allows 2 lines of text comfortably
-                    body.row(40.0, |mut table_row| {
-                        self.render_tf_table_row(&mut table_row, row, &painter);
-                    });
-                }
-            });
+        let available_height = ui.available_height();
+
+        ui.scope(|ui| {
+            let visuals = ui.visuals_mut();
+
+            // 1. Set "Selected" color (Strong Blue)
+            visuals.selection.bg_fill = Color32::from_rgb(0, 50, 100);
+            // 2. Set "Stripe" color (Visible Gray/White Alpha)
+            visuals.faint_bg_color = Color32::from_white_alpha(15);
+
+            let mut builder = TableBuilder::new(ui)
+                .striped(true)
+                .resizable(false)
+                .sense(Sense::click()) // Enable row clicks
+                .cell_layout(Layout::left_to_right(Align::Center))
+                .column(Column::exact(100.0).clip(true)) // Pair (Fixed base, resizable)
+                .column(Column::exact(55.0).clip(true)) // ROI/AROI (Strict width, clip overflow)
+                .column(Column::exact(55.0).clip(true)) // Vol/Mom
+                .column(Column::exact(55.0).clip(true)) // Time/Ops
+                .column(Column::exact(55.0).clip(true)) // Volume
+                .column(Column::exact(70.0).clip(true)) // Variant
+                .min_scrolled_height(0.0)
+                .max_scroll_height(available_height);
+
+            // FIX: Apply Scroll at the Builder level
+            if let Some(idx) = scroll_target_index {
+                builder = builder.scroll_to_row(idx, Some(Align::Center));
+                // Clear the request now that we've handled it
+                self.scroll_to_pair = None;
+            }
+
+            builder
+                .header(36.0, |mut header| {
+                    self.render_tf_table_header(&mut header);
+                })
+                .body(|mut body| {
+                    for (i, row) in rows.iter().enumerate() {
+                        body.row(40.0, |mut table_row| {
+                            // No need to pass index anymore for scrolling
+                            self.render_tf_table_row(&mut table_row, row, i);
+                        });
+                    }
+                });
+        });
 
         // 6. Scroll Ackcb
+        // TEMP is this still needed? 
         // Note: TableBuilder handles scrolling internally differently.
         // If we need auto-scroll to specific row, TableBuilder has a .scroll_to_row() method,
         // but for now, let's see if the manual logic inside the cells still works (it usually does).
@@ -712,6 +736,183 @@ impl ZoneSniperApp {
             // If scrolling stops working, we will hook into TableBuilder's scroll API later.
             self.scroll_to_pair = None;
         }
+    }
+
+    /// Renders the data cells for a single row
+    fn render_tf_table_row(
+        &mut self,
+        table_row: &mut TableRow,
+        row: &TradeFinderRow,
+        index: usize,
+    ) {
+        // Selection Logic
+        let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
+            && match (&self.selected_opportunity, &row.opportunity) {
+                (Some(sel), Some(live_op)) => sel.id == live_op.opportunity.id,
+                (None, None) => true,
+                _ => false,
+            };
+
+        // --- FIX: USE STANDARD API ---
+        // This paints the background correctly behind the text
+        table_row.set_selected(is_selected);
+
+        // We pass the scroll tracker as a local bool to the column helper
+        self.col_pair_name(table_row, row, is_selected);
+        self.col_return_metrics(table_row, row);
+        self.col_market_state(table_row, row);
+        self.col_time_and_ops(table_row, row);
+        self.col_volume_24h(table_row, row);
+        self.col_sl_variants(table_row, row);
+
+        // 2. GET RESPONSE (Safe now)
+        let response = table_row.response();
+
+        // // 4. INTERACTION
+        if response.clicked() {
+            self.handle_pair_selection(row.pair_name.clone());
+            if let Some(live_op) = &row.opportunity {
+                self.selected_opportunity = Some(live_op.opportunity.clone());
+            } else {
+                self.selected_opportunity = None;
+            }
+        }
+
+        // // 5. SCROLL HANDLING
+        // if let Some(target) = &self.scroll_to_pair {
+        //     if target == &row.pair_name {
+        //         response.scroll_to_me(Some(Align::Center));
+        //     }
+        // }
+    }
+
+    fn col_pair_name(&self, table_row: &mut TableRow, row: &TradeFinderRow, is_selected: bool) {
+        table_row.col(|ui| {
+            ui.horizontal(|ui| {
+                // Visual Button (Click handled by Row)
+                ui.interactive_label(
+                    &row.pair_name,
+                    is_selected,
+                    PLOT_CONFIG.color_text_primary,
+                    FontId::proportional(14.0),
+                );
+
+                // Direction Icon
+                if let Some(live_op) = &row.opportunity {
+                    let op = &live_op.opportunity;
+                    let dir_color = op.direction.color();
+                    let arrow = match op.direction {
+                        TradeDirection::Long => &UI_TEXT.icon_long,
+                        TradeDirection::Short => &UI_TEXT.icon_short,
+                    };
+                    ui.label(RichText::new(arrow).color(dir_color));
+                }
+            });
+        });
+    }
+
+    fn col_return_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            if let Some(live_op) = &row.opportunity {
+                let roi_color = get_outcome_color(live_op.live_roi);
+                ui.vertical(|ui| {
+                    ui.add_space(5.0); // <--- CENTERING SPACER
+                    ui.label(
+                        RichText::new(format!("{:+.2}%", live_op.live_roi))
+                            .small()
+                            .color(roi_color),
+                    );
+                    ui.label(
+                        RichText::new(format!("{:+.0}%", live_op.annualized_roi))
+                            .small()
+                            .color(roi_color.linear_multiply(0.7)),
+                    );
+                });
+            } else {
+                self.display_no_data(ui);
+            }
+        });
+    }
+
+    fn col_market_state(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            if let Some(ms) = &row.market_state {
+                ui.vertical(|ui| {
+                    ui.add_space(5.0); // <--- CENTERING SPACER
+
+                    ui.label(
+                        RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
+                            .small()
+                            .color(PLOT_CONFIG.color_info),
+                    );
+                    let mom_color = get_outcome_color(ms.momentum_pct);
+                    ui.label(
+                        RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
+                            .small()
+                            .color(mom_color),
+                    );
+                });
+            } else {
+                self.display_no_data(ui);
+            }
+        });
+    }
+
+    fn col_time_and_ops(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            ui.vertical(|ui| {
+                ui.add_space(5.0); // <--- CENTERING SPACER
+
+                if let Some(live_op) = &row.opportunity {
+                    let time_str = TimeUtils::format_duration(live_op.opportunity.avg_duration_ms);
+                    ui.label(
+                        RichText::new(time_str)
+                            .small()
+                            .color(PLOT_CONFIG.color_text_neutral),
+                    );
+                } else {
+                    self.display_no_data(ui);
+                }
+
+                if row.opportunity_count_total > 1 {
+                    ui.label(
+                        RichText::new(format!("{} Opps", row.opportunity_count_total))
+                            .small()
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
+                } else {
+                    ui.label("");
+                }
+            });
+        });
+    }
+
+    fn col_volume_24h(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            let val_str = format_volume_compact(row.quote_volume_24h);
+            ui.label(
+                RichText::new(val_str)
+                    .small()
+                    .color(PLOT_CONFIG.color_text_subdued),
+            );
+        });
+    }
+
+    fn col_sl_variants(&mut self, table_row: &mut egui_extras::TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            // FIX: Add alignment wrapper
+            ui.vertical(|ui| {
+                ui.add_space(5.0); // Alignment spacer
+
+                // FIX: Use your preferred logic (Always render if op exists)
+                if let Some(live_op) = &row.opportunity {
+                    let op = &live_op.opportunity;
+                    self.render_card_variants(ui, op);
+                } else {
+                    self.display_no_data(ui);
+                }
+            });
+        });
     }
 
     /// Renders the complex "Dual Sort" headers inside the Table
@@ -784,136 +985,6 @@ impl ZoneSniperApp {
                 &UI_TEXT.label_stop_loss_short,
                 None,
             );
-        });
-    }
-
-    /// Renders the data cells for a single row
-    fn render_tf_table_row(
-        &mut self,
-        table_row: &mut TableRow,
-        row: &TradeFinderRow,
-        painter: &eframe::egui::Painter,
-    ) {
-        // Selection Logic
-        let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
-            && match (&self.selected_opportunity, &row.opportunity) {
-                (Some(sel), Some(live_op)) => sel.id == live_op.opportunity.id,
-                (None, None) => true,
-                _ => false,
-            };
-
-        // We render content first. 
-        self.col_pair_name(table_row, row, is_selected);
-        self.col_return_metrics(table_row, row);
-        self.col_market_state(table_row, row);
-        self.col_time_and_ops(table_row, row);
-        self.col_volume_24h(table_row, row);
-        self.col_sl_variants(table_row, row);
-
-        // --- 2. ROW INTERACTION (Must happen AFTER columns added) ---
-        let response = table_row.response();
-
-        // A. Highlight (Paint over striping)
-        if is_selected {
-            painter.rect_filled(response.rect, 0.0, Color32::from_white_alpha(20));
-        }
-
-        // B. Click Handling
-        if response.clicked() {
-             self.handle_pair_selection(row.pair_name.clone());
-             if let Some(live_op) = &row.opportunity {
-                 self.selected_opportunity = Some(live_op.opportunity.clone());
-             } else {
-                 self.selected_opportunity = None;
-             }
-        }
-
-        // C. Scroll Handling (Scroll to the ROW, not the cell)
-        if let Some(target) = &self.scroll_to_pair {
-            if target == &row.pair_name {
-                 response.scroll_to_me(Some(Align::Center));
-            }
-        }
-
-    }
-
-    fn col_pair_name(&self, table_row: &mut TableRow, row: &TradeFinderRow, is_selected: bool) {
-        table_row.col(|ui| {
-            ui.horizontal(|ui| {
-                // Visual Button (Click handled by Row)
-                ui.interactive_label(
-                    &row.pair_name,
-                    is_selected,
-                    PLOT_CONFIG.color_text_primary,
-                    FontId::proportional(14.0),
-                );
-
-                // Direction Icon
-                if let Some(live_op) = &row.opportunity {
-                    let op = &live_op.opportunity;
-                    let dir_color = op.direction.color();
-                    let arrow = match op.direction {
-                        TradeDirection::Long => &UI_TEXT.icon_long,
-                        TradeDirection::Short => &UI_TEXT.icon_short,
-                    };
-                    ui.label(RichText::new(arrow).color(dir_color));
-                }
-            });
-        });
-    }
-
-    fn col_return_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-            if let Some(live_op) = &row.opportunity {
-                let roi_color = get_outcome_color(live_op.live_roi);
-                ui.vertical(|ui| {
-                    ui.label(RichText::new(format!("{:+.2}%", live_op.live_roi)).small().color(roi_color));
-                    ui.label(RichText::new(format!("{:+.0}%", live_op.annualized_roi)).small().color(roi_color.linear_multiply(0.7)));
-                });
-            } else { self.display_no_data(ui); }
-        });
-    }
-
-    fn col_market_state(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-            if let Some(ms) = &row.market_state {
-                ui.vertical(|ui| {
-                    ui.label(RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0)).small().color(PLOT_CONFIG.color_info));
-                    let mom_color = get_outcome_color(ms.momentum_pct);
-                    ui.label(RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0)).small().color(mom_color));
-                });
-            } else { self.display_no_data(ui); }
-        });
-    }
-
-    fn col_time_and_ops(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-            ui.vertical(|ui| {
-                if let Some(live_op) = &row.opportunity {
-                    let time_str = TimeUtils::format_duration(live_op.opportunity.avg_duration_ms);
-                    ui.label(RichText::new(time_str).small().color(PLOT_CONFIG.color_text_neutral));
-                } else { self.display_no_data(ui); }
-
-                if row.opportunity_count_total > 1 {
-                     ui.label(RichText::new(format!("{} Opps", row.opportunity_count_total)).small().color(PLOT_CONFIG.color_text_subdued));
-                } else { ui.label(""); }
-            });
-        });
-    }
-
-    fn col_volume_24h(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-             let val_str = format_volume_compact(row.quote_volume_24h);
-             ui.label(RichText::new(val_str).small().color(PLOT_CONFIG.color_text_subdued));
-        });
-    }
-
-    fn col_sl_variants(&mut self, table_row: &mut TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-            if let Some(live_op) = &row.opportunity {
-                let op = &live_op.opportunity;
-                self.render_card_variants(ui, op);
-            } else { self.display_no_data(ui); }
         });
     }
 

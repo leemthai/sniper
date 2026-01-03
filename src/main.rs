@@ -82,8 +82,9 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     // A. Init Logging
-    std::panic::set_hook(Box::new(|panic_info| {
-        eprintln!("Application panicked: {:?}", panic_info);
+    std::panic::set_hook(Box::new(|info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        log::error!("CRITICAL PANIC:\n{}\nStack Trace:\n{}", info, backtrace);
     }));
 
     let (global_level, my_code_level) = if cfg!(debug_assertions) {
