@@ -21,7 +21,7 @@ use {
 
 // Limit demo data to keep WASM binary small (Github limit < 100MB)
 #[cfg(not(target_arch = "wasm32"))]
-const DEMO_CANDLE_LIMIT: usize = 15_000;
+const DEMO_CANDLE_LIMIT: usize = 50_000;
 
 // --- NATIVE IMPLEMENTATION ---
 #[cfg(not(target_arch = "wasm32"))]
