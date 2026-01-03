@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 use crate::models::OhlcvTimeSeries;
 use crate::config::SimilaritySettings;
 
 /// A normalized "Fingerprint" of the market conditions at a specific moment in time.
 /// Used to find historical matches for the Ghost Runner simulation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MarketState {
     /// 1. Volatility (The "Temperature")
     /// Ratio of (High-Low) relative to the Close price.

@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+
 
 use crate::analysis::market_state::MarketState;
 use crate::config::SimilaritySettings;
@@ -21,7 +23,7 @@ pub enum Outcome {
     TimedOut(f64),    // Neither hit nor failed. Stores % change at timeout
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationResult {
     pub success_rate: f64,    // 0.0 to 1.0
     pub avg_duration: f64,    // Average candles to result

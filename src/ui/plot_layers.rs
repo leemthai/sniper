@@ -11,6 +11,7 @@ use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 use crate::analysis::range_gap_finder::GapReason;
 
 use crate::config::plot::PLOT_CONFIG;
+use crate::config::ANALYSIS;
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::ScoreType;
@@ -28,8 +29,11 @@ pub struct OpportunityLayer;
 
 // Helper to find the default "Best" op if nothing is selected
 fn find_best_opportunity(model: &TradingModel) -> Option<&TradeOpportunity> {
+    let profile = &ANALYSIS.journey.profile;
+
     model.opportunities.iter()
-        .filter(|op| op.expected_roi() > 0.0)
+        // FIX: Use is_worthwhile to enforce MWT (Min ROI / Min AROI)
+        .filter(|op| op.is_worthwhile(profile)) 
         .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
 }
 
@@ -48,9 +52,8 @@ impl PlotLayer for OpportunityLayer {
         // --- SELECTION LOGIC START ---
         // Determine which Op to show: Selected (if matches pair) OR Best (Fallback)
         let target_opp = if let Some(selected) = ctx.selected_opportunity {
-            // Is the selected op for THIS pair?
             if selected.pair_name == ctx.trading_model.cva.pair_name {
-                Some(selected)
+                Some(selected) // ID matches naturally because it's the same object
             } else {
                 find_best_opportunity(ctx.trading_model)
             }

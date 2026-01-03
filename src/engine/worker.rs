@@ -5,6 +5,8 @@ use std::sync::mpsc::{Receiver, Sender};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
 
+use uuid::Uuid;
+
 use super::messages::{JobRequest, JobResult};
 
 use crate::analysis::adaptive::AdaptiveParameters;
@@ -25,10 +27,8 @@ use crate::models::trading_view::{SuperZone, TradeDirection, TradeOpportunity, T
 
 use crate::TradingModel;
 
-
-
 use crate::utils::maths_utils::duration_to_candles;
-use crate::utils::time_utils::AppInstant;
+use crate::utils::time_utils::{AppInstant, TimeUtils};
 
 #[cfg(debug_assertions)]
 use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::{calculate_percent_diff, calculate_expected_roi_pct}};
@@ -80,19 +80,6 @@ fn run_pathfinder_simulations(
 
     // C. Convert to Candles for Simulation
     let duration_candles = duration_to_candles(duration_time, interval_ms);
-    // -------------------------------------
-
-    // #[cfg(debug_assertions)]
-    // log::info!(
-    //     "PATHFINDER START for {}: Scanning {} zones. Lookback: {} candles. Max Duration: {:?} ({} candles, Vol: {:.3}%. PH: {:.2}%)",
-    //     ohlcv.pair_interval.name().to_string(),
-    //     sticky_zones.len(),
-    //     trend_lookback,
-    //     TimeUtils::format_duration(duration_time.as_millis() as i64),
-    //     duration_candles,
-    //     avg_volatility * 100.0,
-    //     ph_pct * 100.
-    // );
 
     // 2. Heavy Lift: Find Historical Matches ONCE
     let (historical_matches, current_market_state) =
@@ -114,7 +101,6 @@ fn run_pathfinder_simulations(
                 return Vec::new();
             }
         };
-    // ----------------
 
     // 3. Scan Zones
     for (i, zone) in sticky_zones.iter().enumerate() {
@@ -146,7 +132,20 @@ fn run_pathfinder_simulations(
                 let avg_candles = best_result.avg_duration;
                 let avg_ms = (avg_candles * interval_ms as f64).round() as i64;
 
+                // FIX: DETERMINISTIC ID (Stable across restarts)
+                // Namespace: Pair Name. Name: Zone + Config signature
+                let id_str = format!("{}_{}_{}", 
+                    ohlcv.pair_interval.name(), 
+                    zone.id, 
+                    config.journey.profile.min_roi // Include config so ID changes if config changes
+                );
+                let opp_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, id_str.as_bytes()).to_string();
+                
+                let now = TimeUtils::now_timestamp_ms();
+
                 opportunities.push(TradeOpportunity {
+                    id: opp_id,
+                    created_at: now,
                     pair_name: ohlcv.pair_interval.name().to_string(),
                     start_price: current_price,
                     target_zone_id: zone.id,

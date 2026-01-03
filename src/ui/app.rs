@@ -179,9 +179,8 @@ pub struct ZoneSniperApp {
     pub show_candle_range: bool,
     pub tf_sort_col: SortColumn,    // TF Sorting State
     pub tf_sort_dir: SortDirection, // TF Sort Direction
-
-    #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>, // Specific TF selection
+
     #[serde(skip)]
     pub app_config: AnalysisConfig,
     #[serde(skip)]

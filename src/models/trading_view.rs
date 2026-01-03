@@ -24,7 +24,7 @@ use crate::utils::maths_utils::{
     smooth_data,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradeVariant {
     pub ratio: f64,          // e.g. 2.0
     pub stop_price: f64,
@@ -33,7 +33,7 @@ pub struct TradeVariant {
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TradeDirection {
     Long,
     Short,
@@ -122,17 +122,21 @@ pub struct TradeFinderRow {
     pub opportunity_count_total: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradeOpportunity {
+    pub id: String,
+    pub created_at: i64,
+
     pub pair_name: String,
     pub target_zone_id: usize,
     pub direction: TradeDirection,
     pub start_price: f64,
     pub target_price: f64,
     pub stop_price: f64,
+    
     pub max_duration_ms: i64,
-    pub avg_duration_ms: i64, // Expected "time to win"
-    // pub variant_count: usize, // How many valid SL variants were found
+    pub avg_duration_ms: i64,
+    
     pub simulation: SimulationResult,
     pub variants: Vec<TradeVariant>,
 }
