@@ -3,15 +3,13 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-// User crates
+use crate::analysis::market_state::MarketState;
 use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
-use crate::analysis::market_state::MarketState;
 use crate::analysis::zone_scoring::find_target_zones;
 
 use crate::config::ZoneParams;
 use crate::config::{ANALYSIS, AnalysisConfig, TradeProfile};
-
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
@@ -26,7 +24,7 @@ use crate::utils::maths_utils::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradeVariant {
-    pub ratio: f64,          // e.g. 2.0
+    pub ratio: f64,
     pub stop_price: f64,
     pub roi: f64,            // Static snapshot ROI
     pub simulation: SimulationResult,
@@ -46,7 +44,6 @@ pub enum DirectionFilter {
     Short,
 }
 
-// Helper for UI display
 impl fmt::Display for TradeDirection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -56,8 +53,7 @@ impl fmt::Display for TradeDirection {
     }
 }
 
-/// A wrapper around TradeOpportunity that includes real-time calculations
-/// based on the current live price.
+/// Wrapper around TradeOpportunity that includes real-time calculations based on live pair price.
 #[derive(Debug, Clone)]
 pub struct LiveOpportunity {
     pub opportunity: TradeOpportunity,
@@ -69,9 +65,8 @@ pub struct LiveOpportunity {
     pub max_duration_ms: i64,
 }
 
-// Update LiveOpportunity too for UI filtering convenience
 impl LiveOpportunity {
-    /// Checks if the LIVE status of the opportunity is still worthwhile.
+    /// Checks if the LIVE status of the opportunity makes for an worthwhile opp
     pub fn is_worthwhile(&self, min_roi_pct: f64) -> bool {
         self.live_roi >= min_roi_pct
     }
@@ -306,8 +301,6 @@ fn aggregate_zones(zones: &[Zone]) -> Vec<SuperZone> {
             current_group = vec![zones[i].clone()];
         }
     }
-
-    // Don't forget the last group
     if !current_group.is_empty() {
         superzones.push(SuperZone::from_zones(current_group));
     }
@@ -360,8 +353,6 @@ impl TradingModel {
     ) -> Self {
         let (classified, stats) = Self::classify_zones(&cva);
 
-        // CALCULATE SEGMENTS (On Worker Thread)
-        // 1 Day tolerance merges small "Price < PH" dips, but keeps structural data holes.
         let bounds = cva.price_range.min_max();
         let merge_ms = config.cva.segment_merge_tolerance_ms;
 
@@ -384,7 +375,6 @@ impl TradingModel {
         let total_candles = cva.total_candles as f64;
 
         crate::trace_time!("Classify & Cluster Zones", 1000, {
-            // Helper closure
             let process_layer = |raw_data: &[f64],
                                  params: ZoneParams,
                                  resource_total: f64,

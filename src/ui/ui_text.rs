@@ -38,7 +38,8 @@ pub const ICON_SORT: &str = "\u{f07d}"; // (Sort Neutral)
 
 // pub const ICON_24_HRS:  &str = "\u{f1478}";
 pub const ICON_CLOSE: &str = "\u{f00d}";
-pub const ICON_PLUS_MINUS:  &str = "\u{f14c9}";
+pub const ICON_PLUS_MINUS: &str = "\u{f14c9}";
+pub const ICON_SEARCH: &str = "\u{f0978}";
 
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
@@ -50,7 +51,7 @@ pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 // pub const ICON_LOSS: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
 
 pub struct UiText {
-
+    pub icon_search: String,
     pub icon_close: String,
     pub icon_sort_asc: String,
     pub icon_sort_desc: String,
@@ -67,7 +68,6 @@ pub struct UiText {
     pub plot_x_axis_gap: String,
     pub plot_y_axis: String,
     pub plot_missing_klines: String,
-
 
     // --- ICONS/LABELS ---
     pub label_filter_icon: String,
@@ -270,13 +270,13 @@ pub struct UiText {
     pub icon_arrow_right: String,
     pub label_avg_duration: String,
     pub label_risk_select: String,
-
 }
 
 // THE SINGLETON
 pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
     UiText {
 
+        icon_search: ICON_SEARCH.to_string(),
         icon_close: ICON_CLOSE.to_string(),
         label_pair: "Pair".to_string(),
         sort_label: ICON_SORT.to_string(),
@@ -417,7 +417,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_filter_icon: ICON_FILTER.to_string(),
         label_candle: ICON_CANDLE.to_string(),
         tf_btn_all: "ALL".to_string(),
-        tf_btn_all_trades: "ALL TRADES".to_string(),
+        tf_btn_all_trades: "ALL".to_string(),
         tf_target: ICON_TARGET.to_string(),
         tf_time: ICON_CLOCK.to_string(),
 

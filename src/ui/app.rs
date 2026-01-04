@@ -24,7 +24,7 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::engine::SniperEngine;
 
 use crate::models::pair_context::PairContext;
-use crate::models::trading_view::{DirectionFilter, SortColumn, SortDirection, TradeOpportunity};
+use crate::models::trading_view::{DirectionFilter, SortColumn, SortDirection, TradeOpportunity, TradeDirection};
 use crate::models::{ProgressEvent, SyncStatus};
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
@@ -365,8 +365,6 @@ impl ZoneSniperApp {
     }
 
     pub fn handle_pair_selection(&mut self, new_pair: String) {
-        // log::info!("UI: handle_pair_selection called for {}", new_pair);
-
         // 1. Save current config for the OLD pair
         if let Some(old_pair) = &self.selected_pair {
             let old_config = self.app_config.price_horizon.clone();
@@ -380,13 +378,12 @@ impl ZoneSniperApp {
 
         // 2. Set New Pair & Reset View Flags
         self.selected_pair = Some(new_pair.clone());
-        // self.scroll_to_pair = true;
         self.auto_scale_y = true;
 
         // 3. Load config for the NEW pair (or default)
         if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
             let mut config = saved_config.clone();
-            // Ensure bounds are respected in case global constants changed
+            // Ensure bounds are respected
             config.min_threshold_pct = ANALYSIS.price_horizon.min_threshold_pct;
             config.max_threshold_pct = ANALYSIS.price_horizon.max_threshold_pct;
             config.threshold_pct = config
@@ -398,7 +395,6 @@ impl ZoneSniperApp {
         }
 
         // 4. Intelligent Update Logic
-        // Check if we already have data for this pair to avoid unnecessary recalculation
         let needs_calc = if let Some(engine) = &self.engine {
             engine.get_model(&new_pair).is_none()
         } else {
@@ -408,36 +404,82 @@ impl ZoneSniperApp {
         let price = self.get_display_price(&new_pair);
 
         if let Some(engine) = &mut self.engine {
-            // Always update the engine's config context so it knows the current PH settings
             engine.update_config(self.app_config.clone());
             engine.set_price_horizon_override(
                 new_pair.clone(),
                 self.app_config.price_horizon.clone(),
             );
 
-            // Only force a heavy recalc if the model is missing
             if needs_calc {
                 engine.force_recalc(&new_pair, price, "USER PAIR SELECTION");
             }
         }
 
-        // --- NEW: AUTO-SELECT BEST OPPORTUNITY ---
-        // If the new pair has a valid opportunity, select it automatically.
-        // This ensures the Plot HUD and TradeFinder highlight it immediately.
-        self.selected_opportunity = None; // Reset first
+        // --- 5. SMART SELECTION & FILTER SWITCHING ---
+        
+        // A. Check if we should keep the current selection (if it matches new pair)
+        let keep_current = self.selected_opportunity.as_ref()
+            .map_or(false, |op| op.pair_name == new_pair);
 
-        if let Some(engine) = &self.engine {
-            if let Some(model) = engine.get_model(&new_pair) {
-                // Find best by Static ROI (same sort logic as TradeFinder)
-                let best = model
-                    .opportunities
-                    .iter()
-                    .filter(|op| op.expected_roi() > 0.0)
-                    .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap());
+        let mut op_to_select = if keep_current {
+            self.selected_opportunity.clone()
+        } else {
+            None
+        };
 
-                if let Some(op) = best {
-                    self.selected_opportunity = Some(op.clone());
+        // B. If no current op for this pair, find the BEST one.
+        if op_to_select.is_none() {
+            if let Some(engine) = &self.engine {
+                if let Some(model) = engine.get_model(&new_pair) {
+                    let profile = &ANALYSIS.journey.profile;
+
+                    // Strategy: Prefer an op that matches the CURRENT filter if possible.
+                    let current_filter_dir = match self.tf_filter_direction {
+                        DirectionFilter::Long => Some(TradeDirection::Long),
+                        DirectionFilter::Short => Some(TradeDirection::Short),
+                        _ => None,
+                    };
+
+                    // Filter valid ops (MWT)
+                    let valid_ops = model.opportunities.iter()
+                        .filter(|op| op.is_worthwhile(profile));
+
+                    // Try to find best match for CURRENT filter
+                    let best_matching = if let Some(dir) = current_filter_dir {
+                        valid_ops.clone()
+                            .filter(|op| op.direction == dir)
+                            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
+                    } else { None };
+
+                    // If no match (or filter was ALL), find best Overall
+                    let best_overall = valid_ops
+                        .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap());
+
+                    op_to_select = best_matching.or(best_overall).cloned();
                 }
+            }
+        }
+
+        self.selected_opportunity = op_to_select.clone();
+
+        // C. AUTO-SWITCH FILTER
+        // Ensure the new selection is visible.
+        if let Some(op) = &self.selected_opportunity {
+            // If we have an op, ensure filter matches it
+            match self.tf_filter_direction {
+                DirectionFilter::Long if op.direction == TradeDirection::Short => {
+                    self.tf_filter_direction = DirectionFilter::Short;
+                },
+                DirectionFilter::Short if op.direction == TradeDirection::Long => {
+                    self.tf_filter_direction = DirectionFilter::Long;
+                },
+                _ => {} // All good
+            }
+        } else {
+            // No valid op (Market View).
+            // If filter is specific (Long/Short), we must switch to ALL to see the "No Setup" row.
+            if self.tf_filter_direction != DirectionFilter::All {
+                self.tf_filter_direction = DirectionFilter::All;
             }
         }
     }

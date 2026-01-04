@@ -1,6 +1,6 @@
 use eframe::egui::{
-    Align, CentralPanel, Color32, Context, FontId, Grid, Layout, Order,
-    RichText, Sense, SidePanel, TopBottomPanel, Ui, Window,
+    Align, CentralPanel, Color32, Context, FontId, Grid, Layout, Order, RichText, Sense, SidePanel,
+    TopBottomPanel, Ui, Window,
 };
 
 use egui_extras::{Column, TableBuilder, TableRow};
@@ -32,6 +32,8 @@ use crate::utils::TimeUtils;
 use crate::utils::maths_utils::{calculate_percent_diff, format_volume_compact};
 
 use super::app::ZoneSniperApp;
+
+const CELL_PADDING_Y: f32 = 4.0;
 
 impl ZoneSniperApp {
     // Helper to sort rows (Updated for Zero-Op handling)
@@ -567,10 +569,7 @@ impl ZoneSniperApp {
 
     /// Helper: Renders the Header, Scope, and Direction controls
     fn render_trade_finder_filters(&mut self, ui: &mut Ui) {
-        // --- 1. HEADER ---
-        ui.add_space(5.0);
-        ui.heading(&UI_TEXT.tf_header);
-        ui.add_space(5.0);
+        ui.add_space(10.0);
 
         // --- 2. SCOPE TOGGLE ---
         ui.horizontal(|ui| {
@@ -583,16 +582,38 @@ impl ZoneSniperApp {
             ui.style_mut().spacing.item_spacing.x = 5.0;
 
             // "ALL PAIRS" Button
-            if ui
-                .selectable_label(!self.tf_filter_pair_only, &UI_TEXT.tf_scope_all)
-                .clicked()
-            {
+            if ui.selectable_label(!self.tf_filter_pair_only, &UI_TEXT.tf_scope_all).clicked() {
                 self.tf_filter_pair_only = false;
-                // LOGIC FIX: When switching to ALL, scroll to the current selection so we don't lose it
-                if let Some(p) = &self.selected_pair {
+                
+                if let Some(pair) = &self.selected_pair {
+                    
+                    // --- 1. NEW: CONTEXT PRESERVATION ---
+                    // If the selected pair doesn't fit the current Direction Filter, 
+                    // switch filter to ALL so we don't lose the pair.
+                    if let Some(eng) = &self.engine {
+                        if let Some(model) = eng.get_model(pair) {
+                            let profile = &crate::config::ANALYSIS.journey.profile;
+                            
+                            // Check if this pair has ANY valid trade for the current filter
+                            let has_valid_match = model.opportunities.iter().any(|op| {
+                                let dir_match = match self.tf_filter_direction {
+                                    DirectionFilter::Long => op.direction == TradeDirection::Long,
+                                    DirectionFilter::Short => op.direction == TradeDirection::Short,
+                                    DirectionFilter::All => true,
+                                };
+                                dir_match && op.is_worthwhile(profile)
+                            });
+
+                            if !has_valid_match {
+                                self.tf_filter_direction = DirectionFilter::All;
+                            }
+                        }
+                    }
+
+                    // --- 2. EXISTING: SCROLL LOGIC ---
                     #[cfg(debug_assertions)]
-                    log::info!("UI: Scope changed to ALL. Requesting scroll to {}", p);
-                    self.scroll_to_pair = Some(p.clone());
+                    log::info!("UI: Scope changed to ALL. Requesting scroll to {}", pair);
+                    self.scroll_to_pair = Some(pair.clone());
                 }
             }
 
@@ -645,6 +666,7 @@ impl ZoneSniperApp {
                 *f = DirectionFilter::Short;
             }
         });
+        ui.separator();
     }
 
     // --- COLUMN HELPERS ---
@@ -652,6 +674,61 @@ impl ZoneSniperApp {
     /// Helper for Empty Cells (SSOT)
     fn display_no_data(&self, ui: &mut Ui) {
         ui.label("-");
+    }
+
+    fn down_from_top(&self, ui: &mut Ui) {
+        ui.add_space(CELL_PADDING_Y);
+    }
+
+        /// Smart "No Data" Screen
+    fn render_empty_state(&mut self, ui: &mut Ui) {
+        ui.centered_and_justified(|ui| {
+            ui.vertical_centered(|ui| {
+                // 1. Big Icon
+                ui.label(RichText::new(&UI_TEXT.icon_search).size(32.0).color(PLOT_CONFIG.color_text_subdued));
+                ui.add_space(10.0);
+
+                // 2. Contextual Message
+                if self.tf_filter_pair_only {
+                    // Case: Specific Pair is empty
+                    if let Some(pair) = &self.selected_pair {
+                        ui.heading(format!("No setups for {}", pair));
+                        ui.add_space(5.0);
+                        
+                        // Suggestion: Switch to Global
+                        if ui.button(format!("View {}", UI_TEXT.tf_scope_all)).clicked() {
+                            self.tf_filter_pair_only = false;
+                        }
+                    } else {
+                        ui.heading("No pair selected");
+                    }
+                } else {
+                    // Case: Global Search is empty
+                    match self.tf_filter_direction {
+                        DirectionFilter::Long => {
+                            ui.heading("No Longs Found");
+                            ui.label("The market might be bearish.");
+                            if ui.button(format!("Check {}", UI_TEXT.label_short)).clicked() {
+                                self.tf_filter_direction = DirectionFilter::Short;
+                            }
+                        },
+                        DirectionFilter::Short => {
+                            ui.heading("No Shorts Found");
+                            ui.label("The market might be bullish.");
+                            if ui.button(format!("Check {}", UI_TEXT.label_long)).clicked() {
+                                self.tf_filter_direction = DirectionFilter::Long;
+                            }
+                        },
+                        DirectionFilter::All => {
+                            ui.heading("No Opportunities Found");
+                            ui.label(RichText::new("Market is quiet or settings are too strict.").italics());
+                            ui.add_space(5.0);
+                            ui.label("Try adjusting Price Horizon or lowering ROI threshold.");
+                        }
+                    }
+                }
+            });
+        });
     }
 
     fn render_trade_finder_content(&mut self, ui: &mut Ui) {
@@ -669,7 +746,7 @@ impl ZoneSniperApp {
 
         // 5. Render Table
         if rows.is_empty() {
-            ui.label(&UI_TEXT.label_no_opps);
+            self.render_empty_state(ui);
             return;
         }
 
@@ -695,7 +772,7 @@ impl ZoneSniperApp {
                 .striped(true)
                 .resizable(false)
                 .sense(Sense::click()) // Enable row clicks
-                .cell_layout(Layout::left_to_right(Align::Center))
+                .cell_layout(Layout::left_to_right(Align::Min))
                 .column(Column::exact(100.0).clip(true)) // Pair (Fixed base, resizable)
                 .column(Column::exact(55.0).clip(true)) // ROI/AROI (Strict width, clip overflow)
                 .column(Column::exact(55.0).clip(true)) // Vol/Mom
@@ -713,23 +790,21 @@ impl ZoneSniperApp {
             }
 
             builder
-                .header(36.0, |mut header| {
+                .header(48.0, |mut header| {
                     self.render_tf_table_header(&mut header);
                 })
                 .body(|mut body| {
-                    for (i, row) in rows.iter().enumerate() {
+                    for row in &rows {
                         body.row(40.0, |mut table_row| {
-                            // No need to pass index anymore for scrolling
-                            self.render_tf_table_row(&mut table_row, row, i);
+                            self.render_tf_table_row(&mut table_row, row);
                         });
                     }
                 });
         });
 
         // 6. Scroll Ackcb
-        // TEMP is this still needed? 
+        // TEMP is this still needed?
         // Note: TableBuilder handles scrolling internally differently.
-        // If we need auto-scroll to specific row, TableBuilder has a .scroll_to_row() method,
         // but for now, let's see if the manual logic inside the cells still works (it usually does).
         if let Some(_) = &self.scroll_to_pair {
             // We clear it here assuming the row logic caught it.
@@ -738,184 +813,6 @@ impl ZoneSniperApp {
         }
     }
 
-    /// Renders the data cells for a single row
-    fn render_tf_table_row(
-        &mut self,
-        table_row: &mut TableRow,
-        row: &TradeFinderRow,
-        index: usize,
-    ) {
-        // Selection Logic
-        let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
-            && match (&self.selected_opportunity, &row.opportunity) {
-                (Some(sel), Some(live_op)) => sel.id == live_op.opportunity.id,
-                (None, None) => true,
-                _ => false,
-            };
-
-        // --- FIX: USE STANDARD API ---
-        // This paints the background correctly behind the text
-        table_row.set_selected(is_selected);
-
-        // We pass the scroll tracker as a local bool to the column helper
-        self.col_pair_name(table_row, row, is_selected);
-        self.col_return_metrics(table_row, row);
-        self.col_market_state(table_row, row);
-        self.col_time_and_ops(table_row, row);
-        self.col_volume_24h(table_row, row);
-        self.col_sl_variants(table_row, row);
-
-        // 2. GET RESPONSE (Safe now)
-        let response = table_row.response();
-
-        // // 4. INTERACTION
-        if response.clicked() {
-            self.handle_pair_selection(row.pair_name.clone());
-            if let Some(live_op) = &row.opportunity {
-                self.selected_opportunity = Some(live_op.opportunity.clone());
-            } else {
-                self.selected_opportunity = None;
-            }
-        }
-
-        // // 5. SCROLL HANDLING
-        // if let Some(target) = &self.scroll_to_pair {
-        //     if target == &row.pair_name {
-        //         response.scroll_to_me(Some(Align::Center));
-        //     }
-        // }
-    }
-
-    fn col_pair_name(&self, table_row: &mut TableRow, row: &TradeFinderRow, is_selected: bool) {
-        table_row.col(|ui| {
-            ui.horizontal(|ui| {
-                // Visual Button (Click handled by Row)
-                ui.interactive_label(
-                    &row.pair_name,
-                    is_selected,
-                    PLOT_CONFIG.color_text_primary,
-                    FontId::proportional(14.0),
-                );
-
-                // Direction Icon
-                if let Some(live_op) = &row.opportunity {
-                    let op = &live_op.opportunity;
-                    let dir_color = op.direction.color();
-                    let arrow = match op.direction {
-                        TradeDirection::Long => &UI_TEXT.icon_long,
-                        TradeDirection::Short => &UI_TEXT.icon_short,
-                    };
-                    ui.label(RichText::new(arrow).color(dir_color));
-                }
-            });
-        });
-    }
-
-    fn col_return_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-            if let Some(live_op) = &row.opportunity {
-                let roi_color = get_outcome_color(live_op.live_roi);
-                ui.vertical(|ui| {
-                    ui.add_space(5.0); // <--- CENTERING SPACER
-                    ui.label(
-                        RichText::new(format!("{:+.2}%", live_op.live_roi))
-                            .small()
-                            .color(roi_color),
-                    );
-                    ui.label(
-                        RichText::new(format!("{:+.0}%", live_op.annualized_roi))
-                            .small()
-                            .color(roi_color.linear_multiply(0.7)),
-                    );
-                });
-            } else {
-                self.display_no_data(ui);
-            }
-        });
-    }
-
-    fn col_market_state(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-            if let Some(ms) = &row.market_state {
-                ui.vertical(|ui| {
-                    ui.add_space(5.0); // <--- CENTERING SPACER
-
-                    ui.label(
-                        RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
-                            .small()
-                            .color(PLOT_CONFIG.color_info),
-                    );
-                    let mom_color = get_outcome_color(ms.momentum_pct);
-                    ui.label(
-                        RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
-                            .small()
-                            .color(mom_color),
-                    );
-                });
-            } else {
-                self.display_no_data(ui);
-            }
-        });
-    }
-
-    fn col_time_and_ops(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-            ui.vertical(|ui| {
-                ui.add_space(5.0); // <--- CENTERING SPACER
-
-                if let Some(live_op) = &row.opportunity {
-                    let time_str = TimeUtils::format_duration(live_op.opportunity.avg_duration_ms);
-                    ui.label(
-                        RichText::new(time_str)
-                            .small()
-                            .color(PLOT_CONFIG.color_text_neutral),
-                    );
-                } else {
-                    self.display_no_data(ui);
-                }
-
-                if row.opportunity_count_total > 1 {
-                    ui.label(
-                        RichText::new(format!("{} Opps", row.opportunity_count_total))
-                            .small()
-                            .color(PLOT_CONFIG.color_text_subdued),
-                    );
-                } else {
-                    ui.label("");
-                }
-            });
-        });
-    }
-
-    fn col_volume_24h(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-            let val_str = format_volume_compact(row.quote_volume_24h);
-            ui.label(
-                RichText::new(val_str)
-                    .small()
-                    .color(PLOT_CONFIG.color_text_subdued),
-            );
-        });
-    }
-
-    fn col_sl_variants(&mut self, table_row: &mut egui_extras::TableRow, row: &TradeFinderRow) {
-        table_row.col(|ui| {
-            // FIX: Add alignment wrapper
-            ui.vertical(|ui| {
-                ui.add_space(5.0); // Alignment spacer
-
-                // FIX: Use your preferred logic (Always render if op exists)
-                if let Some(live_op) = &row.opportunity {
-                    let op = &live_op.opportunity;
-                    self.render_card_variants(ui, op);
-                } else {
-                    self.display_no_data(ui);
-                }
-            });
-        });
-    }
-
-    /// Renders the complex "Dual Sort" headers inside the Table
     fn render_tf_table_header(&mut self, header: &mut TableRow) {
         let mut header_stack =
             |ui: &mut Ui,
@@ -988,9 +885,173 @@ impl ZoneSniperApp {
         });
     }
 
+    /// Renders the data cells for a single row
+    fn render_tf_table_row(&mut self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        // Selection Logic
+        let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
+            && match (&self.selected_opportunity, &row.opportunity) {
+                (Some(sel), Some(live_op)) => sel.id == live_op.opportunity.id,
+                (None, None) => true,
+                _ => false,
+            };
+
+        // This paints the background correctly behind the correct row
+        table_row.set_selected(is_selected);
+
+        // We pass the scroll tracker as a local bool to the column helper
+        self.col_pair_name(table_row, row);
+        self.col_return_metrics(table_row, row);
+        self.col_market_state(table_row, row);
+        self.col_time_and_ops(table_row, row);
+        self.col_volume_24h(table_row, row);
+        self.col_sl_variants(table_row, row);
+
+        // 2. GET RESPONSE (Safe now)
+        let response = table_row.response();
+
+        // // 4. INTERACTION
+        if response.clicked() {
+            self.handle_pair_selection(row.pair_name.clone());
+            if let Some(live_op) = &row.opportunity {
+                self.selected_opportunity = Some(live_op.opportunity.clone());
+            } else {
+                self.selected_opportunity = None;
+            }
+        }
+    }
+
+    /// Column 1: Pair Name + Direction Icon (Static Text)
+    fn col_pair_name(&self, table_row: &mut egui_extras::TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            ui.horizontal(|ui| {
+                // Visual Text (No interaction, just 14pt label)
+                ui.label(
+                    RichText::new(&row.pair_name)
+                        .strong()
+                        .size(14.0)
+                        .color(PLOT_CONFIG.color_text_primary),
+                );
+
+                // Direction Icon
+                if let Some(live_op) = &row.opportunity {
+                    let op = &live_op.opportunity;
+                    let dir_color = op.direction.color();
+                    let arrow = match op.direction {
+                        TradeDirection::Long => &UI_TEXT.icon_long,
+                        TradeDirection::Short => &UI_TEXT.icon_short,
+                    };
+                    ui.label(RichText::new(arrow).color(dir_color));
+                }
+            });
+        });
+    }
+
+    fn col_return_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            if let Some(live_op) = &row.opportunity {
+                let roi_color = get_outcome_color(live_op.live_roi);
+                ui.vertical(|ui| {
+                    self.down_from_top(ui);
+                    ui.label(
+                        RichText::new(format!("{:+.2}%", live_op.live_roi))
+                            .small()
+                            .color(roi_color),
+                    );
+                    ui.label(
+                        RichText::new(format!("{:+.0}%", live_op.annualized_roi))
+                            .small()
+                            .color(roi_color.linear_multiply(0.7)),
+                    );
+                });
+            } else {
+                self.display_no_data(ui);
+            }
+        });
+    }
+
+    fn col_market_state(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            if let Some(ms) = &row.market_state {
+                ui.vertical(|ui| {
+                    self.down_from_top(ui);
+                    ui.label(
+                        RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
+                            .small()
+                            .color(PLOT_CONFIG.color_info),
+                    );
+                    let mom_color = get_outcome_color(ms.momentum_pct);
+                    ui.label(
+                        RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
+                            .small()
+                            .color(mom_color),
+                    );
+                });
+            } else {
+                self.display_no_data(ui);
+            }
+        });
+    }
+
+    fn col_time_and_ops(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            ui.vertical(|ui| {
+                self.down_from_top(ui);
+                if let Some(live_op) = &row.opportunity {
+                    let time_str = TimeUtils::format_duration(live_op.opportunity.avg_duration_ms);
+                    ui.label(
+                        RichText::new(time_str)
+                            .small()
+                            .color(PLOT_CONFIG.color_text_neutral),
+                    );
+                } else {
+                    self.display_no_data(ui);
+                }
+
+                if row.opportunity_count_total > 1 {
+                    ui.label(
+                        RichText::new(format!("{} Opps", row.opportunity_count_total))
+                            .small()
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
+                } else {
+                    ui.label("");
+                }
+            });
+        });
+    }
+
+    fn col_volume_24h(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            ui.vertical(|ui| {
+                self.down_from_top(ui);
+                let val_str = format_volume_compact(row.quote_volume_24h);
+                ui.label(
+                    RichText::new(val_str)
+                        .small()
+                        .color(PLOT_CONFIG.color_text_subdued),
+                );
+            });
+        });
+    }
+
+    fn col_sl_variants(&mut self, table_row: &mut TableRow, row: &TradeFinderRow) {
+        table_row.col(|ui| {
+            ui.vertical(|ui| {
+                // self.down_from_top(ui);
+                if let Some(live_op) = &row.opportunity {
+                    let op = &live_op.opportunity;
+                    self.render_card_variants(ui, op);
+                } else {
+                    self.display_no_data(ui);
+                }
+            });
+        });
+    }
+
     /// Helper: Fetches all rows from engine and applies Scope, Direction, and MWT filters.
     /// Crucially, it ensures the SELECTED PAIR is never filtered out.
     fn get_filtered_rows(&self) -> Vec<TradeFinderRow> {
+        
         let mut rows = if let Some(eng) = &self.engine {
             eng.get_trade_finder_rows(Some(&self.simulated_prices))
         } else {
@@ -1003,14 +1064,11 @@ impl ZoneSniperApp {
         // 1. MWT Demotion (Quality Control)
         // If a trade is "Trash", downgrade the row to "No Opportunity".
         for row in &mut rows {
-            // EXEMPTION: Selected Pair always shows its trade (even if trash) so you can see why.
-            if self.selected_pair.as_deref() == Some(&row.pair_name) {
-                continue;
-            }
-
+            // CHANGE: Removed exemption for selected_pair. 
+            // If it's trash, it's trash. It will appear as "No Setup" in the list.
             if let Some(op) = &row.opportunity {
                 if !op.opportunity.is_worthwhile(profile) {
-                    row.opportunity = None; // Demote to "No Setup"
+                    row.opportunity = None;
                 }
             }
         }
@@ -1025,25 +1083,26 @@ impl ZoneSniperApp {
 
             if !base.is_empty() {
                 rows.retain(|r| {
-                    // Always keep selected pair, or matches base
+                    // Scope logic stays lenient: keep the selected pair so context isn't lost entirely,
+                    // or just filter strictly on base name. 
+                    // Keeping simple strict filter for now as requested.
                     self.selected_pair.as_deref() == Some(&r.pair_name)
                         || r.pair_name.starts_with(base)
                 });
             }
         }
-
+      
         // 3. Direction Filter
         match self.tf_filter_direction {
             DirectionFilter::All => {
-                // Show EVERYTHING: Good Trades + Pairs with No Trades (Market State)
+                // Show EVERYTHING
             }
             _ => {
-                // STRICT MODE: Only show matching trades (or the selected pair)
+                // STRICT MODE: Only show matching trades.
                 rows.retain(|r| {
-                    // Golden Rule: Always keep the selected pair visible
-                    if self.selected_pair.as_deref() == Some(&r.pair_name) {
-                        return true;
-                    }
+                    // CHANGE: Removed exemption for selected_pair.
+                    // If filter is LONG and pair only has SHORT, the row is hidden.
+                    // (handle_pair_selection will switch the filter so this doesn't happen unexpectedly)
 
                     if let Some(op) = &r.opportunity {
                         match self.tf_filter_direction {
@@ -1056,7 +1115,6 @@ impl ZoneSniperApp {
                             _ => true,
                         }
                     } else {
-                        // Hide "No Setup" rows when filtering for specific direction
                         false
                     }
                 });
@@ -1092,7 +1150,8 @@ impl ZoneSniperApp {
                         // Try to find the NEW best op for this same pair to keep context.
                         if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
                             if let Some(op) = &best_row.opportunity {
-                                log::error!(
+                                #[cfg(debug_assertions)]
+                                log::info!(
                                     "UI AUTO-HEAL: Swapping stale Op for {}. New ID: {}",
                                     pair,
                                     op.opportunity.id
@@ -1102,7 +1161,8 @@ impl ZoneSniperApp {
                         } else {
                             // No valid trades left for this pair.
                             // Drop to "Market View" (None).
-                            log::error!(
+                            #[cfg(debug_assertions)]
+                            log::info!(
                                 "UI AUTO-HEAL: Op died for {}. Dropping to Market View.",
                                 pair
                             );
@@ -1110,14 +1170,25 @@ impl ZoneSniperApp {
                         }
                     }
                 }
-                // Else: selected_opportunity is None.
-                // Since the pair is visible, "None" is a valid state (Market View).
-                // DO NOT AUTO-HUNT. This fixes the "Flash" bug.
+                                else {
+                    // --- FIX IS HERE ---
+                    // CASE: Current Selection is None (Market View), but the row might now have an Op.
+                    // (e.g. Switched from LONG [Empty] to ALL [Has Short])
+                    
+                    if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
+                        if let Some(op) = &best_row.opportunity {
+                            #[cfg(debug_assertions)]
+                            log::info!("UI AUTO-HEAL: Upgrading Selection from None -> Best Op for {}", pair);
+                            self.selected_opportunity = Some(op.opportunity.clone());
+                        }
+                    }
+                }
             } else {
                 // CASE B: Selected Pair is GONE (Filtered out entirely).
                 // Now we must hunt for a new target from the top of the list.
                 if let Some(best_row) = rows.first() {
-                    log::error!(
+                    #[cfg(debug_assertions)]
+                    log::info!(
                         "UI HUNTER: Selection {} hidden by filter. Snapping to top: {}",
                         pair,
                         best_row.pair_name
@@ -1182,7 +1253,6 @@ impl ZoneSniperApp {
 
         let label_text = format!("{} {}", text, suffix);
 
-        // FIX: Pass FontId::proportional(14.0) for Headers
         if ui
             .interactive_label(&label_text, is_active, color, FontId::proportional(14.0))
             .clicked()
@@ -1333,7 +1403,6 @@ impl ZoneSniperApp {
                         self.handle_pair_selection(pair.clone());
                         self.scroll_to_pair = Some(pair);
                     }
-                    // WASM: Suppress warning (Variable used)
                     #[cfg(target_arch = "wasm32")]
                     {
                         let _ = pair;
@@ -1845,8 +1914,6 @@ impl ZoneSniperApp {
 
         // 2. Render Panel
         let mut panel = DataGenerationPanel::new(
-            // self.selected_pair.clone(),
-            // available_pairs,
             &self.app_config.price_horizon,
             profile.as_ref(),
             actual_count,

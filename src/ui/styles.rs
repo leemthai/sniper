@@ -6,6 +6,7 @@ use eframe::egui::{
 use crate::config::plot::PLOT_CONFIG;
 use crate::models::trading_view::TradeDirection;
 use crate::ui::config::UI_CONFIG;
+use crate::ui::ui_text::UI_TEXT;
 
 /// Creates a colored heading with uppercase text (not mono anymore, but can put back for stylisting reasons if requried)
 pub fn colored_heading(text: impl Into<String>) -> RichText {
@@ -124,8 +125,7 @@ impl UiStyleExt for Ui {
         let global_state_id = Id::new("active_trade_variant_popup"); // Shared key to ensure only 1 opens at a time
 
         // 1. Draw Trigger Button
-        // We use your 'interactive_label_small' style (size 10.0)
-        // (Assuming you have this or use your standard interactive_label with font arg)
+        // Use 'interactive_label_small' style (size 10.0)
         let btn_response = self.interactive_label(
             label_text, 
             false, 
@@ -155,19 +155,18 @@ impl UiStyleExt for Ui {
 
             let area_response = area.show(self.ctx(), |ui| {
                 Frame::popup(ui.style())
-                    .stroke(eframe::egui::Stroke::new(1.0, crate::config::plot::PLOT_CONFIG.color_widget_border))
+                    .stroke(Stroke::new(1.0, PLOT_CONFIG.color_widget_border))
                     .inner_margin(8.0)
                     .show(ui, |ui| {
-                        // Formatting
                         ui.set_min_width(220.0);
                         ui.set_max_width(280.0);
                         ui.style_mut().interaction.selectable_labels = false; // No cursors in popup
 
                         // Header with Close Button
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(&crate::ui::ui_text::UI_TEXT.label_risk_select).strong().small());
+                            ui.label(RichText::new(&UI_TEXT.label_risk_select).strong().small());
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.button(RichText::new(&crate::ui::ui_text::UI_TEXT.icon_close).size(10.0)).clicked() {
+                                if ui.button(RichText::new(&UI_TEXT.icon_close).size(10.0)).clicked() {
                                     ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
                                 }
                             });
@@ -233,8 +232,8 @@ impl UiStyleExt for Ui {
         idle_color: Color32,
         font_id: FontId,
     ) -> Response {
-        // REMOVED hardcoded 14.0
-        let padding = eframe::egui::Vec2::new(4.0, 2.0);
+
+        let padding = Vec2::new(4.0, 4.0);
 
         // 1. Calculate Size
         let galley = self
