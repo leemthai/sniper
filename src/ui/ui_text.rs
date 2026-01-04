@@ -40,6 +40,7 @@ pub const ICON_SORT: &str = "\u{f07d}"; // (Sort Neutral)
 pub const ICON_CLOSE: &str = "\u{f00d}";
 pub const ICON_PLUS_MINUS: &str = "\u{f14c9}";
 pub const ICON_SEARCH: &str = "\u{f0978}";
+pub const ICON_UNFILTERED: &str = "\u{f14ef}";
 
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
@@ -58,7 +59,7 @@ pub struct UiText {
     pub sort_label: String,
 
     // --- Left panel ---
-    pub data_generation_heading: String,
+    // pub data_generation_heading: String,
     pub price_horizon_heading: String,
     pub pair_selector_heading: String,
     pub lp_failed_gradient: String,
@@ -417,12 +418,12 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_filter_icon: ICON_FILTER.to_string(),
         label_candle: ICON_CANDLE.to_string(),
         tf_btn_all: "ALL".to_string(),
-        tf_btn_all_trades: "ALL".to_string(),
+        tf_btn_all_trades: "UNFILTERED".to_string(),
         tf_target: ICON_TARGET.to_string(),
         tf_time: ICON_CLOCK.to_string(),
 
         // --- Left Panel ---
-        data_generation_heading: "Shape Your Trades".to_string(),
+        // data_generation_heading: "Shape Your Trades".to_string(),
         price_horizon_heading: "Price Horizon".to_string(),
         pair_selector_heading: "Select Pair to Plot ".to_string() + ICON_EYE,
         lp_failed_gradient: "Failed to build Price Horizon Gradient".to_string(),

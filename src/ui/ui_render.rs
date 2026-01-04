@@ -574,26 +574,28 @@ impl ZoneSniperApp {
         // --- 2. SCOPE TOGGLE ---
         ui.horizontal(|ui| {
             // Icon/Label
-            ui.label(
-                RichText::new(&UI_TEXT.label_target)
-                    .size(16.0)
-                    .color(PLOT_CONFIG.color_text_neutral),
-            );
-            ui.style_mut().spacing.item_spacing.x = 5.0;
+            // ui.label(
+            //     RichText::new(&UI_TEXT.label_target)
+            //         .size(16.0)
+            //         .color(PLOT_CONFIG.color_text_neutral),
+            // );
+            // ui.style_mut().spacing.item_spacing.x = 5.0;
 
             // "ALL PAIRS" Button
-            if ui.selectable_label(!self.tf_filter_pair_only, &UI_TEXT.tf_scope_all).clicked() {
+            if ui
+                .selectable_label(!self.tf_filter_pair_only, &UI_TEXT.tf_scope_all)
+                .clicked()
+            {
                 self.tf_filter_pair_only = false;
-                
+
                 if let Some(pair) = &self.selected_pair {
-                    
                     // --- 1. NEW: CONTEXT PRESERVATION ---
-                    // If the selected pair doesn't fit the current Direction Filter, 
+                    // If the selected pair doesn't fit the current Direction Filter,
                     // switch filter to ALL so we don't lose the pair.
                     if let Some(eng) = &self.engine {
                         if let Some(model) = eng.get_model(pair) {
                             let profile = &crate::config::ANALYSIS.journey.profile;
-                            
+
                             // Check if this pair has ANY valid trade for the current filter
                             let has_valid_match = model.opportunities.iter().any(|op| {
                                 let dir_match = match self.tf_filter_direction {
@@ -637,12 +639,12 @@ impl ZoneSniperApp {
             ui.add_space(10.0);
 
             // --- DIRECTION FILTER ---
-            ui.label(
-                RichText::new(&UI_TEXT.label_filter_icon)
-                    .size(16.0)
-                    .color(PLOT_CONFIG.color_text_neutral),
-            );
-            ui.style_mut().spacing.item_spacing.x = 5.0;
+            // ui.label(
+            //     RichText::new(&UI_TEXT.label_filter_icon)
+            //         .size(16.0)
+            //         .color(PLOT_CONFIG.color_text_neutral),
+            // );
+            // ui.style_mut().spacing.item_spacing.x = 5.0;
 
             let f = &mut self.tf_filter_direction;
 
@@ -652,18 +654,21 @@ impl ZoneSniperApp {
                 .clicked()
             {
                 *f = DirectionFilter::All;
+                self.scroll_to_pair = self.selected_pair.clone();
             }
             if ui
                 .selectable_label(*f == DirectionFilter::Long, &UI_TEXT.label_long)
                 .clicked()
             {
                 *f = DirectionFilter::Long;
+                self.scroll_to_pair = self.selected_pair.clone();
             }
             if ui
                 .selectable_label(*f == DirectionFilter::Short, &UI_TEXT.label_short)
                 .clicked()
             {
                 *f = DirectionFilter::Short;
+                self.scroll_to_pair = self.selected_pair.clone();
             }
         });
         ui.separator();
@@ -680,23 +685,30 @@ impl ZoneSniperApp {
         ui.add_space(CELL_PADDING_Y);
     }
 
-        /// Smart "No Data" Screen
+    /// Smart "No Data" Screen
     fn render_empty_state(&mut self, ui: &mut Ui) {
         ui.centered_and_justified(|ui| {
             ui.vertical_centered(|ui| {
                 // 1. Big Icon
-                ui.label(RichText::new(&UI_TEXT.icon_search).size(32.0).color(PLOT_CONFIG.color_text_subdued));
+                ui.label(
+                    RichText::new(&UI_TEXT.icon_search)
+                        .size(32.0)
+                        .color(PLOT_CONFIG.color_text_subdued),
+                );
                 ui.add_space(10.0);
 
                 // 2. Contextual Message
                 if self.tf_filter_pair_only {
                     // Case: Specific Pair is empty
                     if let Some(pair) = &self.selected_pair {
-                        ui.heading(format!("No setups for {}", pair));
+                        ui.heading(format!("No trade opportunities for {}", pair));
                         ui.add_space(5.0);
-                        
+
                         // Suggestion: Switch to Global
-                        if ui.button(format!("View {}", UI_TEXT.tf_scope_all)).clicked() {
+                        if ui
+                            .button(format!("View {}", UI_TEXT.tf_scope_all))
+                            .clicked()
+                        {
                             self.tf_filter_pair_only = false;
                         }
                     } else {
@@ -706,22 +718,28 @@ impl ZoneSniperApp {
                     // Case: Global Search is empty
                     match self.tf_filter_direction {
                         DirectionFilter::Long => {
-                            ui.heading("No Longs Found");
+                            ui.heading("No LONG trades found");
                             ui.label("The market might be bearish.");
-                            if ui.button(format!("Check {}", UI_TEXT.label_short)).clicked() {
+                            if ui
+                                .button(format!("Check {}", UI_TEXT.label_short))
+                                .clicked()
+                            {
                                 self.tf_filter_direction = DirectionFilter::Short;
                             }
-                        },
+                        }
                         DirectionFilter::Short => {
-                            ui.heading("No Shorts Found");
+                            ui.heading("No SHORT trades found");
                             ui.label("The market might be bullish.");
                             if ui.button(format!("Check {}", UI_TEXT.label_long)).clicked() {
                                 self.tf_filter_direction = DirectionFilter::Long;
                             }
-                        },
+                        }
                         DirectionFilter::All => {
                             ui.heading("No Opportunities Found");
-                            ui.label(RichText::new("Market is quiet or settings are too strict.").italics());
+                            ui.label(
+                                RichText::new("Market is quiet or settings are too strict.")
+                                    .italics(),
+                            );
                             ui.add_space(5.0);
                             ui.label("Try adjusting Price Horizon or lowering ROI threshold.");
                         }
@@ -1051,7 +1069,6 @@ impl ZoneSniperApp {
     /// Helper: Fetches all rows from engine and applies Scope, Direction, and MWT filters.
     /// Crucially, it ensures the SELECTED PAIR is never filtered out.
     fn get_filtered_rows(&self) -> Vec<TradeFinderRow> {
-        
         let mut rows = if let Some(eng) = &self.engine {
             eng.get_trade_finder_rows(Some(&self.simulated_prices))
         } else {
@@ -1064,7 +1081,7 @@ impl ZoneSniperApp {
         // 1. MWT Demotion (Quality Control)
         // If a trade is "Trash", downgrade the row to "No Opportunity".
         for row in &mut rows {
-            // CHANGE: Removed exemption for selected_pair. 
+            // CHANGE: Removed exemption for selected_pair.
             // If it's trash, it's trash. It will appear as "No Setup" in the list.
             if let Some(op) = &row.opportunity {
                 if !op.opportunity.is_worthwhile(profile) {
@@ -1084,14 +1101,14 @@ impl ZoneSniperApp {
             if !base.is_empty() {
                 rows.retain(|r| {
                     // Scope logic stays lenient: keep the selected pair so context isn't lost entirely,
-                    // or just filter strictly on base name. 
+                    // or just filter strictly on base name.
                     // Keeping simple strict filter for now as requested.
                     self.selected_pair.as_deref() == Some(&r.pair_name)
                         || r.pair_name.starts_with(base)
                 });
             }
         }
-      
+
         // 3. Direction Filter
         match self.tf_filter_direction {
             DirectionFilter::All => {
@@ -1169,16 +1186,18 @@ impl ZoneSniperApp {
                             self.selected_opportunity = None;
                         }
                     }
-                }
-                                else {
+                } else {
                     // --- FIX IS HERE ---
                     // CASE: Current Selection is None (Market View), but the row might now have an Op.
                     // (e.g. Switched from LONG [Empty] to ALL [Has Short])
-                    
+
                     if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
                         if let Some(op) = &best_row.opportunity {
                             #[cfg(debug_assertions)]
-                            log::info!("UI AUTO-HEAL: Upgrading Selection from None -> Best Op for {}", pair);
+                            log::info!(
+                                "UI AUTO-HEAL: Upgrading Selection from None -> Best Op for {}",
+                                pair
+                            );
                             self.selected_opportunity = Some(op.opportunity.clone());
                         }
                     }
