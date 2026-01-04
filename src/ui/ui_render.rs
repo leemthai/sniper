@@ -768,11 +768,11 @@ impl ZoneSniperApp {
             return;
         }
 
-        // 1. FIND SCROLL TARGET INDEX
-        let mut scroll_target_index = None;
+        // --- NEW: FIND SCROLL TARGET INDEX ---
+        let mut target_index = None;
         if let Some(target) = &self.scroll_to_pair {
             if let Some(idx) = rows.iter().position(|r| r.pair_name == *target) {
-                scroll_target_index = Some(idx);
+                target_index = Some(idx);
             }
         }
 
@@ -800,11 +800,10 @@ impl ZoneSniperApp {
                 .min_scrolled_height(0.0)
                 .max_scroll_height(available_height);
 
-            // FIX: Apply Scroll at the Builder level
-            if let Some(idx) = scroll_target_index {
+            // FIX: Apply Scroll at the Builder Level
+            // This works even if the row is virtualized (off-screen)
+            if let Some(idx) = target_index {
                 builder = builder.scroll_to_row(idx, Some(Align::Center));
-                // Clear the request now that we've handled it
-                self.scroll_to_pair = None;
             }
 
             builder
@@ -818,17 +817,12 @@ impl ZoneSniperApp {
                         });
                     }
                 });
-        });
 
-        // 6. Scroll Ackcb
-        // TEMP is this still needed?
-        // Note: TableBuilder handles scrolling internally differently.
-        // but for now, let's see if the manual logic inside the cells still works (it usually does).
-        if let Some(_) = &self.scroll_to_pair {
-            // We clear it here assuming the row logic caught it.
-            // If scrolling stops working, we will hook into TableBuilder's scroll API later.
-            self.scroll_to_pair = None;
-        }
+            // 6. Clear Request (If we found the index, we scrolled)
+            if target_index.is_some() {
+                self.scroll_to_pair = None;
+            }
+        });
     }
 
     fn render_tf_table_header(&mut self, header: &mut TableRow) {
@@ -904,7 +898,11 @@ impl ZoneSniperApp {
     }
 
     /// Renders the data cells for a single row
-    fn render_tf_table_row(&mut self, table_row: &mut TableRow, row: &TradeFinderRow) {
+    fn render_tf_table_row(
+        &mut self,
+        table_row: &mut TableRow,
+        row: &TradeFinderRow,
+    ) {
         // Selection Logic
         let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
             && match (&self.selected_opportunity, &row.opportunity) {
@@ -1067,7 +1065,7 @@ impl ZoneSniperApp {
     }
 
     /// Helper: Fetches all rows from engine and applies Scope, Direction, and MWT filters.
-    /// Crucially, it ensures the SELECTED PAIR is never filtered out.
+    /// Crucially, it ensures the SELECTED PAIR and SCROLL TARGET are never filtered out.
     fn get_filtered_rows(&self) -> Vec<TradeFinderRow> {
         let mut rows = if let Some(eng) = &self.engine {
             eng.get_trade_finder_rows(Some(&self.simulated_prices))
@@ -1077,35 +1075,38 @@ impl ZoneSniperApp {
 
         // Short path reference
         let profile = &crate::config::ANALYSIS.journey.profile;
+        
+        // HELPER: Identify rows that must stay visible (Selected or Scroll Target)
+        let is_protected = |name: &str| -> bool {
+            self.selected_pair.as_deref() == Some(name) ||
+            self.scroll_to_pair.as_deref() == Some(name)
+        };
 
         // 1. MWT Demotion (Quality Control)
         // If a trade is "Trash", downgrade the row to "No Opportunity".
         for row in &mut rows {
-            // CHANGE: Removed exemption for selected_pair.
-            // If it's trash, it's trash. It will appear as "No Setup" in the list.
+            // EXEMPTION: Protected pairs always show their trade (even if trash)
+            if is_protected(&row.pair_name) {
+                continue;
+            }
+
             if let Some(op) = &row.opportunity {
                 if !op.opportunity.is_worthwhile(profile) {
-                    row.opportunity = None;
+                    row.opportunity = None; // Demote to "No Setup"
                 }
             }
         }
 
         // 2. Scope Filter (Base Asset)
         if self.tf_filter_pair_only {
-            let base = self
-                .selected_pair
-                .as_ref()
+            let base = self.selected_pair.as_ref()
                 .and_then(|p| crate::domain::pair_interval::PairInterval::get_base(p))
                 .unwrap_or("");
-
-            if !base.is_empty() {
+            
+            if !base.is_empty() { 
                 rows.retain(|r| {
-                    // Scope logic stays lenient: keep the selected pair so context isn't lost entirely,
-                    // or just filter strictly on base name.
-                    // Keeping simple strict filter for now as requested.
-                    self.selected_pair.as_deref() == Some(&r.pair_name)
-                        || r.pair_name.starts_with(base)
-                });
+                    is_protected(&r.pair_name) || r.pair_name.starts_with(base)
+                }); 
             }
         }
 
@@ -1113,31 +1114,26 @@ impl ZoneSniperApp {
         match self.tf_filter_direction {
             DirectionFilter::All => {
                 // Show EVERYTHING
-            }
+            },
             _ => {
-                // STRICT MODE: Only show matching trades.
+                // STRICT MODE:
+                // FIX: Removed 'is_protected' check here. 
+                // If the selected pair doesn't match the Direction, it MUST be hidden 
+                // so that auto_heal can find a valid replacement.
                 rows.retain(|r| {
-                    // CHANGE: Removed exemption for selected_pair.
-                    // If filter is LONG and pair only has SHORT, the row is hidden.
-                    // (handle_pair_selection will switch the filter so this doesn't happen unexpectedly)
-
                     if let Some(op) = &r.opportunity {
                         match self.tf_filter_direction {
-                            DirectionFilter::Long => {
-                                op.opportunity.direction == TradeDirection::Long
-                            }
-                            DirectionFilter::Short => {
-                                op.opportunity.direction == TradeDirection::Short
-                            }
-                            _ => true,
+                            DirectionFilter::Long => op.opportunity.direction == TradeDirection::Long,
+                            DirectionFilter::Short => op.opportunity.direction == TradeDirection::Short,
+                            _ => true
                         }
                     } else {
-                        false
+                        false 
                     }
                 });
             }
         }
-
+        
         rows
     }
 

@@ -462,10 +462,11 @@ impl ZoneSniperApp {
 
         self.selected_opportunity = op_to_select.clone();
 
-        // C. AUTO-SWITCH FILTER
-        // Ensure the new selection is visible.
+ // --- C. GATED LOGIC: AUTO-SWITCH FILTER ---
+        // DO NOT REMOVE. 
+        // Ensures we never show a "NO OPP" selected pair inside a "LONG/SHORT" filter.
         if let Some(op) = &self.selected_opportunity {
-            // If we have an op, ensure filter matches it
+            // If we have an op, ensure filter matches direction
             match self.tf_filter_direction {
                 DirectionFilter::Long if op.direction == TradeDirection::Short => {
                     self.tf_filter_direction = DirectionFilter::Short;
@@ -473,12 +474,16 @@ impl ZoneSniperApp {
                 DirectionFilter::Short if op.direction == TradeDirection::Long => {
                     self.tf_filter_direction = DirectionFilter::Long;
                 },
-                _ => {} // All good
+                _ => {} 
             }
         } else {
-            // No valid op (Market View).
-            // If filter is specific (Long/Short), we must switch to ALL to see the "No Setup" row.
+            // NO OPP (Market View).
+            // If we are in a specific filter (Long/Short), we MUST switch to ALL.
+            // Otherwise, we end up showing a "No Setup" row in a "Long Only" list.
             if self.tf_filter_direction != DirectionFilter::All {
+                #[cfg(debug_assertions)]
+                log::info!("UI SELECTION: Selected {} (No Opp). Forcing Filter to ALL.", new_pair);
+                
                 self.tf_filter_direction = DirectionFilter::All;
             }
         }
