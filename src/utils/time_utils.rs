@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-// --- CROSS-PLATFORM INSTANT WRAPPER (Moved from app_time.rs) ---
+// --- CROSS-PLATFORM INSTANT WRAPPER ---
 #[cfg(not(target_arch = "wasm32"))]
 pub type AppInstant = std::time::Instant;
 
@@ -67,6 +67,7 @@ impl TimeUtils {
     }
 
     /// Returns current UTC time in milliseconds.
+    /// Question: is this "WASM-safe?"
     pub fn now_timestamp_ms() -> i64 {
         Utc::now().timestamp_millis()
     }

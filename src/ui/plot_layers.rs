@@ -315,113 +315,6 @@ impl PlotLayer for CandlestickLayer {
         // ----------------------------------------------
     }
 
-    // fn render_old(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-    //     if ctx.trading_model.segments.is_empty() {
-    //         return;
-    //     }
-
-    //     let mut visual_x = 0.0;
-    //     let agg_interval_ms = ctx.resolution.interval_ms();
-
-    //     // 1. Calculate Batching
-    //     let view_width_steps = (ctx.x_max - ctx.x_min).abs();
-    //     let screen_width_px = plot_ui.response().rect.width() as f64;
-
-    //     let batch_size = if view_width_steps > 0.0 && screen_width_px > 1.0 {
-    //         (view_width_steps / screen_width_px).ceil() as usize
-    //     } else {
-    //         1
-    //     };
-    //     let step = batch_size.max(1);
-    //     let render_width = step as f64 * PLOT_CONFIG.candle_width_pct;
-
-    //     for segment in &ctx.trading_model.segments {
-    //         let mut i = segment.start_idx;
-
-    //         while i < segment.end_idx {
-    //             let mut batch_open = 0.0;
-    //             let mut batch_high = f64::MIN;
-    //             let mut batch_low = f64::MAX;
-    //             let mut batch_close = 0.0;
-    //             let mut steps_processed = 0;
-
-    //             let start_visual_x = visual_x;
-
-    //             // 2. Batch Loop
-    //             while steps_processed < step && i < segment.end_idx {
-    //                 let first = ctx.ohlcv.get_candle(i);
-    //                 let boundary_start = (first.timestamp_ms / agg_interval_ms) * agg_interval_ms;
-    //                 let boundary_end = boundary_start + agg_interval_ms;
-
-    //                 let open = first.open_price;
-    //                 let mut close = first.close_price;
-    //                 let mut high = first.high_price;
-    //                 let mut low = first.low_price;
-
-    //                 let mut next_i = i + 1;
-    //                 while next_i < segment.end_idx {
-    //                     let c = ctx.ohlcv.get_candle(next_i);
-    //                     if c.timestamp_ms >= boundary_end {
-    //                         break;
-    //                     }
-    //                     high = high.max(c.high_price);
-    //                     low = low.min(c.low_price);
-    //                     close = c.close_price;
-    //                     next_i += 1;
-    //                 }
-
-    //                 if steps_processed == 0 {
-    //                     batch_open = open;
-    //                 }
-    //                 batch_high = batch_high.max(high);
-    //                 batch_low = batch_low.min(low);
-    //                 batch_close = close;
-
-    //                 visual_x += 1.0;
-    //                 i = next_i;
-    //                 steps_processed += 1;
-    //             }
-
-    //             // 3. Draw
-    //             if steps_processed > 0 {
-    //                 let draw_x = start_visual_x + (steps_processed as f64 / 2.0);
-
-    //                 draw_split_candle(
-    //                     plot_ui,
-    //                     draw_x,
-    //                     batch_open,
-    //                     batch_high,
-    //                     batch_low,
-    //                     batch_close,
-    //                     render_width,
-    //                     ctx.ph_bounds,
-    //                     ctx.x_min,
-    //                 );
-    //             }
-    //         }
-    //     }
-    //             // --- ADD THIS LOGGING BLOCK AT THE VERY END ---
-    //     #[cfg(debug_assertions)]
-    //     if ctx.visibility.candles {
-    //          let view_width = ctx.x_max - ctx.x_min;
-             
-    //          // Log if there is a massive mismatch (e.g. View is 1000 but we only drew 50)
-    //          // We check if visual_x (total drawn width) is significantly smaller than the view
-    //          // Note: This might trigger on zooming out (which is normal), so we focus on 
-    //          // "Shift to Left" scenarios where x_max is huge.
-    //          if view_width > visual_x * 1.5 && visual_x > 0.0 {
-    //              log::warn!(
-    //                  "PLOT MISMATCH [{}]: Axis thinks width is {:.1}, but Renderer only drew {:.1}. (Res: {:?})", 
-    //                  ctx.trading_model.cva.pair_name,
-    //                  view_width, 
-    //                  visual_x,
-    //                  ctx.resolution
-    //              );
-    //          }
-    //     }
-    //     // ----------------------------------------------
-
-    // }
 }
 
 // Helper: Draws the candle (splitting logic included)
@@ -539,7 +432,7 @@ fn draw_body_rect(
     }
 
     let pts = vec![[left, bottom], [right, bottom], [right, top], [left, top]];
-    ui.polygon(Polygon::new("", PlotPoints::new(pts)).fill_color(color));
+    ui.polygon(Polygon::new("", PlotPoints::new(pts)).fill_color(color).stroke(Stroke::NONE));
 }
 
 /// Context passed to every layer during rendering.
