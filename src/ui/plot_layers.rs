@@ -10,12 +10,12 @@ use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 
 use crate::analysis::range_gap_finder::GapReason;
 
-use crate::config::plot::PLOT_CONFIG;
 use crate::config::ANALYSIS;
+use crate::config::plot::PLOT_CONFIG;
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::ScoreType;
-use crate::models::trading_view::{SuperZone, TradingModel, TradeOpportunity};
+use crate::models::trading_view::{SuperZone, TradeOpportunity, TradingModel};
 
 use crate::ui::app::{CandleResolution, PlotVisibility};
 use crate::ui::styles::{DirectionColor, apply_opacity};
@@ -31,9 +31,11 @@ pub struct OpportunityLayer;
 fn find_best_opportunity(model: &TradingModel) -> Option<&TradeOpportunity> {
     let profile = &ANALYSIS.journey.profile;
 
-    model.opportunities.iter()
+    model
+        .opportunities
+        .iter()
         // FIX: Use is_worthwhile to enforce MWT (Min ROI / Min AROI)
-        .filter(|op| op.is_worthwhile(profile)) 
+        .filter(|op| op.is_worthwhile(profile))
         .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
 }
 
@@ -62,8 +64,7 @@ impl PlotLayer for OpportunityLayer {
         };
 
         // 2. Find Best Opportunity
-        if let Some(best_opp) = target_opp
-        {
+        if let Some(best_opp) = target_opp {
             // 3. Setup Foreground Painter
             // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
             // FIX: Create Painter with Clipping
@@ -185,62 +186,245 @@ impl PlotLayer for HorizonLinesLayer {
 pub struct CandlestickLayer;
 
 impl PlotLayer for CandlestickLayer {
+
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         if ctx.trading_model.segments.is_empty() {
             return;
         }
 
-        let mut visual_x = 0.0;
+        // We track the cumulative visual offset for previous segments
+        // (assuming segments are contiguous in view space, or ui_plot_view handles the gaps between segments via separate logic. 
+        //  If ui_plot_view sums up segment widths, we need to replicate that.)
+        let mut segment_start_visual_x = 0.0; 
+        
         let agg_interval_ms = ctx.resolution.interval_ms();
 
+        // 1. Optimization Setup
+        let view_width_steps = (ctx.x_max - ctx.x_min).abs();
+        let screen_width_px = plot_ui.response().rect.width() as f64;
+        let batch_size = if view_width_steps > 0.0 && screen_width_px > 1.0 {
+            (view_width_steps / screen_width_px).ceil() as usize
+        } else { 1 };
+        let step = batch_size.max(1);
+        let render_width = step as f64 * PLOT_CONFIG.candle_width_pct; 
+
         for segment in &ctx.trading_model.segments {
+            // Calculate Segment Start Time for relative offset
+            let seg_start_ts = ctx.ohlcv.get_candle(segment.start_idx).timestamp_ms;
+            
+            // Align start to the grid
+            let grid_start_ts = (seg_start_ts / agg_interval_ms) * agg_interval_ms;
+
             let mut i = segment.start_idx;
 
             while i < segment.end_idx {
-                let first = ctx.ohlcv.get_candle(i);
+                
+                // --- BATCHING ---
+                let mut batch_open = 0.0;
+                let mut batch_high = f64::MIN;
+                let mut batch_low = f64::MAX;
+                let mut batch_close = 0.0;
+                let mut steps_processed = 0;
+                
+                // Capture the timestamp of the first candle in this batch
+                let first_candle_ts = ctx.ohlcv.get_candle(i).timestamp_ms;
+                let current_grid_ts = (first_candle_ts / agg_interval_ms) * agg_interval_ms;
 
-                // --- UTC GRID ALIGNMENT ---
-                let boundary_start = (first.timestamp_ms / agg_interval_ms) * agg_interval_ms;
-                let boundary_end = boundary_start + agg_interval_ms;
+                while steps_processed < step && i < segment.end_idx {
+                    let first = ctx.ohlcv.get_candle(i);
+                    
+                    // Standard Aggregation (Resolution)
+                    let boundary_start = (first.timestamp_ms / agg_interval_ms) * agg_interval_ms;
+                    let boundary_end = boundary_start + agg_interval_ms;
 
-                // --- AGGREGATION ---
-                let open = first.open_price;
-                let mut close = first.close_price;
-                let mut high = first.high_price;
-                let mut low = first.low_price;
+                    let open = first.open_price;
+                    let mut close = first.close_price;
+                    let mut high = first.high_price;
+                    let mut low = first.low_price;
 
-                let mut next_i = i + 1;
-                while next_i < segment.end_idx {
-                    let c = ctx.ohlcv.get_candle(next_i);
-                    if c.timestamp_ms >= boundary_end {
-                        break;
+                    let mut next_i = i + 1;
+                    while next_i < segment.end_idx {
+                        let c = ctx.ohlcv.get_candle(next_i);
+                        if c.timestamp_ms >= boundary_end { break; }
+                        high = high.max(c.high_price);
+                        low = low.min(c.low_price);
+                        close = c.close_price;
+                        next_i += 1;
                     }
-                    high = high.max(c.high_price);
-                    low = low.min(c.low_price);
-                    close = c.close_price;
-                    next_i += 1;
+
+                    if steps_processed == 0 { batch_open = open; }
+                    batch_high = batch_high.max(high);
+                    batch_low = batch_low.min(low);
+                    batch_close = close;
+
+                    i = next_i;
+                    steps_processed += 1;
                 }
 
-                // --- DRAWING (Delegated to Helper) ---
-                draw_split_candle(
-                    plot_ui,
-                    visual_x,
-                    open,
-                    high,
-                    low,
-                    close,
-                    ctx.ph_bounds,
-                    ctx.x_min,
-                );
+                if steps_processed > 0 {
+                    // FIX: Calculate X based on TIME difference from Segment Start
+                    // Offset = (CurrentBatchTime - SegmentGridStart) / Interval
+                    // This creates gaps correctly where data is missing.
+                    let time_offset = (current_grid_ts - grid_start_ts) / agg_interval_ms;
+                    
+                    // Absolute Plot X = SegmentStart + Offset + CenterBias
+                    let draw_x = segment_start_visual_x + time_offset as f64 + 0.5; // +0.5 to center in slot
 
-                visual_x += 1.0;
-                i = next_i;
+                    draw_split_candle(
+                        plot_ui,
+                        draw_x,
+                        batch_open,
+                        batch_high,
+                        batch_low,
+                        batch_close,
+                        render_width,
+                        ctx.ph_bounds,
+                        ctx.x_min,
+                    );
+                }
             }
+            
+            // Advance the visual cursor by the TOTAL width of this segment (including gaps)
+            // This ensures the next segment starts at the right place.
+            let last_candle_ts = ctx.ohlcv.get_candle(segment.end_idx - 1).timestamp_ms;
+            let segment_duration = last_candle_ts - seg_start_ts;
+            let segment_width = (segment_duration / agg_interval_ms) as f64 + 1.0;
+            
+            segment_start_visual_x += segment_width + PLOT_CONFIG.segment_gap_width;
         }
+
+         // --- ADD THIS LOGGING BLOCK AT THE VERY END ---
+        // #[cfg(debug_assertions)]
+        // if ctx.visibility.candles {
+        //      let view_width = ctx.x_max - ctx.x_min;
+             
+        //      // Log if there is a massive mismatch (e.g. View is 1000 but we only drew 50)
+        //      // We check if visual_x (total drawn width) is significantly smaller than the view
+        //      // Note: This might trigger on zooming out (which is normal), so we focus on 
+        //      // "Shift to Left" scenarios where x_max is huge.
+        //      if view_width > visual_x * 1.5 && visual_x > 0.0 {
+        //          log::warn!(
+        //              "PLOT MISMATCH [{}]: Axis thinks width is {:.1}, but Renderer only drew {:.1}. (Res: {:?})", 
+        //              ctx.trading_model.cva.pair_name,
+        //              view_width, 
+        //              visual_x,
+        //              ctx.resolution
+        //          );
+        //      }
+        // }
+        // ----------------------------------------------
     }
+
+    // fn render_old(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
+    //     if ctx.trading_model.segments.is_empty() {
+    //         return;
+    //     }
+
+    //     let mut visual_x = 0.0;
+    //     let agg_interval_ms = ctx.resolution.interval_ms();
+
+    //     // 1. Calculate Batching
+    //     let view_width_steps = (ctx.x_max - ctx.x_min).abs();
+    //     let screen_width_px = plot_ui.response().rect.width() as f64;
+
+    //     let batch_size = if view_width_steps > 0.0 && screen_width_px > 1.0 {
+    //         (view_width_steps / screen_width_px).ceil() as usize
+    //     } else {
+    //         1
+    //     };
+    //     let step = batch_size.max(1);
+    //     let render_width = step as f64 * PLOT_CONFIG.candle_width_pct;
+
+    //     for segment in &ctx.trading_model.segments {
+    //         let mut i = segment.start_idx;
+
+    //         while i < segment.end_idx {
+    //             let mut batch_open = 0.0;
+    //             let mut batch_high = f64::MIN;
+    //             let mut batch_low = f64::MAX;
+    //             let mut batch_close = 0.0;
+    //             let mut steps_processed = 0;
+
+    //             let start_visual_x = visual_x;
+
+    //             // 2. Batch Loop
+    //             while steps_processed < step && i < segment.end_idx {
+    //                 let first = ctx.ohlcv.get_candle(i);
+    //                 let boundary_start = (first.timestamp_ms / agg_interval_ms) * agg_interval_ms;
+    //                 let boundary_end = boundary_start + agg_interval_ms;
+
+    //                 let open = first.open_price;
+    //                 let mut close = first.close_price;
+    //                 let mut high = first.high_price;
+    //                 let mut low = first.low_price;
+
+    //                 let mut next_i = i + 1;
+    //                 while next_i < segment.end_idx {
+    //                     let c = ctx.ohlcv.get_candle(next_i);
+    //                     if c.timestamp_ms >= boundary_end {
+    //                         break;
+    //                     }
+    //                     high = high.max(c.high_price);
+    //                     low = low.min(c.low_price);
+    //                     close = c.close_price;
+    //                     next_i += 1;
+    //                 }
+
+    //                 if steps_processed == 0 {
+    //                     batch_open = open;
+    //                 }
+    //                 batch_high = batch_high.max(high);
+    //                 batch_low = batch_low.min(low);
+    //                 batch_close = close;
+
+    //                 visual_x += 1.0;
+    //                 i = next_i;
+    //                 steps_processed += 1;
+    //             }
+
+    //             // 3. Draw
+    //             if steps_processed > 0 {
+    //                 let draw_x = start_visual_x + (steps_processed as f64 / 2.0);
+
+    //                 draw_split_candle(
+    //                     plot_ui,
+    //                     draw_x,
+    //                     batch_open,
+    //                     batch_high,
+    //                     batch_low,
+    //                     batch_close,
+    //                     render_width,
+    //                     ctx.ph_bounds,
+    //                     ctx.x_min,
+    //                 );
+    //             }
+    //         }
+    //     }
+    //             // --- ADD THIS LOGGING BLOCK AT THE VERY END ---
+    //     #[cfg(debug_assertions)]
+    //     if ctx.visibility.candles {
+    //          let view_width = ctx.x_max - ctx.x_min;
+             
+    //          // Log if there is a massive mismatch (e.g. View is 1000 but we only drew 50)
+    //          // We check if visual_x (total drawn width) is significantly smaller than the view
+    //          // Note: This might trigger on zooming out (which is normal), so we focus on 
+    //          // "Shift to Left" scenarios where x_max is huge.
+    //          if view_width > visual_x * 1.5 && visual_x > 0.0 {
+    //              log::warn!(
+    //                  "PLOT MISMATCH [{}]: Axis thinks width is {:.1}, but Renderer only drew {:.1}. (Res: {:?})", 
+    //                  ctx.trading_model.cva.pair_name,
+    //                  view_width, 
+    //                  visual_x,
+    //                  ctx.resolution
+    //              );
+    //          }
+    //     }
+    //     // ----------------------------------------------
+
+    // }
 }
 
-// --- HELPERS (Keep the main logic clean) ---
+// Helper: Draws the candle (splitting logic included)
 fn draw_split_candle(
     ui: &mut PlotUi,
     x: f64,
@@ -248,80 +432,74 @@ fn draw_split_candle(
     high: f64,
     low: f64,
     close: f64,
+    width: f64, // <--- ADDED ARGUMENT
     ph_bounds: (f64, f64),
-    min_x_limit: f64,
+    min_x: f64,
 ) {
     let (ph_min, ph_max) = ph_bounds;
-    let is_green = close >= open;
 
-    let base_color = if is_green {
+    // VISUAL FIX 2: Ghost Color
+    let is_bullish = close >= open;
+    let base_color = if is_bullish {
         PLOT_CONFIG.candle_bullish_color
     } else {
         PLOT_CONFIG.candle_bearish_color
     };
-
-    // VISUAL FIX 2: Ghost Color - make it look "Dead" / Desaturated.
-    // We use a very high transparency (0.2) so it recedes into the background.
     let ghost_color = base_color.linear_multiply(0.2);
 
     // 1. Draw Wicks
     // Top Ghost
-    if high > ph_max {
-        let bottom = low.max(ph_max);
-        if high > bottom {
-            draw_wick_line(ui, x, high, bottom, ghost_color, min_x_limit);
-        }
-    }
+    let top = high.min(ph_min);
+    draw_wick_line(ui, x, high, top, ghost_color, min_x);
+
     // Bottom Ghost
-    if low < ph_min {
-        let top = high.min(ph_min);
-        if top > low {
-            draw_wick_line(ui, x, top, low, ghost_color, min_x_limit);
-        }
-    }
-    // Solid Wick
+    let bottom = low.max(ph_max);
+    draw_wick_line(ui, x, bottom, low, ghost_color, min_x);
+
+    // Solid Wick (Within PH)
     let solid_top = high.min(ph_max);
     let solid_bot = low.max(ph_min);
+
     if solid_top > solid_bot {
-        draw_wick_line(ui, x, solid_top, solid_bot, base_color, min_x_limit);
+        draw_wick_line(ui, x, solid_top, solid_bot, base_color, min_x);
     }
 
     // 2. Draw Body
     let body_top_raw = open.max(close);
     let body_bot_raw = open.min(close);
+
+    // Use the passed width
+    let half_w = width / 2.0;
+
     // Doji check
     let body_top = if (body_top_raw - body_bot_raw).abs() < f64::EPSILON {
-        body_bot_raw * 1.0001
+        body_top_raw + 0.00001 // minimal height
     } else {
         body_top_raw
     };
     let body_bot = body_bot_raw;
 
     // Top Ghost Body
-    if body_top > ph_max {
-        let b = body_bot.max(ph_max);
-        if body_top > b {
-            draw_body_rect(ui, x, body_top, b, ghost_color, min_x_limit);
-        }
-    }
+    let t = body_top.min(ph_min);
+    draw_body_rect(ui, x, half_w, t, body_bot, ghost_color, min_x);
+
     // Bottom Ghost Body
-    if body_bot < ph_min {
-        let t = body_top.min(ph_min);
-        if t > body_bot {
-            draw_body_rect(ui, x, t, body_bot, ghost_color, min_x_limit);
-        }
-    }
+    let b = body_bot.max(ph_max);
+    draw_body_rect(ui, x, half_w, body_top, b, ghost_color, min_x);
+
     // Solid Body
     let solid_body_top = body_top.min(ph_max);
     let solid_body_bot = body_bot.max(ph_min);
+
     if solid_body_top > solid_body_bot {
         draw_body_rect(
             ui,
             x,
+            half_w,
             solid_body_top,
             solid_body_bot,
             base_color,
-            min_x_limit,
+            min_x,
         );
     }
 }
@@ -340,27 +518,28 @@ fn draw_wick_line(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32
 }
 
 #[inline]
-fn draw_body_rect(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32, min_x: f64) {
-    let half_w = PLOT_CONFIG.candle_width_pct / 2.0;
+fn draw_body_rect(
+    ui: &mut PlotUi,
+    x: f64,
+    half_w: f64,
+    top: f64,
+    bottom: f64,
+    color: Color32,
+    min_x: f64,
+) {
+    if top <= bottom {
+        return;
+    }
 
-    // CLIPPING LOGIC:
-    // Ensure 'left' is never less than min_x (0.0)
-    // If x=0 and width=0.8, left becomes 0.0 instead of -0.4.
     let left = (x - half_w).max(min_x);
     let right = x + half_w;
 
-    // Safety: If clipping makes left >= right (fully out of bounds), don't draw
     if left >= right {
         return;
     }
 
     let pts = vec![[left, bottom], [right, bottom], [right, top], [left, top]];
-
-    ui.polygon(
-        Polygon::new("", PlotPoints::new(pts))
-            .fill_color(color)
-            .stroke(Stroke::NONE),
-    );
+    ui.polygon(Polygon::new("", PlotPoints::new(pts)).fill_color(color));
 }
 
 /// Context passed to every layer during rendering.
@@ -483,7 +662,6 @@ impl PlotLayer for ReversalZoneLayer {
         // A. Low Wicks (Support)
         if ctx.visibility.low_wicks {
             for superzone in &ctx.trading_model.zones.low_wicks_superzones {
-
                 let color = PLOT_CONFIG.low_wicks_zone_color;
                 let stroke = get_stroke(superzone, current_price, color);
 
@@ -505,7 +683,6 @@ impl PlotLayer for ReversalZoneLayer {
         // B. High Wicks (Resistance)
         if ctx.visibility.high_wicks {
             for superzone in &ctx.trading_model.zones.high_wicks_superzones {
-
                 // if is_relevant {
                 let color = PLOT_CONFIG.high_wicks_zone_color;
                 let stroke = get_stroke(superzone, current_price, color);
@@ -563,8 +740,7 @@ impl PlotLayer for SegmentSeparatorLayer {
 
                 // Only draw if within horizontal bounds of the plot rect
                 if x_screen >= ctx.clip_rect.left() && x_screen <= ctx.clip_rect.right() {
-
-                    let next_segment = &ctx.trading_model.segments[seg_idx+1];
+                    let next_segment = &ctx.trading_model.segments[seg_idx + 1];
 
                     let base_color = match next_segment.gap_reason {
                         GapReason::PriceAbovePH => PLOT_CONFIG.color_gap_above,
@@ -573,7 +749,10 @@ impl PlotLayer for SegmentSeparatorLayer {
                         _ => PLOT_CONFIG.color_separator, // Mixed/Generic -> Default Gray
                     };
 
-                    let stroke = Stroke::new(1.0, apply_opacity(base_color, PLOT_CONFIG.opacity_separator));
+                    let stroke = Stroke::new(
+                        1.0,
+                        apply_opacity(base_color, PLOT_CONFIG.opacity_separator),
+                    );
 
                     draw_dashed_line(
                         &painter,

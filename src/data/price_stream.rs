@@ -67,14 +67,12 @@ fn build_combined_stream_url(symbols: &[String]) -> String {
     let interval =
         crate::utils::TimeUtils::interval_to_string(crate::config::ANALYSIS.interval_width_ms);
 
+    // CHANGE: Only subscribe to kline
     let streams: Vec<String> = symbols
         .iter()
-        .flat_map(|symbol| {
+        .map(|symbol| {
             let s = symbol.to_lowercase();
-            vec![
-                format!("{}@miniTicker", s),
-                format!("{}@kline_{}", s, interval),
-            ]
+            format!("{}@kline_{}", s, interval)
         })
         .collect();
 
@@ -300,13 +298,8 @@ async fn run_combined_price_stream(
     prices_arc: Arc<Mutex<HashMap<String, f64>>>,
     status_arc: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     suspended_arc: Arc<Mutex<bool>>,
-    candle_tx: Option<Sender<LiveCandle>>, // <--- NEW ARGUMENT
+    candle_tx: Option<Sender<LiveCandle>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    #[cfg(debug_assertions)]
-    if DEBUG_FLAGS.print_price_stream_updates {
-        log::info!("Connecting to Binance combined WebSocket: {}", url);
-    }
-
     let (ws_stream, _) = connect_async(url).await?;
 
     // Update status to connected
@@ -322,47 +315,53 @@ async fn run_combined_price_stream(
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => {
-                // CHANGE: Parse as Generic Value first to handle Polymorphism (Ticker vs Kline)
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                     // Check Event Type "e"
                     if let Some(event_type) = v["data"]["e"].as_str() {
                         match event_type {
-                            "24hrMiniTicker" => {
-                                // Extract Ticker Data manually from Value
-                                if let (Some(s), Some(c_str)) =
-                                    (v["data"]["s"].as_str(), v["data"]["c"].as_str())
-                                {
-                                    if let Ok(price) = c_str.parse::<f64>() {
-                                        // Update Prices Map
-                                        let is_suspended = *suspended_arc.lock().unwrap();
-                                        if !is_suspended {
-                                            let symbol_lower = s.to_lowercase();
-                                            // Optional: Check if symbol is in our list (optimization)
-                                            // if symbols.contains(&symbol_lower) {
-                                            prices_arc.lock().unwrap().insert(symbol_lower, price);
-                                            // }
+                            "kline" => {
+                                // 1. SEND TO ENGINE (History/Heartbeat)
+                                if let Some(tx) = &candle_tx {
+                                    parse_and_send_kline(&v["data"], tx);
+                                }
 
-                                            #[cfg(debug_assertions)]
-                                            if DEBUG_FLAGS.print_price_stream_updates {
-                                                log::info!("[ticker] {} -> {:.6}", s, price);
+                                // 2. UPDATE LIVE PRICE CACHE (UI Display)
+                                // We use the current candle close ("c") as the live price
+                                if let Some(k) = v["data"].get("k") {
+                                    if let Some(c_str) = k["c"].as_str() {
+                                        if let Ok(price) = c_str.parse::<f64>() {
+                                            // Check Suspension
+                                            let is_suspended = *suspended_arc.lock().unwrap();
+                                            if !is_suspended {
+                                                let symbol = v["data"]["s"]
+                                                    .as_str()
+                                                    .unwrap_or("")
+                                                    .to_lowercase();
+
+                                                // Update Map
+                                                prices_arc
+                                                    .lock()
+                                                    .unwrap()
+                                                    .insert(symbol.clone(), price);
+
+                                                #[cfg(debug_assertions)]
+                                                if DEBUG_FLAGS.print_price_stream_updates {
+                                                    log::info!(
+                                                        "[kline-tick] {} -> {:.6}",
+                                                        symbol,
+                                                        price
+                                                    );
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                            "kline" => {
-                                // Process Kline
-                                if let Some(tx) = &candle_tx {
-                                    parse_and_send_kline(&v["data"], tx);
-                                }
-                            }
-                            _ => {
-                                // Ignore other events
-                            }
+                            // Ignore other events (like 24hrTicker if any sneak in)
+                            _ => {}
                         }
                     }
                 } else {
-                    // Failed to parse JSON
                     log::warn!("⚠️ Failed to parse WebSocket JSON message");
                 }
             }
@@ -380,7 +379,6 @@ async fn run_combined_price_stream(
 
     Ok(())
 }
-
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &[String]) {
@@ -472,13 +470,20 @@ fn parse_and_send_kline(data: &serde_json::Value, tx: &Sender<LiveCandle>) {
     // but the Engine handles the logic of update vs append.
     let is_closed = k["x"].as_bool().unwrap_or(false);
 
+    let symbol = data["s"].as_str().unwrap_or("").to_string();
+    let close = k["c"].as_str().unwrap_or("0").parse().unwrap_or(0.0);
+    #[cfg(debug_assertions)]
+    if is_closed {
+        log::info!("STREAM: {} @ {:.2} (Closed: {})", symbol, close, is_closed);
+    }
+
     let candle = LiveCandle {
-        symbol: data["s"].as_str().unwrap_or("").to_string(),
+        symbol,
         open_time: k["t"].as_i64().unwrap_or(0),
         open: k["o"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
         high: k["h"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
         low: k["l"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
-        close: k["c"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
+        close,
         volume: k["v"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
         quote_vol: k["q"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
         is_closed,

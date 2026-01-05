@@ -7,7 +7,7 @@ use std::thread;
 
 use uuid::Uuid;
 
-use super::messages::{JobRequest, JobResult, JobMode};
+use super::messages::{JobMode, JobRequest, JobResult};
 
 use crate::analysis::adaptive::AdaptiveParameters;
 use crate::analysis::market_state::MarketState;
@@ -32,7 +32,10 @@ use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::{AppInstant, TimeUtils};
 
 #[cfg(debug_assertions)]
-use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::{calculate_percent_diff, calculate_expected_roi_pct}};
+use {
+    crate::ui::ui_text::UI_TEXT,
+    crate::utils::maths_utils::{calculate_expected_roi_pct, calculate_percent_diff},
+};
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -58,111 +61,114 @@ fn run_pathfinder_simulations(
     current_price: f64,
     config: &AnalysisConfig,
 ) -> Vec<TradeOpportunity> {
-    let mut opportunities = Vec::new();
+    crate::trace_time!("Worker: Pathfinder Sim", 2_000, {
+        let mut opportunities = Vec::new();
 
-    // 1. Setup & Adaptive Lookback
-    let ph_pct = config.price_horizon.threshold_pct;
-    let trend_lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
-    let current_idx = ohlcv.klines().saturating_sub(1);
+        // 1. Setup & Adaptive Lookback
+        let ph_pct = config.price_horizon.threshold_pct;
+        let trend_lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
+        let current_idx = ohlcv.klines().saturating_sub(1);
 
-    let interval_ms = ohlcv.pair_interval.interval_ms;
+        let interval_ms = ohlcv.pair_interval.interval_ms;
 
-    // --- NEW: USE CENTRALIZED METHOD ---
-    // Calculate volatility over the lookback period (Recent Context)
-    let start_vol_idx = current_idx.saturating_sub(trend_lookback);
-    let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol_idx, current_idx);
+        // --- NEW: USE CENTRALIZED METHOD ---
+        // Calculate volatility over the lookback period (Recent Context)
+        let start_vol_idx = current_idx.saturating_sub(trend_lookback);
+        let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol_idx, current_idx);
 
-    // B. Calculate Duration (Time) using Adaptive Logic
-    let duration_time = AdaptiveParameters::calculate_dynamic_journey_duration(
-        ph_pct,
-        avg_volatility,
-        ohlcv.pair_interval.interval_ms,
-    );
+        // B. Calculate Duration (Time) using Adaptive Logic
+        let duration_time = AdaptiveParameters::calculate_dynamic_journey_duration(
+            ph_pct,
+            avg_volatility,
+            ohlcv.pair_interval.interval_ms,
+        );
 
-    // C. Convert to Candles for Simulation
-    let duration_candles = duration_to_candles(duration_time, interval_ms);
+        // C. Convert to Candles for Simulation
+        let duration_candles = duration_to_candles(duration_time, interval_ms);
 
-    // 2. Heavy Lift: Find Historical Matches ONCE
-    let (historical_matches, current_market_state) =
-        match ScenarioSimulator::find_historical_matches(
-            ohlcv,
-            current_idx,
-            trend_lookback,
-            duration_candles,
-            config.journey.sample_count,
-            &config.similarity,
-        ) {
-            Some((m, s)) if !m.is_empty() => (m, s),
-            _ => {
-                // #[cfg(debug_assertions)]
-                // log::warn!(
-                //     "PATHFINDER ABORT: Insufficient data or matches (Lookback {}).",
-                //     trend_lookback
-                // );
-                return Vec::new();
-            }
-        };
-
-    // 3. Scan Zones
-    for (i, zone) in sticky_zones.iter().enumerate() {
-        // IDIOMATIC: Determine Setup using Option<(Price, Direction)>
-        // CHANGED: Target is now zone.price_center for both cases
-        let setup = if current_price < zone.price_bottom {
-            Some((zone.price_center, TradeDirection::Long))
-        } else if current_price > zone.price_top {
-            Some((zone.price_center, TradeDirection::Short))
-        } else {
-            None
-        };
-
-        if let Some((target_price, direction)) = setup {
-            // 4. Run Tournament to find best Stop Loss
-            if let Some((best_result, best_stop, variants)) = run_stop_loss_tournament(
+        // 2. Heavy Lift: Find Historical Matches ONCE
+        let (historical_matches, current_market_state) =
+            match ScenarioSimulator::find_historical_matches(
                 ohlcv,
-                &historical_matches,
-                current_market_state,
-                current_price,
-                target_price,
-                direction,
+                current_idx,
+                trend_lookback,
                 duration_candles,
-                config.journey.risk_reward_tests,
-                config.journey.profile.min_roi,
-                i, // zone index for debug logging
+                config.journey.sample_count,
+                &config.similarity,
             ) {
-                // Calculate Average Duration in MS
-                let avg_candles = best_result.avg_duration;
-                let avg_ms = (avg_candles * interval_ms as f64).round() as i64;
+                Some((m, s)) if !m.is_empty() => (m, s),
+                _ => {
+                    // #[cfg(debug_assertions)]
+                    // log::warn!(
+                    //     "PATHFINDER ABORT: Insufficient data or matches (Lookback {}).",
+                    //     trend_lookback
+                    // );
+                    return Vec::new();
+                }
+            };
 
-                // FIX: DETERMINISTIC ID (Stable across restarts)
-                // Namespace: Pair Name. Name: Zone + Config signature
-                let id_str = format!("{}_{}_{}", 
-                    ohlcv.pair_interval.name(), 
-                    zone.id, 
-                    config.journey.profile.min_roi // Include config so ID changes if config changes
-                );
-                let opp_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, id_str.as_bytes()).to_string();
-                
-                let now = TimeUtils::now_timestamp_ms();
+        // 3. Scan Zones
+        for (i, zone) in sticky_zones.iter().enumerate() {
+            // IDIOMATIC: Determine Setup using Option<(Price, Direction)>
+            // CHANGED: Target is now zone.price_center for both cases
+            let setup = if current_price < zone.price_bottom {
+                Some((zone.price_center, TradeDirection::Long))
+            } else if current_price > zone.price_top {
+                Some((zone.price_center, TradeDirection::Short))
+            } else {
+                None
+            };
 
-                opportunities.push(TradeOpportunity {
-                    id: opp_id,
-                    created_at: now,
-                    pair_name: ohlcv.pair_interval.name().to_string(),
-                    start_price: current_price,
-                    target_zone_id: zone.id,
-                    direction,
+            if let Some((target_price, direction)) = setup {
+                // 4. Run Tournament to find best Stop Loss
+                if let Some((best_result, best_stop, variants)) = run_stop_loss_tournament(
+                    ohlcv,
+                    &historical_matches,
+                    current_market_state,
+                    current_price,
                     target_price,
-                    stop_price: best_stop,
-                    max_duration_ms: duration_time.as_millis() as i64,
-                    avg_duration_ms: avg_ms,
-                    simulation: best_result,
-                    variants,
-                    source_ph: config.price_horizon.threshold_pct,
-                });
+                    direction,
+                    duration_candles,
+                    config.journey.risk_reward_tests,
+                    config.journey.profile.min_roi,
+                    i, // zone index for debug logging
+                ) {
+                    // Calculate Average Duration in MS
+                    let avg_candles = best_result.avg_duration;
+                    let avg_ms = (avg_candles * interval_ms as f64).round() as i64;
+
+                    // FIX: DETERMINISTIC ID (Stable across restarts)
+                    // Namespace: Pair Name. Name: Zone + Config signature
+                    let id_str = format!(
+                        "{}_{}_{}",
+                        ohlcv.pair_interval.name(),
+                        zone.id,
+                        config.journey.profile.min_roi // Include config so ID changes if config changes
+                    );
+                    let opp_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, id_str.as_bytes()).to_string();
+
+                    let now = TimeUtils::now_timestamp_ms();
+
+                    opportunities.push(TradeOpportunity {
+                        id: opp_id,
+                        created_at: now,
+                        pair_name: ohlcv.pair_interval.name().to_string(),
+                        start_price: current_price,
+                        target_zone_id: zone.id,
+                        direction,
+                        target_price,
+                        stop_price: best_stop,
+                        max_duration_ms: duration_time.as_millis() as i64,
+                        avg_duration_ms: avg_ms,
+                        simulation: best_result,
+                        variants,
+                        source_ph: config.price_horizon.threshold_pct,
+                    });
+                }
             }
         }
-    }
-    opportunities
+        opportunities
+    })
 }
 
 /// Helper function to find the optimal Stop Loss for a given target
@@ -178,10 +184,9 @@ fn run_stop_loss_tournament(
     min_roi_pct: f64,
     _zone_idx: usize,
 ) -> Option<(SimulationResult, f64, Vec<TradeVariant>)> {
-
     let mut best_roi = f64::NEG_INFINITY;
     let mut best_result: Option<(SimulationResult, f64, f64)> = None; // (Result, Stop, Ratio)
-    let mut valid_variants= Vec::new();
+    let mut valid_variants = Vec::new();
 
     let target_dist_abs = (target_price - current_price).abs();
 
@@ -192,7 +197,7 @@ fn run_stop_loss_tournament(
     // Logging setup
     #[cfg(debug_assertions)]
     // let debug = _zone_idx < 3;
-    let debug = false;// Turn debugging off for now
+    let debug = false; // Turn debugging off for now
     #[cfg(debug_assertions)]
     if debug {
         log::info!(
@@ -252,7 +257,7 @@ fn run_stop_loss_tournament(
             // MWT CHECK: Does this variant meet the minimum threshold?
             let is_worthwhile = true_roi_pct >= min_roi_pct;
 
-          if is_worthwhile {
+            if is_worthwhile {
                 // Store this variant
                 valid_variants.push(TradeVariant {
                     ratio,
@@ -260,7 +265,7 @@ fn run_stop_loss_tournament(
                     roi: true_roi_pct,
                     simulation: result.clone(),
                 });
-                
+
                 // Track Best
                 if true_roi_pct > best_roi {
                     best_roi = true_roi_pct;
@@ -290,7 +295,6 @@ fn run_stop_loss_tournament(
                 best_roi = true_roi_pct;
                 best_result = Some((result.clone(), candidate_stop, ratio));
             }
-
         }
     }
 
@@ -311,17 +315,62 @@ fn run_stop_loss_tournament(
     }
 }
 
+// src/engine/worker.rs
+
+// ... imports ...
+
 pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
     
-    // 1. ACQUIRE READ LOCK ONCE
-    // We hold this lock for the duration of the job calculation.
-    let ts_guard = req.timeseries.read().unwrap();
-
-    // 2. AUTO-TUNE LOGIC
-    if req.mode == JobMode::AutoTune {
-        // Scalp (0.5%), Day (2.0%), Swing (7.0%), Macro (20.0%), Invest (50.0%)
-        let candidates = vec![0.005, 0.020, 0.070, 0.200, 0.500];
+    // 1. CLONE & RELEASE (The Fix)
+    // We lock only long enough to find and copy the data we need.
+    // This unblocks the UI thread immediately.
+    let local_collection = {
+        let ts_guard = req.timeseries.read().unwrap();
         
+        let target_pair = &req.pair_name;
+        let interval = req.config.interval_width_ms; // Raw i64
+        
+        // Find the specific series
+        let series_ref = find_matching_ohlcv(
+            &ts_guard.series_data,
+            target_pair,
+            interval
+        ).ok();
+
+        // Clone it into a local structure
+        if let Some(series) = series_ref {
+            let local = TimeSeriesCollection {
+                series_data: vec![series.clone()], // Deep Copy (~5-10ms)
+                name: "Worker Local Clone".to_string(),
+                version: 1.0,
+            };
+            Some(local)
+        } else {
+            None
+        }
+    }; // LOCK DROPPED HERE
+
+    // Handle missing data early
+    let ts_local = if let Some(c) = local_collection {
+        c
+    } else {
+        // If data doesn't exist, we can't do anything.
+        // Send error or just return.
+        let msg = format!("Worker: No data found for {}", req.pair_name);
+        let _ = tx.send(JobResult {
+            pair_name: req.pair_name.clone(),
+            duration_ms: 0,
+            result: Err(msg),
+            cva: None,
+            profile: None,
+            candle_count: 0,
+        });
+        return;
+    };
+
+    // 2. AUTO-TUNE LOGIC (Uses local copy)
+    if req.mode == JobMode::AutoTune {
+        let candidates = vec![0.005, 0.020, 0.070, 0.200, 0.500];
         let mut best_ph = req.config.price_horizon.threshold_pct;
         let mut best_score = f64::NEG_INFINITY;
         
@@ -331,8 +380,8 @@ pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
         for ph in candidates {
             req.config.price_horizon.threshold_pct = ph;
             
-            // Pass the guard to the helper
-            if let Some((score, _model)) = run_test_analysis(&req, &ts_guard) {
+            // Pass the local clone
+            if let Some((score, _model)) = run_test_analysis(&req, &ts_local) {
                  if score > best_score {
                      best_score = score;
                      best_ph = ph;
@@ -344,40 +393,40 @@ pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
         log::info!("AUTO-TUNE [{}] Winner: {:.2}% (Score: {:.2})", req.pair_name, best_ph * 100.0, best_score);
         
         req.config.price_horizon.threshold_pct = best_ph;
-        req.mode = JobMode::Standard; // Switch to standard to run the final render pass
+        req.mode = JobMode::Standard; 
     }
 
-    // 3. STANDARD EXECUTION
+    // 3. STANDARD EXECUTION (Uses local copy)
     let ph_pct = req.config.price_horizon.threshold_pct * 100.0;
     let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct);
 
     crate::trace_time!(&format!("Total JOB [{}]", base_label), 5000, {
         let start = AppInstant::now();
 
-        // Pass ts_guard to helpers
-        let price = resolve_analysis_price(&req, &ts_guard);
+        // Pass ts_local
+        let price = resolve_analysis_price(&req, &ts_local);
 
         let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 500, {
-            calculate_exact_candle_count(&req, &ts_guard, price)
+            calculate_exact_candle_count(&req, &ts_local, price)
         });
 
         let full_label = format!("{} ({} candles)", base_label, count);
 
-        // Pass ts_guard
+        // Pass ts_local
         let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 1000, {
-            pair_analysis_pure(req.pair_name.clone(), &ts_guard, price, &req.config)
+            pair_analysis_pure(req.pair_name.clone(), &ts_local, price, &req.config)
         });
 
-        // Pass ts_guard
+        // Pass ts_local
         let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 1000, {
-            get_or_generate_profile(&req, &ts_guard, price)
+            get_or_generate_profile(&req, &ts_local, price)
         });
 
         let elapsed = start.elapsed().as_millis();
 
-        // Pass ts_guard
+        // Pass ts_local
         let response = match result_cva {
-            Ok(cva) => build_success_result(&req, &ts_guard, cva, profile, price, count, elapsed),
+            Ok(cva) => build_success_result(&req, &ts_local, cva, profile, price, count, elapsed),
             Err(e) => JobResult {
                 pair_name: req.pair_name.clone(),
                 duration_ms: elapsed,
@@ -394,33 +443,35 @@ pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
 
 
 // Used by AutoTune to score a specific PH setting
-fn run_test_analysis(req: &JobRequest, ts_collection: &TimeSeriesCollection) -> Option<(f64, TradingModel)> {
+fn run_test_analysis(
+    req: &JobRequest,
+    ts_collection: &TimeSeriesCollection,
+) -> Option<(f64, TradingModel)> {
     let price = resolve_analysis_price(req, ts_collection);
-    
+
     if let Ok(cva) = pair_analysis_pure(req.pair_name.clone(), ts_collection, price, &req.config) {
         let cva_arc = Arc::new(cva);
         let profile = get_or_generate_profile(req, ts_collection, price);
-        
+
         let ohlcv = find_matching_ohlcv(
-            &ts_collection.series_data, 
-            &req.pair_name, 
-            req.config.interval_width_ms
-        ).ok()?;
-        
+            &ts_collection.series_data,
+            &req.pair_name,
+            req.config.interval_width_ms,
+        )
+        .ok()?;
+
         let mut model = TradingModel::from_cva(cva_arc, profile, ohlcv, &req.config);
-        
-        let opps = run_pathfinder_simulations(
-            ohlcv,
-            &model.zones.sticky_superzones,
-            price,
-            &req.config
-        );
+
+        let opps =
+            run_pathfinder_simulations(ohlcv, &model.zones.sticky_superzones, price, &req.config);
         model.opportunities = opps;
-        
-        let score: f64 = model.opportunities.iter()
+
+        let score: f64 = model
+            .opportunities
+            .iter()
             .map(|op| op.calculate_quality_score(&req.config.journey.profile))
             .sum();
-            
+
         Some((score, model))
     } else {
         None
@@ -433,7 +484,7 @@ fn resolve_analysis_price(req: &JobRequest, ts_collection: &TimeSeriesCollection
         if let Ok(ts) = find_matching_ohlcv(
             &ts_collection.series_data,
             &req.pair_name,
-            req.config.interval_width_ms 
+            req.config.interval_width_ms,
         ) {
             ts.close_prices.last().copied().unwrap_or(0.0)
         } else {
@@ -442,18 +493,22 @@ fn resolve_analysis_price(req: &JobRequest, ts_collection: &TimeSeriesCollection
     })
 }
 
-fn calculate_exact_candle_count(req: &JobRequest, ts_collection: &TimeSeriesCollection, price: f64) -> usize {
+fn calculate_exact_candle_count(
+    req: &JobRequest,
+    ts_collection: &TimeSeriesCollection,
+    price: f64,
+) -> usize {
     let ohlcv_result = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        req.config.interval_width_ms
+        req.config.interval_width_ms,
     );
 
     if let Ok(ohlcv) = ohlcv_result {
         let (ranges, _) = crate::domain::price_horizon::auto_select_ranges(
             ohlcv,
             price,
-            &req.config.price_horizon
+            &req.config.price_horizon,
         );
         ranges.iter().map(|(s, e)| e - s).sum()
     } else {
@@ -461,7 +516,11 @@ fn calculate_exact_candle_count(req: &JobRequest, ts_collection: &TimeSeriesColl
     }
 }
 
-fn get_or_generate_profile(req: &JobRequest, ts_collection: &TimeSeriesCollection, price: f64) -> HorizonProfile {
+fn get_or_generate_profile(
+    req: &JobRequest,
+    ts_collection: &TimeSeriesCollection,
+    price: f64,
+) -> HorizonProfile {
     // Check existing
     if let Some(existing) = &req.existing_profile {
         let price_match = (existing.base_price - price).abs() < f64::EPSILON;
@@ -476,7 +535,7 @@ fn get_or_generate_profile(req: &JobRequest, ts_collection: &TimeSeriesCollectio
         &req.pair_name,
         ts_collection,
         price,
-        &req.config.price_horizon
+        &req.config.price_horizon,
     )
 }
 
@@ -487,25 +546,22 @@ fn build_success_result(
     profile: HorizonProfile,
     price: f64,
     count: usize,
-    elapsed: u128
+    elapsed: u128,
 ) -> JobResult {
     let cva_arc = Arc::new(cva);
-    
+
     let ohlcv = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        req.config.interval_width_ms
-    ).expect("OHLCV data missing despite CVA success");
+        req.config.interval_width_ms,
+    )
+    .expect("OHLCV data missing despite CVA success");
 
     let mut model = TradingModel::from_cva(cva_arc.clone(), profile.clone(), ohlcv, &req.config);
 
     // Run Pathfinder
-    let opps = run_pathfinder_simulations(
-        ohlcv,
-        &model.zones.sticky_superzones,
-        price,
-        &req.config
-    );
+    let opps =
+        run_pathfinder_simulations(ohlcv, &model.zones.sticky_superzones, price, &req.config);
 
     model.opportunities = opps.clone();
 

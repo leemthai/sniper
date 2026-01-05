@@ -16,14 +16,14 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::ledger::OpportunityLedger;
 use crate::models::pair_context::PairContext;
+use crate::models::timeseries::LiveCandle;
 use crate::models::trading_view::{
     LiveOpportunity, TradeFinderRow, TradeOpportunity, TradingModel,
 };
-use crate::models::timeseries::LiveCandle;
 
 use crate::utils::maths_utils::calculate_percent_diff;
 
-use super::messages::{JobRequest, JobResult, JobMode};
+use super::messages::{JobMode, JobRequest, JobResult};
 use super::state::PairState;
 use super::worker;
 
@@ -68,7 +68,7 @@ pub struct SniperEngine {
 
 impl SniperEngine {
     /// Initialize the engine, spawn workers, and start the price stream.
-pub fn new(timeseries: TimeSeriesCollection) -> Self {
+    pub fn new(timeseries: TimeSeriesCollection) -> Self {
         // 1. Create Channels
         let (candle_tx, candle_rx) = channel();
         let (job_tx, job_rx) = channel::<JobRequest>();
@@ -93,7 +93,9 @@ pub fn new(timeseries: TimeSeriesCollection) -> Self {
         } // Lock is dropped here
 
         // 4. Initialize Price Stream
-        let price_stream = Arc::new(PriceStreamManager::new());
+        let mut price_manager = PriceStreamManager::new();
+        price_manager.set_candle_sender(candle_tx.clone());
+        let price_stream = Arc::new(price_manager);
         let all_names: Vec<String> = pairs.keys().cloned().collect();
         price_stream.subscribe_all(all_names);
 
@@ -135,8 +137,18 @@ pub fn new(timeseries: TimeSeriesCollection) -> Self {
             return;
         }
 
-        // 2. Write Lock (Blocks readers briefly)
-        if let Ok(mut ts_collection) = self.timeseries.write() {
+        let count = updates.len();
+        let ts_lock = self.timeseries.clone();
+        // MEASURE LOCKING TIME
+        let t_wait = std::time::Instant::now();
+
+        // 2. Write Lock (on local Arc)
+        if let Ok(mut ts_collection) = ts_lock.write() {
+            let d_wait = t_wait.elapsed().as_micros();
+
+            // MEASURE PROCESSING TIME
+            let t_process = std::time::Instant::now();
+
             for candle in updates {
                 if let Some(series) = ts_collection
                     .series_data
@@ -148,14 +160,31 @@ pub fn new(timeseries: TimeSeriesCollection) -> Self {
                     if candle.is_closed {
                         #[cfg(debug_assertions)]
                         log::info!(
-                            "HEARTBEAT: Closed Candle for {} @ {}",
+                            "HEARTBEAT: Closed Candle for {} @ {} so gonna trigger force_recalc() on this pair....",
                             candle.symbol,
                             candle.close
                         );
 
-                        // TODO: Phase 2b - Fire DB Insert Task here
+                        // 3. Trigger Recalc
+                        // This is now allowed because 'ts_collection' borrows 'ts_lock', not 'self'.
+                        self.force_recalc(
+                            &candle.symbol,
+                            Some(candle.close),
+                            "CANDLE CLOSE TRIGGER",
+                        );
                     }
                 }
+            }
+            let d_process = t_process.elapsed().as_micros();
+
+            // Log if slow
+            if d_wait + d_process > 10_000 {
+                log::error!(
+                    "🐢 LIVE DATA SLOW: Updates: {} | Wait Lock: {}us | Process: {}us",
+                    count,
+                    d_wait,
+                    d_process
+                );
             }
         }
     }
@@ -165,109 +194,114 @@ pub fn new(timeseries: TimeSeriesCollection) -> Self {
         &self,
         overrides: Option<&std::collections::HashMap<String, f64>>,
     ) -> Vec<TradeFinderRow> {
-        let mut rows = Vec::new();
+        crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
+            let mut rows = Vec::new();
 
-        let ph_pct = self.current_config.price_horizon.threshold_pct;
-        let lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
-        let now_ms = crate::utils::TimeUtils::now_timestamp_ms();
-        let day_ms = 86_400_000;
+            let ph_pct = self.current_config.price_horizon.threshold_pct;
+            let lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
+            let now_ms = crate::utils::TimeUtils::now_timestamp_ms();
+            let day_ms = 86_400_000;
 
-        // 1. Group Ledger Opportunities by Pair for fast lookup
-        let mut ops_by_pair: std::collections::HashMap<String, Vec<&TradeOpportunity>> =
-            std::collections::HashMap::new();
-        for op in self.ledger.get_all() {
-            ops_by_pair
-                .entry(op.pair_name.clone())
-                .or_default()
-                .push(op);
-        }
-
-        let ts_guard = self.timeseries.read().unwrap();
-
-        for (pair, _state) in &self.pairs {
-            // 2. Get Context (Price)
-            let current_price = if let Some(map) = overrides {
-                map.get(pair)
-                    .copied()
-                    .or_else(|| self.price_stream.get_price(pair))
-            } else {
-                self.price_stream.get_price(pair)
+            // 1. Group Ledger Opportunities by Pair for fast lookup
+            let mut ops_by_pair: std::collections::HashMap<String, Vec<&TradeOpportunity>> =
+                std::collections::HashMap::new();
+            for op in self.ledger.get_all() {
+                ops_by_pair
+                    .entry(op.pair_name.clone())
+                    .or_default()
+                    .push(op);
             }
-            .unwrap_or(0.0);
 
-            // 3. Calculate Volume & Market State (From TimeSeries)
-            // We do this for every pair regardless of whether it has ops
-            let mut m_state = None;
-            let mut vol_24h = 0.0;
+            let ts_guard = self.timeseries.read().unwrap();
 
-            if let Some(ts) = ts_guard.series_data.iter().find(|t| t.pair_interval.name() == pair)
-            {
-                let count = ts.klines();
-                if count > 0 {
-                    let current_idx = count - 1;
-                    m_state = MarketState::calculate(ts, current_idx, lookback);
-                    for i in (0..=current_idx).rev() {
-                        let c = ts.get_candle(i);
-                        if now_ms - c.timestamp_ms > day_ms {
-                            break;
+            for (pair, _state) in &self.pairs {
+                // 2. Get Context (Price)
+                let current_price = if let Some(map) = overrides {
+                    map.get(pair)
+                        .copied()
+                        .or_else(|| self.price_stream.get_price(pair))
+                } else {
+                    self.price_stream.get_price(pair)
+                }
+                .unwrap_or(0.0);
+
+                // 3. Calculate Volume & Market State (From TimeSeries)
+                // We do this for every pair regardless of whether it has ops
+                let mut m_state = None;
+                let mut vol_24h = 0.0;
+
+                if let Some(ts) = ts_guard
+                    .series_data
+                    .iter()
+                    .find(|t| t.pair_interval.name() == pair)
+                {
+                    let count = ts.klines();
+                    if count > 0 {
+                        let current_idx = count - 1;
+                        m_state = MarketState::calculate(ts, current_idx, lookback);
+                        for i in (0..=current_idx).rev() {
+                            let c = ts.get_candle(i);
+                            if now_ms - c.timestamp_ms > day_ms {
+                                break;
+                            }
+                            vol_24h += c.quote_asset_volume;
                         }
-                        vol_24h += c.quote_asset_volume;
                     }
                 }
-            }
 
-            // 4. Retrieve & Explode Opportunities (From Ledger)
-            // Default to empty slice if no ops found for this pair
-            let raw_ops = ops_by_pair.get(pair).map(|v| v.as_slice()).unwrap_or(&[]);
+                // 4. Retrieve & Explode Opportunities (From Ledger)
+                // Default to empty slice if no ops found for this pair
+                let raw_ops = ops_by_pair.get(pair).map(|v| v.as_slice()).unwrap_or(&[]);
 
-            // Filter worthwhile trades (Static ROI check)
-            let valid_ops: Vec<&crate::models::trading_view::TradeOpportunity> = raw_ops
-                .iter()
-                .filter(|&&op| op.expected_roi() > 0.0)
-                .map(|&op| op)
-                .collect();
+                // Filter worthwhile trades (Static ROI check)
+                let valid_ops: Vec<&crate::models::trading_view::TradeOpportunity> = raw_ops
+                    .iter()
+                    .filter(|&&op| op.expected_roi() > 0.0)
+                    .map(|&op| op)
+                    .collect();
 
-            let total_ops = valid_ops.len();
+                let total_ops = valid_ops.len();
 
-            if total_ops > 0 {
-                // Create a ROW for EACH Opportunity
-                for op in valid_ops {
-                    let live_opp = LiveOpportunity {
-                        opportunity: op.clone(),
-                        current_price,
-                        live_roi: op.live_roi(current_price),
-                        annualized_roi: op.live_annualized_roi(current_price),
-                        risk_pct: crate::utils::maths_utils::calculate_percent_diff(
-                            op.stop_price,
+                if total_ops > 0 {
+                    // Create a ROW for EACH Opportunity
+                    for op in valid_ops {
+                        let live_opp = LiveOpportunity {
+                            opportunity: op.clone(),
                             current_price,
-                        ),
-                        reward_pct: crate::utils::maths_utils::calculate_percent_diff(
-                            op.target_price,
-                            current_price,
-                        ),
-                        max_duration_ms: op.max_duration_ms,
-                    };
+                            live_roi: op.live_roi(current_price),
+                            annualized_roi: op.live_annualized_roi(current_price),
+                            risk_pct: crate::utils::maths_utils::calculate_percent_diff(
+                                op.stop_price,
+                                current_price,
+                            ),
+                            reward_pct: crate::utils::maths_utils::calculate_percent_diff(
+                                op.target_price,
+                                current_price,
+                            ),
+                            max_duration_ms: op.max_duration_ms,
+                        };
 
+                        rows.push(TradeFinderRow {
+                            pair_name: pair.clone(),
+                            quote_volume_24h: vol_24h,
+                            market_state: m_state, // Copy state
+                            opportunity_count_total: total_ops,
+                            opportunity: Some(live_opp),
+                        });
+                    }
+                } else {
+                    // No valid trades, push 1 placeholder row (for "All Pairs" view)
                     rows.push(TradeFinderRow {
                         pair_name: pair.clone(),
                         quote_volume_24h: vol_24h,
-                        market_state: m_state, // Copy state
-                        opportunity_count_total: total_ops,
-                        opportunity: Some(live_opp),
+                        market_state: m_state,
+                        opportunity_count_total: 0,
+                        opportunity: None,
                     });
                 }
-            } else {
-                // No valid trades, push 1 placeholder row (for "All Pairs" view)
-                rows.push(TradeFinderRow {
-                    pair_name: pair.clone(),
-                    quote_volume_24h: vol_24h,
-                    market_state: m_state,
-                    opportunity_count_total: 0,
-                    opportunity: None,
-                });
             }
-        }
-        rows
+            rows
+        })
     }
 
     /// Aggregates opportunities.
@@ -334,10 +368,11 @@ pub fn new(timeseries: TimeSeriesCollection) -> Self {
 
     /// THE GAME LOOP.
     pub fn update(&mut self) {
-
         // 0. Ingest Live Data (The Heartbeat
+        let t1 = std::time::Instant::now();
         self.process_live_data();
-        
+        let d1 = t1.elapsed().as_micros();
+
         // 1. WASM ONLY: Process jobs manually in the main thread
         #[cfg(target_arch = "wasm32")]
         {
@@ -348,16 +383,34 @@ pub fn new(timeseries: TimeSeriesCollection) -> Self {
             }
         }
 
-        // 2. Process Results (Swap Buffers)
+        // 3. Results
+        let t2 = std::time::Instant::now();
         while let Ok(result) = self.result_rx.try_recv() {
             self.handle_job_result(result);
         }
+        let d2 = t2.elapsed().as_micros();
 
-        // 2. Check Triggers (Price Movement)
+        // 4. Triggers
+        let t3 = std::time::Instant::now();
         self.check_automatic_triggers();
+        let d3 = t3.elapsed().as_micros();
 
-        // 3. Dispatch Jobs
+        // 5. Queue
+        let t4 = std::time::Instant::now();
         self.process_queue();
+        let d4 = t4.elapsed().as_micros();
+
+        // Log if total is significant (> 10ms)
+        let total = d1 + d2 + d3 + d4;
+        if total > 100_000 {
+            log::error!(
+                "🐢 ENGINE SLOW: Live: {}us | Results: {}us | Triggers: {}us | Queue: {}us",
+                d1,
+                d2,
+                d3,
+                d4
+            );
+        }
     }
 
     /// Accessor for UI
@@ -484,11 +537,38 @@ pub fn new(timeseries: TimeSeriesCollection) -> Self {
 
             match result.result {
                 Ok(model) => {
+                    // --- DIAGNOSTIC START ---
+                    let pair_count_before = self
+                        .ledger
+                        .opportunities
+                        .values()
+                        .filter(|o| o.pair_name == result.pair_name)
+                        .count();
+                    // ------------------------
+
                     // --- NEW: Sync to Ledger ---
-                    // Persist the found opportunities so they survive future context switches
                     for op in &model.opportunities {
                         self.ledger.upsert(op.clone());
                     }
+
+                    // --- DIAGNOSTIC END ---
+                    let pair_count_after = self
+                        .ledger
+                        .opportunities
+                        .values()
+                        .filter(|o| o.pair_name == result.pair_name)
+                        .count();
+                    let total_ledger = self.ledger.opportunities.len();
+
+                    // Warn level to ensure it shows in release mode
+                    log::warn!(
+                        "LEDGER MONITOR [{}]: Ops for this pair {} -> {}. Total Ledger: {}",
+                        result.pair_name,
+                        pair_count_before,
+                        pair_count_after,
+                        total_ledger
+                    );
+                    // ---------------------
 
                     // 3. Success: Update State
                     state.model = Some(model.clone());
@@ -626,10 +706,10 @@ pub fn new(timeseries: TimeSeriesCollection) -> Self {
             let req = JobRequest {
                 pair_name: pair,
                 current_price: final_price_opt, // Pass Option<f64>
-                config, // Use the local 'config' with overrides applied
+                config,                         // Use the local 'config' with overrides applied
                 timeseries: self.timeseries.clone(),
                 existing_profile, // Pass cached profile
-                mode, // Auto or manual job
+                mode,             // Auto or manual job
             };
 
             let _ = self.job_tx.send(req);

@@ -24,7 +24,9 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::engine::SniperEngine;
 
 use crate::models::pair_context::PairContext;
-use crate::models::trading_view::{DirectionFilter, SortColumn, SortDirection, TradeOpportunity, TradeDirection};
+use crate::models::trading_view::{
+    DirectionFilter, SortColumn, SortDirection, TradeDirection, TradeOpportunity,
+};
 use crate::models::{ProgressEvent, SyncStatus};
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
@@ -416,9 +418,11 @@ impl ZoneSniperApp {
         }
 
         // --- 5. SMART SELECTION & FILTER SWITCHING ---
-        
+
         // A. Check if we should keep the current selection (if it matches new pair)
-        let keep_current = self.selected_opportunity.as_ref()
+        let keep_current = self
+            .selected_opportunity
+            .as_ref()
             .map_or(false, |op| op.pair_name == new_pair);
 
         let mut op_to_select = if keep_current {
@@ -441,15 +445,20 @@ impl ZoneSniperApp {
                     };
 
                     // Filter valid ops (MWT)
-                    let valid_ops = model.opportunities.iter()
+                    let valid_ops = model
+                        .opportunities
+                        .iter()
                         .filter(|op| op.is_worthwhile(profile));
 
                     // Try to find best match for CURRENT filter
                     let best_matching = if let Some(dir) = current_filter_dir {
-                        valid_ops.clone()
+                        valid_ops
+                            .clone()
                             .filter(|op| op.direction == dir)
                             .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
-                    } else { None };
+                    } else {
+                        None
+                    };
 
                     // If no match (or filter was ALL), find best Overall
                     let best_overall = valid_ops
@@ -462,19 +471,19 @@ impl ZoneSniperApp {
 
         self.selected_opportunity = op_to_select.clone();
 
- // --- C. GATED LOGIC: AUTO-SWITCH FILTER ---
-        // DO NOT REMOVE. 
+        // --- C. GATED LOGIC: AUTO-SWITCH FILTER ---
+        // DO NOT REMOVE.
         // Ensures we never show a "NO OPP" selected pair inside a "LONG/SHORT" filter.
         if let Some(op) = &self.selected_opportunity {
             // If we have an op, ensure filter matches direction
             match self.tf_filter_direction {
                 DirectionFilter::Long if op.direction == TradeDirection::Short => {
                     self.tf_filter_direction = DirectionFilter::Short;
-                },
+                }
                 DirectionFilter::Short if op.direction == TradeDirection::Long => {
                     self.tf_filter_direction = DirectionFilter::Long;
-                },
-                _ => {} 
+                }
+                _ => {}
             }
         } else {
             // NO OPP (Market View).
@@ -482,15 +491,17 @@ impl ZoneSniperApp {
             // Otherwise, we end up showing a "No Setup" row in a "Long Only" list.
             if self.tf_filter_direction != DirectionFilter::All {
                 #[cfg(debug_assertions)]
-                log::info!("UI SELECTION: Selected {} (No Opp). Forcing Filter to ALL.", new_pair);
-                
+                log::info!(
+                    "UI SELECTION: Selected {} (No Opp). Forcing Filter to ALL.",
+                    new_pair
+                );
+
                 self.tf_filter_direction = DirectionFilter::All;
             }
         }
     }
 
     pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
-
         // 1. CLEAR STALE OP
         // The old opportunity is based on old zones. It is now invalid.
         // self.selected_opportunity = None;
@@ -836,25 +847,44 @@ impl ZoneSniperApp {
     }
 
     fn render_running_state(&mut self, ctx: &Context) {
+
+        // Recently added logging to see which panes are slow.
+
+        let start = std::time::Instant::now();
         if let Some(engine) = &mut self.engine {
             engine.update();
         }
+       let engine_time = start.elapsed().as_micros();
+
         self.handle_global_shortcuts(ctx);
 
         self.render_top_panel(ctx); // Render before left/right if we want to occupy full app screen space
+
+        let start = std::time::Instant::now();
         self.render_left_panel(ctx);
+        let left_panel_time = start.elapsed().as_micros();
+
         if self.show_candle_range {
             self.render_right_panel(ctx);
         }
-        // self.render_trade_finder_panel(ctx);
 
         self.render_ticker_panel(ctx);
         self.render_status_panel(ctx);
+
+        let start = std::time::Instant::now();
         self.render_central_panel(ctx);
+        let plot_time = start.elapsed().as_micros();
 
         // Modals
         self.render_help_panel(ctx);
         self.render_opportunity_details_modal(ctx);
+
+        // LOGGING results. Adjust threshold to catch the slowdown
+        if engine_time + left_panel_time + plot_time > 500_000 {
+            log::error!("🐢 SLOW FRAME: Engine: {}us | LeftPanel(TF): {}us | Plot: {}us", 
+                engine_time, left_panel_time, plot_time);
+        }
+
     }
 
     fn update_loading_progress(
@@ -893,11 +923,13 @@ impl ZoneSniperApp {
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
                 // 1. Resolve Startup Pair
-                // If the persisted selected_pair is valid, use it. 
+                // If the persisted selected_pair is valid, use it.
                 // Otherwise, fallback to the first available pair.
                 let available_pairs = timeseries.unique_pair_names();
-                
-                let startup_pair = self.selected_pair.as_ref()
+
+                let startup_pair = self
+                    .selected_pair
+                    .as_ref()
                     .filter(|p| available_pairs.contains(p))
                     .cloned()
                     .or_else(|| available_pairs.first().cloned())
@@ -908,7 +940,7 @@ impl ZoneSniperApp {
 
                 engine.update_config(self.app_config.clone());
                 engine.set_all_overrides(self.price_horizon_overrides.clone());
-                
+
                 // Queue up the work, prioritizing our startup pair
                 engine.trigger_global_recalc(Some(startup_pair.clone()));
 
@@ -924,13 +956,17 @@ impl ZoneSniperApp {
 
                 // Ensure list is scrolled to it
                 #[cfg(debug_assertions)]
-                log::info!("UI: Startup complete. Requesting initial scroll to {}", startup_pair);
+                log::info!(
+                    "UI: Startup complete. Requesting initial scroll to {}",
+                    startup_pair
+                );
                 self.scroll_to_pair = Some(startup_pair.clone());
 
                 // 4. Reset Navigation
-                self.nav_states.insert(startup_pair, NavigationState::default());
+                self.nav_states
+                    .insert(startup_pair, NavigationState::default());
 
-                return Some(AppState::Running);  
+                return Some(AppState::Running);
             }
         }
         None
@@ -943,7 +979,6 @@ impl eframe::App for ZoneSniperApp {
     }
 
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
-        // self.check_performance_monitor();
         setup_custom_visuals(ctx);
 
         let mut next_state = None;
