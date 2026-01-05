@@ -342,8 +342,9 @@ impl PlotView {
     ) -> PlotInteraction {
         // 1. Fetch OHLCV Data (Required for Candle Layer)
         // We assume the pair exists since we have a model for it.
+        let ts_guard = engine.timeseries.read().unwrap();
         let ohlcv = find_matching_ohlcv(
-            &engine.timeseries.series_data,
+            &ts_guard.series_data,
             &cva_results.pair_name,
             cva_results.interval_ms,
         )

@@ -7,17 +7,18 @@ use std::thread;
 
 use uuid::Uuid;
 
-use super::messages::{JobRequest, JobResult};
+use super::messages::{JobRequest, JobResult, JobMode};
 
 use crate::analysis::adaptive::AdaptiveParameters;
-use crate::analysis::horizon_profiler::generate_profile;
 use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
 use crate::config::AnalysisConfig;
 
-use crate::domain::price_horizon;
+use crate::data::timeseries::TimeSeriesCollection;
+
+// use crate::domain::price_horizon;
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::CVACore;
@@ -310,38 +311,73 @@ fn run_stop_loss_tournament(
     }
 }
 
-pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
+pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
+    
+    // 1. ACQUIRE READ LOCK ONCE
+    // We hold this lock for the duration of the job calculation.
+    let ts_guard = req.timeseries.read().unwrap();
+
+    // 2. AUTO-TUNE LOGIC
+    if req.mode == JobMode::AutoTune {
+        // Scalp (0.5%), Day (2.0%), Swing (7.0%), Macro (20.0%), Invest (50.0%)
+        let candidates = vec![0.005, 0.020, 0.070, 0.200, 0.500];
+        
+        let mut best_ph = req.config.price_horizon.threshold_pct;
+        let mut best_score = f64::NEG_INFINITY;
+        
+        #[cfg(debug_assertions)]
+        log::info!("AUTO-TUNE [{}] Starting Spectrum Scan...", req.pair_name);
+
+        for ph in candidates {
+            req.config.price_horizon.threshold_pct = ph;
+            
+            // Pass the guard to the helper
+            if let Some((score, _model)) = run_test_analysis(&req, &ts_guard) {
+                 if score > best_score {
+                     best_score = score;
+                     best_ph = ph;
+                 }
+            }
+        }
+        
+        #[cfg(debug_assertions)]
+        log::info!("AUTO-TUNE [{}] Winner: {:.2}% (Score: {:.2})", req.pair_name, best_ph * 100.0, best_score);
+        
+        req.config.price_horizon.threshold_pct = best_ph;
+        req.mode = JobMode::Standard; // Switch to standard to run the final render pass
+    }
+
+    // 3. STANDARD EXECUTION
     let ph_pct = req.config.price_horizon.threshold_pct * 100.0;
     let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct);
 
     crate::trace_time!(&format!("Total JOB [{}]", base_label), 5000, {
         let start = AppInstant::now();
 
-        // 1. Resolve Inputs
-        let price = resolve_analysis_price(&req);
+        // Pass ts_guard to helpers
+        let price = resolve_analysis_price(&req, &ts_guard);
 
-        // 2. Exact Count (Range Logic)
         let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 500, {
-            calculate_exact_candle_count(&req, price)
+            calculate_exact_candle_count(&req, &ts_guard, price)
         });
 
         let full_label = format!("{} ({} candles)", base_label, count);
 
-        // 3. CVA Logic
+        // Pass ts_guard
         let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 1000, {
-            pair_analysis_pure(req.pair_name.clone(), &req.timeseries, price, &req.config)
+            pair_analysis_pure(req.pair_name.clone(), &ts_guard, price, &req.config)
         });
 
-        // 4. Profiler (Smart Cache)
+        // Pass ts_guard
         let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 1000, {
-            get_or_generate_profile(&req, price)
+            get_or_generate_profile(&req, &ts_guard, price)
         });
 
         let elapsed = start.elapsed().as_millis();
 
-        // 5. Final Assembly
+        // Pass ts_guard
         let response = match result_cva {
-            Ok(cva) => build_success_result(&req, cva, profile, price, count, elapsed),
+            Ok(cva) => build_success_result(&req, &ts_guard, cva, profile, price, count, elapsed),
             Err(e) => JobResult {
                 pair_name: req.pair_name.clone(),
                 duration_ms: elapsed,
@@ -356,12 +392,48 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
     });
 }
 
-fn resolve_analysis_price(req: &JobRequest) -> f64 {
+
+// Used by AutoTune to score a specific PH setting
+fn run_test_analysis(req: &JobRequest, ts_collection: &TimeSeriesCollection) -> Option<(f64, TradingModel)> {
+    let price = resolve_analysis_price(req, ts_collection);
+    
+    if let Ok(cva) = pair_analysis_pure(req.pair_name.clone(), ts_collection, price, &req.config) {
+        let cva_arc = Arc::new(cva);
+        let profile = get_or_generate_profile(req, ts_collection, price);
+        
+        let ohlcv = find_matching_ohlcv(
+            &ts_collection.series_data, 
+            &req.pair_name, 
+            req.config.interval_width_ms
+        ).ok()?;
+        
+        let mut model = TradingModel::from_cva(cva_arc, profile, ohlcv, &req.config);
+        
+        let opps = run_pathfinder_simulations(
+            ohlcv,
+            &model.zones.sticky_superzones,
+            price,
+            &req.config
+        );
+        model.opportunities = opps;
+        
+        let score: f64 = model.opportunities.iter()
+            .map(|op| op.calculate_quality_score(&req.config.journey.profile))
+            .sum();
+            
+        Some((score, model))
+    } else {
+        None
+    }
+}
+
+fn resolve_analysis_price(req: &JobRequest, ts_collection: &TimeSeriesCollection) -> f64 {
     req.current_price.unwrap_or_else(|| {
+        // FIX: Pass series_data, pair_name, interval_ms (i64)
         if let Ok(ts) = find_matching_ohlcv(
-            &req.timeseries.series_data,
+            &ts_collection.series_data,
             &req.pair_name,
-            req.config.interval_width_ms,
+            req.config.interval_width_ms 
         ) {
             ts.close_prices.last().copied().unwrap_or(0.0)
         } else {
@@ -370,99 +442,74 @@ fn resolve_analysis_price(req: &JobRequest) -> f64 {
     })
 }
 
-fn calculate_exact_candle_count(req: &JobRequest, price: f64) -> usize {
+fn calculate_exact_candle_count(req: &JobRequest, ts_collection: &TimeSeriesCollection, price: f64) -> usize {
     let ohlcv_result = find_matching_ohlcv(
-        &req.timeseries.series_data,
+        &ts_collection.series_data,
         &req.pair_name,
-        req.config.interval_width_ms,
+        req.config.interval_width_ms
     );
 
     if let Ok(ohlcv) = ohlcv_result {
-        let (ranges, _) =
-            price_horizon::auto_select_ranges(ohlcv, price, &req.config.price_horizon);
+        let (ranges, _) = crate::domain::price_horizon::auto_select_ranges(
+            ohlcv,
+            price,
+            &req.config.price_horizon
+        );
         ranges.iter().map(|(s, e)| e - s).sum()
     } else {
         0
     }
 }
 
-fn get_or_generate_profile(req: &JobRequest, price: f64) -> HorizonProfile {
+fn get_or_generate_profile(req: &JobRequest, ts_collection: &TimeSeriesCollection, price: f64) -> HorizonProfile {
+    // Check existing
     if let Some(existing) = &req.existing_profile {
-        let cfg = &req.config.price_horizon;
         let price_match = (existing.base_price - price).abs() < f64::EPSILON;
-        let min_match = (existing.min_pct - cfg.min_threshold_pct).abs() < f64::EPSILON;
-        let max_match = (existing.max_pct - cfg.max_threshold_pct).abs() < f64::EPSILON;
-
-        if price_match && min_match && max_match {
-            #[cfg(debug_assertions)]
-            log::info!("Worker: Reusing Cached Profile for {}", req.pair_name);
+        // Basic config check (reusing cached profile if valid)
+        if price_match {
             return existing.clone();
         }
     }
 
-    generate_profile(
+    // Generate new
+    crate::analysis::horizon_profiler::generate_profile(
         &req.pair_name,
-        &req.timeseries,
+        ts_collection,
         price,
-        &req.config.price_horizon,
+        &req.config.price_horizon
     )
 }
 
 fn build_success_result(
     req: &JobRequest,
+    ts_collection: &TimeSeriesCollection,
     cva: CVACore,
     profile: HorizonProfile,
     price: f64,
     count: usize,
-    elapsed: u128,
+    elapsed: u128
 ) -> JobResult {
-    // 1. Fetch OHLCV (Must exist if CVA succeeded)
-    let ohlcv = find_matching_ohlcv(
-        &req.timeseries.series_data,
-        &req.pair_name,
-        req.config.interval_width_ms,
-    )
-    .expect("OHLCV data missing despite CVA success");
-
     let cva_arc = Arc::new(cva);
+    
+    let ohlcv = find_matching_ohlcv(
+        &ts_collection.series_data,
+        &req.pair_name,
+        req.config.interval_width_ms
+    ).expect("OHLCV data missing despite CVA success");
 
-    // 2. Create Model
     let mut model = TradingModel::from_cva(cva_arc.clone(), profile.clone(), ohlcv, &req.config);
 
-    // 3. Run Pathfinder
-    // (Note: Requires the helper function 'run_pathfinder_simulations' we added earlier in this file)
-    let opps = crate::trace_time!(&format!("5. Pathfinder [{}]", req.pair_name), 500, {
-        run_pathfinder_simulations(ohlcv, &model.zones.sticky_superzones, price, &req.config)
-    });
+    // Run Pathfinder
+    let opps = run_pathfinder_simulations(
+        ohlcv,
+        &model.zones.sticky_superzones,
+        price,
+        &req.config
+    );
 
-    // --- DEBUG LOGGING ---
-    // #[cfg(debug_assertions)]
-    // if !opps.is_empty() {
-    //     // Just log the top one to check sanity
-    //     if let Some(best) = opps
-    //         .iter()
-    //         .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
-    //     {
-    //         // log::info!(
-    //         //     "🎯 PATHFINDER [{}]: Found {} opps. Best: {} to {:.2} ({}: {:.1}% | R:R: {:.2} | Samples: {})",
-    //         //     req.pair_name,
-    //         //     opps.len(),
-    //         //     best.direction,
-    //         //     best.target_price,
-    //         //     UI_TEXT.label_success_rate,
-    //         //     best.simulation.success_rate * 100.0,
-    //         //     best.simulation.risk_reward_ratio,
-    //         //     best.simulation.sample_size
-    //         // );
-    //     }
-    // } else {
-    //     // log::info!(
-    //     //     "PATHFINDER [{}]: No valid setups found (Price might be inside a zone/mud).",
-    //     //     req.pair_name
-    //     // );
-    // }
+    model.opportunities = opps.clone();
 
-    model.opportunities = opps;
+    // ... (Debugging Log logic remains the same) ...
 
     JobResult {
         pair_name: req.pair_name.clone(),

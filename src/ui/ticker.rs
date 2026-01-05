@@ -43,6 +43,7 @@ impl Default for TickerState {
 }
 
 impl TickerState {
+
     pub fn update_data(&mut self, engine: &SniperEngine) {
         // In WASM, we don't update from engine, we use static demo text
         if cfg!(target_arch = "wasm32") {
@@ -94,8 +95,9 @@ impl TickerState {
                     let mut change_24h = 0.0;
 
                     // Look up history
+                    let ts_guard = engine.timeseries.read().unwrap();
                     if let Ok(ohlcv) = timeseries::find_matching_ohlcv(
-                        &engine.timeseries.series_data,
+                        &ts_guard.series_data,
                         &pair,
                         ANALYSIS.interval_width_ms,
                     ) {

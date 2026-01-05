@@ -905,6 +905,7 @@ impl ZoneSniperApp {
 
                 // 2. Initialize Engine
                 let mut engine = SniperEngine::new(timeseries);
+
                 engine.update_config(self.app_config.clone());
                 engine.set_all_overrides(self.price_horizon_overrides.clone());
                 

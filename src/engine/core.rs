@@ -1,12 +1,12 @@
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, RwLock};
 
 use crate::utils::time_utils::AppInstant;
 
-use crate::analysis::market_state::MarketState;
 use crate::analysis::MultiPairMonitor;
 use crate::analysis::adaptive::AdaptiveParameters;
+use crate::analysis::market_state::MarketState;
 
 use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
 
@@ -16,11 +16,14 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::ledger::OpportunityLedger;
 use crate::models::pair_context::PairContext;
-use crate::models::trading_view::{TradingModel, LiveOpportunity, TradeFinderRow, TradeOpportunity};
+use crate::models::trading_view::{
+    LiveOpportunity, TradeFinderRow, TradeOpportunity, TradingModel,
+};
+use crate::models::timeseries::LiveCandle;
 
 use crate::utils::maths_utils::calculate_percent_diff;
 
-use super::messages::{JobRequest, JobResult};
+use super::messages::{JobRequest, JobResult, JobMode};
 use super::state::PairState;
 use super::worker;
 
@@ -29,7 +32,11 @@ pub struct SniperEngine {
     pub pairs: HashMap<String, PairState>,
 
     /// Shared immutable data
-    pub timeseries: Arc<TimeSeriesCollection>,
+    pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
+
+    // Live Data Channels
+    candle_rx: Receiver<LiveCandle>,
+    pub candle_tx: Sender<LiveCandle>, // Public so App can grab it easily
 
     /// Live Data Feed
     pub price_stream: Arc<PriceStreamManager>,
@@ -60,49 +67,150 @@ pub struct SniperEngine {
 }
 
 impl SniperEngine {
+    /// Initialize the engine, spawn workers, and start the price stream.
+pub fn new(timeseries: TimeSeriesCollection) -> Self {
+        // 1. Create Channels
+        let (candle_tx, candle_rx) = channel();
+        let (job_tx, job_rx) = channel::<JobRequest>();
+        let (result_tx, result_rx) = channel::<JobResult>();
+
+        // 2. Create the Thread-Safe Data Structure ONCE
+        // Wrap the collection in RwLock (for writing) and Arc (for sharing)
+        let timeseries_arc = Arc::new(RwLock::new(timeseries));
+
+        // NATIVE: Pass the receiver to the thread.
+        #[cfg(not(target_arch = "wasm32"))]
+        worker::spawn_worker_thread(job_rx, result_tx);
+
+        // 3. Initialize Pairs
+        // We must Read-Lock the data temporarily to get the names
+        let mut pairs = HashMap::new();
+        {
+            let ts_guard = timeseries_arc.read().unwrap();
+            for pair in ts_guard.unique_pair_names() {
+                pairs.insert(pair, PairState::new());
+            }
+        } // Lock is dropped here
+
+        // 4. Initialize Price Stream
+        let price_stream = Arc::new(PriceStreamManager::new());
+        let all_names: Vec<String> = pairs.keys().cloned().collect();
+        price_stream.subscribe_all(all_names);
+
+        // 5. Construct Engine
+        Self {
+            pairs,
+            timeseries: timeseries_arc, // Pass the Arc<RwLock> we created
+            price_stream,
+            multi_pair_monitor: MultiPairMonitor::new(),
+            job_tx,
+            result_rx,
+            // WASM: Store the handles so they don't get dropped
+            #[cfg(target_arch = "wasm32")]
+            job_rx,
+            #[cfg(target_arch = "wasm32")]
+            result_tx,
+            queue: VecDeque::new(),
+            current_config: ANALYSIS.clone(),
+            config_overrides: HashMap::new(),
+            ledger: OpportunityLedger::new(),
+            candle_rx,
+            candle_tx,
+        }
+    }
+
+    /// Process incoming live candles
+    pub fn process_live_data(&mut self) {
+        // We accumulate updates to minimize lock contention?
+        // No, try_recv is fast. Let's just lock once if we have data.
+
+        // 1. Check if we have data
+        // We use a loop to drain the channel so we don't lag behind
+        let mut updates = Vec::new();
+        while let Ok(candle) = self.candle_rx.try_recv() {
+            updates.push(candle);
+        }
+
+        if updates.is_empty() {
+            return;
+        }
+
+        // 2. Write Lock (Blocks readers briefly)
+        if let Ok(mut ts_collection) = self.timeseries.write() {
+            for candle in updates {
+                if let Some(series) = ts_collection
+                    .series_data
+                    .iter_mut()
+                    .find(|s| s.pair_interval.name() == candle.symbol)
+                {
+                    series.update_from_live(&candle);
+
+                    if candle.is_closed {
+                        #[cfg(debug_assertions)]
+                        log::info!(
+                            "HEARTBEAT: Closed Candle for {} @ {}",
+                            candle.symbol,
+                            candle.close
+                        );
+
+                        // TODO: Phase 2b - Fire DB Insert Task here
+                    }
+                }
+            }
+        }
+    }
 
     /// Generates the master list for the Trade Finder.
-
-    pub fn get_trade_finder_rows(&self, overrides: Option<&std::collections::HashMap<String, f64>>) -> Vec<TradeFinderRow> {
+    pub fn get_trade_finder_rows(
+        &self,
+        overrides: Option<&std::collections::HashMap<String, f64>>,
+    ) -> Vec<TradeFinderRow> {
         let mut rows = Vec::new();
-        
+
         let ph_pct = self.current_config.price_horizon.threshold_pct;
         let lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
         let now_ms = crate::utils::TimeUtils::now_timestamp_ms();
         let day_ms = 86_400_000;
 
         // 1. Group Ledger Opportunities by Pair for fast lookup
-        let mut ops_by_pair: std::collections::HashMap<String, Vec<&TradeOpportunity>> = std::collections::HashMap::new();
+        let mut ops_by_pair: std::collections::HashMap<String, Vec<&TradeOpportunity>> =
+            std::collections::HashMap::new();
         for op in self.ledger.get_all() {
-            ops_by_pair.entry(op.pair_name.clone()).or_default().push(op);
+            ops_by_pair
+                .entry(op.pair_name.clone())
+                .or_default()
+                .push(op);
         }
 
-        // // DEBUG: Print once per frame (spammy, but proves it works)
-        // if !ops_by_pair.is_empty() {
-        //     log::error!("TF AGGREGATOR: Reading {} pairs from Ledger.", ops_by_pair.len());
-        // }
+        let ts_guard = self.timeseries.read().unwrap();
 
         for (pair, _state) in &self.pairs {
             // 2. Get Context (Price)
             let current_price = if let Some(map) = overrides {
-                map.get(pair).copied().or_else(|| self.price_stream.get_price(pair))
+                map.get(pair)
+                    .copied()
+                    .or_else(|| self.price_stream.get_price(pair))
             } else {
                 self.price_stream.get_price(pair)
-            }.unwrap_or(0.0);
+            }
+            .unwrap_or(0.0);
 
             // 3. Calculate Volume & Market State (From TimeSeries)
             // We do this for every pair regardless of whether it has ops
             let mut m_state = None;
             let mut vol_24h = 0.0;
-            
-            if let Some(ts) = self.timeseries.series_data.iter().find(|t| t.pair_interval.name() == pair) {
+
+            if let Some(ts) = ts_guard.series_data.iter().find(|t| t.pair_interval.name() == pair)
+            {
                 let count = ts.klines();
                 if count > 0 {
                     let current_idx = count - 1;
                     m_state = MarketState::calculate(ts, current_idx, lookback);
                     for i in (0..=current_idx).rev() {
                         let c = ts.get_candle(i);
-                        if now_ms - c.timestamp_ms > day_ms { break; }
+                        if now_ms - c.timestamp_ms > day_ms {
+                            break;
+                        }
                         vol_24h += c.quote_asset_volume;
                     }
                 }
@@ -111,9 +219,10 @@ impl SniperEngine {
             // 4. Retrieve & Explode Opportunities (From Ledger)
             // Default to empty slice if no ops found for this pair
             let raw_ops = ops_by_pair.get(pair).map(|v| v.as_slice()).unwrap_or(&[]);
-            
+
             // Filter worthwhile trades (Static ROI check)
-            let valid_ops: Vec<&crate::models::trading_view::TradeOpportunity> = raw_ops.iter()
+            let valid_ops: Vec<&crate::models::trading_view::TradeOpportunity> = raw_ops
+                .iter()
                 .filter(|&&op| op.expected_roi() > 0.0)
                 .map(|&op| op)
                 .collect();
@@ -128,8 +237,14 @@ impl SniperEngine {
                         current_price,
                         live_roi: op.live_roi(current_price),
                         annualized_roi: op.live_annualized_roi(current_price),
-                        risk_pct: crate::utils::maths_utils::calculate_percent_diff(op.stop_price, current_price),
-                        reward_pct: crate::utils::maths_utils::calculate_percent_diff(op.target_price, current_price),
+                        risk_pct: crate::utils::maths_utils::calculate_percent_diff(
+                            op.stop_price,
+                            current_price,
+                        ),
+                        reward_pct: crate::utils::maths_utils::calculate_percent_diff(
+                            op.target_price,
+                            current_price,
+                        ),
                         max_duration_ms: op.max_duration_ms,
                     };
 
@@ -138,7 +253,7 @@ impl SniperEngine {
                         quote_volume_24h: vol_24h,
                         market_state: m_state, // Copy state
                         opportunity_count_total: total_ops,
-                        opportunity: Some(live_opp), 
+                        opportunity: Some(live_opp),
                     });
                 }
             } else {
@@ -157,15 +272,20 @@ impl SniperEngine {
 
     /// Aggregates opportunities.
     /// overrides: If provided, uses these prices instead of live stream (For Simulation).
-    pub fn get_all_live_opportunities(&self, overrides: Option<&HashMap<String, f64>>) -> Vec<LiveOpportunity> {
+    pub fn get_all_live_opportunities(
+        &self,
+        overrides: Option<&HashMap<String, f64>>,
+    ) -> Vec<LiveOpportunity> {
         let mut results = Vec::new();
 
         for (pair, state) in &self.pairs {
             let model_opt = &state.model;
-            
+
             // PRIORITY: Check Override -> Then check Stream
             let current_price_opt = if let Some(map) = overrides {
-                map.get(pair).copied().or_else(|| self.price_stream.get_price(pair))
+                map.get(pair)
+                    .copied()
+                    .or_else(|| self.price_stream.get_price(pair))
             } else {
                 self.price_stream.get_price(pair)
             };
@@ -175,7 +295,7 @@ impl SniperEngine {
                     // ... (Calculate Live Stats using 'price') ...
                     let live_roi = opp.live_roi(price);
                     let annualized_roi = opp.live_annualized_roi(price);
-                    
+
                     let risk_pct = calculate_percent_diff(opp.stop_price, price);
                     let reward_pct = calculate_percent_diff(opp.target_price, price);
 
@@ -191,50 +311,15 @@ impl SniperEngine {
                 }
             }
         }
-        
+
         // Sort by ROI descending (Standard)
-        results.sort_by(|a, b| b.live_roi.partial_cmp(&a.live_roi).unwrap_or(std::cmp::Ordering::Equal));
-        
+        results.sort_by(|a, b| {
+            b.live_roi
+                .partial_cmp(&a.live_roi)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         results
-    }
-
-    /// Initialize the engine, spawn workers, and start the price stream.
-    pub fn new(timeseries: TimeSeriesCollection) -> Self {
-        let timeseries_arc = Arc::new(timeseries);
-        let price_stream = Arc::new(PriceStreamManager::new());
-
-        let (job_tx, job_rx) = channel::<JobRequest>();
-        let (result_tx, result_rx) = channel::<JobResult>();
-
-        // NATIVE: Pass the receiver to the thread. It moves out of this scope.
-        #[cfg(not(target_arch = "wasm32"))]
-        worker::spawn_worker_thread(job_rx, result_tx);
-
-        let mut pairs = HashMap::new();
-        for pair in timeseries_arc.unique_pair_names() {
-            pairs.insert(pair, PairState::new());
-        }
-
-        let all_names: Vec<String> = pairs.keys().cloned().collect();
-        price_stream.subscribe_all(all_names);
-
-        Self {
-            pairs,
-            timeseries: timeseries_arc,
-            price_stream,
-            multi_pair_monitor: MultiPairMonitor::new(),
-            job_tx,
-            result_rx,
-            // WASM: Store the handles so they don't get dropped
-            #[cfg(target_arch = "wasm32")]
-            job_rx,
-            #[cfg(target_arch = "wasm32")]
-            result_tx,
-            queue: VecDeque::new(),
-            current_config: ANALYSIS.clone(),
-            config_overrides: HashMap::new(),
-            ledger: OpportunityLedger::new(),
-        }
     }
 
     // NEW: Helper to set an override
@@ -249,6 +334,10 @@ impl SniperEngine {
 
     /// THE GAME LOOP.
     pub fn update(&mut self) {
+
+        // 0. Ingest Live Data (The Heartbeat
+        self.process_live_data();
+        
         // 1. WASM ONLY: Process jobs manually in the main thread
         #[cfg(target_arch = "wasm32")]
         {
@@ -293,7 +382,7 @@ impl SniperEngine {
     }
 
     pub fn get_all_pair_names(&self) -> Vec<String> {
-        self.timeseries.unique_pair_names()
+        self.timeseries.read().unwrap().unique_pair_names()
     }
 
     // --- TELEMETRY ---
@@ -362,10 +451,8 @@ impl SniperEngine {
 
     /// Force a single recalc with optional price override
     pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, _reason: &str) {
-
         #[cfg(debug_assertions)]
         log::info!("ENGINE: Recalc Triggered for [{}] by [{}]", pair, _reason);
-
 
         // Check if calculating
         let is_calculating = self
@@ -450,9 +537,8 @@ impl SniperEngine {
             if let Some(current_price) = self.price_stream.get_price(&pair) {
                 if let Some(state) = self.pairs.get_mut(&pair) {
                     let in_queue = self.queue.iter().any(|(p, _)| p == &pair);
-                    
+
                     if !state.is_calculating && !in_queue {
-                        
                         // FIX: Handle Startup Case (0.0)
                         // If we have no previous price, just sync state and DO NOT trigger.
                         // The startup job (trigger_global_recalc) is already handling the calc.
@@ -468,13 +554,13 @@ impl SniperEngine {
                         if pct_diff > threshold {
                             #[cfg(debug_assertions)]
                             log::info!(
-                                "ENGINE AUTO: [{}] moved {:.4}% with threshold {}. Triggering Recalc.", 
-                                pair, 
+                                "ENGINE AUTO: [{}] moved {:.4}% with threshold {}. Triggering Recalc.",
+                                pair,
                                 pct_diff * 100.0,
                                 threshold,
                             );
-                            
-                            self.dispatch_job(pair.clone(), None); 
+
+                            self.dispatch_job(pair.clone(), None, JobMode::Standard);
                         }
                     }
                 }
@@ -503,11 +589,11 @@ impl SniperEngine {
             // #[cfg(debug_assertions)]
             // log::warn!("ENGINE QUEUE: Popped job for [{}]", pair); // <--- LOG THIS
 
-            self.dispatch_job(pair, price_opt);
+            self.dispatch_job(pair, price_opt, JobMode::Standard);
         }
     }
 
-    fn dispatch_job(&mut self, pair: String, price_override: Option<f64>) {
+    fn dispatch_job(&mut self, pair: String, price_override: Option<f64>, mode: JobMode) {
         if let Some(state) = self.pairs.get_mut(&pair) {
             // 1. Resolve Price
             // Priority: Override -> Live Stream -> None (Worker will fetch from DB)
@@ -540,9 +626,10 @@ impl SniperEngine {
             let req = JobRequest {
                 pair_name: pair,
                 current_price: final_price_opt, // Pass Option<f64>
-                config, // <--- CRITICAL FIX: Use the local 'config' with overrides applied
+                config, // Use the local 'config' with overrides applied
                 timeseries: self.timeseries.clone(),
-                existing_profile, // <--- NEW: Pass cached profile
+                existing_profile, // Pass cached profile
+                mode, // Auto or manual job
             };
 
             let _ = self.job_tx.send(req);

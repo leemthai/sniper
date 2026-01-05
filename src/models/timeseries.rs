@@ -15,6 +15,19 @@ use crate::config::DEBUG_FLAGS;
 // OhlcvTimeSeries: Raw time series data for a trading pair
 // ============================================================================
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiveCandle {
+    pub symbol: String,
+    pub open_time: i64,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub volume: f64,
+    pub quote_vol: f64,
+    pub is_closed: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OhlcvTimeSeries {
     pub pair_interval: PairInterval,
@@ -55,6 +68,31 @@ pub fn find_matching_ohlcv<'a>(
 
 impl OhlcvTimeSeries {
 
+    pub fn update_from_live(&mut self, candle: &LiveCandle) {
+        if self.timestamps.is_empty() { return; }
+
+        let last_idx = self.timestamps.len() - 1;
+        let last_ts = self.timestamps[last_idx];
+
+        if candle.open_time == last_ts {
+            // Update current (forming) candle
+            self.high_prices[last_idx] = candle.high;
+            self.low_prices[last_idx] = candle.low;
+            self.close_prices[last_idx] = candle.close;
+            self.base_asset_volumes[last_idx] = candle.volume;
+            self.quote_asset_volumes[last_idx] = candle.quote_vol;
+        } else if candle.open_time > last_ts {
+            // New candle started
+            self.timestamps.push(candle.open_time);
+            self.open_prices.push(candle.open);
+            self.high_prices.push(candle.high);
+            self.low_prices.push(candle.low);
+            self.close_prices.push(candle.close);
+            self.base_asset_volumes.push(candle.volume);
+            self.quote_asset_volumes.push(candle.quote_vol);
+        }
+    }
+    
     /// Calculates the Average Volatility ((High-Low)/Close) over a range of indices.
     /// Returns 0.0 if range is invalid or empty.
     pub fn calculate_volatility_in_range(&self, start_idx: usize, end_idx: usize) -> f64 {

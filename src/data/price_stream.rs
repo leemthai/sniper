@@ -1,57 +1,43 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::models::timeseries::LiveCandle;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::mpsc::Sender;
+
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]
 use {
+    crate::config::{BINANCE, BinanceApiConfig},
+    binance_sdk::{
+        config::ConfigurationRestApi,
+        spot::{
+            SpotRestApi,
+            rest_api::{TickerPriceParams, TickerPriceResponse},
+        },
+    },
     futures::StreamExt,
-    serde::Deserialize,
-    std::collections::{HashMap, HashSet},
-    std::sync::{Arc, Mutex},
-    std::time::Duration,
+    std::{
+        collections::{HashMap, HashSet},
+        sync::{Arc, Mutex},
+    },
     tokio_tungstenite::{connect_async, tungstenite::Message},
-    binance_sdk::spot::SpotRestApi,
-    binance_sdk::config::ConfigurationRestApi,
-    binance_sdk::spot::rest_api::{TickerPriceParams, TickerPriceResponse},
-    crate::config::BinanceApiConfig,
-    crate::config::BINANCE,
 };
-
 
 // WASM imports
 #[cfg(target_arch = "wasm32")]
-use {
-    serde_json,
-    std::collections::HashMap,
-};
+use {serde_json, std::collections::HashMap};
 
 // WASM + debug imports
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DEBUG_FLAGS;
 
-
 #[cfg(target_arch = "wasm32")]
 const DEMO_PRICES_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    crate::kline_data_dir!(),   // Expands to "kline_data"
+    crate::kline_data_dir!(), // Expands to "kline_data"
     "/",
-    crate::demo_prices_file!()  // Expands to "demo_prices.json"
+    crate::demo_prices_file!() // Expands to "demo_prices.json"
 ));
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug, Deserialize)]
-struct MiniTickerData {
-    #[serde(rename = "c")]
-    close_price: String,
-    #[serde(rename = "s")]
-    symbol: String,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug, Deserialize)]
-struct CombinedStreamMessage {
-    #[serde(rename = "stream")]
-    _stream: String,
-    data: MiniTickerData,
-}
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,6 +58,27 @@ pub struct PriceStreamManager {
     subscribed_symbols: Arc<Mutex<Vec<String>>>,
     // Suspension flag - when true, price updates are ignored
     suspended: Arc<Mutex<bool>>,
+    candle_tx: Option<Sender<LiveCandle>>,
+}
+
+// ... build_combined_stream_url ...
+#[cfg(not(target_arch = "wasm32"))]
+fn build_combined_stream_url(symbols: &[String]) -> String {
+    let interval =
+        crate::utils::TimeUtils::interval_to_string(crate::config::ANALYSIS.interval_width_ms);
+
+    let streams: Vec<String> = symbols
+        .iter()
+        .flat_map(|symbol| {
+            let s = symbol.to_lowercase();
+            vec![
+                format!("{}@miniTicker", s),
+                format!("{}@kline_{}", s, interval),
+            ]
+        })
+        .collect();
+
+    format!("{}{}", BINANCE.ws.combined_base_url, streams.join("/"))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -82,6 +89,7 @@ impl PriceStreamManager {
             connection_status: Arc::new(Mutex::new(HashMap::new())),
             subscribed_symbols: Arc::new(Mutex::new(Vec::new())),
             suspended: Arc::new(Mutex::new(false)),
+            candle_tx: None,
         }
     }
 
@@ -89,6 +97,10 @@ impl PriceStreamManager {
     pub fn get_price(&self, symbol: &str) -> Option<f64> {
         let symbol_lower = symbol.to_lowercase();
         self.prices.lock().unwrap().get(&symbol_lower).copied()
+    }
+
+    pub fn set_candle_sender(&mut self, tx: Sender<LiveCandle>) {
+        self.candle_tx = Some(tx);
     }
 
     /// Suspend price updates (for simulation mode)
@@ -129,42 +141,45 @@ impl PriceStreamManager {
 
     pub fn subscribe_all(&self, symbols: Vec<String>) {
         let symbols_lower: Vec<String> = symbols.iter().map(|s| s.to_lowercase()).collect();
-        
         let mut subscribed = self.subscribed_symbols.lock().unwrap();
-        if *subscribed == symbols_lower {
-            return; 
-        }
-        
-        log::info!(">>> PriceStream: Requesting {} pairs: {:?}", symbols_lower.len(), symbols_lower);
 
+        // Avoid re-subscribing if list matches (optional optimization, but good practice)
+        // For now, we assume a fresh start or simple overwrite as per original code.
         *subscribed = symbols_lower.clone();
-        
+
         // Clone Arcs to move into the background thread
         let prices_arc = self.prices.clone();
         let status_arc = self.connection_status.clone();
         let suspended_arc = self.suspended.clone();
-        
+
+        // NEW: Clone the candle sender
+        let candle_tx = self.candle_tx.clone();
+
         // Clone symbol list for the warmup call
         let symbols_for_warmup = symbols_lower.clone();
 
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-            rt.block_on(async move {
-                // 1. PULL (Batch Snapshot)
-                // This runs ONCE at startup to populate the cache immediately
-                warm_up_prices(prices_arc.clone(), &symbols_for_warmup).await;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // Spawn a dedicated thread for the runtime
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+                rt.block_on(async move {
+                    // 1. PULL (Batch Snapshot)
+                    warm_up_prices(prices_arc.clone(), &symbols_for_warmup).await;
 
-                // 2. PUSH (Live Updates)
-                // Then we enter the infinite WebSocket loop to keep prices fresh
-                run_combined_price_stream_with_reconnect(
-                    symbols_lower,
-                    prices_arc,
-                    status_arc,
-                    suspended_arc,
-                )
-                .await;
+                    // 2. PUSH (Live Updates)
+                    // We now pass 'candle_tx' down the chain
+                    run_combined_price_stream_with_reconnect(
+                        &symbols_lower,
+                        prices_arc,
+                        status_arc,
+                        suspended_arc,
+                        candle_tx, // <--- PASSED HERE
+                    )
+                    .await;
+                });
             });
-        });
+        }
     }
 }
 
@@ -220,76 +235,61 @@ impl PriceStreamManager {
     pub fn subscribe_all(&self, _symbols: Vec<String>) {}
 }
 
-/// Wrapper that handles reconnection logic with exponential backoff for a combined stream
 #[cfg(not(target_arch = "wasm32"))]
 async fn run_combined_price_stream_with_reconnect(
-    symbols: Vec<String>,
+    symbols: &[String],
     prices_arc: Arc<Mutex<HashMap<String, f64>>>,
     status_arc: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     suspended_arc: Arc<Mutex<bool>>,
+    candle_tx: Option<Sender<LiveCandle>>, // <--- NEW ARGUMENT
 ) {
     let mut reconnect_delay = BINANCE.ws.initial_reconnect_delay_sec;
+    let url = build_combined_stream_url(symbols); // Ensure your build_combined_stream_url includes klines now!
 
     loop {
-        // Update status to connecting for every tracked symbol
+        // Update status to connecting
         {
             let mut status_map = status_arc.lock().unwrap();
-            for symbol in &symbols {
+            for symbol in symbols {
                 status_map.insert(symbol.clone(), ConnectionStatus::Connecting);
             }
         }
 
-        let url = build_combined_stream_url(&symbols);
+        log::info!("Attempting connection to Binance Stream...");
 
-        // Attempt connection
         match run_combined_price_stream(
-            &symbols,
+            symbols,
             &url,
             prices_arc.clone(),
             status_arc.clone(),
             suspended_arc.clone(),
+            candle_tx.clone(), // <--- PASS IT DOWN
         )
         .await
         {
             Ok(_) => {
-                // Connection closed normally (24-hour timeout or server close)
-                #[cfg(debug_assertions)]
-                if DEBUG_FLAGS.print_price_stream_updates {
-                    log::info!("Connection closed for combined stream, reconnecting...");
-                }
-
-                // Reset delay on successful connection that later closes
+                log::warn!("WebSocket closed normally. Reconnecting...");
                 reconnect_delay = BINANCE.ws.initial_reconnect_delay_sec;
             }
             Err(e) => {
-                // Connection failed
-                log::error!("Price stream error: {}", e);
-
-                // Update status for every symbol
-                {
-                    let mut status_map = status_arc.lock().unwrap();
-                    for symbol in &symbols {
-                        status_map.insert(symbol.clone(), ConnectionStatus::Disconnected);
-                    }
-                }
-
-                // Exponential backoff
-                #[cfg(debug_assertions)]
-                if DEBUG_FLAGS.print_price_stream_updates {
-                    log::info!(
-                        "Reconnecting combined price stream in {} seconds...",
-                        reconnect_delay
-                    );
-                }
-                tokio::time::sleep(Duration::from_secs(reconnect_delay)).await;
-
-                // Increase delay for next attempt (capped at max)
-                reconnect_delay = (reconnect_delay * 2).min(BINANCE.ws.max_reconnect_delay_sec);
+                log::error!(
+                    "WebSocket connection failed: {}. Retrying in {}s...",
+                    e,
+                    reconnect_delay
+                );
             }
         }
 
-        // Small delay before reconnecting even on normal close
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        // Update status to disconnected
+        {
+            let mut status_map = status_arc.lock().unwrap();
+            for symbol in symbols {
+                status_map.insert(symbol.clone(), ConnectionStatus::Disconnected);
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(reconnect_delay)).await;
+        reconnect_delay = (reconnect_delay * 2).min(BINANCE.ws.max_reconnect_delay_sec);
     }
 }
 
@@ -300,6 +300,7 @@ async fn run_combined_price_stream(
     prices_arc: Arc<Mutex<HashMap<String, f64>>>,
     status_arc: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     suspended_arc: Arc<Mutex<bool>>,
+    candle_tx: Option<Sender<LiveCandle>>, // <--- NEW ARGUMENT
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(debug_assertions)]
     if DEBUG_FLAGS.print_price_stream_updates {
@@ -316,70 +317,57 @@ async fn run_combined_price_stream(
         }
     }
 
-    #[cfg(debug_assertions)]
-    if DEBUG_FLAGS.print_price_stream_updates {
-        log::info!(
-            "✓ Connected to combined price stream for {} symbols",
-            symbols.len()
-        );
-    }
     let (_write, mut read) = ws_stream.split();
 
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => {
-                if let Ok(wrapper) = serde_json::from_str::<CombinedStreamMessage>(&text) {
-                    match wrapper.data.close_price.parse::<f64>() {
-                        Ok(price) => {
-                            // Only update prices if not suspended
-                            let is_suspended = *suspended_arc.lock().unwrap();
-                            if !is_suspended {
-                                let symbol_lower = wrapper.data.symbol.to_lowercase();
-                                if symbols.contains(&symbol_lower) {
-                                    prices_arc
-                                        .lock()
-                                        .unwrap()
-                                        .insert(symbol_lower.clone(), price);
+                // CHANGE: Parse as Generic Value first to handle Polymorphism (Ticker vs Kline)
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                    // Check Event Type "e"
+                    if let Some(event_type) = v["data"]["e"].as_str() {
+                        match event_type {
+                            "24hrMiniTicker" => {
+                                // Extract Ticker Data manually from Value
+                                if let (Some(s), Some(c_str)) =
+                                    (v["data"]["s"].as_str(), v["data"]["c"].as_str())
+                                {
+                                    if let Ok(price) = c_str.parse::<f64>() {
+                                        // Update Prices Map
+                                        let is_suspended = *suspended_arc.lock().unwrap();
+                                        if !is_suspended {
+                                            let symbol_lower = s.to_lowercase();
+                                            // Optional: Check if symbol is in our list (optimization)
+                                            // if symbols.contains(&symbol_lower) {
+                                            prices_arc.lock().unwrap().insert(symbol_lower, price);
+                                            // }
 
-                                    #[cfg(debug_assertions)]
-                                    if DEBUG_FLAGS.print_price_stream_updates {
-                                        log::info!(
-                                            "[price-stream] {} -> {:.6}",
-                                            wrapper.data.symbol,
-                                            price
-                                        );
+                                            #[cfg(debug_assertions)]
+                                            if DEBUG_FLAGS.print_price_stream_updates {
+                                                log::info!("[ticker] {} -> {:.6}", s, price);
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
-                        Err(parse_err) => {
-                            log::error!(
-                                "⚠️ Failed to parse miniTicker price '{}' for {}: {}",
-                                wrapper.data.close_price,
-                                wrapper.data.symbol,
-                                parse_err
-                            );
-                            #[cfg(debug_assertions)]
-                            if DEBUG_FLAGS.print_price_stream_updates {
-                                log::info!("[price-stream] raw payload: {}", text);
+                            "kline" => {
+                                // Process Kline
+                                if let Some(tx) = &candle_tx {
+                                    parse_and_send_kline(&v["data"], tx);
+                                }
+                            }
+                            _ => {
+                                // Ignore other events
                             }
                         }
                     }
                 } else {
-                    #[cfg(debug_assertions)]
-                    if DEBUG_FLAGS.print_price_stream_updates {
-                        log::error!("⚠️ Unexpected combined stream payload: {}", text);
-                    }
+                    // Failed to parse JSON
+                    log::warn!("⚠️ Failed to parse WebSocket JSON message");
                 }
             }
-            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
-                // WebSocket keepalive - handled automatically
-            }
+            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
             Ok(Message::Close(_)) => {
-                #[cfg(debug_assertions)]
-                if DEBUG_FLAGS.print_price_stream_updates {
-                    log::info!("Combined WebSocket closed (likely 24hr timeout)");
-                }
                 break;
             }
             Err(e) => {
@@ -390,38 +378,16 @@ async fn run_combined_price_stream(
         }
     }
 
-    // Update status on disconnect
-    {
-        let mut status_map = status_arc.lock().unwrap();
-        for symbol in symbols {
-            status_map.insert(symbol.clone(), ConnectionStatus::Disconnected);
-        }
-    }
-
     Ok(())
 }
-
-#[cfg(not(target_arch = "wasm32"))]
-fn build_combined_stream_url(symbols: &[String]) -> String {
-    let stream_descriptor = symbols
-        .iter()
-        .map(|symbol| format!("{}@miniTicker", symbol))
-        .collect::<Vec<_>>()
-        .join("/");
-
-    format!("{}{}", BINANCE.ws.combined_base_url, stream_descriptor)
-}
-
-
 
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &[String]) {
-    
     log::info!(">>> PriceStream: Warming up price cache via REST API...");
 
     let config = BinanceApiConfig::default();
-    
+
     let rest_conf = ConfigurationRestApi::builder()
         .timeout(config.timeout_ms)
         .retries(config.retries)
@@ -448,16 +414,15 @@ async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &
                         TickerPriceResponse::TickerPriceResponse2(all_tickers) => {
                             let mut p_lock = prices_arc.lock().unwrap();
                             let mut updated_count = 0;
-                            
-                            let wanted_set: HashSet<String> = symbols.iter()
-                                .map(|s| s.to_lowercase())
-                                .collect();
+
+                            let wanted_set: HashSet<String> =
+                                symbols.iter().map(|s| s.to_lowercase()).collect();
 
                             for ticker in all_tickers {
                                 // 4. Safely handle Option fields (symbol/price might be None)
                                 if let (Some(s), Some(p)) = (&ticker.symbol, &ticker.price) {
                                     let symbol_lower = s.to_lowercase();
-                                    
+
                                     if wanted_set.contains(&symbol_lower) {
                                         let price = p.parse::<f64>().unwrap_or(0.0);
                                         if price > 0.0 {
@@ -472,15 +437,17 @@ async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &
                                 updated_count,
                                 symbols.len()
                             );
-                        },
+                        }
                         TickerPriceResponse::TickerPriceResponse1(_) => {
-                            log::warn!(">>> PriceStream: Unexpected 'Single' response type during batch warmup.");
-                        },
+                            log::warn!(
+                                ">>> PriceStream: Unexpected 'Single' response type during batch warmup."
+                            );
+                        }
                         _ => {
                             log::warn!(">>> PriceStream: Unexpected 'Other' response type.");
                         }
                     }
-                },
+                }
                 Err(e) => {
                     log::error!(">>> PriceStream: Failed to parse response data: {:?}", e);
                 }
@@ -492,3 +459,31 @@ async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &
     }
 }
 
+// Helper Function
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_and_send_kline(data: &serde_json::Value, tx: &Sender<LiveCandle>) {
+    // "k" is the kline object in the payload
+    let k = &data["k"];
+    if k.is_null() {
+        return;
+    }
+
+    // "x": true means the candle is closed. We generally want all updates (open and closed),
+    // but the Engine handles the logic of update vs append.
+    let is_closed = k["x"].as_bool().unwrap_or(false);
+
+    let candle = LiveCandle {
+        symbol: data["s"].as_str().unwrap_or("").to_string(),
+        open_time: k["t"].as_i64().unwrap_or(0),
+        open: k["o"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
+        high: k["h"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
+        low: k["l"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
+        close: k["c"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
+        volume: k["v"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
+        quote_vol: k["q"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
+        is_closed,
+    };
+
+    // Send to Engine. If receiver is dropped, this fails silently (ok).
+    let _ = tx.send(candle);
+}

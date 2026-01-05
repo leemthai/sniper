@@ -1,29 +1,34 @@
-use std::sync::Arc;
-
+use std::sync::{Arc, RwLock};
 use crate::config::AnalysisConfig;
-
 use crate::data::timeseries::TimeSeriesCollection;
-
 use crate::models::cva::CVACore;
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::trading_view::TradingModel;
+use serde::{Deserialize, Serialize};
+
+// --- NEW ENUM ---
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum JobMode {
+    Standard, // Normal recalc using provided config
+    AutoTune, // Ignore provided PH, scan spectrum, return BEST PH
+}
 
 /// A request to calculate a model for a specific pair
 #[derive(Debug, Clone)]
 pub struct JobRequest {
     pub pair_name: String,
+    // Note: If you don't have 'timeframe' string field, ensure your worker derives it from config.interval_width_ms
+    // I included it in previous worker snippets, if it's missing add: pub timeframe: String,
     
-    // CHANGED: f64 -> Option<f64> 
-    // This allows the worker to handle "No Live Price" scenarios gracefully.
     pub current_price: Option<f64>,
-    
     pub config: AnalysisConfig,
-    pub timeseries: Arc<TimeSeriesCollection>,
-
-    // NEW: The Input Cache
-    // We send the profile we currently have. The worker checks if it's still valid.
-    pub existing_profile: Option<HorizonProfile>, 
+    pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
+    pub existing_profile: Option<HorizonProfile>,
+    
+    // --- NEW FIELD ---
+    pub mode: JobMode, 
 }
+
 
 /// The result returned by the worker
 #[derive(Debug, Clone)]
