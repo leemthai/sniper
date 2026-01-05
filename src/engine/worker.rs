@@ -156,6 +156,7 @@ fn run_pathfinder_simulations(
                     avg_duration_ms: avg_ms,
                     simulation: best_result,
                     variants,
+                    source_ph: config.price_horizon.threshold_pct,
                 });
             }
         }

@@ -496,7 +496,7 @@ impl ZoneSniperApp {
         // self.selected_opportunity = None;
 
         if let Some(pair) = self.selected_pair.clone() {
-            log::error!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
+            // log::error!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
 
             let price = self.get_display_price(&pair);
             let new_config = self.app_config.price_horizon.clone();

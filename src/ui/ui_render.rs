@@ -1163,22 +1163,22 @@ impl ZoneSniperApp {
                         // Try to find the NEW best op for this same pair to keep context.
                         if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
                             if let Some(op) = &best_row.opportunity {
-                                #[cfg(debug_assertions)]
-                                log::info!(
-                                    "UI AUTO-HEAL: Swapping stale Op for {}. New ID: {}",
-                                    pair,
-                                    op.opportunity.id
-                                );
+                                // #[cfg(debug_assertions)]
+                                // log::info!(
+                                //     "UI AUTO-HEAL: Swapping stale Op for {}. New ID: {}",
+                                //     pair,
+                                //     op.opportunity.id
+                                // );
                                 self.selected_opportunity = Some(op.opportunity.clone());
                             }
                         } else {
                             // No valid trades left for this pair.
                             // Drop to "Market View" (None).
-                            #[cfg(debug_assertions)]
-                            log::info!(
-                                "UI AUTO-HEAL: Op died for {}. Dropping to Market View.",
-                                pair
-                            );
+                            // #[cfg(debug_assertions)]
+                            // log::info!(
+                            //     "UI AUTO-HEAL: Op died for {}. Dropping to Market View.",
+                            //     pair
+                            // );
                             self.selected_opportunity = None;
                         }
                     }
@@ -1189,11 +1189,11 @@ impl ZoneSniperApp {
 
                     if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
                         if let Some(op) = &best_row.opportunity {
-                            #[cfg(debug_assertions)]
-                            log::info!(
-                                "UI AUTO-HEAL: Upgrading Selection from None -> Best Op for {}",
-                                pair
-                            );
+                            // #[cfg(debug_assertions)]
+                            // log::info!(
+                            //     "UI AUTO-HEAL: Upgrading Selection from None -> Best Op for {}",
+                            //     pair
+                            // );
                             self.selected_opportunity = Some(op.opportunity.clone());
                         }
                     }
@@ -1202,12 +1202,12 @@ impl ZoneSniperApp {
                 // CASE B: Selected Pair is GONE (Filtered out entirely).
                 // Now we must hunt for a new target from the top of the list.
                 if let Some(best_row) = rows.first() {
-                    #[cfg(debug_assertions)]
-                    log::info!(
-                        "UI HUNTER: Selection {} hidden by filter. Snapping to top: {}",
-                        pair,
-                        best_row.pair_name
-                    );
+                    // #[cfg(debug_assertions)]
+                    // log::info!(
+                    //     "UI HUNTER: Selection {} hidden by filter. Snapping to top: {}",
+                    //     pair,
+                    //     best_row.pair_name
+                    // );
 
                     self.handle_pair_selection(best_row.pair_name.clone());
                     // If the top row has an op, select it.

@@ -121,6 +121,7 @@ pub struct TradeFinderRow {
 pub struct TradeOpportunity {
     pub id: String,
     pub created_at: i64,
+    pub source_ph: f64, // The PH threshold that generaeted this opp (e.g. 0.05)
 
     pub pair_name: String,
     pub target_zone_id: usize,

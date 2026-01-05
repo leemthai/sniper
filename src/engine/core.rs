@@ -14,6 +14,7 @@ use crate::data::price_stream::PriceStreamManager;
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::models::horizon_profile::HorizonProfile;
+use crate::models::ledger::OpportunityLedger;
 use crate::models::pair_context::PairContext;
 use crate::models::trading_view::{TradingModel, LiveOpportunity, TradeFinderRow, TradeOpportunity};
 
@@ -54,6 +55,8 @@ pub struct SniperEngine {
     pub current_config: AnalysisConfig,
 
     pub config_overrides: HashMap<String, PriceHorizonConfig>,
+
+    pub ledger: OpportunityLedger,
 }
 
 impl SniperEngine {
@@ -68,17 +71,30 @@ impl SniperEngine {
         let now_ms = crate::utils::TimeUtils::now_timestamp_ms();
         let day_ms = 86_400_000;
 
-        for (pair, state) in &self.pairs {
-            // 1. Get Context (Price, Vol, Market State)
+        // 1. Group Ledger Opportunities by Pair for fast lookup
+        let mut ops_by_pair: std::collections::HashMap<String, Vec<&TradeOpportunity>> = std::collections::HashMap::new();
+        for op in self.ledger.get_all() {
+            ops_by_pair.entry(op.pair_name.clone()).or_default().push(op);
+        }
+
+        // // DEBUG: Print once per frame (spammy, but proves it works)
+        // if !ops_by_pair.is_empty() {
+        //     log::error!("TF AGGREGATOR: Reading {} pairs from Ledger.", ops_by_pair.len());
+        // }
+
+        for (pair, _state) in &self.pairs {
+            // 2. Get Context (Price)
             let current_price = if let Some(map) = overrides {
                 map.get(pair).copied().or_else(|| self.price_stream.get_price(pair))
             } else {
                 self.price_stream.get_price(pair)
             }.unwrap_or(0.0);
 
-            // Calculate Volume & State (Same as before)
+            // 3. Calculate Volume & Market State (From TimeSeries)
+            // We do this for every pair regardless of whether it has ops
             let mut m_state = None;
             let mut vol_24h = 0.0;
+            
             if let Some(ts) = self.timeseries.series_data.iter().find(|t| t.pair_interval.name() == pair) {
                 let count = ts.klines();
                 if count > 0 {
@@ -92,48 +108,41 @@ impl SniperEngine {
                 }
             }
 
-            // 2. Explode Opportunities
-            if let Some(model) = &state.model {
-                // Filter worthwhile trades
-                let valid_ops: Vec<&TradeOpportunity> = model.opportunities.iter()
-                    .filter(|op| op.expected_roi() > 0.0)
-                    .collect();
+            // 4. Retrieve & Explode Opportunities (From Ledger)
+            // Default to empty slice if no ops found for this pair
+            let raw_ops = ops_by_pair.get(pair).map(|v| v.as_slice()).unwrap_or(&[]);
+            
+            // Filter worthwhile trades (Static ROI check)
+            let valid_ops: Vec<&crate::models::trading_view::TradeOpportunity> = raw_ops.iter()
+                .filter(|&&op| op.expected_roi() > 0.0)
+                .map(|&op| op)
+                .collect();
 
-                let total_ops = valid_ops.len();
+            let total_ops = valid_ops.len();
 
-                if total_ops > 0 {
-                    // Create a ROW for EACH Opportunity
-                    for op in valid_ops {
-                        let live_opp = LiveOpportunity {
-                            opportunity: op.clone(),
-                            current_price,
-                            live_roi: op.live_roi(current_price),
-                            annualized_roi: op.live_annualized_roi(current_price),
-                            risk_pct: calculate_percent_diff(op.stop_price, current_price),
-                            reward_pct: calculate_percent_diff(op.target_price, current_price),
-                            max_duration_ms: op.max_duration_ms,
-                        };
+            if total_ops > 0 {
+                // Create a ROW for EACH Opportunity
+                for op in valid_ops {
+                    let live_opp = LiveOpportunity {
+                        opportunity: op.clone(),
+                        current_price,
+                        live_roi: op.live_roi(current_price),
+                        annualized_roi: op.live_annualized_roi(current_price),
+                        risk_pct: crate::utils::maths_utils::calculate_percent_diff(op.stop_price, current_price),
+                        reward_pct: crate::utils::maths_utils::calculate_percent_diff(op.target_price, current_price),
+                        max_duration_ms: op.max_duration_ms,
+                    };
 
-                        rows.push(TradeFinderRow {
-                            pair_name: pair.clone(),
-                            quote_volume_24h: vol_24h,
-                            market_state: m_state, // Copy state
-                            opportunity_count_total: total_ops,
-                            opportunity: Some(live_opp), // <--- Specific Op
-                        });
-                    }
-                } else {
-                    // No valid trades, push 1 placeholder row (for "All Pairs" view)
                     rows.push(TradeFinderRow {
                         pair_name: pair.clone(),
                         quote_volume_24h: vol_24h,
-                        market_state: m_state,
-                        opportunity_count_total: 0,
-                        opportunity: None,
+                        market_state: m_state, // Copy state
+                        opportunity_count_total: total_ops,
+                        opportunity: Some(live_opp), 
                     });
                 }
             } else {
-                // No model yet
+                // No valid trades, push 1 placeholder row (for "All Pairs" view)
                 rows.push(TradeFinderRow {
                     pair_name: pair.clone(),
                     quote_volume_24h: vol_24h,
@@ -224,6 +233,7 @@ impl SniperEngine {
             queue: VecDeque::new(),
             current_config: ANALYSIS.clone(),
             config_overrides: HashMap::new(),
+            ledger: OpportunityLedger::new(),
         }
     }
 
@@ -328,8 +338,8 @@ impl SniperEngine {
 
     /// Smart Global Invalidation
     pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
-        #[cfg(debug_assertions)]
-        log::info!("ENGINE: Global Recalc Triggered (Startup/Reset)");
+        // #[cfg(debug_assertions)]
+        // log::info!("ENGINE: Global Recalc Triggered (Startup/Reset)");
 
         self.queue.clear();
 
@@ -383,12 +393,19 @@ impl SniperEngine {
             }
 
             // 2. Always update the authoritative candle count
-            // This ensures the UI displays the correct number (e.g. "99 found")
-            // even if the analysis failed due to minimum requirements.
             state.last_candle_count = result.candle_count;
 
             match result.result {
                 Ok(model) => {
+                    // --- NEW: Sync to Ledger ---
+                    // Persist the found opportunities so they survive future context switches
+                    for op in &model.opportunities {
+                        self.ledger.upsert(op.clone());
+                    }
+
+                    // 3. Success: Update State
+                    state.model = Some(model.clone());
+
                     // 3. Success: Update State
                     state.model = Some(model.clone());
                     state.is_calculating = false;
@@ -401,7 +418,7 @@ impl SniperEngine {
                 }
                 Err(e) => {
                     // 5. Failure: Clear Model, Set Error
-                    log::info!("Worker failed for {}: {}", result.pair_name, e);
+                    log::error!("Worker failed for {}: {}", result.pair_name, e);
                     state.last_error = Some(e);
                     state.is_calculating = false;
 
