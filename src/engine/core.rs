@@ -94,7 +94,10 @@ impl SniperEngine {
 
         // 4. Initialize Price Stream
         let mut price_manager = PriceStreamManager::new();
+        
+        #[cfg(not(target_arch = "wasm32"))]
         price_manager.set_candle_sender(candle_tx.clone());
+
         let price_stream = Arc::new(price_manager);
         let all_names: Vec<String> = pairs.keys().cloned().collect();
         price_stream.subscribe_all(all_names);
