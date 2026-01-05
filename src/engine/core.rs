@@ -140,17 +140,10 @@ impl SniperEngine {
             return;
         }
 
-        let count = updates.len();
         let ts_lock = self.timeseries.clone();
-        // MEASURE LOCKING TIME
-        let t_wait = std::time::Instant::now();
 
         // 2. Write Lock (on local Arc)
         if let Ok(mut ts_collection) = ts_lock.write() {
-            let d_wait = t_wait.elapsed().as_micros();
-
-            // MEASURE PROCESSING TIME
-            let t_process = std::time::Instant::now();
 
             for candle in updates {
                 if let Some(series) = ts_collection
@@ -177,17 +170,6 @@ impl SniperEngine {
                         );
                     }
                 }
-            }
-            let d_process = t_process.elapsed().as_micros();
-
-            // Log if slow
-            if d_wait + d_process > 10_000 {
-                log::error!(
-                    "🐢 LIVE DATA SLOW: Updates: {} | Wait Lock: {}us | Process: {}us",
-                    count,
-                    d_wait,
-                    d_process
-                );
             }
         }
     }
@@ -372,7 +354,7 @@ impl SniperEngine {
     /// THE GAME LOOP.
     pub fn update(&mut self) {
         // 0. Ingest Live Data (The Heartbeat
-        let t1 = std::time::Instant::now();
+        let t1 = AppInstant::now();
         self.process_live_data();
         let d1 = t1.elapsed().as_micros();
 
@@ -387,19 +369,19 @@ impl SniperEngine {
         }
 
         // 3. Results
-        let t2 = std::time::Instant::now();
+        let t2 = AppInstant::now();
         while let Ok(result) = self.result_rx.try_recv() {
             self.handle_job_result(result);
         }
         let d2 = t2.elapsed().as_micros();
 
         // 4. Triggers
-        let t3 = std::time::Instant::now();
+        let t3 = AppInstant::now();
         self.check_automatic_triggers();
         let d3 = t3.elapsed().as_micros();
 
         // 5. Queue
-        let t4 = std::time::Instant::now();
+        let t4 = AppInstant::now();
         self.process_queue();
         let d4 = t4.elapsed().as_micros();
 

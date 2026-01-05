@@ -850,7 +850,7 @@ impl ZoneSniperApp {
 
         // Recently added logging to see which panes are slow.
 
-        let start = std::time::Instant::now();
+        let start = AppInstant::now();
         if let Some(engine) = &mut self.engine {
             engine.update();
         }
@@ -860,7 +860,7 @@ impl ZoneSniperApp {
 
         self.render_top_panel(ctx); // Render before left/right if we want to occupy full app screen space
 
-        let start = std::time::Instant::now();
+        let start = AppInstant::now();
         self.render_left_panel(ctx);
         let left_panel_time = start.elapsed().as_micros();
 
@@ -871,7 +871,7 @@ impl ZoneSniperApp {
         self.render_ticker_panel(ctx);
         self.render_status_panel(ctx);
 
-        let start = std::time::Instant::now();
+        let start = AppInstant::now();
         self.render_central_panel(ctx);
         let plot_time = start.elapsed().as_micros();
 
