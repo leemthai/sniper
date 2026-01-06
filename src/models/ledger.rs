@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use crate::models::trading_view::TradeOpportunity;
+use crate::utils::maths_utils::calculate_percent_diff;
 
 #[derive(Debug, Clone, Default)]
 pub struct OpportunityLedger {
@@ -10,19 +11,60 @@ pub struct OpportunityLedger {
 }
 
 impl OpportunityLedger {
+
     pub fn new() -> Self {
         Self {
             opportunities: HashMap::new(),
         }
     }
 
-    /// Insert or Update an opportunity.
-    /// Returns true if it was a new entry.
-    pub fn upsert(&mut self, opp: TradeOpportunity) -> bool {
-        // In the future, we can add logic here:
-        // "If existing opp has better ROI, don't overwrite?" 
-        // For now, newest calculation wins.
-        self.opportunities.insert(opp.id.clone(), opp).is_none()
+    /// Intelligently updates the ledger.
+    /// Returns: (IsNew, ActiveID)
+    pub fn evolve(&mut self, mut new_opp: TradeOpportunity) -> (bool, String) {
+        // 1. Search for a fuzzy match (Same Pair, Direction, Similar Target)
+        let match_id = self.opportunities.values().find_map(|existing| {
+            if existing.pair_name != new_opp.pair_name { return None; }
+            if existing.direction != new_opp.direction { return None; }
+            
+            // Fuzzy Target Match (Tolerance = 20% of PH)
+            let tolerance = new_opp.source_ph * 20.0; 
+            let diff = calculate_percent_diff(existing.target_price, new_opp.target_price);
+            
+            if diff < tolerance {
+                Some(existing.id.clone())
+            } else {
+                None
+            }
+        });
+
+        if let Some(id) = match_id {
+            // CASE A: EVOLUTION (Update In-Place)
+            if let Some(existing) = self.opportunities.get(&id) {
+                // LOGGING
+                #[cfg(debug_assertions)]
+                if (existing.expected_roi() - new_opp.expected_roi()).abs() > 0.1 {
+                    // Only log if stats changed significantly to avoid spam
+                    log::info!("LEDGER EVOLVE [{}]: ID {} kept. ROI {:.2}% -> {:.2}%", 
+                        new_opp.pair_name, id, existing.expected_roi(), new_opp.expected_roi());
+                }
+
+                new_opp.id = existing.id.clone();         // Keep UUID
+                new_opp.created_at = existing.created_at; // Keep Birth Time
+            }
+            
+            self.opportunities.insert(id.clone(), new_opp);
+            (false, id)
+        } else {
+            // CASE B: GENESIS (New Trade)
+            let id = new_opp.id.clone();
+            
+            #[cfg(debug_assertions)]
+            log::info!("LEDGER BIRTH [{}]: New Trade detected. ID: {} (Target: {:.2})", 
+                new_opp.pair_name, id, new_opp.target_price);
+                
+            self.opportunities.insert(id.clone(), new_opp);
+            (true, id)
+        }
     }
 
     pub fn get_all(&self) -> Vec<&TradeOpportunity> {

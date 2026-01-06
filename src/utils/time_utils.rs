@@ -67,7 +67,9 @@ impl TimeUtils {
     }
 
     /// Returns current UTC time in milliseconds.
-    /// Question: is this "WASM-safe?"
+    /// Unlike Instant::now(), this *is* WASM safe
+    /// On Native, it asks the OS System Clock.
+    /// On WASM, the chrono crate bindings internally call JavaScript's Date.now(). Since every browser supports Date, this "Just Works" without special handling.
     pub fn now_timestamp_ms() -> i64 {
         Utc::now().timestamp_millis()
     }

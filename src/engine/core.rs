@@ -93,6 +93,8 @@ impl SniperEngine {
         } // Lock is dropped here
 
         // 4. Initialize Price Stream
+        // "If compiling for WASM, ignore the fact that this is mutable but not mutated."
+        #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
         let mut price_manager = PriceStreamManager::new();
         
         #[cfg(not(target_arch = "wasm32"))]
@@ -352,7 +354,7 @@ impl SniperEngine {
     }
 
     /// THE GAME LOOP.
-    pub fn update(&mut self) {
+    pub fn update(&mut self, protected_id: Option<&str>) {
         // 0. Ingest Live Data (The Heartbeat
         let t1 = AppInstant::now();
         self.process_live_data();
@@ -533,7 +535,7 @@ impl SniperEngine {
 
                     // --- NEW: Sync to Ledger ---
                     for op in &model.opportunities {
-                        self.ledger.upsert(op.clone());
+                        self.ledger.evolve(op.clone());
                     }
 
                     // --- DIAGNOSTIC END ---

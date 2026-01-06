@@ -251,6 +251,65 @@ impl Default for ZoneSniperApp {
 }
 
 impl ZoneSniperApp {
+
+    /// Smart navigation via Name Click (Ticker, Lists, etc).
+    /// - If same pair: Just scrolls to it (preserves specific selected Op).
+    /// - If new pair: Auto-selects the Best Opportunity (if any).
+    pub fn jump_to_pair(&mut self, pair: String) {
+        // 1. Same Pair Check (Preserve Context)
+        if self.selected_pair.as_deref() == Some(&pair) {
+            self.scroll_to_pair = Some(pair);
+            return;
+        }
+
+        // 2. New Pair - Find Best Op
+        // We need to query the engine to see if there is a "Best" trade to auto-select.
+        let mut best_op = None;
+        
+        if let Some(eng) = &self.engine {
+            // We use the aggregator to respect MWT filters logic
+            let rows = eng.get_trade_finder_rows(Some(&self.simulated_prices));
+            
+            if let Some(row) = rows.into_iter().find(|r| r.pair_name == pair) {
+                if let Some(live_op) = row.opportunity {
+                    best_op = Some(live_op.opportunity);
+                }
+            }
+        }
+
+        // 3. Action
+        if let Some(op) = best_op {
+            // Found a trade -> Tune Radio & Lock
+            self.select_specific_opportunity(op);
+        } else {
+            // No trade -> Just go to Market View
+            self.handle_pair_selection(pair.clone());
+            self.selected_opportunity = None;
+            self.scroll_to_pair = Some(pair);
+        }
+    }
+
+    /// Selects a specific opportunity and TUNES the engine to view it correctly.
+    pub fn select_specific_opportunity(&mut self, op: TradeOpportunity) {
+        // 1. Tune the Radio (Update PH to match the trade's origin)
+        // We must update the override map so handle_pair_selection respects it.
+        let mut new_config = self.app_config.price_horizon.clone();
+        new_config.threshold_pct = op.source_ph;
+        
+        self.price_horizon_overrides.insert(op.pair_name.clone(), new_config.clone());
+        self.app_config.price_horizon = new_config; // Update global for UI slider sync
+
+        // 2. Switch Pair (This triggers engine recalc at the NEW PH)
+        self.handle_pair_selection(op.pair_name.clone());
+
+        // 3. Force the Specific Selection
+        // (handle_pair_selection auto-selects the "Best", but we want THIS one)
+        self.selected_opportunity = Some(op.clone());
+        
+        // 4. Ensure Scroll
+        self.scroll_to_pair = Some(op.pair_name.clone());
+    }
+
     pub fn get_nav_state(&mut self) -> NavigationState {
         let pair = self.selected_pair.clone().unwrap_or("DEFAULT".to_string());
         *self.nav_states.entry(pair).or_default()
@@ -852,7 +911,8 @@ impl ZoneSniperApp {
 
         let start = AppInstant::now();
         if let Some(engine) = &mut self.engine {
-            engine.update();
+            let protected_id = self.selected_opportunity.as_ref().map(|op| op.id.as_str());
+            engine.update(protected_id);
         }
        let engine_time = start.elapsed().as_micros();
 

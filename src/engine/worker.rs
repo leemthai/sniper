@@ -315,118 +315,138 @@ fn run_stop_loss_tournament(
     }
 }
 
-// src/engine/worker.rs
-
-// ... imports ...
-
 pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
     
-    // 1. CLONE & RELEASE (The Fix)
-    // We lock only long enough to find and copy the data we need.
-    // This unblocks the UI thread immediately.
-    let local_collection = {
-        let ts_guard = req.timeseries.read().unwrap();
-        
-        let target_pair = &req.pair_name;
-        let interval = req.config.interval_width_ms; // Raw i64
-        
-        // Find the specific series
-        let series_ref = find_matching_ohlcv(
-            &ts_guard.series_data,
-            target_pair,
-            interval
-        ).ok();
-
-        // Clone it into a local structure
-        if let Some(series) = series_ref {
-            let local = TimeSeriesCollection {
-                series_data: vec![series.clone()], // Deep Copy (~5-10ms)
-                name: "Worker Local Clone".to_string(),
-                version: 1.0,
-            };
-            Some(local)
-        } else {
-            None
+    // 1. ACQUIRE DATA (Clone & Release)
+    let ts_local = match fetch_local_timeseries(&req) {
+        Ok(ts) => ts,
+        Err(e) => {
+            let _ = tx.send(JobResult {
+                pair_name: req.pair_name.clone(),
+                duration_ms: 0,
+                result: Err(e),
+                cva: None,
+                profile: None,
+                candle_count: 0,
+            });
+            return;
         }
-    }; // LOCK DROPPED HERE
-
-    // Handle missing data early
-    let ts_local = if let Some(c) = local_collection {
-        c
-    } else {
-        // If data doesn't exist, we can't do anything.
-        // Send error or just return.
-        let msg = format!("Worker: No data found for {}", req.pair_name);
-        let _ = tx.send(JobResult {
-            pair_name: req.pair_name.clone(),
-            duration_ms: 0,
-            result: Err(msg),
-            cva: None,
-            profile: None,
-            candle_count: 0,
-        });
-        return;
     };
 
-    // 2. AUTO-TUNE LOGIC (Uses local copy)
-    if req.mode == JobMode::AutoTune {
-        let candidates = vec![0.005, 0.020, 0.070, 0.200, 0.500];
-        let mut best_ph = req.config.price_horizon.threshold_pct;
-        let mut best_score = f64::NEG_INFINITY;
-        
-        #[cfg(debug_assertions)]
-        log::info!("AUTO-TUNE [{}] Starting Spectrum Scan...", req.pair_name);
+    // 2. AUDIT DATA (The Proof)
+    // We check the *Cloned* data to ensure it has the latest updates
+    // audit_worker_data(&req, &ts_local);
 
-        for ph in candidates {
-            req.config.price_horizon.threshold_pct = ph;
-            
-            // Pass the local clone
-            if let Some((score, _model)) = run_test_analysis(&req, &ts_local) {
-                 if score > best_score {
-                     best_score = score;
-                     best_ph = ph;
-                 }
-            }
-        }
-        
-        #[cfg(debug_assertions)]
-        log::info!("AUTO-TUNE [{}] Winner: {:.2}% (Score: {:.2})", req.pair_name, best_ph * 100.0, best_score);
-        
-        req.config.price_horizon.threshold_pct = best_ph;
-        req.mode = JobMode::Standard; 
+    // 3. AUTO-TUNE (Optional)
+    if req.mode == JobMode::AutoTune {
+        perform_auto_tune(&mut req, &ts_local);
     }
 
-    // 3. STANDARD EXECUTION (Uses local copy)
+    // 4. EXECUTE ANALYSIS
+    perform_standard_analysis(&req, &ts_local, tx);
+}
+
+fn fetch_local_timeseries(req: &JobRequest) -> Result<TimeSeriesCollection, String> {
+    let ts_guard = req.timeseries.read().map_err(|_| "Failed to acquire RwLock".to_string())?;
+    
+    let target_pair = &req.pair_name;
+    let interval = req.config.interval_width_ms;
+
+    // Find and clone specifically what we need
+    if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, target_pair, interval) {
+        Ok(TimeSeriesCollection {
+            series_data: vec![series.clone()],
+            name: "Worker Local Clone".to_string(),
+            version: 1.0,
+        })
+    } else {
+        Err(format!("Worker: No data found for {}", req.pair_name))
+    }
+}
+
+// fn audit_worker_data(req: &JobRequest, ts_collection: &TimeSeriesCollection) {
+//     // #[cfg(debug_assertions)]
+//     // if let Ok(ts) = find_matching_ohlcv(
+//     //     &ts_collection.series_data,
+//     //     &req.pair_name,
+//     //     req.config.interval_width_ms,
+//     // ) {
+//     //     let count = ts.klines();
+//     //     let last_time = ts.timestamps.last().copied().unwrap_or(0);
+//     //     let last_date = TimeUtils::epoch_ms_to_datetime_string(last_time);
+
+//     //     log::info!(
+//     //         "WORKER DATA AUDIT [{}]: Count: {} | Last Candle: {}",
+//     //         req.pair_name,
+//     //         count,
+//     //         last_date
+//     //     );
+//     // }
+// }
+
+fn perform_auto_tune(req: &mut JobRequest, ts_collection: &TimeSeriesCollection) {
+    let candidates = vec![0.005, 0.020, 0.070, 0.200, 0.500];
+    let mut best_ph = req.config.price_horizon.threshold_pct;
+    let mut best_score = f64::NEG_INFINITY;
+
+    #[cfg(debug_assertions)]
+    log::info!("AUTO-TUNE [{}] Starting Spectrum Scan...", req.pair_name);
+
+    for ph in candidates {
+        req.config.price_horizon.threshold_pct = ph;
+
+        if let Some((score, _model)) = run_test_analysis(req, ts_collection) {
+            if score > best_score {
+                best_score = score;
+                best_ph = ph;
+            }
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    log::info!(
+        "AUTO-TUNE [{}] Winner: {:.2}% (Score: {:.2})",
+        req.pair_name,
+        best_ph * 100.0,
+        best_score
+    );
+
+    req.config.price_horizon.threshold_pct = best_ph;
+    req.mode = JobMode::Standard;
+}
+
+fn perform_standard_analysis(req: &JobRequest, ts_collection: &TimeSeriesCollection, tx: Sender<JobResult>) {
     let ph_pct = req.config.price_horizon.threshold_pct * 100.0;
     let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct);
 
     crate::trace_time!(&format!("Total JOB [{}]", base_label), 5000, {
         let start = AppInstant::now();
 
-        // Pass ts_local
-        let price = resolve_analysis_price(&req, &ts_local);
+        // 1. Price
+        let price = resolve_analysis_price(req, ts_collection);
 
+        // 2. Count
         let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 500, {
-            calculate_exact_candle_count(&req, &ts_local, price)
+            calculate_exact_candle_count(req, ts_collection, price)
         });
 
         let full_label = format!("{} ({} candles)", base_label, count);
 
-        // Pass ts_local
+        // 3. CVA
         let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 1000, {
-            pair_analysis_pure(req.pair_name.clone(), &ts_local, price, &req.config)
+            pair_analysis_pure(req.pair_name.clone(), ts_collection, price, &req.config)
         });
 
-        // Pass ts_local
+        // 4. Profiler
         let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 1000, {
-            get_or_generate_profile(&req, &ts_local, price)
+            get_or_generate_profile(req, ts_collection, price)
         });
 
         let elapsed = start.elapsed().as_millis();
 
-        // Pass ts_local
+        // 5. Result Construction
         let response = match result_cva {
-            Ok(cva) => build_success_result(&req, &ts_local, cva, profile, price, count, elapsed),
+            Ok(cva) => build_success_result(req, ts_collection, cva, profile, price, count, elapsed),
             Err(e) => JobResult {
                 pair_name: req.pair_name.clone(),
                 duration_ms: elapsed,
@@ -440,7 +460,6 @@ pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
         let _ = tx.send(response);
     });
 }
-
 
 // Used by AutoTune to score a specific PH setting
 fn run_test_analysis(

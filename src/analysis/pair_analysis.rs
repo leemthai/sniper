@@ -38,6 +38,12 @@ pub fn pair_analysis_pure(
     // 3. Validation
     let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();
 
+    // Only log if it's likely a recalc (to avoid spamming startup)
+    // or just log it to see the number increment.
+    // #[cfg(debug_assertions)]
+    // log::info!("CVA CALC [{}]: Analyzing {} candles over {} ranges.", 
+    //     pair_name, total_candle_count, slice_ranges.len());
+
     if total_candle_count < ANALYSIS.cva.min_candles_for_analysis {
         let s = if total_candle_count == 1 { "" } else { "s" };
 

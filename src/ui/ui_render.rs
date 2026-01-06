@@ -29,7 +29,9 @@ use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
-use crate::utils::maths_utils::{calculate_percent_diff, format_volume_compact};
+use crate::utils::maths_utils::{
+    calculate_percent_diff, format_fixed_chars, format_volume_compact,
+};
 
 use super::app::ZoneSniperApp;
 
@@ -791,7 +793,7 @@ impl ZoneSniperApp {
                 .resizable(false)
                 .sense(Sense::click()) // Enable row clicks
                 .cell_layout(Layout::left_to_right(Align::Min))
-                .column(Column::exact(100.0).clip(true)) // Pair (Fixed base, resizable)
+                .column(Column::exact(110.0).clip(true)) // Pair (Fixed base, resizable)
                 .column(Column::exact(55.0).clip(true)) // ROI/AROI (Strict width, clip overflow)
                 .column(Column::exact(55.0).clip(true)) // Vol/Mom
                 .column(Column::exact(55.0).clip(true)) // Time/Ops
@@ -898,11 +900,7 @@ impl ZoneSniperApp {
     }
 
     /// Renders the data cells for a single row
-    fn render_tf_table_row(
-        &mut self,
-        table_row: &mut TableRow,
-        row: &TradeFinderRow,
-    ) {
+    fn render_tf_table_row(&mut self, table_row: &mut TableRow, row: &TradeFinderRow) {
         // Selection Logic
         let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
             && match (&self.selected_opportunity, &row.opportunity) {
@@ -927,36 +925,83 @@ impl ZoneSniperApp {
 
         // // 4. INTERACTION
         if response.clicked() {
-            self.handle_pair_selection(row.pair_name.clone());
+            // self.handle_pair_selection(row.pair_name.clone());
             if let Some(live_op) = &row.opportunity {
-                self.selected_opportunity = Some(live_op.opportunity.clone());
+                // FIX: Use the helper to Tune PH + Select Pair + Lock Opportunity
+                self.select_specific_opportunity(live_op.opportunity.clone());
             } else {
+                // Fallback: Market View (No Opportunity)
+                self.handle_pair_selection(row.pair_name.clone());
                 self.selected_opportunity = None;
             }
         }
     }
 
-    /// Column 1: Pair Name + Direction Icon (Static Text)
+    /// Column 1: Pair Name + Direction Icon (Static Text) on top line, Age on 2nd line
     fn col_pair_name(&self, table_row: &mut egui_extras::TableRow, row: &TradeFinderRow) {
         table_row.col(|ui| {
-            ui.horizontal(|ui| {
-                // Visual Text (No interaction, just 14pt label)
-                ui.label(
-                    RichText::new(&row.pair_name)
-                        .strong()
-                        .size(14.0)
-                        .color(PLOT_CONFIG.color_text_primary),
-                );
+            ui.vertical(|ui| {
+                // LINE 1: Pair Name + Direction Icon
+                ui.horizontal(|ui| {
+                    ui.style_mut().spacing.item_spacing.x = 4.0;
 
-                // Direction Icon
-                if let Some(live_op) = &row.opportunity {
-                    let op = &live_op.opportunity;
-                    let dir_color = op.direction.color();
-                    let arrow = match op.direction {
-                        TradeDirection::Long => &UI_TEXT.icon_long,
-                        TradeDirection::Short => &UI_TEXT.icon_short,
+                    // Visual Text (Pair Name)
+                    ui.label(
+                        RichText::new(&row.pair_name)
+                            .strong()
+                            .size(14.0)
+                            .color(PLOT_CONFIG.color_text_primary),
+                    );
+
+                    // 2. PH Badge (Context)
+                    // Logic: Use Trade Source if available, otherwise use User's Current Setting
+                    let ph_val_raw = if let Some(live_op) = &row.opportunity {
+                        live_op.opportunity.source_ph
+                    } else {
+                        // Fallback: Check overrides -> Global Config
+                        self.price_horizon_overrides
+                            .get(&row.pair_name)
+                            .map(|c| c.threshold_pct)
+                            .unwrap_or(self.app_config.price_horizon.threshold_pct)
                     };
-                    ui.label(RichText::new(arrow).color(dir_color));
+
+                    let ph_val = ph_val_raw * 100.0;
+                    if let Some(ph_str) = format_fixed_chars(ph_val, 4) {
+                        ui.label(
+                            RichText::new(format!("@{}%", ph_str))
+                                .size(10.0)
+                                .color(PLOT_CONFIG.color_text_subdued),
+                        );
+                    }
+
+                    // Direction Icon
+                    if let Some(live_op) = &row.opportunity {
+                        let op = &live_op.opportunity;
+                        let dir_color = op.direction.color();
+                        let arrow = match op.direction {
+                            TradeDirection::Long => &UI_TEXT.icon_long,
+                            TradeDirection::Short => &UI_TEXT.icon_short,
+                        };
+                        ui.label(RichText::new(arrow).color(dir_color));
+                    }
+                });
+
+                // LINE 2: Opportunity Age
+                if let Some(live_op) = &row.opportunity {
+                    let now = crate::utils::TimeUtils::now_timestamp_ms();
+                    let age_ms = now.saturating_sub(live_op.opportunity.created_at);
+
+                    let age_str = if age_ms < 60_000 {
+                        "New".to_string()
+                    } else {
+                        crate::utils::TimeUtils::format_duration(age_ms)
+                    };
+
+                    ui.label(
+                        RichText::new(age_str)
+                            .size(10.0)
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
                 }
             });
         });
@@ -1075,11 +1120,11 @@ impl ZoneSniperApp {
 
         // Short path reference
         let profile = &crate::config::ANALYSIS.journey.profile;
-        
+
         // HELPER: Identify rows that must stay visible (Selected or Scroll Target)
         let is_protected = |name: &str| -> bool {
-            self.selected_pair.as_deref() == Some(name) ||
-            self.scroll_to_pair.as_deref() == Some(name)
+            self.selected_pair.as_deref() == Some(name)
+                || self.scroll_to_pair.as_deref() == Some(name)
         };
 
         // 1. MWT Demotion (Quality Control)
@@ -1099,14 +1144,14 @@ impl ZoneSniperApp {
 
         // 2. Scope Filter (Base Asset)
         if self.tf_filter_pair_only {
-            let base = self.selected_pair.as_ref()
+            let base = self
+                .selected_pair
+                .as_ref()
                 .and_then(|p| crate::domain::pair_interval::PairInterval::get_base(p))
                 .unwrap_or("");
-            
-            if !base.is_empty() { 
-                rows.retain(|r| {
-                    is_protected(&r.pair_name) || r.pair_name.starts_with(base)
-                }); 
+
+            if !base.is_empty() {
+                rows.retain(|r| is_protected(&r.pair_name) || r.pair_name.starts_with(base));
             }
         }
 
@@ -1114,120 +1159,102 @@ impl ZoneSniperApp {
         match self.tf_filter_direction {
             DirectionFilter::All => {
                 // Show EVERYTHING
-            },
+            }
             _ => {
                 // STRICT MODE:
-                // FIX: Removed 'is_protected' check here. 
-                // If the selected pair doesn't match the Direction, it MUST be hidden 
+                // FIX: Removed 'is_protected' check here.
+                // If the selected pair doesn't match the Direction, it MUST be hidden
                 // so that auto_heal can find a valid replacement.
                 rows.retain(|r| {
                     if let Some(op) = &r.opportunity {
                         match self.tf_filter_direction {
-                            DirectionFilter::Long => op.opportunity.direction == TradeDirection::Long,
-                            DirectionFilter::Short => op.opportunity.direction == TradeDirection::Short,
-                            _ => true
+                            DirectionFilter::Long => {
+                                op.opportunity.direction == TradeDirection::Long
+                            }
+                            DirectionFilter::Short => {
+                                op.opportunity.direction == TradeDirection::Short
+                            }
+                            _ => true,
                         }
                     } else {
-                        false 
+                        false
                     }
                 });
             }
         }
-        
+
         rows
     }
 
     /// Helper: Heals stale selection when zones change or trades disappear
     fn auto_heal_selection(&mut self, rows: &[TradeFinderRow]) {
-        // 1. Do we have a selected pair?
-        if let Some(pair) = &self.selected_pair {
-            // 2. Is this pair still visible in the list?
-            // (Note: rows can contain "No Op" rows, which is good)
-            let pair_rows: Vec<&TradeFinderRow> =
-                rows.iter().filter(|r| r.pair_name == *pair).collect();
-            let pair_is_visible = !pair_rows.is_empty();
+        // 1. Identify rows for the current selected pair
+        let pair_rows: Vec<&TradeFinderRow> = if let Some(pair) = &self.selected_pair {
+            rows.iter().filter(|r| r.pair_name == *pair).collect()
+        } else {
+            Vec::new()
+        };
 
-            if pair_is_visible {
-                // CASE A: Pair is visible. We generally trust the current state.
-
-                if let Some(current_sel) = &self.selected_opportunity {
-                    // We have a specific Op selected. Verify it still exists.
-                    let exists = pair_rows.iter().any(|r| {
-                        r.opportunity
-                            .as_ref()
-                            .map_or(false, |op| op.opportunity.id == current_sel.id)
-                    });
-
-                    if !exists {
-                        // The specific Op died (e.g. ROI dropped below MWT, or Zones shifted).
-                        // Try to find the NEW best op for this same pair to keep context.
-                        if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
-                            if let Some(op) = &best_row.opportunity {
-                                // #[cfg(debug_assertions)]
-                                // log::info!(
-                                //     "UI AUTO-HEAL: Swapping stale Op for {}. New ID: {}",
-                                //     pair,
-                                //     op.opportunity.id
-                                // );
-                                self.selected_opportunity = Some(op.opportunity.clone());
-                            }
-                        } else {
-                            // No valid trades left for this pair.
-                            // Drop to "Market View" (None).
-                            // #[cfg(debug_assertions)]
-                            // log::info!(
-                            //     "UI AUTO-HEAL: Op died for {}. Dropping to Market View.",
-                            //     pair
-                            // );
-                            self.selected_opportunity = None;
-                        }
-                    }
-                } else {
-                    // --- FIX IS HERE ---
-                    // CASE: Current Selection is None (Market View), but the row might now have an Op.
-                    // (e.g. Switched from LONG [Empty] to ALL [Has Short])
-
-                    if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
-                        if let Some(op) = &best_row.opportunity {
-                            // #[cfg(debug_assertions)]
-                            // log::info!(
-                            //     "UI AUTO-HEAL: Upgrading Selection from None -> Best Op for {}",
-                            //     pair
-                            // );
-                            self.selected_opportunity = Some(op.opportunity.clone());
-                        }
-                    }
-                }
-            } else {
-                // CASE B: Selected Pair is GONE (Filtered out entirely).
-                // Now we must hunt for a new target from the top of the list.
-                if let Some(best_row) = rows.first() {
-                    // #[cfg(debug_assertions)]
-                    // log::info!(
-                    //     "UI HUNTER: Selection {} hidden by filter. Snapping to top: {}",
-                    //     pair,
-                    //     best_row.pair_name
-                    // );
-
+        // 2. Handle Case: Pair Lost (Filtered out or None selected)
+        if pair_rows.is_empty() {
+            // Snap to top of list if available
+            if let Some(best_row) = rows.first() {
+                // Detect if we are actually changing pairs (to avoid log spam)
+                if self.selected_pair.as_deref() != Some(&best_row.pair_name) {
+                    #[cfg(debug_assertions)]
+                    log::error!("UI HUNTER: Selection hidden/none. Snapping to top: {}", best_row.pair_name);
+                    
+                    // Switch Global Selection
                     self.handle_pair_selection(best_row.pair_name.clone());
-                    // If the top row has an op, select it.
+                    
+                    // Sync specific Op from the View Row (trusting View over Engine defaults)
                     if let Some(live_op) = &best_row.opportunity {
                         self.selected_opportunity = Some(live_op.opportunity.clone());
                     } else {
                         self.selected_opportunity = None;
                     }
-                } else {
-                    // List is empty. Clear selection.
-                    self.selected_opportunity = None;
                 }
+            } else {
+                // List is completely empty
+                self.selected_opportunity = None;
+            }
+            return;
+        }
+
+        // 3. Handle Case: Pair Visible. 
+        // We need to validate if the specific Opportunity is still valid.
+        let current_id = self.selected_opportunity.as_ref().map(|o| o.id.clone());
+        
+        let is_valid = current_id.as_ref().map_or(false, |id| {
+            pair_rows.iter().any(|r| r.opportunity.as_ref().map_or(false, |op| &op.opportunity.id == id))
+        });
+
+        if is_valid {
+            // Current selection is healthy. Do nothing.
+            return;
+        }
+
+        // 4. Selection Invalid (Stale ID) or Empty (None). 
+        // Auto-Select the Best Available Opportunity for this pair.
+        // This unifies "Swapping Stale" and "Upgrading None".
+        if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
+            // found a valid trade row
+            if let Some(op) = &best_row.opportunity {
+                #[cfg(debug_assertions)]
+                if current_id.is_some() {
+                    log::error!("UI AUTO-HEAL: Swapping stale Op ID for New ID {}", op.opportunity.id);
+                } else {
+                    log::error!("UI AUTO-HEAL: Upgrading None -> Best Op ID {} for {}", op.opportunity.id, best_row.pair_name);
+                }
+                
+                self.selected_opportunity = Some(op.opportunity.clone());
             }
         } else {
-            // No pair selected at all? Snap to top if possible.
-            if let Some(best_row) = rows.first() {
-                self.handle_pair_selection(best_row.pair_name.clone());
-                if let Some(live_op) = &best_row.opportunity {
-                    self.selected_opportunity = Some(live_op.opportunity.clone());
-                }
+            // Pair exists, but no valid trades found (Market View)
+            if self.selected_opportunity.is_some() {
+                #[cfg(debug_assertions)]
+                log::error!("UI AUTO-HEAL: Op died for {}. Dropping to Market View.", self.selected_pair.as_deref().unwrap_or("?"));
+                self.selected_opportunity = None;
             }
         }
     }
@@ -1415,8 +1442,7 @@ impl ZoneSniperApp {
                 if let Some(pair) = self.ticker_state.render(ui) {
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        self.handle_pair_selection(pair.clone());
-                        self.scroll_to_pair = Some(pair);
+                        self.jump_to_pair(pair);
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
@@ -1463,15 +1489,13 @@ impl ZoneSniperApp {
                     let is_current = (variant.stop_price - active_stop_price).abs() < f64::EPSILON;
 
                     if ui.selectable_label(is_current, text).clicked() {
-                        self.handle_pair_selection(op.pair_name.clone());
-                        self.scroll_to_pair = Some(op.pair_name.clone());
-
+                        // New code ....
+                        // 1. Construct the specific variant opportunity
                         let mut new_selected = op.clone();
                         new_selected.stop_price = variant.stop_price;
                         new_selected.simulation = variant.simulation.clone();
-
-                        self.selected_opportunity = Some(new_selected);
-
+                        // 2. Use the Helper (Tunes PH + Selects Pair + Selects Op + Scrolls)
+                        self.select_specific_opportunity(new_selected);
                         should_close = true; // Signal the helper to close
                     }
                 }
