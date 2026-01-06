@@ -251,7 +251,6 @@ impl Default for ZoneSniperApp {
 }
 
 impl ZoneSniperApp {
-
     /// Smart navigation via Name Click (Ticker, Lists, etc).
     /// - If same pair: Just scrolls to it (preserves specific selected Op).
     /// - If new pair: Auto-selects the Best Opportunity (if any).
@@ -265,11 +264,11 @@ impl ZoneSniperApp {
         // 2. New Pair - Find Best Op
         // We need to query the engine to see if there is a "Best" trade to auto-select.
         let mut best_op = None;
-        
+
         if let Some(eng) = &self.engine {
             // We use the aggregator to respect MWT filters logic
             let rows = eng.get_trade_finder_rows(Some(&self.simulated_prices));
-            
+
             if let Some(row) = rows.into_iter().find(|r| r.pair_name == pair) {
                 if let Some(live_op) = row.opportunity {
                     best_op = Some(live_op.opportunity);
@@ -277,15 +276,31 @@ impl ZoneSniperApp {
             }
         }
 
-        // 3. Action
+        // 3. Action & Logging
         if let Some(op) = best_op {
-            // Found a trade -> Tune Radio & Lock
+            log::error!(
+                "DEBUG[jump_to_pair]: Found Op for {}. Tuning & Locking.",
+                pair
+            );
             self.select_specific_opportunity(op);
         } else {
-            // No trade -> Just go to Market View
+            log::error!(
+                "DEBUG[jump_to_pair]: No Op for {}. Switching to Market View.",
+                pair
+            );
+
             self.handle_pair_selection(pair.clone());
             self.selected_opportunity = None;
-            self.scroll_to_pair = Some(pair);
+            self.scroll_to_pair = Some(pair.clone()); // <--- Verify this line exists
+        }
+
+        if let Some(target) = &self.scroll_to_pair {
+            log::error!("DEBUG[jump_to_pair]: Scroll Request SET for '{}'", target);
+        } else {
+            log::error!(
+                "DEBUG[jump_to_pair]: Scroll Request FAILED (None) for '{}'",
+                pair
+            );
         }
     }
 
@@ -295,8 +310,9 @@ impl ZoneSniperApp {
         // We must update the override map so handle_pair_selection respects it.
         let mut new_config = self.app_config.price_horizon.clone();
         new_config.threshold_pct = op.source_ph;
-        
-        self.price_horizon_overrides.insert(op.pair_name.clone(), new_config.clone());
+
+        self.price_horizon_overrides
+            .insert(op.pair_name.clone(), new_config.clone());
         self.app_config.price_horizon = new_config; // Update global for UI slider sync
 
         // 2. Switch Pair (This triggers engine recalc at the NEW PH)
@@ -305,7 +321,7 @@ impl ZoneSniperApp {
         // 3. Force the Specific Selection
         // (handle_pair_selection auto-selects the "Best", but we want THIS one)
         self.selected_opportunity = Some(op.clone());
-        
+
         // 4. Ensure Scroll
         self.scroll_to_pair = Some(op.pair_name.clone());
     }
@@ -906,7 +922,6 @@ impl ZoneSniperApp {
     }
 
     fn render_running_state(&mut self, ctx: &Context) {
-
         // Recently added logging to see which panes are slow.
 
         let start = AppInstant::now();
@@ -914,7 +929,7 @@ impl ZoneSniperApp {
             let protected_id = self.selected_opportunity.as_ref().map(|op| op.id.as_str());
             engine.update(protected_id);
         }
-       let engine_time = start.elapsed().as_micros();
+        let engine_time = start.elapsed().as_micros();
 
         self.handle_global_shortcuts(ctx);
 
@@ -941,10 +956,13 @@ impl ZoneSniperApp {
 
         // LOGGING results. Adjust threshold to catch the slowdown
         if engine_time + left_panel_time + plot_time > 500_000 {
-            log::error!("🐢 SLOW FRAME: Engine: {}us | LeftPanel(TF): {}us | Plot: {}us", 
-                engine_time, left_panel_time, plot_time);
+            log::error!(
+                "🐢 SLOW FRAME: Engine: {}us | LeftPanel(TF): {}us | Plot: {}us",
+                engine_time,
+                left_panel_time,
+                plot_time
+            );
         }
-
     }
 
     fn update_loading_progress(

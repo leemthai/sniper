@@ -61,9 +61,22 @@ pub fn get_outcome_color(value: f64) -> Color32 {
     } else {
         PLOT_CONFIG.color_loss
     }
-
-    
 }
+
+/// Returns the semantic color for Momentum/Trend values.
+/// Positive = Long Color (Blue)
+/// Negative = Short Color (Orange)
+/// Zero = Subdued (Gray)
+pub fn get_momentum_color(value: f64) -> Color32 {
+    if value > 0.0 {
+        PLOT_CONFIG.color_long
+    } else if value < 0.0 {
+        PLOT_CONFIG.color_short
+    } else {
+        PLOT_CONFIG.color_text_subdued
+    }
+}
+
 
 /// Extension trait to add semantic styling methods directly to `egui::Ui`.
 pub trait UiStyleExt {

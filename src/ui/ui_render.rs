@@ -21,7 +21,7 @@ use crate::models::trading_view::{
 
 use crate::ui::app::CandleResolution;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
-use crate::ui::styles::{DirectionColor, UiStyleExt, get_outcome_color};
+use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color};
 use crate::ui::ui_panels::{
     CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel,
 };
@@ -126,9 +126,6 @@ impl ZoneSniperApp {
                         .map(|o| o.opportunity.avg_duration_ms)
                         .unwrap_or(i64::MAX);
                     val_b.cmp(&val_a)
-                }
-                SortColumn::OpportunityCount => {
-                    a.opportunity_count_total.cmp(&b.opportunity_count_total)
                 }
                 SortColumn::VariantCount => {
                     let va = a
@@ -300,7 +297,7 @@ impl ZoneSniperApp {
                         ui.label(
                             RichText::new(format!("{:+.2}%", state.momentum_pct * 100.0))
                                 .small()
-                                .color(get_outcome_color(state.momentum_pct)),
+                                .color(get_momentum_color(state.momentum_pct)),
                         );
 
                         ui.label(
@@ -570,18 +567,18 @@ impl ZoneSniperApp {
     }
 
     /// Helper: Renders the Header, Scope, and Direction controls
-    fn render_trade_finder_filters(&mut self, ui: &mut Ui) {
+    fn render_trade_finder_filters(&mut self, ui: &mut Ui, count: usize) {
         ui.add_space(10.0);
 
         // --- 2. SCOPE TOGGLE ---
         ui.horizontal(|ui| {
-            // Icon/Label
-            // ui.label(
-            //     RichText::new(&UI_TEXT.label_target)
-            //         .size(16.0)
-            //         .color(PLOT_CONFIG.color_text_neutral),
-            // );
-            // ui.style_mut().spacing.item_spacing.x = 5.0;
+            ui.label(
+                RichText::new(format!("{}", count))
+                    .strong()
+                    .color(PLOT_CONFIG.color_text_subdued),
+            );
+
+            ui.separator();
 
             // "ALL PAIRS" Button
             if ui
@@ -752,17 +749,46 @@ impl ZoneSniperApp {
     }
 
     fn render_trade_finder_content(&mut self, ui: &mut Ui) {
-        // 1. Controls
-        self.render_trade_finder_filters(ui);
-
         // 2. Data Fetch & Filter
         let mut rows = self.get_filtered_rows();
+
+        // --- DEBUG START ---
+        if let Some(target) = &self.scroll_to_pair {
+            let exists = rows.iter().any(|r| r.pair_name == *target);
+            if exists {
+                log::error!(
+                    "DEBUG[TF_Render]: Target '{}' FOUND in filtered rows.",
+                    target
+                );
+            } else {
+                log::error!(
+                    "DEBUG[TF_Render]: Target '{}' NOT FOUND in filtered rows! (Size: {})",
+                    target,
+                    rows.len()
+                );
+                // Optional: Print first 3 rows to see what IS there
+                for r in rows.iter().take(3) {
+                    log::error!("   -> Row: {}", r.pair_name);
+                }
+            }
+        }
+        // --- DEBUG END ---
 
         // 3. Auto-Heal
         self.auto_heal_selection(&rows);
 
+        self.render_trade_finder_filters(ui, rows.len());
+
         // 4. Sort
         self.sort_trade_finder_rows(&mut rows);
+
+        // --- DEBUG SORT STABILITY ---
+        if let Some(target) = &self.scroll_to_pair {
+            if let Some(idx) = rows.iter().position(|r| r.pair_name == *target) {
+                log::error!("DEBUG: Scroll Target '{}' found at Index {}", target, idx);
+            }
+        }
+        // ----------------------------
 
         // 5. Render Table
         if rows.is_empty() {
@@ -770,11 +796,39 @@ impl ZoneSniperApp {
             return;
         }
 
-        // --- NEW: FIND SCROLL TARGET INDEX ---
+        // --- SCROLL INDEX LOGIC (FIXED) ---
         let mut target_index = None;
         if let Some(target) = &self.scroll_to_pair {
-            if let Some(idx) = rows.iter().position(|r| r.pair_name == *target) {
-                target_index = Some(idx);
+            // STRATEGY 1: Try to find the exact Selected Opportunity (ID Match)
+            if let Some(sel) = &self.selected_opportunity {
+                if sel.pair_name == *target {
+                    target_index = rows.iter().position(|r| {
+                        r.opportunity
+                            .as_ref()
+                            .map_or(false, |op| op.opportunity.id == sel.id)
+                    });
+                }
+            }
+
+            // STRATEGY 2: Fallback to Pair Name (First instance)
+            // Used if no specific op is selected (Market View), or if the selected op wasn't found in the filtered list.
+            if target_index.is_none() {
+                target_index = rows.iter().position(|r| r.pair_name == *target);
+            }
+
+            // Debug Logging
+            if let Some(idx) = target_index {
+                log::info!(
+                    "DEBUG[TF_Render]: Scroll Target '{}' found at Index {}",
+                    target,
+                    idx
+                );
+            } else {
+                log::warn!(
+                    "DEBUG[TF_Render]: Scroll Target '{}' NOT FOUND in list (Size: {})",
+                    target,
+                    rows.len()
+                );
             }
         }
 
@@ -813,9 +867,9 @@ impl ZoneSniperApp {
                     self.render_tf_table_header(&mut header);
                 })
                 .body(|mut body| {
-                    for row in &rows {
+                    for (i, row) in rows.iter().enumerate() {
                         body.row(40.0, |mut table_row| {
-                            self.render_tf_table_row(&mut table_row, row);
+                            self.render_tf_table_row(&mut table_row, row, i);
                         });
                     }
                 });
@@ -874,7 +928,8 @@ impl ZoneSniperApp {
                 ui,
                 SortColumn::AvgDuration,
                 &UI_TEXT.tf_time,
-                Some((SortColumn::OpportunityCount, &UI_TEXT.label_opps_short)),
+                None,
+                // Some((SortColumn::OpportunityCount, &UI_TEXT.label_opps_short)),
             );
         });
 
@@ -900,7 +955,12 @@ impl ZoneSniperApp {
     }
 
     /// Renders the data cells for a single row
-    fn render_tf_table_row(&mut self, table_row: &mut TableRow, row: &TradeFinderRow) {
+    fn render_tf_table_row(
+        &mut self,
+        table_row: &mut TableRow,
+        row: &TradeFinderRow,
+        index: usize,
+    ) {
         // Selection Logic
         let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
             && match (&self.selected_opportunity, &row.opportunity) {
@@ -913,10 +973,10 @@ impl ZoneSniperApp {
         table_row.set_selected(is_selected);
 
         // We pass the scroll tracker as a local bool to the column helper
-        self.col_pair_name(table_row, row);
+        self.col_pair_name(table_row, row, index);
         self.col_return_metrics(table_row, row);
         self.col_market_state(table_row, row);
-        self.col_time_and_ops(table_row, row);
+        self.col_time(table_row, row);
         self.col_volume_24h(table_row, row);
         self.col_sl_variants(table_row, row);
 
@@ -938,12 +998,24 @@ impl ZoneSniperApp {
     }
 
     /// Column 1: Pair Name + Direction Icon (Static Text) on top line, Age on 2nd line
-    fn col_pair_name(&self, table_row: &mut egui_extras::TableRow, row: &TradeFinderRow) {
+    fn col_pair_name(
+        &self,
+        table_row: &mut egui_extras::TableRow,
+        row: &TradeFinderRow,
+        index: usize,
+    ) {
         table_row.col(|ui| {
             ui.vertical(|ui| {
                 // LINE 1: Pair Name + Direction Icon
                 ui.horizontal(|ui| {
                     ui.style_mut().spacing.item_spacing.x = 4.0;
+
+                    // NEW: Row Number
+                    ui.label(
+                        RichText::new(format!("{}.", index))
+                            .size(10.0)
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
 
                     // Visual Text (Pair Name)
                     ui.label(
@@ -986,22 +1058,35 @@ impl ZoneSniperApp {
                     }
                 });
 
-                // LINE 2: Opportunity Age
                 if let Some(live_op) = &row.opportunity {
-                    let now = crate::utils::TimeUtils::now_timestamp_ms();
-                    let age_ms = now.saturating_sub(live_op.opportunity.created_at);
+                    ui.horizontal(|ui| {
+                        // Left: Target Price
+                        // Use truncation/small font to fit
+                        let target_str =
+                            crate::ui::utils::format_price(live_op.opportunity.target_price);
+                        ui.label(
+                            RichText::new(format!("T: {}", target_str))
+                                .size(10.0)
+                                .color(PLOT_CONFIG.color_info),
+                        );
 
-                    let age_str = if age_ms < 60_000 {
-                        "New".to_string()
-                    } else {
-                        crate::utils::TimeUtils::format_duration(age_ms)
-                    };
+                        // Right: Age (Pushed to edge)
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            let now = crate::utils::TimeUtils::now_timestamp_ms();
+                            let age_ms = now.saturating_sub(live_op.opportunity.created_at);
+                            let age_str = if age_ms < 60_000 {
+                                "New".to_string()
+                            } else {
+                                crate::utils::TimeUtils::format_duration(age_ms)
+                            };
 
-                    ui.label(
-                        RichText::new(age_str)
-                            .size(10.0)
-                            .color(PLOT_CONFIG.color_text_subdued),
-                    );
+                            ui.label(
+                                RichText::new(age_str)
+                                    .size(10.0)
+                                    .color(PLOT_CONFIG.color_text_subdued),
+                            );
+                        });
+                    });
                 }
             });
         });
@@ -1040,7 +1125,7 @@ impl ZoneSniperApp {
                             .small()
                             .color(PLOT_CONFIG.color_info),
                     );
-                    let mom_color = get_outcome_color(ms.momentum_pct);
+                    let mom_color = get_momentum_color(ms.momentum_pct);
                     ui.label(
                         RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
                             .small()
@@ -1053,7 +1138,7 @@ impl ZoneSniperApp {
         });
     }
 
-    fn col_time_and_ops(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+    fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         table_row.col(|ui| {
             ui.vertical(|ui| {
                 self.down_from_top(ui);
@@ -1066,16 +1151,6 @@ impl ZoneSniperApp {
                     );
                 } else {
                     self.display_no_data(ui);
-                }
-
-                if row.opportunity_count_total > 1 {
-                    ui.label(
-                        RichText::new(format!("{} Opps", row.opportunity_count_total))
-                            .small()
-                            .color(PLOT_CONFIG.color_text_subdued),
-                    );
-                } else {
-                    ui.label("");
                 }
             });
         });
@@ -1202,11 +1277,14 @@ impl ZoneSniperApp {
                 // Detect if we are actually changing pairs (to avoid log spam)
                 if self.selected_pair.as_deref() != Some(&best_row.pair_name) {
                     #[cfg(debug_assertions)]
-                    log::error!("UI HUNTER: Selection hidden/none. Snapping to top: {}", best_row.pair_name);
-                    
+                    log::error!(
+                        "UI HUNTER: Selection hidden/none. Snapping to top: {}",
+                        best_row.pair_name
+                    );
+
                     // Switch Global Selection
                     self.handle_pair_selection(best_row.pair_name.clone());
-                    
+
                     // Sync specific Op from the View Row (trusting View over Engine defaults)
                     if let Some(live_op) = &best_row.opportunity {
                         self.selected_opportunity = Some(live_op.opportunity.clone());
@@ -1221,12 +1299,16 @@ impl ZoneSniperApp {
             return;
         }
 
-        // 3. Handle Case: Pair Visible. 
+        // 3. Handle Case: Pair Visible.
         // We need to validate if the specific Opportunity is still valid.
         let current_id = self.selected_opportunity.as_ref().map(|o| o.id.clone());
-        
+
         let is_valid = current_id.as_ref().map_or(false, |id| {
-            pair_rows.iter().any(|r| r.opportunity.as_ref().map_or(false, |op| &op.opportunity.id == id))
+            pair_rows.iter().any(|r| {
+                r.opportunity
+                    .as_ref()
+                    .map_or(false, |op| &op.opportunity.id == id)
+            })
         });
 
         if is_valid {
@@ -1234,7 +1316,7 @@ impl ZoneSniperApp {
             return;
         }
 
-        // 4. Selection Invalid (Stale ID) or Empty (None). 
+        // 4. Selection Invalid (Stale ID) or Empty (None).
         // Auto-Select the Best Available Opportunity for this pair.
         // This unifies "Swapping Stale" and "Upgrading None".
         if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
@@ -1242,18 +1324,28 @@ impl ZoneSniperApp {
             if let Some(op) = &best_row.opportunity {
                 #[cfg(debug_assertions)]
                 if current_id.is_some() {
-                    log::error!("UI AUTO-HEAL: Swapping stale Op ID for New ID {}", op.opportunity.id);
+                    log::error!(
+                        "UI AUTO-HEAL: Swapping stale Op ID for New ID {}",
+                        op.opportunity.id
+                    );
                 } else {
-                    log::error!("UI AUTO-HEAL: Upgrading None -> Best Op ID {} for {}", op.opportunity.id, best_row.pair_name);
+                    log::error!(
+                        "UI AUTO-HEAL: Upgrading None -> Best Op ID {} for {}",
+                        op.opportunity.id,
+                        best_row.pair_name
+                    );
                 }
-                
+
                 self.selected_opportunity = Some(op.opportunity.clone());
             }
         } else {
             // Pair exists, but no valid trades found (Market View)
             if self.selected_opportunity.is_some() {
                 #[cfg(debug_assertions)]
-                log::error!("UI AUTO-HEAL: Op died for {}. Dropping to Market View.", self.selected_pair.as_deref().unwrap_or("?"));
+                log::error!(
+                    "UI AUTO-HEAL: Op died for {}. Dropping to Market View.",
+                    self.selected_pair.as_deref().unwrap_or("?")
+                );
                 self.selected_opportunity = None;
             }
         }
@@ -1309,6 +1401,12 @@ impl ZoneSniperApp {
                     _ => SortDirection::Descending,
                 };
             }
+
+            // // 2. FIX: Re-Scroll to Selection
+            // // The list order just changed. Make sure we follow the selected item to its new position.
+            // if let Some(p) = &self.selected_pair {
+            //     self.scroll_to_pair = Some(p.clone());
+            // }
         }
     }
 

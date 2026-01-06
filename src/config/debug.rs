@@ -29,7 +29,7 @@ pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
 
     // Default to a small number for quick UI testing.
     // Change this to 1000 when you want to stress-test the model i.e all pairs.
-    max_pairs_load: 5, // 25, // 60,
+    max_pairs_load: 25, // 25, // 60,
 
     gap_report: false,
 };

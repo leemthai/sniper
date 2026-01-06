@@ -98,7 +98,6 @@ pub enum SortColumn {
     QuoteVolume24h,
     Volatility,
     Momentum,
-    OpportunityCount,
     VariantCount,
 }
 

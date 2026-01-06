@@ -157,8 +157,8 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     color_short: Color32::from_rgb(255, 165, 0),
 
     // NEW DEFINITIONS
-    color_info: Color32::from_rgb(173, 216, 230), // Light Blue (Volatility)
-    color_warning: Color32::from_rgb(255, 215, 0), // Gold/Yellow (High Vol)
+    color_info: Color32::from_rgb(173, 216, 230), 
+    color_warning: Color32::from_rgb(255, 215, 0),
 
     color_help_fg: Color32::from_rgb(120, 170, 240), // help fg
     color_help_bg: Color32::WHITE, // help background
