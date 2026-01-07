@@ -782,7 +782,8 @@ impl ZoneSniperApp {
         // 4. Sort
         self.sort_trade_finder_rows(&mut rows);
 
-        // --- DEBUG SORT STABILITY ---
+        // --- SORT STABILITY logic validator ---
+        #[cfg(debug_assertions)]
         if let Some(target) = &self.scroll_to_pair {
             if let Some(idx) = rows.iter().position(|r| r.pair_name == *target) {
                 log::error!("DEBUG: Scroll Target '{}' found at Index {}", target, idx);
@@ -847,7 +848,7 @@ impl ZoneSniperApp {
                 .resizable(false)
                 .sense(Sense::click()) // Enable row clicks
                 .cell_layout(Layout::left_to_right(Align::Min))
-                .column(Column::exact(110.0).clip(true)) // Pair (Fixed base, resizable)
+                .column(Column::exact(120.0).clip(true)) // Pair (Fixed base, resizable)
                 .column(Column::exact(55.0).clip(true)) // ROI/AROI (Strict width, clip overflow)
                 .column(Column::exact(55.0).clip(true)) // Vol/Mom
                 .column(Column::exact(55.0).clip(true)) // Time/Ops
@@ -985,10 +986,11 @@ impl ZoneSniperApp {
 
         // // 4. INTERACTION
         if response.clicked() {
+            log::error!("UI INTERACTION: User clicked row {}, Triggering selection logic. ", row.pair_name);
             // self.handle_pair_selection(row.pair_name.clone());
             if let Some(live_op) = &row.opportunity {
                 // FIX: Use the helper to Tune PH + Select Pair + Lock Opportunity
-                self.select_specific_opportunity(live_op.opportunity.clone());
+                self.select_specific_opportunity(live_op.opportunity.clone(), crate::ui::app::ScrollBehavior::None);
             } else {
                 // Fallback: Market View (No Opportunity)
                 self.handle_pair_selection(row.pair_name.clone());
@@ -1550,7 +1552,81 @@ impl ZoneSniperApp {
             });
     }
 
+
     fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
+        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+            
+            // 1. Determine which variant is currently active (Moved OUT of closure)
+            let active_stop_price = if let Some(sel) = &self.selected_opportunity {
+                // If selected op matches this card, use its stop price
+                if sel.pair_name == op.pair_name && sel.target_zone_id == op.target_zone_id {
+                    sel.stop_price
+                } else {
+                    // Otherwise use the default/best
+                    op.stop_price
+                }
+            } else {
+                op.stop_price
+            };
+
+            // 2. Find the index (1-based)
+            let current_index = op.variants.iter()
+                .position(|v| (v.stop_price - active_stop_price).abs() < f64::EPSILON)
+                .unwrap_or(0) + 1;
+
+            // 3. Generate Label "#/# Variants"
+            let label_text = format!(
+                "{}/{} {} ▾", 
+                current_index, 
+                op.variant_count(), 
+                UI_TEXT.label_sl_variants_short
+            );
+            
+            let id_source = format!("var_menu_{}_{}", op.pair_name, op.target_zone_id);
+
+            // CALL THE HELPER
+            ui.custom_dropdown(&id_source, &label_text, |ui| {
+                
+                let mut should_close = false;
+
+                for (i, variant) in op.variants.iter().enumerate() {
+                    let risk_pct = calculate_percent_diff(variant.stop_price, op.start_price);
+                    let win_rate = variant.simulation.success_rate * 100.0;
+                    
+                    // Add index to dropdown text too for clarity? "1. ROI..."
+                    let text = format!(
+                        "{}. {} {:+.2}%   {} {:.0}%   {} -{:.2}%",
+                        i + 1,
+                        UI_TEXT.label_roi,
+                        variant.roi,
+                        UI_TEXT.label_success_rate_short,
+                        win_rate,
+                        UI_TEXT.label_stop_loss_short,
+                        risk_pct
+                    );
+
+                    let is_current = (variant.stop_price - active_stop_price).abs() < f64::EPSILON;
+
+                    if ui.selectable_label(is_current, text).clicked() {
+                        // 1. Construct the specific variant opportunity
+                        let mut new_selected = op.clone();
+                        new_selected.stop_price = variant.stop_price;
+                        new_selected.simulation = variant.simulation.clone();
+                        
+                        // 2. Use the Helper
+                        self.select_specific_opportunity(new_selected, crate::ui::app::ScrollBehavior::None);
+                        
+                        should_close = true; 
+                    }
+                }
+
+                should_close
+            });
+        });
+    }
+
+
+    fn render_card_variants_old(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
             let label_text = format!("{} {} ▾", op.variant_count(), UI_TEXT.label_sl_variants);
             let id_source = format!("var_menu_{}_{}", op.pair_name, op.target_zone_id);
@@ -1593,7 +1669,7 @@ impl ZoneSniperApp {
                         new_selected.stop_price = variant.stop_price;
                         new_selected.simulation = variant.simulation.clone();
                         // 2. Use the Helper (Tunes PH + Selects Pair + Selects Op + Scrolls)
-                        self.select_specific_opportunity(new_selected);
+                        self.select_specific_opportunity(new_selected, crate::ui::app::ScrollBehavior::None);
                         should_close = true; // Signal the helper to close
                     }
                 }

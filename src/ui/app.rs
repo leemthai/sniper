@@ -38,6 +38,12 @@ use crate::ui::utils::setup_custom_visuals;
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 
+#[derive(PartialEq, Eq)]
+pub enum ScrollBehavior {
+    Center,
+    None,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct NavigationState {
     pub current_segment_idx: Option<usize>, // None = Show All
@@ -282,7 +288,7 @@ impl ZoneSniperApp {
                 "DEBUG[jump_to_pair]: Found Op for {}. Tuning & Locking.",
                 pair
             );
-            self.select_specific_opportunity(op);
+            self.select_specific_opportunity(op, ScrollBehavior::Center);
         } else {
             log::error!(
                 "DEBUG[jump_to_pair]: No Op for {}. Switching to Market View.",
@@ -305,7 +311,7 @@ impl ZoneSniperApp {
     }
 
     /// Selects a specific opportunity and TUNES the engine to view it correctly.
-    pub fn select_specific_opportunity(&mut self, op: TradeOpportunity) {
+    pub fn select_specific_opportunity(&mut self, op: TradeOpportunity, scroll: ScrollBehavior) {
         // 1. Tune the Radio (Update PH to match the trade's origin)
         // We must update the override map so handle_pair_selection respects it.
         let mut new_config = self.app_config.price_horizon.clone();
@@ -322,8 +328,10 @@ impl ZoneSniperApp {
         // (handle_pair_selection auto-selects the "Best", but we want THIS one)
         self.selected_opportunity = Some(op.clone());
 
-        // 4. Ensure Scroll
-        self.scroll_to_pair = Some(op.pair_name.clone());
+        // 4. Conditional Scroll i.e in case where ScrollBehavior is not Center, don't scroll IE CLICKING ON PAIR ITSELF
+        if matches!(scroll, ScrollBehavior::Center) {
+            self.scroll_to_pair = Some(op.pair_name.clone());
+        }
     }
 
     pub fn get_nav_state(&mut self) -> NavigationState {
