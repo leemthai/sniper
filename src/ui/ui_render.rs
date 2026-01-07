@@ -637,40 +637,106 @@ impl ZoneSniperApp {
             ui.separator();
             ui.add_space(10.0);
 
-            // --- DIRECTION FILTER ---
-            // ui.label(
-            //     RichText::new(&UI_TEXT.label_filter_icon)
-            //         .size(16.0)
-            //         .color(PLOT_CONFIG.color_text_neutral),
-            // );
-            // ui.style_mut().spacing.item_spacing.x = 5.0;
+            // FIX: Clone the current filter so we don't move it
+            let current_filter = self.tf_filter_direction.clone();
+            // FIX: Clone again for the mutable variable we might change
+            let mut new_filter = current_filter.clone();
 
-            let f = &mut self.tf_filter_direction;
-
-            // 3-Way Toggle
             if ui
-                .selectable_label(*f == DirectionFilter::All, &UI_TEXT.tf_btn_all_trades)
+                .selectable_label(
+                    current_filter == DirectionFilter::All,
+                    &UI_TEXT.tf_btn_all_trades,
+                )
                 .clicked()
             {
-                *f = DirectionFilter::All;
-                self.scroll_to_pair = self.selected_pair.clone();
+                new_filter = DirectionFilter::All;
             }
             if ui
-                .selectable_label(*f == DirectionFilter::Long, &UI_TEXT.label_long)
+                .selectable_label(current_filter == DirectionFilter::Long, &UI_TEXT.label_long)
                 .clicked()
             {
-                *f = DirectionFilter::Long;
-                self.scroll_to_pair = self.selected_pair.clone();
+                new_filter = DirectionFilter::Long;
             }
             if ui
-                .selectable_label(*f == DirectionFilter::Short, &UI_TEXT.label_short)
+                .selectable_label(
+                    current_filter == DirectionFilter::Short,
+                    &UI_TEXT.label_short,
+                )
                 .clicked()
             {
-                *f = DirectionFilter::Short;
-                self.scroll_to_pair = self.selected_pair.clone();
+                new_filter = DirectionFilter::Short;
+            }
+
+            // Detect Change
+            if new_filter != current_filter {
+                self.tf_filter_direction = new_filter;
+                // Run smart switch logic
+                self.apply_filter_switch_logic();
             }
         });
         ui.separator();
+    }
+
+    /// Helper: When filter changes, re-optimize selection for the current pair.
+    fn apply_filter_switch_logic(&mut self) {
+        if let Some(pair) = self.selected_pair.clone() {
+            // 1. Get all potential rows (simulated)
+            if let Some(eng) = &self.engine {
+                let rows = eng.get_trade_finder_rows(Some(&self.simulated_prices));
+
+                // 2. Find the best row for this pair that matches the NEW filter
+                let best_match = rows
+                    .iter()
+                    .filter(|r| r.pair_name == pair)
+                    .filter(|r| {
+                        if let Some(op) = &r.opportunity {
+                            match self.tf_filter_direction {
+                                DirectionFilter::Long => {
+                                    op.opportunity.direction == TradeDirection::Long
+                                }
+                                DirectionFilter::Short => {
+                                    op.opportunity.direction == TradeDirection::Short
+                                }
+                                DirectionFilter::All => true,
+                            }
+                        } else {
+                            false
+                        }
+                    })
+                    // Find highest ROI among valid matches
+                    .max_by(|a, b| {
+                        let roi_a = a
+                            .opportunity
+                            .as_ref()
+                            .map(|o| o.live_roi)
+                            .unwrap_or(f64::NEG_INFINITY);
+                        let roi_b = b
+                            .opportunity
+                            .as_ref()
+                            .map(|o| o.live_roi)
+                            .unwrap_or(f64::NEG_INFINITY);
+                        roi_a.total_cmp(&roi_b)
+                    });
+
+                // 3. Update Selection & Scroll
+                if let Some(row) = best_match {
+                    if let Some(live_op) = &row.opportunity {
+                        // We found a better/valid trade in the new filter view. Select it.
+                        self.selected_opportunity = Some(live_op.opportunity.clone());
+                    } else {
+                        // Only Market View available
+                        self.selected_opportunity = None;
+                    }
+                } else {
+                    // Pair completely disappeared in this filter?
+                    // Keep selected_pair (context), but clear op.
+                    self.selected_opportunity = None;
+                }
+
+                // Always request a scroll to the pair to re-center the new selection
+                self.scroll_to_pair = Some(pair);
+            }
+        }
     }
 
     // --- COLUMN HELPERS ---
@@ -774,8 +840,35 @@ impl ZoneSniperApp {
         }
         // --- DEBUG END ---
 
+        // --- VALIDATOR PRE-CHECK ---
+        #[cfg(debug_assertions)]
+        let pair_before = self.selected_pair.clone();
+        // ---------------------------
+
         // 3. Auto-Heal
         self.auto_heal_selection(&rows);
+
+        // --- VALIDATOR POST-CHECK ---
+        #[cfg(debug_assertions)]
+        {
+            let pair_after = self.selected_pair.clone();
+            let scroll_target = self.scroll_to_pair.clone();
+
+            // Rule: If Auto-Heal switches the pair, it MUST request a scroll to that pair.
+            if pair_before != pair_after {
+                if scroll_target != pair_after {
+                    panic!(
+                        "LOGIC FAILURE: Auto-Heal switched pairs without updating Scroll Target!\n\
+                        Previous Pair: {:?}\n\
+                        New Pair:      {:?}\n\
+                        Scroll Target: {:?}\n\
+                        Cause: auto_heal_selection changed 'selected_pair' but forgot to set 'scroll_to_pair'.",
+                        pair_before, pair_after, scroll_target
+                    );
+                }
+            }
+        }
+        // ----------------------------
 
         self.render_trade_finder_filters(ui, rows.len());
 
@@ -797,39 +890,64 @@ impl ZoneSniperApp {
             return;
         }
 
-        // --- SCROLL INDEX LOGIC (FIXED) ---
+        // --- SCROLL INDEX LOGIC (DIAGNOSTIC) ---
         let mut target_index = None;
         if let Some(target) = &self.scroll_to_pair {
-            // STRATEGY 1: Try to find the exact Selected Opportunity (ID Match)
+            let mut strategy_1_attempted = false;
+
+            // STRATEGY 1: Priority Search (ID Match)
             if let Some(sel) = &self.selected_opportunity {
                 if sel.pair_name == *target {
+                    strategy_1_attempted = true;
+
                     target_index = rows.iter().position(|r| {
                         r.opportunity
                             .as_ref()
                             .map_or(false, |op| op.opportunity.id == sel.id)
                     });
+
+                    if let Some(idx) = target_index {
+                        log::error!(
+                            "DEBUG: Strategy 1 (ID Match) SUCCESS. Scroll to target {} Index {} (ID: {})",
+                            target,
+                            idx,
+                            sel.id
+                        );
+                    } else {
+                        // Critical: Why did ID match fail?
+                        let matching_names_count =
+                            rows.iter().filter(|r| r.pair_name == *target).count();
+                        log::error!(
+                            "DEBUG: Strategy 1 FAILED. Target '{}' has {} rows in list, but none matched Selection ID {}.",
+                            target,
+                            matching_names_count,
+                            sel.id
+                        );
+                    }
                 }
             }
 
-            // STRATEGY 2: Fallback to Pair Name (First instance)
-            // Used if no specific op is selected (Market View), or if the selected op wasn't found in the filtered list.
+            // STRATEGY 2: Fallback Search (Name Match)
             if target_index.is_none() {
                 target_index = rows.iter().position(|r| r.pair_name == *target);
-            }
 
-            // Debug Logging
-            if let Some(idx) = target_index {
-                log::info!(
-                    "DEBUG[TF_Render]: Scroll Target '{}' found at Index {}",
-                    target,
-                    idx
-                );
-            } else {
-                log::warn!(
-                    "DEBUG[TF_Render]: Scroll Target '{}' NOT FOUND in list (Size: {})",
-                    target,
-                    rows.len()
-                );
+                if let Some(idx) = target_index {
+                    let reason = if strategy_1_attempted {
+                        "ID Mismatch (Fallback)"
+                    } else {
+                        "No Specific Op Selected"
+                    };
+                    log::error!(
+                        "DEBUG: Strategy 2 (Name Match) used. Scroll to Index {}. Reason: {}",
+                        idx,
+                        reason
+                    );
+                } else {
+                    log::error!(
+                        "DEBUG: Strategy 2 FAILED. Target '{}' is NOT in the filtered list.",
+                        target
+                    );
+                }
             }
         }
 
@@ -986,11 +1104,17 @@ impl ZoneSniperApp {
 
         // // 4. INTERACTION
         if response.clicked() {
-            log::error!("UI INTERACTION: User clicked row {}, Triggering selection logic. ", row.pair_name);
+            log::error!(
+                "UI INTERACTION: User clicked row {}, Triggering selection logic. ",
+                row.pair_name
+            );
             // self.handle_pair_selection(row.pair_name.clone());
             if let Some(live_op) = &row.opportunity {
                 // FIX: Use the helper to Tune PH + Select Pair + Lock Opportunity
-                self.select_specific_opportunity(live_op.opportunity.clone(), crate::ui::app::ScrollBehavior::None);
+                self.select_specific_opportunity(
+                    live_op.opportunity.clone(),
+                    crate::ui::app::ScrollBehavior::None,
+                );
             } else {
                 // Fallback: Market View (No Opportunity)
                 self.handle_pair_selection(row.pair_name.clone());
@@ -1265,107 +1389,142 @@ impl ZoneSniperApp {
 
     /// Helper: Heals stale selection when zones change or trades disappear
     fn auto_heal_selection(&mut self, rows: &[TradeFinderRow]) {
-        // 1. Identify rows for the current selected pair
-        let pair_rows: Vec<&TradeFinderRow> = if let Some(pair) = &self.selected_pair {
-            rows.iter().filter(|r| r.pair_name == *pair).collect()
-        } else {
-            Vec::new()
-        };
+        if let Some(pair) = &self.selected_pair {
+            // 1. Is this pair still visible?
+            let pair_rows: Vec<&TradeFinderRow> =
+                rows.iter().filter(|r| r.pair_name == *pair).collect();
+            let pair_is_visible = !pair_rows.is_empty();
 
-        // 2. Handle Case: Pair Lost (Filtered out or None selected)
-        if pair_rows.is_empty() {
-            // Snap to top of list if available
-            if let Some(best_row) = rows.first() {
-                // Detect if we are actually changing pairs (to avoid log spam)
-                if self.selected_pair.as_deref() != Some(&best_row.pair_name) {
-                    #[cfg(debug_assertions)]
-                    log::error!(
-                        "UI HUNTER: Selection hidden/none. Snapping to top: {}",
-                        best_row.pair_name
-                    );
+            if pair_is_visible {
+                // CASE A: Pair is visible. Context is safe.
 
-                    // Switch Global Selection
-                    self.handle_pair_selection(best_row.pair_name.clone());
+                if let Some(current_sel) = &self.selected_opportunity {
+                    // Check if specific Op ID exists
+                    let exists = pair_rows.iter().any(|r| {
+                        r.opportunity
+                            .as_ref()
+                            .map_or(false, |op| op.opportunity.id == current_sel.id)
+                    });
 
-                    // Sync specific Op from the View Row (trusting View over Engine defaults)
-                    if let Some(live_op) = &best_row.opportunity {
-                        self.selected_opportunity = Some(live_op.opportunity.clone());
-                    } else {
-                        self.selected_opportunity = None;
+                    if !exists {
+                        // Stale Op. Swap to new Best for SAME pair.
+                        if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
+                            if let Some(op) = &best_row.opportunity {
+                                #[cfg(debug_assertions)]
+                                log::warn!(
+                                    "UI AUTO-HEAL: Swapping stale Op for {}. New ID: {}",
+                                    pair,
+                                    op.opportunity.id
+                                );
+                                self.selected_opportunity = Some(op.opportunity.clone());
+                            }
+                        } else {
+                            // Drop to Market View
+                            self.selected_opportunity = None;
+                        }
+                    }
+                } else {
+                    // Upgrade None -> Best for SAME pair
+                    if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
+                        if let Some(op) = &best_row.opportunity {
+                            #[cfg(debug_assertions)]
+                            log::info!(
+                                "UI AUTO-HEAL: Upgraded None -> Best Op ID {} for {}",
+                                op.opportunity.id,
+                                best_row.pair_name
+                            );
+                            self.selected_opportunity = Some(op.opportunity.clone());
+                        }
                     }
                 }
             } else {
-                // List is completely empty
-                self.selected_opportunity = None;
-            }
-            return;
-        }
+                // CASE B: Selected Pair is GONE (Filtered out).
+                // We must hunt for a new target from the top of the list.
+                if let Some(best_row) = rows.first() {
+                    // Only switch if we are actually moving to a new pair
+                    if self.selected_pair.as_deref() != Some(&best_row.pair_name) {
+                        #[cfg(debug_assertions)]
+                        log::error!(
+                            "UI HUNTER: Selection {} hidden. Snapping to top: {}",
+                            pair,
+                            best_row.pair_name
+                        );
 
-        // 3. Handle Case: Pair Visible.
-        // We need to validate if the specific Opportunity is still valid.
-        let current_id = self.selected_opportunity.as_ref().map(|o| o.id.clone());
+                        // 1. Switch Selection
+                        self.handle_pair_selection(best_row.pair_name.clone());
 
-        let is_valid = current_id.as_ref().map_or(false, |id| {
-            pair_rows.iter().any(|r| {
-                r.opportunity
-                    .as_ref()
-                    .map_or(false, |op| &op.opportunity.id == id)
-            })
-        });
+                        // 2. FIX: Update Scroll Target to match!
+                        self.scroll_to_pair = Some(best_row.pair_name.clone());
 
-        if is_valid {
-            // Current selection is healthy. Do nothing.
-            return;
-        }
-
-        // 4. Selection Invalid (Stale ID) or Empty (None).
-        // Auto-Select the Best Available Opportunity for this pair.
-        // This unifies "Swapping Stale" and "Upgrading None".
-        if let Some(best_row) = self.find_best_row_for_pair(&pair_rows) {
-            // found a valid trade row
-            if let Some(op) = &best_row.opportunity {
-                #[cfg(debug_assertions)]
-                if current_id.is_some() {
-                    log::error!(
-                        "UI AUTO-HEAL: Swapping stale Op ID for New ID {}",
-                        op.opportunity.id
-                    );
+                        if let Some(live_op) = &best_row.opportunity {
+                            self.selected_opportunity = Some(live_op.opportunity.clone());
+                        } else {
+                            self.selected_opportunity = None;
+                        }
+                    }
                 } else {
-                    log::error!(
-                        "UI AUTO-HEAL: Upgrading None -> Best Op ID {} for {}",
-                        op.opportunity.id,
-                        best_row.pair_name
-                    );
+                    // List is empty. Clear selection.
+                    self.selected_opportunity = None;
                 }
-
-                self.selected_opportunity = Some(op.opportunity.clone());
             }
         } else {
-            // Pair exists, but no valid trades found (Market View)
-            if self.selected_opportunity.is_some() {
+            // Case C: No selection at all (Startup or Reset). Snap to top.
+            if let Some(best_row) = rows.first() {
                 #[cfg(debug_assertions)]
-                log::error!(
-                    "UI AUTO-HEAL: Op died for {}. Dropping to Market View.",
-                    self.selected_pair.as_deref().unwrap_or("?")
+                log::info!(
+                    "UI HUNTER: Startup/Reset. Snapping to top row: {}",
+                    best_row.pair_name
                 );
-                self.selected_opportunity = None;
+
+                self.handle_pair_selection(best_row.pair_name.clone());
+
+                // FIX: Update Scroll Target
+                self.scroll_to_pair = Some(best_row.pair_name.clone());
+
+                if let Some(live_op) = &best_row.opportunity {
+                    self.selected_opportunity = Some(live_op.opportunity.clone());
+                }
             }
         }
     }
 
-    /// Helper to find the best row (highest ROI) from a slice of rows.
+    /// Helper to find the best row based on the Configured Quality Score.
     fn find_best_row_for_pair<'a>(
         &self,
         rows: &'a [&TradeFinderRow],
     ) -> Option<&'a TradeFinderRow> {
-        rows.iter()
+        // Get the scoring profile (weights) from config
+        let profile = &crate::config::ANALYSIS.journey.profile;
+
+        let best = rows
+            .iter()
             .filter(|r| r.opportunity.is_some())
             .max_by(|a, b| {
-                let roi_a = a.opportunity.as_ref().unwrap().live_roi;
-                let roi_b = b.opportunity.as_ref().unwrap().live_roi;
-                roi_a.total_cmp(&roi_b)
+                // Access the inner TradeOpportunity (Static Data) to calculate the score
+                let op_a = &a.opportunity.as_ref().unwrap().opportunity;
+                let op_b = &b.opportunity.as_ref().unwrap().opportunity;
+
+                let score_a = op_a.calculate_quality_score(profile);
+                let score_b = op_b.calculate_quality_score(profile);
+
+                score_a.total_cmp(&score_b)
             })
-            .map(|r| *r) // FIX: Dereference the double-reference (&&T -> &T)
+            .map(|r| *r);
+
+        #[cfg(debug_assertions)]
+        if let Some(row) = best {
+            if let Some(live_op) = &row.opportunity {
+                let score = live_op.opportunity.calculate_quality_score(profile);
+                log::info!(
+                    "BEST OP SELECTOR: Picked {} (Score {:.2}) out of {} candidates.",
+                    live_op.opportunity.pair_name,
+                    score,
+                    rows.len()
+                );
+            }
+        }
+
+        best
     }
 
     /// Renders a single sortable label using the Interactive Button style
@@ -1552,10 +1711,8 @@ impl ZoneSniperApp {
             });
     }
 
-
     fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            
             // 1. Determine which variant is currently active (Moved OUT of closure)
             let active_stop_price = if let Some(sel) = &self.selected_opportunity {
                 // If selected op matches this card, use its stop price
@@ -1570,29 +1727,31 @@ impl ZoneSniperApp {
             };
 
             // 2. Find the index (1-based)
-            let current_index = op.variants.iter()
+            let current_index = op
+                .variants
+                .iter()
                 .position(|v| (v.stop_price - active_stop_price).abs() < f64::EPSILON)
-                .unwrap_or(0) + 1;
+                .unwrap_or(0)
+                + 1;
 
-            // 3. Generate Label "#/# Variants"
+            // 3. Generate Label "#/# Vrts"
             let label_text = format!(
-                "{}/{} {} ▾", 
-                current_index, 
-                op.variant_count(), 
+                "{}/{} {} ▾",
+                current_index,
+                op.variant_count(),
                 UI_TEXT.label_sl_variants_short
             );
-            
+
             let id_source = format!("var_menu_{}_{}", op.pair_name, op.target_zone_id);
 
             // CALL THE HELPER
             ui.custom_dropdown(&id_source, &label_text, |ui| {
-                
                 let mut should_close = false;
 
                 for (i, variant) in op.variants.iter().enumerate() {
                     let risk_pct = calculate_percent_diff(variant.stop_price, op.start_price);
                     let win_rate = variant.simulation.success_rate * 100.0;
-                    
+
                     // Add index to dropdown text too for clarity? "1. ROI..."
                     let text = format!(
                         "{}. {} {:+.2}%   {} {:.0}%   {} -{:.2}%",
@@ -1612,65 +1771,14 @@ impl ZoneSniperApp {
                         let mut new_selected = op.clone();
                         new_selected.stop_price = variant.stop_price;
                         new_selected.simulation = variant.simulation.clone();
-                        
+
                         // 2. Use the Helper
-                        self.select_specific_opportunity(new_selected, crate::ui::app::ScrollBehavior::None);
-                        
-                        should_close = true; 
-                    }
-                }
+                        self.select_specific_opportunity(
+                            new_selected,
+                            crate::ui::app::ScrollBehavior::None,
+                        );
 
-                should_close
-            });
-        });
-    }
-
-
-    fn render_card_variants_old(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
-        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            let label_text = format!("{} {} ▾", op.variant_count(), UI_TEXT.label_sl_variants);
-            let id_source = format!("var_menu_{}_{}", op.pair_name, op.target_zone_id);
-
-            // CALL THE HELPER
-            ui.custom_dropdown(&id_source, &label_text, |ui| {
-                // --- CONTENT LOGIC ---
-                let active_stop_price = if let Some(sel) = &self.selected_opportunity {
-                    if sel.pair_name == op.pair_name && sel.target_zone_id == op.target_zone_id {
-                        sel.stop_price
-                    } else {
-                        op.stop_price
-                    }
-                } else {
-                    op.stop_price
-                };
-
-                let mut should_close = false;
-
-                for variant in &op.variants {
-                    let risk_pct = calculate_percent_diff(variant.stop_price, op.start_price);
-                    let win_rate = variant.simulation.success_rate * 100.0;
-
-                    let text = format!(
-                        "{} {:+.2}%   {} {:.0}%   {} -{:.2}%",
-                        UI_TEXT.label_roi,
-                        variant.roi,
-                        UI_TEXT.label_success_rate_short,
-                        win_rate,
-                        UI_TEXT.label_stop_loss_short,
-                        risk_pct
-                    );
-
-                    let is_current = (variant.stop_price - active_stop_price).abs() < f64::EPSILON;
-
-                    if ui.selectable_label(is_current, text).clicked() {
-                        // New code ....
-                        // 1. Construct the specific variant opportunity
-                        let mut new_selected = op.clone();
-                        new_selected.stop_price = variant.stop_price;
-                        new_selected.simulation = variant.simulation.clone();
-                        // 2. Use the Helper (Tunes PH + Selects Pair + Selects Op + Scrolls)
-                        self.select_specific_opportunity(new_selected, crate::ui::app::ScrollBehavior::None);
-                        should_close = true; // Signal the helper to close
+                        should_close = true;
                     }
                 }
 

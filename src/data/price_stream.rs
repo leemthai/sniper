@@ -472,10 +472,10 @@ fn parse_and_send_kline(data: &serde_json::Value, tx: &Sender<LiveCandle>) {
 
     let symbol = data["s"].as_str().unwrap_or("").to_string();
     let close = k["c"].as_str().unwrap_or("0").parse().unwrap_or(0.0);
-    #[cfg(debug_assertions)]
-    if is_closed {
-        log::info!("STREAM: {} @ {:.2} (Closed: {})", symbol, close, is_closed);
-    }
+    // #[cfg(debug_assertions)]
+    // if is_closed {
+    //     log::info!("STREAM: {} @ {:.2} (Closed: {})", symbol, close, is_closed);
+    // }
 
     let candle = LiveCandle {
         symbol,

@@ -156,12 +156,12 @@ impl SniperEngine {
                     series.update_from_live(&candle);
 
                     if candle.is_closed {
-                        #[cfg(debug_assertions)]
-                        log::info!(
-                            "HEARTBEAT: Closed Candle for {} @ {} so gonna trigger force_recalc() on this pair....",
-                            candle.symbol,
-                            candle.close
-                        );
+                        // #[cfg(debug_assertions)]
+                        // log::info!(
+                        //     "HEARTBEAT: Closed Candle for {} @ {} so gonna trigger force_recalc() on this pair....",
+                        //     candle.symbol,
+                        //     candle.close
+                        // );
 
                         // 3. Trigger Recalc
                         // This is now allowed because 'ts_collection' borrows 'ts_lock', not 'self'.
@@ -491,8 +491,8 @@ impl SniperEngine {
 
     /// Force a single recalc with optional price override
     pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, _reason: &str) {
-        #[cfg(debug_assertions)]
-        log::info!("ENGINE: Recalc Triggered for [{}] by [{}]", pair, _reason);
+        // #[cfg(debug_assertions)]
+        // log::info!("ENGINE: Recalc Triggered for [{}] by [{}]", pair, _reason);
 
         // Check if calculating
         let is_calculating = self
