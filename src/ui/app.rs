@@ -24,9 +24,8 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::engine::SniperEngine;
 
 use crate::models::pair_context::PairContext;
-use crate::models::trading_view::{
-    DirectionFilter, SortColumn, SortDirection, TradeDirection, TradeOpportunity,
-};
+use crate::models::ledger::OpportunityLedger;
+use crate::models::trading_view::{DirectionFilter, SortColumn, SortDirection, TradeOpportunity};
 use crate::models::{ProgressEvent, SyncStatus};
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
@@ -181,14 +180,20 @@ pub struct ZoneSniperApp {
     pub show_debug_help: bool,
     pub show_ph_help: bool,
     pub candle_resolution: CandleResolution,
+    pub show_candle_range: bool,
+
     // TradeFinder State
     pub tf_filter_pair_only: bool, // True = Current Pair, False = All
     pub tf_filter_direction: DirectionFilter,
-    pub show_candle_range: bool,
     pub tf_sort_col: SortColumn,    // TF Sorting State
     pub tf_sort_dir: SortDirection, // TF Sort Direction
-    pub selected_opportunity: Option<TradeOpportunity>, // Specific TF selection
 
+    // PERSISTENCE: Holds trades between sessions
+    pub saved_ledger: OpportunityLedger,
+    pub last_selected_opp_id: Option<String>, 
+
+    #[serde(skip)]
+    pub selected_opportunity: Option<TradeOpportunity>,
     #[serde(skip)]
     pub app_config: AnalysisConfig,
     #[serde(skip)]
@@ -252,14 +257,98 @@ impl Default for ZoneSniperApp {
             show_candle_range: false,
             tf_sort_col: SortColumn::LiveRoi, // Default to Money
             tf_sort_dir: SortDirection::Descending, // Highest first
+            saved_ledger: OpportunityLedger::default(),
+            last_selected_opp_id: None,
         }
     }
 }
 
 impl ZoneSniperApp {
-    /// Smart navigation via Name Click (Ticker, Lists, etc).
-    /// - If same pair: Just scrolls to it (preserves specific selected Op).
-    /// - If new pair: Auto-selects the Best Opportunity (if any).
+    /// Standard Pair Switch (Manual or programmatic).
+    /// Updates Global State to point to this pair, but does NOT auto-select a trade.
+    pub fn handle_pair_selection(&mut self, new_pair: String) {
+        // 1. Save current config for the OLD pair
+        if let Some(old_pair) = &self.selected_pair {
+            let old_config = self.app_config.price_horizon.clone();
+            self.price_horizon_overrides
+                .insert(old_pair.clone(), old_config.clone());
+            if let Some(engine) = &mut self.engine {
+                engine.set_price_horizon_override(old_pair.clone(), old_config.clone());
+            }
+        }
+
+        // 2. Set New Pair & Reset View Flags
+        self.selected_pair = Some(new_pair.clone());
+        self.auto_scale_y = true;
+
+        // 3. Load config for the NEW pair
+        if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
+            let mut config = saved_config.clone();
+            config.min_threshold_pct = crate::config::ANALYSIS.price_horizon.min_threshold_pct;
+            config.max_threshold_pct = crate::config::ANALYSIS.price_horizon.max_threshold_pct;
+            config.threshold_pct = config
+                .threshold_pct
+                .clamp(config.min_threshold_pct, config.max_threshold_pct);
+            self.app_config.price_horizon = config;
+        } else {
+            self.app_config.price_horizon = crate::config::ANALYSIS.price_horizon.clone();
+        }
+
+        // 4. Update Engine Context
+        let price = self.get_display_price(&new_pair);
+        if let Some(engine) = &mut self.engine {
+            engine.update_config(self.app_config.clone());
+            engine.set_price_horizon_override(
+                new_pair.clone(),
+                self.app_config.price_horizon.clone(),
+            );
+
+            let needs_calc = engine.get_model(&new_pair).is_none();
+            if needs_calc {
+                engine.force_recalc(&new_pair, price, "USER PAIR SELECTION");
+            }
+        }
+
+        // 5. CLEAR OPPORTUNITY (The "Dumb" Logic)
+        // We do not guess. If the user wants a trade, they will click one.
+        // We start in "Market View".
+        self.selected_opportunity = None;
+    }
+
+    pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
+        // 1. CLEAR STALE OP
+        // The old opportunity is based on old zones. It is now invalid.
+        // self.selected_opportunity = None;
+
+        if let Some(pair) = self.selected_pair.clone() {
+            // log::error!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
+
+            let price = self.get_display_price(&pair);
+            let new_config = self.app_config.price_horizon.clone();
+
+            // Update override map
+            self.price_horizon_overrides
+                .insert(pair.clone(), new_config.clone());
+
+            if let Some(engine) = &mut self.engine {
+                // Update global config context
+                engine.update_config(self.app_config.clone());
+                // Update specific override
+                engine.set_price_horizon_override(pair.clone(), new_config);
+                // Trigger Recalc
+                engine.force_recalc(
+                    &pair,
+                    price,
+                    "INVALIDATE ALL PAIRS -> PRICE HORIZON CHANGED",
+                );
+            }
+        }
+    }
+
+/// Smart navigation via Name Click (Ticker, Lists, Startup).
+    /// - Checks Ledger for best Op.
+    /// - If found: Tunes & Locks.
+    /// - If not: Market View.
     pub fn jump_to_pair(&mut self, pair: String) {
         // 1. Same Pair Check (Preserve Context)
         if self.selected_pair.as_deref() == Some(&pair) {
@@ -267,14 +356,15 @@ impl ZoneSniperApp {
             return;
         }
 
-        // 2. New Pair - Find Best Op
-        // We need to query the engine to see if there is a "Best" trade to auto-select.
+        #[cfg(debug_assertions)]
+        log::info!("UI JUMP: Switching to {}", pair);
+
+        // 2. Find Best Op in Ledger (Smart Lookup)
         let mut best_op = None;
-
         if let Some(eng) = &self.engine {
-            // We use the aggregator to respect MWT filters logic
+            // Use the aggregator to respect MWT filters/logic
             let rows = eng.get_trade_finder_rows(Some(&self.simulated_prices));
-
+            
             if let Some(row) = rows.into_iter().find(|r| r.pair_name == pair) {
                 if let Some(live_op) = row.opportunity {
                     best_op = Some(live_op.opportunity);
@@ -282,31 +372,15 @@ impl ZoneSniperApp {
             }
         }
 
-        // 3. Action & Logging
+        // 3. Action
         if let Some(op) = best_op {
-            log::error!(
-                "DEBUG[jump_to_pair]: Found Op for {}. Tuning & Locking.",
-                pair
-            );
+            // Found a trade -> Tune Radio, Lock Op, Scroll
+            // (Pass Center behavior for explicit jumps)
             self.select_specific_opportunity(op, ScrollBehavior::Center);
         } else {
-            log::error!(
-                "DEBUG[jump_to_pair]: No Op for {}. Switching to Market View.",
-                pair
-            );
-
+            // No trade -> Market View
             self.handle_pair_selection(pair.clone());
-            self.selected_opportunity = None;
-            self.scroll_to_pair = Some(pair.clone()); // <--- Verify this line exists
-        }
-
-        if let Some(target) = &self.scroll_to_pair {
-            log::error!("DEBUG[jump_to_pair]: Scroll Request SET for '{}'", target);
-        } else {
-            log::error!(
-                "DEBUG[jump_to_pair]: Scroll Request FAILED (None) for '{}'",
-                pair
-            );
+            self.scroll_to_pair = Some(pair);
         }
     }
 
@@ -446,171 +520,6 @@ impl ZoneSniperApp {
             engine.price_stream.is_suspended()
         } else {
             false
-        }
-    }
-
-    pub fn handle_pair_selection(&mut self, new_pair: String) {
-        // 1. Save current config for the OLD pair
-        if let Some(old_pair) = &self.selected_pair {
-            let old_config = self.app_config.price_horizon.clone();
-            self.price_horizon_overrides
-                .insert(old_pair.clone(), old_config.clone());
-
-            if let Some(engine) = &mut self.engine {
-                engine.set_price_horizon_override(old_pair.clone(), old_config.clone());
-            }
-        }
-
-        // 2. Set New Pair & Reset View Flags
-        self.selected_pair = Some(new_pair.clone());
-        self.auto_scale_y = true;
-
-        // 3. Load config for the NEW pair (or default)
-        if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
-            let mut config = saved_config.clone();
-            // Ensure bounds are respected
-            config.min_threshold_pct = ANALYSIS.price_horizon.min_threshold_pct;
-            config.max_threshold_pct = ANALYSIS.price_horizon.max_threshold_pct;
-            config.threshold_pct = config
-                .threshold_pct
-                .clamp(config.min_threshold_pct, config.max_threshold_pct);
-            self.app_config.price_horizon = config;
-        } else {
-            self.app_config.price_horizon = ANALYSIS.price_horizon.clone();
-        }
-
-        // 4. Intelligent Update Logic
-        let needs_calc = if let Some(engine) = &self.engine {
-            engine.get_model(&new_pair).is_none()
-        } else {
-            true
-        };
-
-        let price = self.get_display_price(&new_pair);
-
-        if let Some(engine) = &mut self.engine {
-            engine.update_config(self.app_config.clone());
-            engine.set_price_horizon_override(
-                new_pair.clone(),
-                self.app_config.price_horizon.clone(),
-            );
-
-            if needs_calc {
-                engine.force_recalc(&new_pair, price, "USER PAIR SELECTION");
-            }
-        }
-
-        // --- 5. SMART SELECTION & FILTER SWITCHING ---
-
-        // A. Check if we should keep the current selection (if it matches new pair)
-        let keep_current = self
-            .selected_opportunity
-            .as_ref()
-            .map_or(false, |op| op.pair_name == new_pair);
-
-        let mut op_to_select = if keep_current {
-            self.selected_opportunity.clone()
-        } else {
-            None
-        };
-
-        // B. If no current op for this pair, find the BEST one.
-        if op_to_select.is_none() {
-            if let Some(engine) = &self.engine {
-                if let Some(model) = engine.get_model(&new_pair) {
-                    let profile = &ANALYSIS.journey.profile;
-
-                    // Strategy: Prefer an op that matches the CURRENT filter if possible.
-                    let current_filter_dir = match self.tf_filter_direction {
-                        DirectionFilter::Long => Some(TradeDirection::Long),
-                        DirectionFilter::Short => Some(TradeDirection::Short),
-                        _ => None,
-                    };
-
-                    // Filter valid ops (MWT)
-                    let valid_ops = model
-                        .opportunities
-                        .iter()
-                        .filter(|op| op.is_worthwhile(profile));
-
-                    // Try to find best match for CURRENT filter
-                    let best_matching = if let Some(dir) = current_filter_dir {
-                        valid_ops
-                            .clone()
-                            .filter(|op| op.direction == dir)
-                            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
-                    } else {
-                        None
-                    };
-
-                    // If no match (or filter was ALL), find best Overall
-                    let best_overall = valid_ops
-                        .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap());
-
-                    op_to_select = best_matching.or(best_overall).cloned();
-                }
-            }
-        }
-
-        self.selected_opportunity = op_to_select.clone();
-
-        // --- C. GATED LOGIC: AUTO-SWITCH FILTER ---
-        // DO NOT REMOVE.
-        // Ensures we never show a "NO OPP" selected pair inside a "LONG/SHORT" filter.
-        if let Some(op) = &self.selected_opportunity {
-            // If we have an op, ensure filter matches direction
-            match self.tf_filter_direction {
-                DirectionFilter::Long if op.direction == TradeDirection::Short => {
-                    self.tf_filter_direction = DirectionFilter::Short;
-                }
-                DirectionFilter::Short if op.direction == TradeDirection::Long => {
-                    self.tf_filter_direction = DirectionFilter::Long;
-                }
-                _ => {}
-            }
-        } else {
-            // NO OPP (Market View).
-            // If we are in a specific filter (Long/Short), we MUST switch to ALL.
-            // Otherwise, we end up showing a "No Setup" row in a "Long Only" list.
-            if self.tf_filter_direction != DirectionFilter::All {
-                #[cfg(debug_assertions)]
-                log::info!(
-                    "UI SELECTION: Selected {} (No Opp). Forcing Filter to ALL.",
-                    new_pair
-                );
-
-                self.tf_filter_direction = DirectionFilter::All;
-            }
-        }
-    }
-
-    pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
-        // 1. CLEAR STALE OP
-        // The old opportunity is based on old zones. It is now invalid.
-        // self.selected_opportunity = None;
-
-        if let Some(pair) = self.selected_pair.clone() {
-            // log::error!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
-
-            let price = self.get_display_price(&pair);
-            let new_config = self.app_config.price_horizon.clone();
-
-            // Update override map
-            self.price_horizon_overrides
-                .insert(pair.clone(), new_config.clone());
-
-            if let Some(engine) = &mut self.engine {
-                // Update global config context
-                engine.update_config(self.app_config.clone());
-                // Update specific override
-                engine.set_price_horizon_override(pair.clone(), new_config);
-                // Trigger Recalc
-                engine.force_recalc(
-                    &pair,
-                    price,
-                    "INVALIDATE ALL PAIRS -> PRICE HORIZON CHANGED",
-                );
-            }
         }
     }
 
@@ -1000,57 +909,84 @@ impl ZoneSniperApp {
         }
     }
 
-    /// Helper: Checks if the background thread has finished.
+/// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
     fn check_loading_completion(&mut self) -> Option<AppState> {
         // Access rx without borrowing self for long
-        // We need to use 'if let' on the field directly
         if let Some(rx) = &self.data_rx {
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
-                // 1. Resolve Startup Pair
-                // If the persisted selected_pair is valid, use it.
-                // Otherwise, fallback to the first available pair.
+                
+                // 1. Get List of ACTUAL loaded pairs
                 let available_pairs = timeseries.unique_pair_names();
+                let valid_set: std::collections::HashSet<String> = available_pairs.iter().cloned().collect();
 
-                let startup_pair = self
-                    .selected_pair
-                    .as_ref()
-                    .filter(|p| available_pairs.contains(p))
-                    .cloned()
-                    .or_else(|| available_pairs.first().cloned())
-                    .unwrap_or_default(); // Safety for empty list
+                // 2. Resolve Startup Pair
+                // Check if the saved 'selected_pair' actually exists in the loaded data.
+                let valid_startup_pair = self.selected_pair.as_ref()
+                    .filter(|p| valid_set.contains(*p))
+                    .cloned();
 
-                // 2. Initialize Engine
+                let final_pair = if let Some(p) = valid_startup_pair {
+                    p // Saved pair is valid
+                } else {
+                    // Saved pair is invalid/missing. Fallback to first available.
+                    let fallback = available_pairs.first().cloned().unwrap_or_default();
+                    #[cfg(debug_assertions)]
+                    log::warn!("STARTUP FIX: Saved pair {:?} not found in loaded data. Falling back to {}.", self.selected_pair, fallback);
+                    fallback
+                };
+
+                // 3. FORCE UPDATE STATE
+                self.selected_pair = Some(final_pair.clone());
+
+                // 4. Initialize Engine
                 let mut engine = SniperEngine::new(timeseries);
+                
+                // RESTORE LEDGER
+                engine.ledger = self.saved_ledger.clone(); 
+
+                // --- NEW: CULL ORPHANS ---
+                // Remove opportunities for pairs that were not loaded in this session.
+                #[cfg(debug_assertions)]
+                let count_before = engine.ledger.opportunities.len();
+                
+                engine.ledger.retain(|_id, op| {
+                    valid_set.contains(&op.pair_name)
+                });
+                
+                #[cfg(debug_assertions)]
+                {
+                    let count_after = engine.ledger.opportunities.len();
+                    if count_before != count_after {
+                        log::warn!("STARTUP CLEANUP: Culled {} orphan trades (Data not loaded).", count_before - count_after);
+                    }
+                }
+                // -------------------------
 
                 engine.update_config(self.app_config.clone());
                 engine.set_all_overrides(self.price_horizon_overrides.clone());
+                
+                // Trigger global calc for the VALID pair first
+                engine.trigger_global_recalc(Some(final_pair.clone()));
 
-                // Queue up the work, prioritizing our startup pair
-                engine.trigger_global_recalc(Some(startup_pair.clone()));
-
-                // Commit Engine to App State
+                // 5. WIRE UP THE STREAM
+                // We clone the sender from the engine and give it to the stream manager.
+                // Note: Engine::new() internally sets up the channel, but if we need
+                // to hook anything else up or if previous logic required this step:
+                // Actually, based on previous fixes, Engine::new() now handles the wiring internally 
+                // for Native builds. 
+                
                 self.engine = Some(engine);
 
-                // 3. EXECUTE SELECTION
-                // This runs your full selection logic:
-                // - Updates selected_pair
-                // - Auto-selects the Best Opportunity (if model exists instantly, usually waits for worker)
-                // - Ensures config syncing
-                self.handle_pair_selection(startup_pair.clone());
-
-                // Ensure list is scrolled to it
-                #[cfg(debug_assertions)]
-                log::info!(
-                    "UI: Startup complete. Requesting initial scroll to {}",
-                    startup_pair
-                );
-                self.scroll_to_pair = Some(startup_pair.clone());
-
-                // 4. Reset Navigation
-                self.nav_states
-                    .insert(startup_pair, NavigationState::default());
+                // 6. EXECUTE SMART SELECTION
+                // Force a "New Switch" by clearing selection first (even though we just set it above, 
+                // this ensures jump_to_pair treats it as a fresh navigation event).
+                self.selected_pair = None; 
+                self.jump_to_pair(final_pair.clone());
+                
+                // 7. Reset Navigation
+                self.nav_states.insert(final_pair, NavigationState::default());
 
                 return Some(AppState::Running);
             }
@@ -1061,6 +997,15 @@ impl ZoneSniperApp {
 
 impl eframe::App for ZoneSniperApp {
     fn save(&mut self, storage: &mut dyn Storage) {
+        // 1. Snapshot the Engine Ledger
+        if let Some(engine) = &self.engine {
+            // Clone the active ledger into the serializable app state
+            self.saved_ledger = engine.ledger.clone();
+        }
+
+        // 2. Snapshot the Selection ID
+        self.last_selected_opp_id = self.selected_opportunity.as_ref().map(|op| op.id.clone());
+
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 

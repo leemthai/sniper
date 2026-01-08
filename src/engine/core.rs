@@ -548,13 +548,13 @@ impl SniperEngine {
                     let total_ledger = self.ledger.opportunities.len();
 
                     // Warn level to ensure it shows in release mode
-                    log::warn!(
-                        "LEDGER MONITOR [{}]: Ops for this pair {} -> {}. Total Ledger: {}",
-                        result.pair_name,
-                        pair_count_before,
-                        pair_count_after,
-                        total_ledger
-                    );
+                    // log::warn!(
+                    //     "LEDGER MONITOR [{}]: Ops for this pair {} -> {}. Total Ledger: {}",
+                    //     result.pair_name,
+                    //     pair_count_before,
+                    //     pair_count_after,
+                    //     total_ledger
+                    // );
                     // ---------------------
 
                     // 3. Success: Update State

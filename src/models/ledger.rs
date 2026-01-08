@@ -1,10 +1,12 @@
 // src/models/ledger.rs
 
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+
 use crate::models::trading_view::TradeOpportunity;
 use crate::utils::maths_utils::calculate_percent_diff;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OpportunityLedger {
     // Map UUID -> Opportunity
     pub opportunities: HashMap<String, TradeOpportunity>,
@@ -74,4 +76,14 @@ impl OpportunityLedger {
     pub fn remove(&mut self, id: &str) {
         self.opportunities.remove(id);
     }
+
+    /// Prunes opportunities based on a predicate.
+    /// Keeps the entry if the closure returns true, removes it if false.
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&String, &mut TradeOpportunity) -> bool,
+    {
+        self.opportunities.retain(f);
+    }
+    
 }
