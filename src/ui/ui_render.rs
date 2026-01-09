@@ -696,7 +696,6 @@ impl ZoneSniperApp {
         let mut target_index = None;
 
         if let Some(target) = &self.scroll_target {
-            // log::info!("render_trade_finder_content Target is {:?}", target);
             target_index = rows.iter().position(|r| {
                 match target {
                     // Case A: Hunting a specific Trade (UUID)
@@ -708,12 +707,7 @@ impl ZoneSniperApp {
                     }
                     // Case B: Hunting a Pair (Market View)
                     NavigationTarget::Pair(name) => {
-                        // log::info!(
-                        //     "render_trade_finder_content() case B hunting pair name: {} ",
-                        //     name
-                        // );
                         // Only match if row is the pair AND has no op (Market View row)
-                        // OR if we just want the first instance of the pair?
                         // Let's stick to "First instance of pair" for fallback.
                         r.pair_name == *name
                     }
@@ -886,18 +880,18 @@ impl ZoneSniperApp {
         // // 4. INTERACTION
         if response.clicked() {
             if let Some(live_op) = &row.opportunity {
-                log::info!(
-                    "render_tf_table_row(): {}: selecting specific opp id {} and calling select_specific_opportunity()",
-                    row.pair_name,
-                    live_op.opportunity.id
-                );
+                // log::info!(
+                //     "render_tf_table_row(): {}: selecting specific opp id {} and calling select_specific_opportunity()",
+                //     row.pair_name,
+                //     live_op.opportunity.id
+                // );
                 self.select_specific_opportunity(live_op.opportunity.clone(), ScrollBehavior::None);
             } else {
                 // Fallback: Market View (No Opportunity)
-                log::info!(
-                    "render_tf_table_row(): {}: falling back to market view because no p found for this item",
-                    row.pair_name
-                );
+                // log::info!(
+                //     "render_tf_table_row(): {}: falling back to market view because no p found for this item",
+                //     row.pair_name
+                // );
                 self.handle_pair_selection(row.pair_name.clone());
                 self.selected_opportunity = None;
             }

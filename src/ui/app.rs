@@ -23,7 +23,6 @@ use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::engine::SniperEngine;
 
-use crate::models::pair_context::PairContext;
 use crate::models::ledger::OpportunityLedger;
 use crate::models::trading_view::{SortColumn, SortDirection, TradeOpportunity, NavigationTarget};
 use crate::models::{ProgressEvent, SyncStatus};
@@ -183,9 +182,9 @@ pub struct ZoneSniperApp {
     pub show_candle_range: bool,
 
     // TradeFinder State
-    pub tf_filter_pair_only: bool, // True = Current Pair, False = All
-    pub tf_sort_col: SortColumn,    // TF Sorting State
-    pub tf_sort_dir: SortDirection, // TF Sort Direction
+    pub tf_filter_pair_only: bool, // True = Current Base Pairs, False = All
+    pub tf_sort_col: SortColumn,
+    pub tf_sort_dir: SortDirection,
 
     // PERSISTENCE: Holds trades between sessions
     pub saved_ledger: OpportunityLedger,
@@ -319,7 +318,7 @@ impl ZoneSniperApp {
         // self.selected_opportunity = None;
 
         if let Some(pair) = self.selected_pair.clone() {
-            // log::error!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
+            // log::info!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
 
             let price = self.get_display_price(&pair);
             let new_config = self.app_config.price_horizon.clone();
@@ -531,14 +530,6 @@ impl ZoneSniperApp {
     }
 
     pub fn mark_all_journeys_stale(&mut self, _reason: &str) {}
-
-    pub fn get_signals(&self) -> Vec<&PairContext> {
-        if let Some(engine) = &self.engine {
-            engine.get_signals()
-        } else {
-            Vec::new()
-        }
-    }
 
     pub fn get_display_price(&self, pair: &str) -> Option<f64> {
         if let Some(sim_price) = self.simulated_prices.get(pair) {
@@ -880,7 +871,7 @@ impl ZoneSniperApp {
 
         // LOGGING results. Adjust threshold to catch the slowdown
         if engine_time + left_panel_time + plot_time > 500_000 {
-            log::error!(
+            log::warn!(
                 "🐢 SLOW FRAME: Engine: {}us | LeftPanel(TF): {}us | Plot: {}us",
                 engine_time,
                 left_panel_time,

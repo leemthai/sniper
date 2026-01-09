@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 
 use crate::utils::time_utils::AppInstant;
 
-use crate::analysis::MultiPairMonitor;
 use crate::analysis::adaptive::AdaptiveParameters;
 use crate::analysis::market_state::MarketState;
 
@@ -15,7 +14,6 @@ use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::ledger::OpportunityLedger;
-use crate::models::pair_context::PairContext;
 use crate::models::timeseries::LiveCandle;
 use crate::models::trading_view::{
     LiveOpportunity, TradeFinderRow, TradeOpportunity, TradingModel,
@@ -41,9 +39,6 @@ pub struct SniperEngine {
 
     /// Live Data Feed
     pub price_stream: Arc<PriceStreamManager>,
-
-    /// Owned monitor
-    pub multi_pair_monitor: MultiPairMonitor,
 
     // Common Channels
     job_tx: Sender<JobRequest>,     // UI writes to this
@@ -110,7 +105,6 @@ impl SniperEngine {
             pairs,
             timeseries: timeseries_arc, // Pass the Arc<RwLock> we created
             price_stream,
-            multi_pair_monitor: MultiPairMonitor::new(),
             job_tx,
             result_rx,
             // WASM: Store the handles so they don't get dropped
@@ -391,7 +385,7 @@ impl SniperEngine {
         // Log if total is significant (> 10ms)
         let total = d1 + d2 + d3 + d4;
         if total > 100_000 {
-            log::error!(
+            log::warn!(
                 "🐢 ENGINE SLOW: Live: {}us | Results: {}us | Triggers: {}us | Queue: {}us",
                 d1,
                 d2,
@@ -408,10 +402,6 @@ impl SniperEngine {
 
     pub fn get_price(&self, pair: &str) -> Option<f64> {
         self.price_stream.get_price(pair)
-    }
-
-    pub fn get_signals(&self) -> Vec<&PairContext> {
-        self.multi_pair_monitor.get_signals()
     }
 
     pub fn set_stream_suspended(&self, suspended: bool) {
@@ -525,8 +515,9 @@ impl SniperEngine {
 
             match result.result {
                 Ok(model) => {
+                    #[cfg(debug_assertions)]
                     // --- DIAGNOSTIC START ---
-                    let _pair_count_before = self
+                    let pair_count_before = self
                         .ledger
                         .opportunities
                         .values()
@@ -540,23 +531,24 @@ impl SniperEngine {
                     }
 
                     // --- DIAGNOSTIC END ---
-                    let _pair_count_after = self
+                    #[cfg(debug_assertions)]
+                    let pair_count_after = self
                         .ledger
                         .opportunities
                         .values()
                         .filter(|o| o.pair_name == result.pair_name)
                         .count();
-                    let _total_ledger = self.ledger.opportunities.len();
+                    #[cfg(debug_assertions)]
+                    let total_ledger = self.ledger.opportunities.len();
 
-                    // Warn level to ensure it shows in release mode
-                    // log::warn!(
-                    //     "LEDGER MONITOR [{}]: Ops for this pair {} -> {}. Total Ledger: {}",
-                    //     result.pair_name,
-                    //     pair_count_before,
-                    //     pair_count_after,
-                    //     total_ledger
-                    // );
-                    // ---------------------
+                    #[cfg(debug_assertions)]
+                    log::info!(
+                        "LEDGER MONITOR [{}]: Ops for this pair {} -> {}. Total Ledger: {}",
+                        result.pair_name,
+                        pair_count_before,
+                        pair_count_after,
+                        total_ledger
+                    );
 
                     // 3. Success: Update State
                     state.model = Some(model.clone());
@@ -568,8 +560,8 @@ impl SniperEngine {
                     state.last_error = None;
 
                     // 4. Monitor Logic: Feed the result to the signal monitor
-                    let ctx = PairContext::new((*model).clone(), state.last_update_price);
-                    self.multi_pair_monitor.add_pair(ctx);
+                    // let ctx = PairContext::new((*model).clone(), state.last_update_price);
+                    // self.multi_pair_monitor.add_pair(ctx);
                 }
                 Err(e) => {
                     // 5. Failure: Clear Model, Set Error

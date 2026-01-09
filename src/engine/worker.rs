@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
-// Only import thread on non-WASM target
+// Only import thread crate on non-WASM target
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
 
@@ -10,6 +10,7 @@ use uuid::Uuid;
 use super::messages::{JobMode, JobRequest, JobResult};
 
 use crate::analysis::adaptive::AdaptiveParameters;
+use crate::analysis::horizon_profiler;
 use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
@@ -18,7 +19,7 @@ use crate::config::AnalysisConfig;
 
 use crate::data::timeseries::TimeSeriesCollection;
 
-// use crate::domain::price_horizon;
+use crate::domain::price_horizon;
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::CVACore;
@@ -196,7 +197,6 @@ fn run_stop_loss_tournament(
 
     // Logging setup
     #[cfg(debug_assertions)]
-    // let debug = _zone_idx < 3;
     let debug = false; // Turn debugging off for now
     #[cfg(debug_assertions)]
     if debug {
@@ -316,7 +316,6 @@ fn run_stop_loss_tournament(
 }
 
 pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
-    
     // 1. ACQUIRE DATA (Clone & Release)
     let ts_local = match fetch_local_timeseries(&req) {
         Ok(ts) => ts,
@@ -347,8 +346,11 @@ pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
 }
 
 fn fetch_local_timeseries(req: &JobRequest) -> Result<TimeSeriesCollection, String> {
-    let ts_guard = req.timeseries.read().map_err(|_| "Failed to acquire RwLock".to_string())?;
-    
+    let ts_guard = req
+        .timeseries
+        .read()
+        .map_err(|_| "Failed to acquire RwLock".to_string())?;
+
     let target_pair = &req.pair_name;
     let interval = req.config.interval_width_ms;
 
@@ -415,7 +417,11 @@ fn perform_auto_tune(req: &mut JobRequest, ts_collection: &TimeSeriesCollection)
     req.mode = JobMode::Standard;
 }
 
-fn perform_standard_analysis(req: &JobRequest, ts_collection: &TimeSeriesCollection, tx: Sender<JobResult>) {
+fn perform_standard_analysis(
+    req: &JobRequest,
+    ts_collection: &TimeSeriesCollection,
+    tx: Sender<JobResult>,
+) {
     let ph_pct = req.config.price_horizon.threshold_pct * 100.0;
     let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct);
 
@@ -446,7 +452,9 @@ fn perform_standard_analysis(req: &JobRequest, ts_collection: &TimeSeriesCollect
 
         // 5. Result Construction
         let response = match result_cva {
-            Ok(cva) => build_success_result(req, ts_collection, cva, profile, price, count, elapsed),
+            Ok(cva) => {
+                build_success_result(req, ts_collection, cva, profile, price, count, elapsed)
+            }
             Err(e) => JobResult {
                 pair_name: req.pair_name.clone(),
                 duration_ms: elapsed,
@@ -524,11 +532,8 @@ fn calculate_exact_candle_count(
     );
 
     if let Ok(ohlcv) = ohlcv_result {
-        let (ranges, _) = crate::domain::price_horizon::auto_select_ranges(
-            ohlcv,
-            price,
-            &req.config.price_horizon,
-        );
+        let (ranges, _) =
+            price_horizon::auto_select_ranges(ohlcv, price, &req.config.price_horizon);
         ranges.iter().map(|(s, e)| e - s).sum()
     } else {
         0
@@ -550,7 +555,7 @@ fn get_or_generate_profile(
     }
 
     // Generate new
-    crate::analysis::horizon_profiler::generate_profile(
+    horizon_profiler::generate_profile(
         &req.pair_name,
         ts_collection,
         price,
