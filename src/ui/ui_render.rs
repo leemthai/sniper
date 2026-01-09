@@ -15,8 +15,7 @@ use crate::config::plot::PLOT_CONFIG;
 
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::ScoreType;
-use crate::models::trading_view::{
-    DirectionFilter, SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
+use crate::models::trading_view::{SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
 };
 
 use crate::ui::app::CandleResolution;
@@ -588,27 +587,6 @@ impl ZoneSniperApp {
                 self.tf_filter_pair_only = false;
 
                 if let Some(pair) = &self.selected_pair {
-                    // --- 1. NEW: CONTEXT PRESERVATION ---
-                    if let Some(eng) = &self.engine {
-                        if let Some(model) = eng.get_model(pair) {
-                            let profile = &crate::config::ANALYSIS.journey.profile;
-
-                            // Check if this pair has ANY valid trade for the current filter
-                            let has_valid_match = model.opportunities.iter().any(|op| {
-                                let dir_match = match self.tf_filter_direction {
-                                    DirectionFilter::Long => op.direction == TradeDirection::Long,
-                                    DirectionFilter::Short => op.direction == TradeDirection::Short,
-                                    DirectionFilter::All => true,
-                                };
-                                dir_match && op.is_worthwhile(profile)
-                            });
-
-                            if !has_valid_match {
-                                self.tf_filter_direction = DirectionFilter::All;
-                            }
-                        }
-                    }
-
                     // --- 2. EXISTING: SCROLL LOGIC ---
                     #[cfg(debug_assertions)]
                     log::info!("UI: Scope changed to ALL. Requesting scroll to {}", pair);
@@ -639,71 +617,6 @@ impl ZoneSniperApp {
             ui.separator();
             ui.add_space(10.0);
 
-            let current_filter = self.tf_filter_direction;
-            let mut new_filter = current_filter;
-
-            if ui
-                .selectable_label(
-                    current_filter == DirectionFilter::All,
-                    &UI_TEXT.tf_btn_all_trades,
-                )
-                .clicked()
-            {
-                new_filter = DirectionFilter::All;
-            }
-            if ui
-                .selectable_label(current_filter == DirectionFilter::Long, &UI_TEXT.label_long)
-                .clicked()
-            {
-                new_filter = DirectionFilter::Long;
-            }
-            if ui
-                .selectable_label(
-                    current_filter == DirectionFilter::Short,
-                    &UI_TEXT.label_short,
-                )
-                .clicked()
-            {
-                new_filter = DirectionFilter::Short;
-            }
-
-           if new_filter != current_filter {
-                // 1. Apply New Filter
-                self.tf_filter_direction = new_filter;
-
-                // 2. Check if current selection is still valid in the new view
-                // We re-run the filter logic immediately to see the result
-                let rows = self.get_filtered_rows();
-                
-                let current_pair_survived = self.selected_pair.as_ref()
-                    .map_or(false, |p| rows.iter().any(|r| r.pair_name == *p));
-
-                if current_pair_survived {
-                    // Case A: Pair is still valid (e.g. BTC has Longs). Just scroll to it.
-                    if let Some(pair) = &self.selected_pair {
-                        self.scroll_to_pair = Some(pair.clone());
-                    }
-                } else {
-                    // Case B: Pair is gone (e.g. BTC only has Shorts). 
-                    // Snap to the new "Best" (Top Row) of the filtered list.
-                    if let Some(best_row) = rows.first() {
-                        #[cfg(debug_assertions)]
-                        log::error!("UI FILTER SNAP: Current pair hidden by {:?}. Jumping to {}", new_filter, best_row.pair_name);
-                        
-                        self.handle_pair_selection(best_row.pair_name.clone());
-                        
-                        // Explicitly select the op so we don't land in Market View
-                        if let Some(live_op) = &best_row.opportunity {
-                            self.selected_opportunity = Some(live_op.opportunity.clone());
-                        }
-                        
-                        self.scroll_to_pair = Some(best_row.pair_name.clone());
-                    } else {
-                        // Case C: List is empty (No Longs at all). Keep current pair as Market View.
-                        self.selected_opportunity = None;
-                    }
-                }
-           }
         });
         ui.separator();
     }
@@ -717,133 +630,31 @@ impl ZoneSniperApp {
         ui.add_space(CELL_PADDING_Y);
     }
 
-    fn render_empty_state(&mut self, ui: &mut Ui) {
+fn render_empty_state(&mut self, ui: &mut Ui) {
         ui.centered_and_justified(|ui| {
             ui.vertical_centered(|ui| {
-                ui.label(
-                    RichText::new(&UI_TEXT.icon_search)
-                        .size(32.0)
-                        .color(PLOT_CONFIG.color_text_subdued),
-                );
+                ui.label(RichText::new(&UI_TEXT.icon_search).size(32.0).color(PLOT_CONFIG.color_text_subdued));
                 ui.add_space(10.0);
 
                 if self.tf_filter_pair_only {
-                    // --- CASE: PAIR SCOPE (e.g. "SOL ONLY") ---
-                    if let Some(pair) = &self.selected_pair {
-                        let dir_msg = match self.tf_filter_direction {
-                            DirectionFilter::Long => "LONG ",
-                            DirectionFilter::Short => "SHORT ",
-                            DirectionFilter::All => "",
-                        };
-
-                        // Use base asset name if available for better context
-                        let base = crate::domain::pair_interval::PairInterval::get_base(pair)
-                            .unwrap_or(pair);
-                        ui.heading(format!("No {}trades for {} pairs", dir_msg, base));
+                     // Scope Case
+                     if let Some(pair) = &self.selected_pair {
+                        ui.heading(format!("No worthwhile trades for {}", pair));
                         ui.add_space(10.0);
-
-                        // A. Check what DOES exist in this scope using SSOT
-                        let scoped_rows = self.get_scoped_rows();
-
-                        let has_longs = scoped_rows.iter().any(|r| {
-                            r.opportunity.as_ref().map_or(false, |op| {
-                                op.opportunity.direction == TradeDirection::Long
-                            })
-                        });
-                        let has_shorts = scoped_rows.iter().any(|r| {
-                            r.opportunity.as_ref().map_or(false, |op| {
-                                op.opportunity.direction == TradeDirection::Short
-                            })
-                        });
-
-                        // B. Suggest Switching Direction
-                        if self.tf_filter_direction == DirectionFilter::Short && has_longs {
-                            if ui
-                                .button(format!("Found LONG trades - Switch view?"))
-                                .clicked()
-                            {
-                                self.tf_filter_direction = DirectionFilter::Long;
-                                self.scroll_to_pair = Some(pair.clone());
-                            }
-                            ui.add_space(5.0);
-                        }
-
-                        if self.tf_filter_direction == DirectionFilter::Long && has_shorts {
-                            if ui
-                                .button(format!("Found SHORT trades - Switch view?"))
-                                .clicked()
-                            {
-                                self.tf_filter_direction = DirectionFilter::Short;
-                                self.scroll_to_pair = Some(pair.clone());
-                            }
-                            ui.add_space(5.0);
-                        }
-
-                        // ... (Rest of function: Suggest All Directions / View All Pairs) ...
-                        // C. Suggest "All Directions"
-                        if self.tf_filter_direction != DirectionFilter::All {
-                            if ui
-                                .button(format!("Show {}", UI_TEXT.tf_btn_all_trades))
-                                .clicked()
-                            {
-                                self.tf_filter_direction = DirectionFilter::All;
-                                self.scroll_to_pair = Some(pair.clone());
-                            }
-                            ui.add_space(10.0);
-                        } else {
-                            ui.add_space(5.0);
-                        }
-
-                        // D. Fallback: "View All Pairs"
-                        if ui
-                            .button(format!("View {}", UI_TEXT.tf_scope_all))
-                            .clicked()
-                        {
+                        
+                        if ui.button(format!("View {}", UI_TEXT.tf_scope_all)).clicked() {
                             self.tf_filter_pair_only = false;
                             self.scroll_to_pair = Some(pair.clone());
                         }
-                    } else {
+                     } else {
                         ui.heading("No pair selected");
-                    }
+                     }
                 } else {
-                    // ... (Global Scope Case - Unchanged) ...
-                    match self.tf_filter_direction {
-                        DirectionFilter::Long => {
-                            ui.heading("No LONG trades found in market");
-                            ui.label("The market might be bearish.");
-                            ui.add_space(5.0);
-                            if ui
-                                .button(format!("Check {}", UI_TEXT.label_short))
-                                .clicked()
-                            {
-                                self.tf_filter_direction = DirectionFilter::Short;
-                            }
-                        }
-                        DirectionFilter::Short => {
-                            ui.heading("No SHORT trades found in market");
-                            ui.label("The market might be bullish.");
-                            ui.add_space(5.0);
-                            if ui.button(format!("Check {}", UI_TEXT.label_long)).clicked() {
-                                self.tf_filter_direction = DirectionFilter::Long;
-                            }
-                        }
-                        DirectionFilter::All => {
-                            ui.heading("No Opportunities Found");
-                            ui.label(
-                                RichText::new("Market is quiet or settings are too strict.")
-                                    .italics(),
-                            );
-                            ui.add_space(5.0);
-                            ui.label("Try adjusting Price Horizon or lowering ROI threshold.");
-                        }
-                    }
-
-                    if self.tf_filter_direction != DirectionFilter::All {
-                        ui.add_space(10.0);
-                        if ui.button("Clear Direction Filter").clicked() {
-                            self.tf_filter_direction = DirectionFilter::All;
-                        }
-                    }
+                    // Global Case
+                    ui.heading("No Opportunities Found");
+                    ui.label(RichText::new("Market is quiet or settings are too strict.").italics());
+                    ui.add_space(5.0);
+                    ui.label("Try adjusting Price Horizon or lowering ROI threshold.");
                 }
             });
         });
@@ -1329,74 +1140,15 @@ impl ZoneSniperApp {
 
     fn get_filtered_rows(&self) -> Vec<TradeFinderRow> {
         // 1. Get Scoped Rows (Data + MWT + Scope)
-        // This handles the "Base Asset" logic and "Demotion" logic.
         let mut rows = self.get_scoped_rows();
 
-        #[cfg(debug_assertions)]
-        let count_scoped = rows.len();
+        // 2. REMOVED: Direction Filter Logic
+        // We no longer filter by LONG/SHORT. 
+        // The list simply shows whatever opportunities exist within the current Scope.
 
-        // 2. Apply Direction Filter (STRICT)
-        match self.tf_filter_direction {
-            DirectionFilter::All => {
-                // Show EVERYTHING (including No Opps)
-            }
-            _ => {
-                // STRICT MODE:
-                // Remove everything that doesn't match the specific direction.
-                // NO EXEMPTIONS. If selected pair is NO OPP, it disappears here.
-                // (This triggers 'render_empty_state', which handles the UI feedback)
-                rows.retain(|r| {
-                    let keep  = if let Some(op) = &r.opportunity {
-                        match self.tf_filter_direction {
-                            DirectionFilter::Long => {
-                                op.opportunity.direction == TradeDirection::Long
-                            }
-                            DirectionFilter::Short => {
-                                op.opportunity.direction == TradeDirection::Short
-                            }
-                            _ => true,
-                        }
-                    } else {
-                        // Hide "No Setup" rows completely when filtering for Long/Short
-                        false
-                    };
-
-                    // --- DEBUG LOGGING ---
-                    // #[cfg(debug_assertions)]
-                    // if self.selected_pair.as_deref() == Some(&r.pair_name) {
-                    //     let op_dir = r.opportunity.as_ref().map(|o| o.opportunity.direction);
-                    //     log::info!(
-                    //         "FILTER AUDIT [{}]: Filter={:?} | Has Op? {} ({:?}) | Result: {}",
-                    //         r.pair_name,
-                    //         self.tf_filter_direction,
-                    //         r.opportunity.is_some(),
-                    //         op_dir,
-                    //         if keep { "KEEP" } else { "DROP" }
-                    //     );
-                    // }
-                    // ---------------------
-                    keep
-                });
-            }
-        }
-
-        // Remove "No Opportunity" rows (Market State views)
-        // The Market Scanner is for finding trades. Context is for the Active Target panel.
+        // 3. Remove "No Opportunity" rows
+        // The Market Scanner only shows valid Opportunities.
         rows.retain(|r| r.opportunity.is_some());
-
-        #[cfg(debug_assertions)]
-        {
-            let count_final = rows.len();
-            if count_scoped != count_final {
-                // log::error!(
-                //     "TF FILTER: Dropped {} rows due to Direction Filter {:?}. ({} -> {})",
-                //     count_scoped - count_final,
-                //     self.tf_filter_direction,
-                //     count_scoped,
-                //     count_final
-                // );
-            }
-        }
 
         rows
     }

@@ -25,7 +25,7 @@ use crate::engine::SniperEngine;
 
 use crate::models::pair_context::PairContext;
 use crate::models::ledger::OpportunityLedger;
-use crate::models::trading_view::{DirectionFilter, SortColumn, SortDirection, TradeOpportunity};
+use crate::models::trading_view::{SortColumn, SortDirection, TradeOpportunity};
 use crate::models::{ProgressEvent, SyncStatus};
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
@@ -184,7 +184,6 @@ pub struct ZoneSniperApp {
 
     // TradeFinder State
     pub tf_filter_pair_only: bool, // True = Current Pair, False = All
-    pub tf_filter_direction: DirectionFilter,
     pub tf_sort_col: SortColumn,    // TF Sorting State
     pub tf_sort_dir: SortDirection, // TF Sort Direction
 
@@ -251,7 +250,6 @@ impl Default for ZoneSniperApp {
             ticker_state: TickerState::default(),
             last_frame_time: None,
             show_opportunity_details: false,
-            tf_filter_direction: DirectionFilter::All,
             tf_filter_pair_only: false,
             selected_opportunity: None,
             show_candle_range: false,

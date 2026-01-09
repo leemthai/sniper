@@ -37,13 +37,6 @@ pub enum TradeDirection {
     Short,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DirectionFilter {
-    All,
-    Long,
-    Short,
-}
-
 impl fmt::Display for TradeDirection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

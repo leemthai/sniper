@@ -354,7 +354,7 @@ impl SniperEngine {
     }
 
     /// THE GAME LOOP.
-    pub fn update(&mut self, protected_id: Option<&str>) {
+    pub fn update(&mut self, _protected_id: Option<&str>) {
         // 0. Ingest Live Data (The Heartbeat
         let t1 = AppInstant::now();
         self.process_live_data();
@@ -525,7 +525,7 @@ impl SniperEngine {
             match result.result {
                 Ok(model) => {
                     // --- DIAGNOSTIC START ---
-                    let pair_count_before = self
+                    let _pair_count_before = self
                         .ledger
                         .opportunities
                         .values()
@@ -539,13 +539,13 @@ impl SniperEngine {
                     }
 
                     // --- DIAGNOSTIC END ---
-                    let pair_count_after = self
+                    let _pair_count_after = self
                         .ledger
                         .opportunities
                         .values()
                         .filter(|o| o.pair_name == result.pair_name)
                         .count();
-                    let total_ledger = self.ledger.opportunities.len();
+                    let _total_ledger = self.ledger.opportunities.len();
 
                     // Warn level to ensure it shows in release mode
                     // log::warn!(
