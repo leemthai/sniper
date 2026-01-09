@@ -62,7 +62,7 @@ impl ZoneSniperApp {
             let cmp = match self.tf_sort_col {
                 SortColumn::PairName => a.pair_name.cmp(&b.pair_name),
 
-                SortColumn::QuoteVolume24h => a.quote_volume_24h.total_cmp(&b.quote_volume_24h),
+                SortColumn::QuoteVolume24h => a.quote_volume_24h.total_cmp(&b.quote_volume_24h).then_with(|| a.pair_name.cmp(&b.pair_name)),
 
                 SortColumn::Volatility => {
                     let va = a
@@ -75,7 +75,7 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|m| m.volatility_pct)
                         .unwrap_or(0.0);
-                    va.total_cmp(&vb)
+                    va.total_cmp(&vb).then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::Momentum => {
                     let ma = a
@@ -88,7 +88,7 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|m| m.momentum_pct)
                         .unwrap_or(0.0);
-                    ma.total_cmp(&mb)
+                    ma.total_cmp(&mb).then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
 
                 SortColumn::LiveRoi => {
@@ -102,7 +102,7 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.live_roi)
                         .unwrap_or(f64::NEG_INFINITY);
-                    val_a.total_cmp(&val_b)
+                    val_a.total_cmp(&val_b).then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::AnnualizedRoi => {
                     let val_a = a
@@ -115,7 +115,7 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.annualized_roi)
                         .unwrap_or(f64::NEG_INFINITY);
-                    val_a.total_cmp(&val_b)
+                    val_a.total_cmp(&val_b).then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::AvgDuration => {
                     let val_a = a
@@ -128,7 +128,7 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.opportunity.avg_duration_ms)
                         .unwrap_or(i64::MAX);
-                    val_b.cmp(&val_a)
+                    val_b.cmp(&val_a).then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::VariantCount => {
                     let va = a
@@ -141,14 +141,8 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.opportunity.variant_count())
                         .unwrap_or(0);
-                    let c = va.cmp(&vb);
-                    if c == std::cmp::Ordering::Equal {
-                        a.pair_name.cmp(&b.pair_name)
-                    } else {
-                            c
-                        }
-                },
-                _ => std::cmp::Ordering::Equal,
+                    va.cmp(&vb).then_with(|| a.pair_name.cmp(&b.pair_name))
+                }
             };
 
             match self.tf_sort_dir {
@@ -574,13 +568,14 @@ impl ZoneSniperApp {
     }
 
     /// Helper: Renders the Header, Scope, and Direction controls
-    fn render_trade_finder_filters(&mut self, ui: &mut Ui, count: usize) {
+    fn render_trade_finder_filters(&mut self, ui: &mut Ui, count: usize) -> bool {
+        let mut filter_changed = false;
         ui.add_space(10.0);
 
         // --- 2. SCOPE TOGGLE ---
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new(format!("{} {}", count, "opportunites"))
+                RichText::new(format!("{} {}", count, "items"))
                     .strong()
                     .color(PLOT_CONFIG.color_text_subdued),
             );
@@ -593,6 +588,7 @@ impl ZoneSniperApp {
                 .clicked()
             {
                 self.tf_filter_pair_only = false;
+                filter_changed = true;
                 self.update_scroll_to_selection();
             }
 
@@ -609,11 +605,14 @@ impl ZoneSniperApp {
                 .clicked()
             {
                 self.tf_filter_pair_only = true;
+                filter_changed = true;
                 self.update_scroll_to_selection();
             }
             ui.add_space(10.0);
         });
         ui.separator();
+
+        filter_changed
     }
 
     /// Helper for Empty Cells (SSOT)
@@ -667,7 +666,7 @@ impl ZoneSniperApp {
     fn render_trade_finder_content(&mut self, ui: &mut Ui) {
         let mut rows = self.get_filtered_rows();
 
-        self.render_trade_finder_filters(ui, rows.len());
+        let filter_changed = self.render_trade_finder_filters(ui, rows.len());
 
         // Simple Validity Check (The Anti-Healer)
         // If the specific selected trade ID is no longer in the list (filtered out or expired),
@@ -680,30 +679,6 @@ impl ZoneSniperApp {
             });
 
             if !exists {
-                // LOGGING: Why are we deselecting?
-                #[cfg(debug_assertions)]
-                {
-                    log::error!(
-                        "VALIDITY CHECK: Selected Op ID {} for {} is NOT in the filtered list.",
-                        sel.id,
-                        sel.pair_name
-                    );
-
-                    // Optional: Check if the pair itself is still there
-                    let pair_exists = rows.iter().any(|r| r.pair_name == sel.pair_name);
-                    if pair_exists {
-                        log::error!(
-                            "   -> Pair {} IS in the list. Trade likely filtered by MWT/Direction.",
-                            sel.pair_name
-                        );
-                    } else {
-                        log::error!(
-                            "   -> Pair {} is ALSO missing from list. Filtered by Scope?",
-                            sel.pair_name
-                        );
-                    }
-                }
-
                 self.selected_opportunity = None;
             }
         }
@@ -721,22 +696,22 @@ impl ZoneSniperApp {
         let mut target_index = None;
 
         if let Some(target) = &self.scroll_target {
-            log::info!("render_trade_finder_content Target is {:?}", target);
+            // log::info!("render_trade_finder_content Target is {:?}", target);
             target_index = rows.iter().position(|r| {
                 match target {
                     // Case A: Hunting a specific Trade (UUID)
                     NavigationTarget::Opportunity(id) => {
-                        log::info!("render_trade_finder_content() case A hunting id: {} ", id);
+                        // log::info!("render_trade_finder_content() case A hunting id: {} ", id);
                         r.opportunity
                             .as_ref()
                             .map_or(false, |op| op.opportunity.id == *id)
                     }
                     // Case B: Hunting a Pair (Market View)
                     NavigationTarget::Pair(name) => {
-                        log::info!(
-                            "render_trade_finder_content() case B hunting pair name: {} ",
-                            name
-                        );
+                        // log::info!(
+                        //     "render_trade_finder_content() case B hunting pair name: {} ",
+                        //     name
+                        // );
                         // Only match if row is the pair AND has no op (Market View row)
                         // OR if we just want the first instance of the pair?
                         // Let's stick to "First instance of pair" for fallback.
@@ -744,17 +719,11 @@ impl ZoneSniperApp {
                     }
                 }
             });
-
-            // Logging
-            #[cfg(debug_assertions)]
-            if let Some(idx) = target_index {
-                log::info!("SCROLL: Found {:?} at Index {}", target, idx);
-            } else {
-                log::warn!("SCROLL: Failed to find {:?}", target);
-            }
         }
 
         let available_height = ui.available_height();
+
+        let mut sort_changed = false;
 
         ui.scope(|ui| {
             let visuals = ui.visuals_mut();
@@ -786,7 +755,7 @@ impl ZoneSniperApp {
 
             builder
                 .header(48.0, |mut header| {
-                    self.render_tf_table_header(&mut header);
+                    self.render_tf_table_header(&mut header, &mut sort_changed);
                 })
                 .body(|mut body| {
                     for (i, row) in rows.iter().enumerate() {
@@ -796,14 +765,19 @@ impl ZoneSniperApp {
                     }
                 });
 
-            // FIX: Clear scroll_target instead of scroll_to_pair
-            if self.scroll_target.is_some() {
-                self.scroll_target = None;
+            // 6. Sticky Scroll Cleanup
+            // If Sort OR Filter changed, we DO NOT clear the request.
+            // We wait for the NEXT frame where the rows are regenerated/resorted.
+            if !sort_changed && !filter_changed {
+                if target_index.is_some() {
+                    self.scroll_target = None;
+                }
             }
         });
     }
 
-    fn render_tf_table_header(&mut self, header: &mut TableRow) {
+    fn render_tf_table_header(&mut self, header: &mut TableRow, sort_changed: &mut bool) {
+        // Helper to render stacked headers
         let mut header_stack =
             |ui: &mut Ui,
              col_top: SortColumn,
@@ -811,10 +785,14 @@ impl ZoneSniperApp {
              col_bot: Option<(SortColumn, &str)>| {
                 ui.vertical(|ui| {
                     // Top Item
-                    self.render_stable_sort_label(ui, col_top, txt_top);
+                    if self.render_stable_sort_label(ui, col_top, txt_top) {
+                        *sort_changed = true;
+                    }
                     // Bottom Item
                     if let Some((c, t)) = col_bot {
-                        self.render_stable_sort_label(ui, c, t);
+                        if self.render_stable_sort_label(ui, c, t) {
+                            *sort_changed = true;
+                        }
                     }
                 });
             };
@@ -1210,7 +1188,8 @@ impl ZoneSniperApp {
     }
 
     /// Renders a single sortable label using the Interactive Button style
-    fn render_stable_sort_label(&mut self, ui: &mut Ui, col: SortColumn, text: &str) {
+    fn render_stable_sort_label(&mut self, ui: &mut Ui, col: SortColumn, text: &str) -> bool {
+        let mut clicked = false;
         let is_active = self.tf_sort_col == col;
         let color = if is_active {
             PLOT_CONFIG.color_text_primary
@@ -1234,6 +1213,7 @@ impl ZoneSniperApp {
             .interactive_label(&label_text, is_active, color, FontId::proportional(14.0))
             .clicked()
         {
+            clicked = true;
             if is_active {
                 self.tf_sort_dir = self.tf_sort_dir.toggle();
             } else {
@@ -1246,6 +1226,7 @@ impl ZoneSniperApp {
             }
             self.update_scroll_to_selection();
         }
+        clicked
     }
 
     fn render_active_target_panel(&mut self, ui: &mut Ui) {
