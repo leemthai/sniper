@@ -141,9 +141,13 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.opportunity.variant_count())
                         .unwrap_or(0);
-                    va.cmp(&vb)
-                }
-
+                    let c = va.cmp(&vb);
+                    if c == std::cmp::Ordering::Equal {
+                        a.pair_name.cmp(&b.pair_name)
+                    } else {
+                            c
+                        }
+                },
                 _ => std::cmp::Ordering::Equal,
             };
 
@@ -589,14 +593,10 @@ impl ZoneSniperApp {
                 .clicked()
             {
                 self.tf_filter_pair_only = false;
-
-                if let Some(pair) = &self.selected_pair {
-                    // FIX: Use NavigationTarget::Pair
-                    self.scroll_target = Some(NavigationTarget::Pair(pair.clone()));
-                }
+                self.update_scroll_to_selection();
             }
 
-            // "[BASET ASSET] ONLY"
+            // "[BASE ASSET] ONLY"
             let base_asset = self
                 .selected_pair
                 .as_ref()
@@ -609,10 +609,7 @@ impl ZoneSniperApp {
                 .clicked()
             {
                 self.tf_filter_pair_only = true;
-                // Auto-scroll on scope change to ensure selected pair is visible
-                if let Some(p) = &self.selected_pair {
-                    self.scroll_target = Some(NavigationTarget::Pair(p.clone()));
-                }
+                self.update_scroll_to_selection();
             }
             ui.add_space(10.0);
         });
@@ -724,15 +721,22 @@ impl ZoneSniperApp {
         let mut target_index = None;
 
         if let Some(target) = &self.scroll_target {
+            log::info!("render_trade_finder_content Target is {:?}", target);
             target_index = rows.iter().position(|r| {
                 match target {
                     // Case A: Hunting a specific Trade (UUID)
-                    NavigationTarget::Opportunity(id) => r
-                        .opportunity
-                        .as_ref()
-                        .map_or(false, |op| op.opportunity.id == *id),
+                    NavigationTarget::Opportunity(id) => {
+                        log::info!("render_trade_finder_content() case A hunting id: {} ", id);
+                        r.opportunity
+                            .as_ref()
+                            .map_or(false, |op| op.opportunity.id == *id)
+                    }
                     // Case B: Hunting a Pair (Market View)
                     NavigationTarget::Pair(name) => {
+                        log::info!(
+                            "render_trade_finder_content() case B hunting pair name: {} ",
+                            name
+                        );
                         // Only match if row is the pair AND has no op (Market View row)
                         // OR if we just want the first instance of the pair?
                         // Let's stick to "First instance of pair" for fallback.
@@ -903,19 +907,19 @@ impl ZoneSniperApp {
 
         // // 4. INTERACTION
         if response.clicked() {
-            log::error!(
-                "UI INTERACTION: User clicked row {}, Triggering selection logic. ",
-                row.pair_name
-            );
-            // self.handle_pair_selection(row.pair_name.clone());
             if let Some(live_op) = &row.opportunity {
-                // FIX: Use the helper to Tune PH + Select Pair + Lock Opportunity
-                self.select_specific_opportunity(
-                    live_op.opportunity.clone(),
-                    ScrollBehavior::None,
+                log::info!(
+                    "render_tf_table_row(): {}: selecting specific opp id {} and calling select_specific_opportunity()",
+                    row.pair_name,
+                    live_op.opportunity.id
                 );
+                self.select_specific_opportunity(live_op.opportunity.clone(), ScrollBehavior::None);
             } else {
                 // Fallback: Market View (No Opportunity)
+                log::info!(
+                    "render_tf_table_row(): {}: falling back to market view because no p found for this item",
+                    row.pair_name
+                );
                 self.handle_pair_selection(row.pair_name.clone());
                 self.selected_opportunity = None;
             }
@@ -987,8 +991,7 @@ impl ZoneSniperApp {
                     ui.horizontal(|ui| {
                         // Left: Target Price
                         // Use truncation/small font to fit
-                        let target_str =
-                            format_price(live_op.opportunity.target_price);
+                        let target_str = format_price(live_op.opportunity.target_price);
                         ui.label(
                             RichText::new(format!("T: {}", target_str))
                                 .size(10.0)
@@ -1152,8 +1155,7 @@ impl ZoneSniperApp {
         };
 
         // 1. Group by Pair
-        let mut pair_groups: HashMap<String, Vec<TradeFinderRow>> =
-            HashMap::new();
+        let mut pair_groups: HashMap<String, Vec<TradeFinderRow>> = HashMap::new();
         for row in raw_rows {
             if is_in_scope(&row.pair_name) {
                 pair_groups
@@ -1242,6 +1244,7 @@ impl ZoneSniperApp {
                     _ => SortDirection::Descending,
                 };
             }
+            self.update_scroll_to_selection();
         }
     }
 
@@ -1375,8 +1378,7 @@ impl ZoneSniperApp {
                                 }
                                 self.auto_scale_y = true;
                                 // NEW: If we change PH, the list might shuffle. Ensure we keep our selection in view.
-                                if let Some(p) = &self.selected_pair 
-                                    {self.scroll_target = Some(NavigationTarget::Pair(p.clone()));}
+                                self.update_scroll_to_selection();
                                 self.invalidate_all_pairs_for_global_change(
                                     "price horizon threshold changed",
                                 );
@@ -1551,10 +1553,7 @@ impl ZoneSniperApp {
                         new_selected.simulation = variant.simulation.clone();
 
                         // 2. Use the Helper
-                        self.select_specific_opportunity(
-                            new_selected,
-                            ScrollBehavior::None,
-                        );
+                        self.select_specific_opportunity(new_selected, ScrollBehavior::None);
 
                         should_close = true;
                     }

@@ -22,6 +22,7 @@ use crate::models::trading_view::{
 };
 
 use crate::utils::maths_utils::calculate_percent_diff;
+use crate::utils::TimeUtils;
 
 use super::messages::{JobMode, JobRequest, JobResult};
 use super::state::PairState;
@@ -186,12 +187,12 @@ impl SniperEngine {
 
             let ph_pct = self.current_config.price_horizon.threshold_pct;
             let lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
-            let now_ms = crate::utils::TimeUtils::now_timestamp_ms();
+            let now_ms = TimeUtils::now_timestamp_ms();
             let day_ms = 86_400_000;
 
             // 1. Group Ledger Opportunities by Pair for fast lookup
-            let mut ops_by_pair: std::collections::HashMap<String, Vec<&TradeOpportunity>> =
-                std::collections::HashMap::new();
+            let mut ops_by_pair: HashMap<String, Vec<&TradeOpportunity>> =
+                HashMap::new();
             for op in self.ledger.get_all() {
                 ops_by_pair
                     .entry(op.pair_name.clone())
@@ -241,7 +242,7 @@ impl SniperEngine {
                 let raw_ops = ops_by_pair.get(pair).map(|v| v.as_slice()).unwrap_or(&[]);
 
                 // Filter worthwhile trades (Static ROI check)
-                let valid_ops: Vec<&crate::models::trading_view::TradeOpportunity> = raw_ops
+                let valid_ops: Vec<&TradeOpportunity> = raw_ops
                     .iter()
                     .filter(|&&op| op.expected_roi() > 0.0)
                     .map(|&op| op)
@@ -257,11 +258,11 @@ impl SniperEngine {
                             current_price,
                             live_roi: op.live_roi(current_price),
                             annualized_roi: op.live_annualized_roi(current_price),
-                            risk_pct: crate::utils::maths_utils::calculate_percent_diff(
+                            risk_pct: calculate_percent_diff(
                                 op.stop_price,
                                 current_price,
                             ),
-                            reward_pct: crate::utils::maths_utils::calculate_percent_diff(
+                            reward_pct: calculate_percent_diff(
                                 op.target_price,
                                 current_price,
                             ),

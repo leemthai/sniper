@@ -343,21 +343,26 @@ impl ZoneSniperApp {
         }
     }
 
+    /// Sets the scroll target based on the current selection state.
+    /// Logic: Prefer Opportunity ID -> Fallback to Pair Name.
+    pub fn update_scroll_to_selection(&mut self) {
+        self.scroll_target = if let Some(op) = &self.selected_opportunity {
+            Some(NavigationTarget::Opportunity(op.id.clone()))
+        } else {
+            self.selected_pair.clone().map(NavigationTarget::Pair)
+        };
+    }
+
 /// Smart navigation via Name Click (Ticker, Lists, Startup).
     /// - Checks Ledger for best Op.
     /// - If found: Tunes & Locks.
     /// - If not: Market View.
-   // src/ui/app.rs
 
     pub fn jump_to_pair(&mut self, pair: String) {
         // 1. Same Pair Check (Preserve Context)
         if self.selected_pair.as_deref() == Some(&pair) {
-            // Just scroll to whatever we currently have selected
-            if let Some(op) = &self.selected_opportunity {
-                self.scroll_target = Some(NavigationTarget::Opportunity(op.id.clone()));
-            } else {
-                self.scroll_target = Some(NavigationTarget::Pair(pair));
-            }
+            // Just scroll to whatever we currently have selected already
+            self.update_scroll_to_selection();
             return;
         }
 
@@ -376,14 +381,13 @@ impl ZoneSniperApp {
         self.handle_pair_selection(pair.clone()); // Sets selected_pair
         
         if let Some(op) = best_op {
-            // Precise Lock on ID
-            self.selected_opportunity = Some(op.clone());
-            self.scroll_target = Some(NavigationTarget::Opportunity(op.id));
+            self.selected_opportunity = Some(op);
         } else {
-            // Market View Lock
             self.selected_opportunity = None;
-            self.scroll_target = Some(NavigationTarget::Pair(pair));
         }
+
+        // Apply centralized scroll logic
+        self.update_scroll_to_selection();
     }
 
     /// Selects a specific opportunity and TUNES the engine to view it correctly.
