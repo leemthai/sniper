@@ -229,7 +229,6 @@ pub struct DataGenerationPanel<'a> {
     profile: Option<&'a HorizonProfile>,
     actual_candle_count: usize,
     interval_ms: i64,
-    pub scroll_to_pair_requested: &'a mut Option<String>,
 }
 
 impl<'a> DataGenerationPanel<'a> {
@@ -240,7 +239,6 @@ impl<'a> DataGenerationPanel<'a> {
         profile: Option<&'a HorizonProfile>,
         actual_candle_count: usize,
         interval_ms: i64,
-        scroll_to_pair_requested: &'a mut Option<String>,
     ) -> Self {
         Self {
             // selected_pair,
@@ -249,7 +247,6 @@ impl<'a> DataGenerationPanel<'a> {
             profile,
             actual_candle_count,
             interval_ms,
-            scroll_to_pair_requested,
         }
     }
 

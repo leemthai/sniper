@@ -25,7 +25,7 @@ use crate::engine::SniperEngine;
 
 use crate::models::pair_context::PairContext;
 use crate::models::ledger::OpportunityLedger;
-use crate::models::trading_view::{SortColumn, SortDirection, TradeOpportunity};
+use crate::models::trading_view::{SortColumn, SortDirection, TradeOpportunity, NavigationTarget};
 use crate::models::{ProgressEvent, SyncStatus};
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
@@ -196,7 +196,7 @@ pub struct ZoneSniperApp {
     #[serde(skip)]
     pub app_config: AnalysisConfig,
     #[serde(skip)]
-    pub scroll_to_pair: Option<String>,
+    pub scroll_target: Option<NavigationTarget>, 
     #[serde(skip)]
     pub engine: Option<SniperEngine>,
     #[serde(skip)]
@@ -243,7 +243,7 @@ impl Default for ZoneSniperApp {
             sim_step_size: SimStepSize::default(),
             sim_direction: SimDirection::default(),
             simulated_prices: HashMap::new(),
-            scroll_to_pair: None,
+            scroll_target: None,
             nav_states: HashMap::new(),
             candle_resolution: CandleResolution::default(),
             auto_scale_y: true,
@@ -347,22 +347,24 @@ impl ZoneSniperApp {
     /// - Checks Ledger for best Op.
     /// - If found: Tunes & Locks.
     /// - If not: Market View.
+   // src/ui/app.rs
+
     pub fn jump_to_pair(&mut self, pair: String) {
         // 1. Same Pair Check (Preserve Context)
         if self.selected_pair.as_deref() == Some(&pair) {
-            self.scroll_to_pair = Some(pair);
+            // Just scroll to whatever we currently have selected
+            if let Some(op) = &self.selected_opportunity {
+                self.scroll_target = Some(NavigationTarget::Opportunity(op.id.clone()));
+            } else {
+                self.scroll_target = Some(NavigationTarget::Pair(pair));
+            }
             return;
         }
 
-        #[cfg(debug_assertions)]
-        log::info!("UI JUMP: Switching to {}", pair);
-
-        // 2. Find Best Op in Ledger (Smart Lookup)
+        // 2. Find Best Op (Smart Lookup)
         let mut best_op = None;
         if let Some(eng) = &self.engine {
-            // Use the aggregator to respect MWT filters/logic
             let rows = eng.get_trade_finder_rows(Some(&self.simulated_prices));
-            
             if let Some(row) = rows.into_iter().find(|r| r.pair_name == pair) {
                 if let Some(live_op) = row.opportunity {
                     best_op = Some(live_op.opportunity);
@@ -371,14 +373,16 @@ impl ZoneSniperApp {
         }
 
         // 3. Action
+        self.handle_pair_selection(pair.clone()); // Sets selected_pair
+        
         if let Some(op) = best_op {
-            // Found a trade -> Tune Radio, Lock Op, Scroll
-            // (Pass Center behavior for explicit jumps)
-            self.select_specific_opportunity(op, ScrollBehavior::Center);
+            // Precise Lock on ID
+            self.selected_opportunity = Some(op.clone());
+            self.scroll_target = Some(NavigationTarget::Opportunity(op.id));
         } else {
-            // No trade -> Market View
-            self.handle_pair_selection(pair.clone());
-            self.scroll_to_pair = Some(pair);
+            // Market View Lock
+            self.selected_opportunity = None;
+            self.scroll_target = Some(NavigationTarget::Pair(pair));
         }
     }
 
@@ -400,9 +404,10 @@ impl ZoneSniperApp {
         // (handle_pair_selection auto-selects the "Best", but we want THIS one)
         self.selected_opportunity = Some(op.clone());
 
-        // 4. Conditional Scroll i.e in case where ScrollBehavior is not Center, don't scroll IE CLICKING ON PAIR ITSELF
+        // 4. Conditional Scroll
         if matches!(scroll, ScrollBehavior::Center) {
-            self.scroll_to_pair = Some(op.pair_name.clone());
+            // FIX: Use NavigationTarget
+            self.scroll_target = Some(NavigationTarget::Opportunity(op.id));
         }
     }
 

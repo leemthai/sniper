@@ -69,14 +69,6 @@ impl OpportunityLedger {
         }
     }
 
-    pub fn get_all(&self) -> Vec<&TradeOpportunity> {
-        self.opportunities.values().collect()
-    }
-    
-    pub fn remove(&mut self, id: &str) {
-        self.opportunities.remove(id);
-    }
-
     /// Prunes opportunities based on a predicate.
     /// Keeps the entry if the closure returns true, removes it if false.
     pub fn retain<F>(&mut self, f: F)
@@ -85,5 +77,16 @@ impl OpportunityLedger {
     {
         self.opportunities.retain(f);
     }
+
+
+    pub fn get_all(&self) -> Vec<&TradeOpportunity> {
+        self.opportunities.values().collect()
+    }
     
+    pub fn remove(&mut self, id: &str) {
+        self.opportunities.remove(id);
+    }
+
+
+
 }

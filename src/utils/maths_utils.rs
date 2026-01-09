@@ -26,7 +26,14 @@ pub fn calculate_density_pct(evidence_days: f64, history_days: f64) -> f64 {
     }
 }
 
-// src/utils/maths_utils.rs
+/// Centralized logic for Minimum Worthwhile Trade (MWT).
+/// Returns true if both ROI and AROI meet their respective thresholds.
+#[inline]
+pub fn is_opportunity_worthwhile(roi: f64, aroi: f64, min_roi: f64, min_aroi: f64) -> bool {
+    if roi < min_roi { return false; }
+    if aroi < min_aroi { return false; }
+    true
+}
 
 /// Formats a float to occupy EXACTLY `width` characters.
 /// Adjusts decimal precision automatically.

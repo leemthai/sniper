@@ -6,19 +6,22 @@ use eframe::egui::{
 use egui_extras::{Column, TableBuilder, TableRow};
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::analysis::adaptive::AdaptiveParameters;
+use crate::config::ANALYSIS;
 
 use crate::config::TICKER;
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::domain::pair_interval::PairInterval;
 use crate::models::cva::ScoreType;
-use crate::models::trading_view::{SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
+use crate::models::trading_view::{
+    NavigationTarget, SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
 };
 
-use crate::ui::app::CandleResolution;
+use crate::ui::app::{CandleResolution, ScrollBehavior};
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color};
 use crate::ui::ui_panels::{
@@ -28,6 +31,7 @@ use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
+
 use crate::utils::maths_utils::{
     calculate_percent_diff, format_fixed_chars, format_volume_compact,
 };
@@ -572,7 +576,7 @@ impl ZoneSniperApp {
         // --- 2. SCOPE TOGGLE ---
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new(format!("{}", count))
+                RichText::new(format!("{} {}", count, "opportunites"))
                     .strong()
                     .color(PLOT_CONFIG.color_text_subdued),
             );
@@ -587,14 +591,12 @@ impl ZoneSniperApp {
                 self.tf_filter_pair_only = false;
 
                 if let Some(pair) = &self.selected_pair {
-                    // --- 2. EXISTING: SCROLL LOGIC ---
-                    #[cfg(debug_assertions)]
-                    log::info!("UI: Scope changed to ALL. Requesting scroll to {}", pair);
-                    self.scroll_to_pair = Some(pair.clone());
+                    // FIX: Use NavigationTarget::Pair
+                    self.scroll_target = Some(NavigationTarget::Pair(pair.clone()));
                 }
             }
 
-            // "BTC* ONLY"
+            // "[BASET ASSET] ONLY"
             let base_asset = self
                 .selected_pair
                 .as_ref()
@@ -609,14 +611,10 @@ impl ZoneSniperApp {
                 self.tf_filter_pair_only = true;
                 // Auto-scroll on scope change to ensure selected pair is visible
                 if let Some(p) = &self.selected_pair {
-                    self.scroll_to_pair = Some(p.clone());
+                    self.scroll_target = Some(NavigationTarget::Pair(p.clone()));
                 }
             }
-            // --- SEPARATOR ---
             ui.add_space(10.0);
-            ui.separator();
-            ui.add_space(10.0);
-
         });
         ui.separator();
     }
@@ -630,29 +628,38 @@ impl ZoneSniperApp {
         ui.add_space(CELL_PADDING_Y);
     }
 
-fn render_empty_state(&mut self, ui: &mut Ui) {
+    fn render_empty_state(&mut self, ui: &mut Ui) {
         ui.centered_and_justified(|ui| {
             ui.vertical_centered(|ui| {
-                ui.label(RichText::new(&UI_TEXT.icon_search).size(32.0).color(PLOT_CONFIG.color_text_subdued));
+                ui.label(
+                    RichText::new(&UI_TEXT.icon_search)
+                        .size(32.0)
+                        .color(PLOT_CONFIG.color_text_subdued),
+                );
                 ui.add_space(10.0);
 
                 if self.tf_filter_pair_only {
-                     // Scope Case
-                     if let Some(pair) = &self.selected_pair {
+                    // Scope Case
+                    if let Some(pair) = &self.selected_pair {
                         ui.heading(format!("No worthwhile trades for {}", pair));
                         ui.add_space(10.0);
-                        
-                        if ui.button(format!("View {}", UI_TEXT.tf_scope_all)).clicked() {
+
+                        if ui
+                            .button(format!("View {}", UI_TEXT.tf_scope_all))
+                            .clicked()
+                        {
                             self.tf_filter_pair_only = false;
-                            self.scroll_to_pair = Some(pair.clone());
+                            self.scroll_target = Some(NavigationTarget::Pair(pair.clone()));
                         }
-                     } else {
+                    } else {
                         ui.heading("No pair selected");
-                     }
+                    }
                 } else {
                     // Global Case
                     ui.heading("No Opportunities Found");
-                    ui.label(RichText::new("Market is quiet or settings are too strict.").italics());
+                    ui.label(
+                        RichText::new("Market is quiet or settings are too strict.").italics(),
+                    );
                     ui.add_space(5.0);
                     ui.label("Try adjusting Price Horizon or lowering ROI threshold.");
                 }
@@ -713,12 +720,33 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
             return;
         }
 
-        // Calculate Scroll Index
-        // We must find the index *after* sorting/filtering to tell TableBuilder where to go.
+        // --- SCROLL INDEX LOGIC (PRECISE) ---
         let mut target_index = None;
-        if let Some(target) = &self.scroll_to_pair {
-            if let Some(idx) = rows.iter().position(|r| r.pair_name == *target) {
-                target_index = Some(idx);
+
+        if let Some(target) = &self.scroll_target {
+            target_index = rows.iter().position(|r| {
+                match target {
+                    // Case A: Hunting a specific Trade (UUID)
+                    NavigationTarget::Opportunity(id) => r
+                        .opportunity
+                        .as_ref()
+                        .map_or(false, |op| op.opportunity.id == *id),
+                    // Case B: Hunting a Pair (Market View)
+                    NavigationTarget::Pair(name) => {
+                        // Only match if row is the pair AND has no op (Market View row)
+                        // OR if we just want the first instance of the pair?
+                        // Let's stick to "First instance of pair" for fallback.
+                        r.pair_name == *name
+                    }
+                }
+            });
+
+            // Logging
+            #[cfg(debug_assertions)]
+            if let Some(idx) = target_index {
+                log::info!("SCROLL: Found {:?} at Index {}", target, idx);
+            } else {
+                log::warn!("SCROLL: Failed to find {:?}", target);
             }
         }
 
@@ -764,9 +792,9 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
                     }
                 });
 
-            // 6. Clear Request (If we found the index, we scrolled)
-            if target_index.is_some() {
-                self.scroll_to_pair = None;
+            // FIX: Clear scroll_target instead of scroll_to_pair
+            if self.scroll_target.is_some() {
+                self.scroll_target = None;
             }
         });
     }
@@ -884,7 +912,7 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
                 // FIX: Use the helper to Tune PH + Select Pair + Lock Opportunity
                 self.select_specific_opportunity(
                     live_op.opportunity.clone(),
-                    crate::ui::app::ScrollBehavior::None,
+                    ScrollBehavior::None,
                 );
             } else {
                 // Fallback: Market View (No Opportunity)
@@ -960,7 +988,7 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
                         // Left: Target Price
                         // Use truncation/small font to fit
                         let target_str =
-                            crate::ui::utils::format_price(live_op.opportunity.target_price);
+                            format_price(live_op.opportunity.target_price);
                         ui.label(
                             RichText::new(format!("T: {}", target_str))
                                 .size(10.0)
@@ -969,12 +997,12 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
 
                         // Right: Age (Pushed to edge)
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let now = crate::utils::TimeUtils::now_timestamp_ms();
+                            let now = TimeUtils::now_timestamp_ms();
                             let age_ms = now.saturating_sub(live_op.opportunity.created_at);
                             let age_str = if age_ms < 60_000 {
                                 "New".to_string()
                             } else {
-                                crate::utils::TimeUtils::format_duration(age_ms)
+                                TimeUtils::format_duration(age_ms)
                             };
 
                             ui.label(
@@ -1093,64 +1121,90 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
         });
     }
 
-    /// Helper: Fetches rows and applies MWT and Scope filters, but IGNORES Direction.
-    /// Used by get_filtered_rows (for display) and render_empty_state (for suggestions).
-    fn get_scoped_rows(&self) -> Vec<TradeFinderRow> {
-        let mut rows = if let Some(eng) = &self.engine {
+    fn get_filtered_rows(&self) -> Vec<TradeFinderRow> {
+        let raw_rows = if let Some(eng) = &self.engine {
             eng.get_trade_finder_rows(Some(&self.simulated_prices))
         } else {
             vec![]
         };
 
-        let profile = &crate::config::ANALYSIS.journey.profile;
+        let profile = &ANALYSIS.journey.profile;
+        let selected_op_id = self.selected_opportunity.as_ref().map(|o| &o.id);
 
-        let is_protected = |name: &str| -> bool {
-            self.selected_pair.as_deref() == Some(name)
-                || self.scroll_to_pair.as_deref() == Some(name)
+        // Scope Helper
+        let base_asset = self
+            .selected_pair
+            .as_ref()
+            .and_then(|p| PairInterval::get_base(p))
+            .unwrap_or("");
+
+        // Scope Logic
+        let is_in_scope = |pair: &str| -> bool {
+            if !self.tf_filter_pair_only {
+                return true;
+            }
+            // Always keep selected/target pair
+            if self.selected_pair.as_deref() == Some(pair) {
+                return true;
+            }
+            // Check Base
+            !base_asset.is_empty() && pair.starts_with(base_asset)
         };
 
-        // 1. MWT Demotion (Quality Control)
-        for row in &mut rows {
-            if is_protected(&row.pair_name) {
-                continue;
+        // 1. Group by Pair
+        let mut pair_groups: HashMap<String, Vec<TradeFinderRow>> =
+            HashMap::new();
+        for row in raw_rows {
+            if is_in_scope(&row.pair_name) {
+                pair_groups
+                    .entry(row.pair_name.clone())
+                    .or_default()
+                    .push(row);
             }
+        }
 
-            if let Some(op) = &row.opportunity {
-                if !op.opportunity.is_worthwhile(profile) {
-                    row.opportunity = None;
+        let mut final_rows = Vec::new();
+
+        // 2. Process Each Pair
+        for (_, mut rows) in pair_groups {
+            // Grab metadata from first row for potential placeholder
+            let sample = rows[0].clone();
+
+            // Filter down to VALID Opportunities
+            rows.retain(|r| {
+                if let Some(op) = &r.opportunity {
+                    // Rule A: Protection (Selected Op always stays)
+                    if selected_op_id == Some(&op.opportunity.id) {
+                        return true;
+                    }
+
+                    // Rule B: MWT (Must be worthwhile)
+                    if !op.is_worthwhile(profile) {
+                        return false;
+                    }
+
+                    true
+                } else {
+                    false // Remove existing placeholders (we regenerate below if needed)
                 }
+            });
+
+            // 3. Result Logic
+            if !rows.is_empty() {
+                final_rows.append(&mut rows);
+            } else {
+                // Zero valid trades -> Inject ONE "Market View" row
+                final_rows.push(TradeFinderRow {
+                    pair_name: sample.pair_name,
+                    quote_volume_24h: sample.quote_volume_24h,
+                    market_state: sample.market_state,
+                    opportunity_count_total: 0,
+                    opportunity: None,
+                });
             }
         }
 
-        // 2. Scope Filter (Base Asset)
-        if self.tf_filter_pair_only {
-            let base = self
-                .selected_pair
-                .as_ref()
-                .and_then(|p| crate::domain::pair_interval::PairInterval::get_base(p))
-                .unwrap_or("");
-
-            if !base.is_empty() {
-                rows.retain(|r| is_protected(&r.pair_name) || r.pair_name.starts_with(base));
-            }
-        }
-
-        rows
-    }
-
-    fn get_filtered_rows(&self) -> Vec<TradeFinderRow> {
-        // 1. Get Scoped Rows (Data + MWT + Scope)
-        let mut rows = self.get_scoped_rows();
-
-        // 2. REMOVED: Direction Filter Logic
-        // We no longer filter by LONG/SHORT. 
-        // The list simply shows whatever opportunities exist within the current Scope.
-
-        // 3. Remove "No Opportunity" rows
-        // The Market Scanner only shows valid Opportunities.
-        rows.retain(|r| r.opportunity.is_some());
-
-        rows
+        final_rows
     }
 
     /// Renders a single sortable label using the Interactive Button style
@@ -1240,7 +1294,7 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
                             // We can safely borrow self here for get_display_price because 'pair_opt' owns the string now
                             let current_price = self.get_display_price(&pair).unwrap_or(0.0);
                             let roi = op.live_roi(current_price);
-                            let color = crate::ui::styles::get_outcome_color(roi);
+                            let color = get_outcome_color(roi);
 
                             ui.label(RichText::new(format!("ROI {:+.2}%", roi)).color(color));
                         });
@@ -1293,7 +1347,7 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
 
         SidePanel::left("left_panel")
             .min_width(280.0) // I believe this is irrelevant because items we draw inside have higher total min_width
-            .resizable(true)
+            .resizable(false)
             .frame(frame)
             .show(ctx, |ui| {
                 let data_events = self.data_generation_panel(ui);
@@ -1321,9 +1375,8 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
                                 }
                                 self.auto_scale_y = true;
                                 // NEW: If we change PH, the list might shuffle. Ensure we keep our selection in view.
-                                if let Some(p) = &self.selected_pair {
-                                    self.scroll_to_pair = Some(p.clone());
-                                }
+                                if let Some(p) = &self.selected_pair 
+                                    {self.scroll_target = Some(NavigationTarget::Pair(p.clone()));}
                                 self.invalidate_all_pairs_for_global_change(
                                     "price horizon threshold changed",
                                 );
@@ -1500,7 +1553,7 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
                         // 2. Use the Helper
                         self.select_specific_opportunity(
                             new_selected,
-                            crate::ui::app::ScrollBehavior::None,
+                            ScrollBehavior::None,
                         );
 
                         should_close = true;
@@ -1964,7 +2017,6 @@ fn render_empty_state(&mut self, ui: &mut Ui) {
             profile.as_ref(),
             actual_count,
             self.app_config.interval_width_ms,
-            &mut self.scroll_to_pair,
         );
 
         let events = panel.render(ui, &mut self.show_ph_help);

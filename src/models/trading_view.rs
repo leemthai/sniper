@@ -19,7 +19,7 @@ use crate::ui::config::UI_TEXT;
 
 use crate::utils::maths_utils::{
     calculate_annualized_roi, calculate_expected_roi_pct, calculate_stats, normalize_max,
-    smooth_data,
+    smooth_data, is_opportunity_worthwhile,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,9 +59,9 @@ pub struct LiveOpportunity {
 }
 
 impl LiveOpportunity {
-    /// Checks if the LIVE status of the opportunity makes for an worthwhile opp
-    pub fn is_worthwhile(&self, min_roi_pct: f64) -> bool {
-        self.live_roi >= min_roi_pct
+    /// Checks if the LIVE status is *currently* worthwhile.
+    pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
+        is_opportunity_worthwhile(self.live_roi, self.annualized_roi, profile.min_roi, profile.min_aroi)
     }
 }
 
@@ -113,7 +113,7 @@ pub struct TradeFinderRow {
 pub struct TradeOpportunity {
     pub id: String,
     pub created_at: i64,
-    pub source_ph: f64, // The PH threshold that generaeted this opp (e.g. 0.05)
+    pub source_ph: f64, // The PH threshold that generated this opp (e.g. 0.05)
 
     pub pair_name: String,
     pub target_zone_id: usize,
@@ -129,6 +129,12 @@ pub struct TradeOpportunity {
     pub variants: Vec<TradeVariant>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NavigationTarget {
+    Opportunity(String), // UUID (Primary)
+    Pair(String),        // Fallback (Market View / No Op)
+}
+
 impl TradeOpportunity {
 
     /// Helper to get number of variants (including the active one)
@@ -136,16 +142,11 @@ impl TradeOpportunity {
         self.variants.len()
     }
 
-
-    /// Checks if the opportunity meets the "Worthwhile" criteria.
+    /// Checks if the SNAPSHOT (Creation) status was worthwhile.
     pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
         let roi = self.expected_roi();
         let aroi = calculate_annualized_roi(roi, self.avg_duration_ms as f64);
-
-        if roi < profile.min_roi { return false; }
-        if aroi < profile.min_aroi { return false; }
-        
-        true
+        is_opportunity_worthwhile(roi, aroi, profile.min_roi, profile.min_aroi)
     }
 
     /// Calculates a composite Quality Score (0.0 to 100.0+)
