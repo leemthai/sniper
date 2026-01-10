@@ -52,16 +52,13 @@ pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 // pub const ICON_LOSS: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
 
 pub struct UiText {
-    pub icon_search: String,
     pub icon_close: String,
     pub icon_sort_asc: String,
     pub icon_sort_desc: String,
-    pub sort_label: String,
 
     // --- Left panel ---
     // pub data_generation_heading: String,
     pub price_horizon_heading: String,
-    pub pair_selector_heading: String,
     pub lp_failed_gradient: String,
 
     // --- PLOT LABELS ---
@@ -71,8 +68,6 @@ pub struct UiText {
     pub plot_missing_klines: String,
 
     // --- ICONS/LABELS ---
-    pub label_filter_icon: String,
-
     pub label_long: String,
     pub label_short: String,
     pub icon_long: String,
@@ -91,7 +86,6 @@ pub struct UiText {
 
     // --- ERRORS ---
     pub error_insufficient_data: String,
-    pub error_insufficient_data_title: String,
     pub error_insufficient_data_body: String,
     pub error_no_model: String,
     pub error_no_pair_selected: String,
@@ -131,7 +125,6 @@ pub struct UiText {
 
     pub ph_help_title: String,
 
-    pub tb_name: String,
     pub tb_sticky: String,
     pub tb_low_wicks: String,
     pub tb_high_wicks: String,
@@ -146,17 +139,12 @@ pub struct UiText {
     pub tb_y_unlocked: String,
 
     // --- TRADE FINDER ---
-    pub tf_header: String,
     pub tf_scope_all: String,
     pub tf_scope_selected: String,
-    pub tf_btn_all_trades: String,
-    pub tf_btn_all: String,
-    pub tf_target: String,
     pub tf_time: String,
 
     // General use
     pub label_volume: String,
-    pub label_volume_short: String,
     pub label_volume_24h: String,
     pub label_pair: String,
     pub label_candle: String,
@@ -173,20 +161,20 @@ pub struct UiText {
     pub label_sl_variants_short: String,
     pub label_target: String,
     pub label_target_text: String,
+    pub label_targets_text: String,
+    pub label_select_pair: String,
+    pub label_no_targets: String,
     pub label_stop_loss: String,
     pub label_stop_loss_short: String,
     pub label_risk_reward: String,
-    pub label_risk_reward_short: String,
     pub label_limit: String,
     pub label_no_opps: String,
     pub label_connecting: String,
     pub label_connected: String,
     pub label_working: String,
     pub label_queue: String,
-    pub label_toggle: String,
     pub label_warning: String,
     pub label_failures: String,
-    pub label_opps_short: String,
 
     // Icons
     pub icon_help: String,
@@ -210,7 +198,6 @@ pub struct UiText {
     pub opp_exp_scanned_history_four: String,
     pub opp_exp_simulate_one: String,
     pub opp_exp_simulate_two: String,
-    pub opp_exp_simulate_three: String,
     pub opp_exp_out_of_time: String,
     pub opp_exp_cases_one: String,
     pub opp_exp_cases_two: String,
@@ -244,7 +231,6 @@ pub struct UiText {
     pub sim_step: String,
 
     pub kbs_name_long: String,
-    pub kbs_name_icon: String,
     pub kbs_name: String,
     pub kbs_open_close: String,
     pub kbs_close_all_panes: String,
@@ -267,20 +253,19 @@ pub struct UiText {
     pub ls_main: String,
     pub ls_failed: String,
 
-    pub label_avg_time: String,
-    pub icon_arrow_right: String,
     pub label_avg_duration: String,
     pub label_risk_select: String,
+
+    pub hover_scroll_to_selected_target: String,
 }
 
 // THE SINGLETON
 pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
     UiText {
 
-        icon_search: ICON_SEARCH.to_string(),
+        hover_scroll_to_selected_target: "Scroll to Selected Target".to_string(),
         icon_close: ICON_CLOSE.to_string(),
         label_pair: "Pair".to_string(),
-        sort_label: ICON_SORT.to_string(),
         icon_sort_asc: ICON_SORT_ASC.to_string(),
         icon_sort_desc: ICON_SORT_DESC.to_string(),
 
@@ -365,7 +350,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         opp_exp_scanned_history_four: "closest matches.".to_string(),
         opp_exp_simulate_one: "3. We simulated these".to_string(),
         opp_exp_simulate_two: "scenarios. We checked if price hit the".to_string(),
-        opp_exp_simulate_three: "or ran out of time".to_string(),
         opp_exp_out_of_time: "or ran out of time".to_string(),
         opp_exp_cases_one: "4. In".to_string(),
         opp_exp_cases_two: "of those".to_string(),
@@ -375,7 +359,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
 
         // General use labels (not specific to one panel)
         label_volume: "Volume".to_string(),
-        label_volume_short: "Vol.".to_string(),
         label_volume_24h: format!("{}\n{}", "24h", "Vol."),
         label_queue: ICON_QUEUE.to_string(),
         label_working: ICON_COG.to_string(),
@@ -387,6 +370,9 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_momentum_short: "Mom.".to_string(),
         label_target: ICON_TARGET.to_string(),
         label_target_text: "Target".to_string(),
+        label_targets_text: "Targets".to_string(),
+        label_select_pair: "Select a pair from the list below".to_string(),
+        label_no_targets: "No Active Targets".to_string(),
         label_success_rate: "Success Rate".to_string(),
         label_success_rate_short: "Succ.".to_string(),
         label_roi: "ROI".to_string(),
@@ -397,7 +383,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_stop_loss: "Stop Loss".to_string(),
         label_stop_loss_short: "S/L".to_string(),
         label_risk_reward: "Risk/Reward Ratio".to_string(),
-        label_risk_reward_short: "R/R".to_string(),
         label_long: format!("LONG {}", ICON_TREND_UP),
         label_short: format!("SHORT {}", ICON_TREND_DOWN),
         label_limit: "Limit".to_string(),
@@ -406,26 +391,18 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_no_opps:
             "No valid opportunities found. Please reset filters or select a different pair."
                 .to_string(),
-        label_toggle: "Toggle".to_string(),
         label_warning: ICON_WARNING.to_string(),
         label_failures: "failures".to_string(),
-        label_opps_short: "OPP".to_string(),
 
         // TradeFinder Pane
-        tf_header: "TRADE FINDER".to_string(),
         tf_scope_all: "ALL PAIRS".to_string(),
         tf_scope_selected: "ONLY".to_string(),
-        label_filter_icon: ICON_FILTER.to_string(),
         label_candle: ICON_CANDLE.to_string(),
-        tf_btn_all: "ALL".to_string(),
-        tf_btn_all_trades: "UNFILTERED".to_string(),
-        tf_target: ICON_TARGET.to_string(),
         tf_time: ICON_CLOCK.to_string(),
 
         // --- Left Panel ---
         // data_generation_heading: "Shape Your Trades".to_string(),
         price_horizon_heading: "Price Horizon".to_string(),
-        pair_selector_heading: "Select Pair to Plot ".to_string() + ICON_EYE,
         lp_failed_gradient: "Failed to build Price Horizon Gradient".to_string(),
 
         // Loading screen
@@ -456,7 +433,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         error_no_model: "No model loaded.".to_string(),
         error_no_pair_selected: "No pair selected.".to_string(),
         error_insufficient_data: "Insufficient data".to_string(),
-        error_insufficient_data_title: "Analysis Paused: Range Too Narrow".to_string(),
         error_insufficient_data_body:
             "The current Price Horizon does not capture enough price history for the pair in question.\n\n".to_string()
                 + ICON_POINT_RIGHT
@@ -483,7 +459,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         icon_help: ICON_HELP.to_string(),
 
         // Toolbar
-        tb_name: "Toolbar".to_string(),
         tb_time: ICON_CLOCK.to_string(),
         tb_sticky: "High Volume Zones".to_string(),
         tb_low_wicks: "Lower Wicks".to_string(),
@@ -499,7 +474,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
 
         // Keyboard Shortcuts Pane
         kbs_name_long: ICON_KEYBOARD.to_string() + " Keyboard Shortcuts",
-        kbs_name_icon: ICON_KEYBOARD.to_string(),
         kbs_name: "Keyboard Shortcuts".to_string(),
 
         kbs_toolbar_shortcut_hvz: format!("{} High Volume Zones", ICON_EYE),
@@ -519,8 +493,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
 
         kbs_sim_mode: format!("{} Simulation Mode", ICON_SIMULATE),
 
-        label_avg_time: "Avg.".to_string(), // Keep it short for HUD/TF
-        icon_arrow_right: ICON_POINT_RIGHT.to_string(),
         label_avg_duration: "Avg. Duration".to_string(),
         label_risk_select: "Stop Loss Variants".to_string(),
     }

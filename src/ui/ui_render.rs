@@ -1,6 +1,6 @@
 use eframe::egui::{
     Align, CentralPanel, Color32, Context, FontId, Grid, Layout, Order, RichText, Sense, SidePanel,
-    TopBottomPanel, Ui, Window,
+    TopBottomPanel, Ui, Window, Frame,
 };
 
 use egui_extras::{Column, TableBuilder, TableRow};
@@ -214,15 +214,15 @@ impl ZoneSniperApp {
                             RichText::new(op.direction.to_string().to_uppercase())
                                 .strong()
                                 .color(op.direction.color()),
-                        ); // Uses PLOT_CONFIG via trait
+                        );
                     });
                     ui.separator();
 
                     // --- CALCULATIONS ---
-                    // 1. Get PH %
+                    // Get PH %
                     let ph_pct = self.app_config.price_horizon.threshold_pct;
 
-                    // 2. Calculate Actual Lookback used (using new Adaptive logic)
+                    // Calculate Actual Lookback used (using new Adaptive logic)
                     let lookback_candles =
                         AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
                     let interval_ms = model.cva.interval_ms;
@@ -255,11 +255,9 @@ impl ZoneSniperApp {
                         roi_color,
                     );
 
-                    // Avg Duration
-                    let avg_time_str = TimeUtils::format_duration(op.avg_duration_ms);
                     ui.metric(
                         &UI_TEXT.label_avg_duration,
-                        &avg_time_str,
+                        &TimeUtils::format_duration(op.avg_duration_ms),
                         PLOT_CONFIG.color_text_neutral,
                     );
 
@@ -341,7 +339,7 @@ impl ZoneSniperApp {
 
                     ui.add_space(10.0);
 
-                    // SECTION 3: TRADE SETUP
+                    // TRADE SETUP
                     ui.label_subheader(&UI_TEXT.opp_exp_trade_setup);
 
                     // Entry / Target can stay standard
@@ -437,7 +435,7 @@ impl ZoneSniperApp {
                     ui.separator();
                     ui.add_space(5.0);
 
-                    // SECTION 4: THE STORY
+                    // THE STORY
                     ui.label_subheader(&UI_TEXT.opp_exp_how_this_works);
                     ui.vertical(|ui| {
                         ui.style_mut().spacing.item_spacing.y = 4.0;
@@ -576,17 +574,17 @@ impl ZoneSniperApp {
         ui.horizontal(|ui| {
             // Item count
             ui.label(
-                RichText::new(format!("{} {}", count, "items"))
+                RichText::new(format!("{} {}", count, UI_TEXT.label_targets_text.to_lowercase()))
                     .strong()
                     .color(PLOT_CONFIG.color_text_subdued),
             );
 
-            // NEW: Locate Button (Center on Target)
+            // Locate Button (Center on Target)
             // Only show if we actually have a target to scroll to
             if self.selected_pair.is_some() {
                 ui.add_space(5.0);
                 if ui.small_button(RichText::new(UI_TEXT.label_target.as_str()).color(PLOT_CONFIG.color_info))
-                    .on_hover_text("Scroll to Selected Target")
+                    .on_hover_text(&UI_TEXT.hover_scroll_to_selected_target)
                     .clicked() 
                 {
                     self.update_scroll_to_selection();
@@ -651,7 +649,6 @@ impl ZoneSniperApp {
                     .as_ref()
                     .map_or(false, |op| op.opportunity.id == sel.id)
             });
-
             if !exists {
                 self.selected_opportunity = None;
             }
@@ -659,7 +656,6 @@ impl ZoneSniperApp {
 
         // Sort
         self.sort_trade_finder_rows(&mut rows);
-
         // Empty table check
         if rows.is_empty() {
             ui.centered_and_justified(|ui| ui.label("Loading Market Data..."));
@@ -696,9 +692,9 @@ impl ZoneSniperApp {
         ui.scope(|ui| {
             let visuals = ui.visuals_mut();
 
-            // 1. Set "Selected" color (Strong Blue)
-            visuals.selection.bg_fill = Color32::from_rgb(0, 50, 100);
-            // 2. Set "Stripe" color (Visible Gray/White Alpha)
+            // 1. Set "Selected" color
+            visuals.selection.bg_fill = PLOT_CONFIG.color_tf_selected;
+            // 2. Set "Stripe" color
             visuals.faint_bg_color = Color32::from_white_alpha(15);
 
             let mut builder = TableBuilder::new(ui)
@@ -797,7 +793,6 @@ impl ZoneSniperApp {
                 SortColumn::AvgDuration,
                 &UI_TEXT.tf_time,
                 None,
-                // Some((SortColumn::OpportunityCount, &UI_TEXT.label_opps_short)),
             );
         });
 
@@ -854,18 +849,8 @@ impl ZoneSniperApp {
         // // 4. INTERACTION
         if response.clicked() {
             if let Some(live_op) = &row.opportunity {
-                // log::info!(
-                //     "render_tf_table_row(): {}: selecting specific opp id {} and calling select_specific_opportunity()",
-                //     row.pair_name,
-                //     live_op.opportunity.id
-                // );
                 self.select_specific_opportunity(live_op.opportunity.clone(), ScrollBehavior::None);
             } else {
-                // Fallback: Market View (No Opportunity)
-                // log::info!(
-                //     "render_tf_table_row(): {}: falling back to market view because no p found for this item",
-                //     row.pair_name
-                // );
                 self.handle_pair_selection(row.pair_name.clone());
                 self.selected_opportunity = None;
             }
@@ -885,7 +870,7 @@ impl ZoneSniperApp {
                 ui.horizontal(|ui| {
                     ui.style_mut().spacing.item_spacing.x = 4.0;
 
-                    // NEW: Row Number
+                    // Row Number
                     ui.label(
                         RichText::new(format!("{}.", index))
                             .size(10.0)
@@ -1125,12 +1110,10 @@ impl ZoneSniperApp {
                     if selected_op_id == Some(&op.opportunity.id) {
                         return true;
                     }
-
                     // Rule B: MWT (Must be worthwhile)
                     if !op.is_worthwhile(profile) {
                         return false;
                     }
-
                     true
                 } else {
                     false // Remove existing placeholders (we regenerate below if needed)
@@ -1201,25 +1184,23 @@ impl ZoneSniperApp {
         let pair_opt = self.selected_pair.clone();
         let opp_opt = self.selected_opportunity.clone();
 
-        eframe::egui::Frame::group(ui.style())
+        Frame::group(ui.style())
             .fill(Color32::from_white_alpha(5))
             .inner_margin(8.0)
             .show(ui, |ui| {
                 if let Some(pair) = pair_opt {
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new("TARGET:")
+                            RichText::new(format!("{}:", UI_TEXT.label_target_text))
                                 .size(12.0)
                                 .color(PLOT_CONFIG.color_text_subdued),
                         );
-
                         ui.label(
                             RichText::new(&pair)
-                                .size(20.0) // Reduced slightly from 24 to fit better
+                                .size(20.0)
                                 .strong()
                                 .color(PLOT_CONFIG.color_text_primary),
                         );
-
                         // Future: Cousins Dropdown here
                     });
 
@@ -1273,7 +1254,7 @@ impl ZoneSniperApp {
                         // B. Market View (No Trade)
                         ui.horizontal(|ui| {
                             ui.label(
-                                RichText::new("No Active Trades Found")
+                                RichText::new(&UI_TEXT.label_no_targets)
                                     .italics()
                                     .color(PLOT_CONFIG.color_text_neutral),
                             );
@@ -1283,7 +1264,7 @@ impl ZoneSniperApp {
                     // Nothing selected
                     ui.centered_and_justified(|ui| {
                         ui.label(
-                            RichText::new("Select a pair from the list below")
+                            RichText::new(&UI_TEXT.label_select_pair)
                                 .italics()
                                 .color(PLOT_CONFIG.color_text_subdued),
                         );
@@ -1786,7 +1767,7 @@ impl ZoneSniperApp {
                     ui.metric(
                         &UI_TEXT.label_volatility,
                         &format!("{:.3}%", model.cva.volatility_pct),
-                        PLOT_CONFIG.color_warning, // Volatility is attention-worthy
+                        PLOT_CONFIG.color_warning,
                     );
                 }
             }
@@ -1861,7 +1842,7 @@ impl ZoneSniperApp {
                     ("K (or H)", UI_TEXT.kbs_open_close.as_str()),
                     ("1", UI_TEXT.kbs_toolbar_shortcut_hvz.as_str()),
                     ("2", UI_TEXT.kbs_toolbar_shortcut_low_wick.as_str()),
-                    ("3", UI_TEXT.kbs_toolbar_shortcut_low_wick.as_str()),
+                    ("3", UI_TEXT.kbs_toolbar_shortcut_high_wick.as_str()),
                     ("4", UI_TEXT.kbs_toolbar_shortcut_histogram.as_str()),
                     ("5", UI_TEXT.kbs_toolbar_shortcut_candles.as_str()),
                     ("6", UI_TEXT.kbs_toolbar_shortcut_gap.as_str()),

@@ -78,6 +78,8 @@ pub struct PlotConfig {
     pub color_widget_background: Color32, // Dark background for custom widgets
     pub color_widget_border: Color32,     // Subtle border
 
+    pub color_tf_selected: Color32,
+
     // HELP COLORS
     pub color_help_fg: Color32,
     pub color_help_bg: Color32,
@@ -85,6 +87,9 @@ pub struct PlotConfig {
 }
 
 pub const PLOT_CONFIG: PlotConfig = PlotConfig {
+
+    color_tf_selected: Color32::from_rgb(0, 50, 100),
+    
     // STICKY ZONES ("The Terrain" - Earthy/Solid)
     // Darker Green for Support below
     support_zone_color: Color32::from_rgb(34, 139, 34), // Forest Green

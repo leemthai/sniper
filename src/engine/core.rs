@@ -112,10 +112,10 @@ impl SniperEngine {
         let db_path = Path::new(PERSISTENCE.kline.directory)
             .parent()
             .unwrap_or(Path::new("."))
-            .join("results.db");
+            .join("results.sqlite");
 
         #[cfg(not(target_arch = "wasm32"))]
-        let db_path_str = db_path.to_str().unwrap_or("results.db");
+        let db_path_str = db_path.to_str().unwrap_or("results.sqlite");
 
         // We use block_on in native to init the DB async
         #[cfg(not(target_arch = "wasm32"))]
@@ -125,7 +125,7 @@ impl SniperEngine {
                 ResultsRepository::new(db_path_str)
                     .await
                     .unwrap_or_else(|e| {
-                        log::error!("Failed to init results.db: {}", e);
+                        log::error!("Failed to init results.sqlite: {}", e);
                         panic!("Critical Error: Results DB init failed");
                     })
             })
