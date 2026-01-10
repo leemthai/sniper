@@ -1191,7 +1191,7 @@ impl ZoneSniperApp {
                 if let Some(pair) = pair_opt {
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new(format!("{}:", UI_TEXT.label_target_text))
+                            RichText::new(format!("{}:", UI_TEXT.label_active_target_text))
                                 .size(12.0)
                                 .color(PLOT_CONFIG.color_text_subdued),
                         );
@@ -1229,13 +1229,13 @@ impl ZoneSniperApp {
                             let roi = op.live_roi(current_price);
                             let color = get_outcome_color(roi);
 
-                            ui.label(RichText::new(format!("ROI {:+.2}%", roi)).color(color));
+                            ui.label(RichText::new(format!("{} {:+.2}%", UI_TEXT.label_roi, roi)).color(color));
                         });
 
                         // Source info + ID
                         ui.horizontal(|ui| {
                             ui.label(
-                                RichText::new(format!("Source: PH {:.2}%", op.source_ph * 100.0))
+                                RichText::new(format!("{} {:.2}%", UI_TEXT.label_source_ph, op.source_ph * 100.0))
                                     .small()
                                     .color(PLOT_CONFIG.color_text_subdued),
                             );
@@ -1244,7 +1244,7 @@ impl ZoneSniperApp {
                             {
                                 let short_id = if op.id.len() > 8 { &op.id[..8] } else { &op.id };
                                 ui.label(
-                                    RichText::new(format!("ID: {}", short_id))
+                                    RichText::new(format!("{}: {}", UI_TEXT.label_id, short_id))
                                         .small()
                                         .color(Color32::from_rgb(255, 0, 255)),
                                 );

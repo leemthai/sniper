@@ -144,6 +144,7 @@ pub struct UiText {
     pub tf_time: String,
 
     // General use
+    pub label_id: String,
     pub label_volume: String,
     pub label_volume_24h: String,
     pub label_pair: String,
@@ -161,6 +162,8 @@ pub struct UiText {
     pub label_sl_variants_short: String,
     pub label_target: String,
     pub label_target_text: String,
+    pub label_active_target_text: String,
+    pub label_source_ph: String,
     pub label_targets_text: String,
     pub label_select_pair: String,
     pub label_no_targets: String,
@@ -358,6 +361,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         opp_exp_cases_five: "you see above.".to_string(),
 
         // General use labels (not specific to one panel)
+        label_id: "ID".to_string(),
         label_volume: "Volume".to_string(),
         label_volume_24h: format!("{}\n{}", "24h", "Vol."),
         label_queue: ICON_QUEUE.to_string(),
@@ -370,7 +374,9 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_momentum_short: "Mom.".to_string(),
         label_target: ICON_TARGET.to_string(),
         label_target_text: "Target".to_string(),
+        label_active_target_text: "Active Target".to_string(),
         label_targets_text: "Targets".to_string(),
+        label_source_ph: "Source: PH".to_string(),
         label_select_pair: "Select a pair from the list below".to_string(),
         label_no_targets: "No Active Targets".to_string(),
         label_success_rate: "Success Rate".to_string(),

@@ -4,8 +4,6 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::horizon_profile::{HorizonBucket, HorizonProfile};
 use crate::models::timeseries::find_matching_ohlcv;
 
-// ... imports ...
-
 pub fn generate_profile(
     pair: &str,
     timeseries_collection: &TimeSeriesCollection,
@@ -28,11 +26,6 @@ pub fn generate_profile(
         return profile;
     };
 
-    // ... (Rest of logic remains EXACTLY the same as previous correct version) ...
-    // Just ensure you keep the `timestamps` logic we fixed earlier.
-    
-    // Copy the implementation from my previous message, just adding the 3 lines above.
-    
     let min_pct = config_ref.min_threshold_pct; 
     let max_pct = config_ref.max_threshold_pct; 
     let steps = config_ref.profiler_steps.max(100); // Safety floor

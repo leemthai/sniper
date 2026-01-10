@@ -90,12 +90,13 @@ fn run_pathfinder_simulations(
         // 2. Heavy Lift: Find Historical Matches ONCE
         let (historical_matches, current_market_state) =
             match ScenarioSimulator::find_historical_matches(
+                ohlcv.pair_interval.name(),
                 ohlcv,
                 current_idx,
+                &config.similarity,
+                config.journey.sample_count,
                 trend_lookback,
                 duration_candles,
-                config.journey.sample_count,
-                &config.similarity,
             ) {
                 Some((m, s)) if !m.is_empty() => (m, s),
                 _ => {
