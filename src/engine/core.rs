@@ -635,15 +635,15 @@ impl SniperEngine {
 
             match result.result {
                 Ok(model) => {
-                    #[cfg(debug_assertions)]
-                    // --- DIAGNOSTIC START ---
-                    let pair_count_before = self
-                        .ledger
-                        .opportunities
-                        .values()
-                        .filter(|o| o.pair_name == result.pair_name)
-                        .count();
-                    // ------------------------
+                    // #[cfg(debug_assertions)]
+                    // // --- DIAGNOSTIC START ---
+                    // let pair_count_before = self
+                    //     .ledger
+                    //     .opportunities
+                    //     .values()
+                    //     .filter(|o| o.pair_name == result.pair_name)
+                    //     .count();
+                    // // ------------------------
 
                     // Sync to Ledger ---
                     for op in &model.opportunities {
@@ -651,24 +651,24 @@ impl SniperEngine {
                     }
 
                     // --- DIAGNOSTIC END ---
-                    #[cfg(debug_assertions)]
-                    let pair_count_after = self
-                        .ledger
-                        .opportunities
-                        .values()
-                        .filter(|o| o.pair_name == result.pair_name)
-                        .count();
-                    #[cfg(debug_assertions)]
-                    let total_ledger = self.ledger.opportunities.len();
+                    // #[cfg(debug_assertions)]
+                    // let pair_count_after = self
+                    //     .ledger
+                    //     .opportunities
+                    //     .values()
+                    //     .filter(|o| o.pair_name == result.pair_name)
+                    //     .count();
+                    // #[cfg(debug_assertions)]
+                    // let total_ledger = self.ledger.opportunities.len();
 
-                    #[cfg(debug_assertions)]
-                    log::info!(
-                        "LEDGER MONITOR [{}]: Ops for this pair {} -> {}. Total Ledger: {}",
-                        result.pair_name,
-                        pair_count_before,
-                        pair_count_after,
-                        total_ledger
-                    );
+                    // #[cfg(debug_assertions)]
+                    // log::info!(
+                    //     "LEDGER MONITOR [{}]: Ops for this pair {} -> {}. Total Ledger: {}",
+                    //     result.pair_name,
+                    //     pair_count_before,
+                    //     pair_count_after,
+                    //     total_ledger
+                    // );
 
                     // Success: Update State
                     state.model = Some(model.clone());

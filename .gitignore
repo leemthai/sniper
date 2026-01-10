@@ -8,6 +8,7 @@ fresh_start*
 /.continue/
 _private/
 klines.sql*
+results.sql*
 # Ignore all .bin files in the /kline_data folder
 /kline_data/kd*.bin
 # EXCEPT any demo files
