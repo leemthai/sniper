@@ -109,6 +109,25 @@ pub struct TradeFinderRow {
     pub opportunity_count_total: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TradeOutcome {
+    TargetHit,
+    StopHit,
+    Timeout,
+    ManualClose,
+}
+
+impl std::fmt::Display for TradeOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TradeOutcome::TargetHit => write!(f, "TARGET"),
+            TradeOutcome::StopHit => write!(f, "STOP"),
+            TradeOutcome::Timeout => write!(f, "TIMEOUT"),
+            TradeOutcome::ManualClose => write!(f, "MANUAL"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradeOpportunity {
     pub id: String,
@@ -136,6 +155,43 @@ pub enum NavigationTarget {
 }
 
 impl TradeOpportunity {
+
+       /// Centralized "Referee" Logic. 
+    /// Determines if the trade is dead based on current price action and time.
+    pub fn check_exit_condition(
+        &self, 
+        current_high: f64, 
+        current_low: f64, 
+        current_time: i64
+    ) -> Option<TradeOutcome> {
+        // 1. Check Expiry (Hard Limit)
+        if current_time > (self.created_at + self.max_duration_ms) {
+            return Some(TradeOutcome::Timeout);
+        }
+
+        // 2. Check Price Levels
+        match self.direction {
+            TradeDirection::Long => {
+                // Pessimistic: Check Stop first
+                if current_low <= self.stop_price {
+                    return Some(TradeOutcome::StopHit);
+                }
+                if current_high >= self.target_price {
+                    return Some(TradeOutcome::TargetHit);
+                }
+            },
+            TradeDirection::Short => {
+                if current_high >= self.stop_price {
+                    return Some(TradeOutcome::StopHit);
+                }
+                if current_low <= self.target_price {
+                    return Some(TradeOutcome::TargetHit);
+                }
+            }
+        }
+
+        None
+    }
 
     /// Helper to get number of variants (including the active one)
     pub fn variant_count(&self) -> usize {

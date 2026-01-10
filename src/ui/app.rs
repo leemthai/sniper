@@ -12,6 +12,9 @@ use eframe::{Frame, Storage};
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::runtime::Runtime;
+
 use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
@@ -35,6 +38,8 @@ use crate::ui::utils::setup_custom_visuals;
 
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
+
+
 
 #[derive(PartialEq, Eq)]
 pub enum ScrollBehavior {
@@ -494,7 +499,7 @@ impl ZoneSniperApp {
         {
             let args_clone = args.clone();
             std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+                let rt = Runtime::new().expect("Failed to create runtime");
                 rt.block_on(async move {
                     let (data, sig) = fetch_pair_data(300, &args_clone, Some(prog_tx)).await;
 

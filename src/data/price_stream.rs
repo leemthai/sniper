@@ -2,6 +2,19 @@
 use crate::models::timeseries::LiveCandle;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::Sender;
+// Add these inside a cfg block for Native support
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread;
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::runtime::Runtime;
+
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::time::sleep;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+
+
+
 
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]
@@ -159,8 +172,8 @@ impl PriceStreamManager {
         #[cfg(not(target_arch = "wasm32"))]
         {
             // Spawn a dedicated thread for the runtime
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+            thread::spawn(move || {
+                let rt = Runtime::new().expect("Failed to create runtime");
                 rt.block_on(async move {
                     // 1. PULL (Batch Snapshot)
                     warm_up_prices(prices_arc.clone(), &symbols_for_warmup).await;
@@ -286,7 +299,7 @@ async fn run_combined_price_stream_with_reconnect(
             }
         }
 
-        tokio::time::sleep(std::time::Duration::from_secs(reconnect_delay)).await;
+        sleep(Duration::from_secs(reconnect_delay)).await;
         reconnect_delay = (reconnect_delay * 2).min(BINANCE.ws.max_reconnect_delay_sec);
     }
 }

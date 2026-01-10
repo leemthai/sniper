@@ -1,5 +1,5 @@
 // Define the structure to hold the data, specifically for f64
-use std::cmp::Ordering;
+use std::cmp::{Ordering, min};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -129,7 +129,7 @@ impl<'a> DataSelector<'a> {
     // Select top n of indices (not top n %)
     pub fn select_top_n(&self, top_n: usize) -> Vec<usize> {
         let total_count = self.data.len();
-        let actual_top_n = std::cmp::min(top_n, total_count);
+        let actual_top_n = min(top_n, total_count);
 
         let mut indexed_data: Vec<(usize, f64)> =
             self.data.iter().enumerate().map(|(i, &v)| (i, v)).collect();

@@ -1,8 +1,15 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, RwLock};
+use std::cmp::Ordering;
 
-use crate::utils::time_utils::AppInstant;
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    std::path::Path,
+    std::thread,
+    tokio::runtime::Runtime,
+    crate::config::PERSISTENCE,
+};
 
 use crate::analysis::adaptive::AdaptiveParameters;
 use crate::analysis::market_state::MarketState;
@@ -10,17 +17,19 @@ use crate::analysis::market_state::MarketState;
 use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
 
 use crate::data::price_stream::PriceStreamManager;
+use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::ledger::OpportunityLedger;
-use crate::models::timeseries::LiveCandle;
+use crate::models::timeseries::{LiveCandle, find_matching_ohlcv};
 use crate::models::trading_view::{
-    LiveOpportunity, TradeFinderRow, TradeOpportunity, TradingModel,
+    LiveOpportunity, TradeDirection, TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel,
 };
 
-use crate::utils::maths_utils::calculate_percent_diff;
 use crate::utils::TimeUtils;
+use crate::utils::maths_utils::calculate_percent_diff;
+use crate::utils::time_utils::AppInstant;
 
 use super::messages::{JobMode, JobRequest, JobResult};
 use super::state::PairState;
@@ -47,19 +56,16 @@ pub struct SniperEngine {
     // WASM ONLY: The Engine acts as the Worker, so it needs the "Worker Ends" of the channels
     #[cfg(target_arch = "wasm32")]
     job_rx: Receiver<JobRequest>,
-
     #[cfg(target_arch = "wasm32")]
     result_tx: Sender<JobResult>,
 
     /// Queue Logic: (PairName, OptionalPriceOverride)
     pub queue: VecDeque<(String, Option<f64>)>,
-
     /// The Live Configuration State
     pub current_config: AnalysisConfig,
-
     pub config_overrides: HashMap<String, PriceHorizonConfig>,
-
     pub ledger: OpportunityLedger,
+    pub results_repo: Arc<dyn ResultsRepositoryTrait>,
 }
 
 impl SniperEngine {
@@ -92,7 +98,7 @@ impl SniperEngine {
         // "If compiling for WASM, ignore the fact that this is mutable but not mutated."
         #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
         let mut price_manager = PriceStreamManager::new();
-        
+
         #[cfg(not(target_arch = "wasm32"))]
         price_manager.set_candle_sender(candle_tx.clone());
 
@@ -100,11 +106,40 @@ impl SniperEngine {
         let all_names: Vec<String> = pairs.keys().cloned().collect();
         price_stream.subscribe_all(all_names);
 
+        // 5. Initialize Results Repository
+        // Construct path: "data_dir/results.db"
+        #[cfg(not(target_arch = "wasm32"))]
+        let db_path = Path::new(PERSISTENCE.kline.directory)
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("results.db");
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let db_path_str = db_path.to_str().unwrap_or("results.db");
+
+        // We use block_on in native to init the DB async
+        #[cfg(not(target_arch = "wasm32"))]
+        let repo = {
+            let rt = Runtime::new().unwrap();
+            rt.block_on(async {
+                ResultsRepository::new(db_path_str)
+                    .await
+                    .unwrap_or_else(|e| {
+                        log::error!("Failed to init results.db: {}", e);
+                        panic!("Critical Error: Results DB init failed");
+                    })
+            })
+        };
+
+        #[cfg(target_arch = "wasm32")]
+        let repo = ResultsRepository::new("").unwrap();
         // 5. Construct Engine
         Self {
             pairs,
             timeseries: timeseries_arc, // Pass the Arc<RwLock> we created
             price_stream,
+            candle_rx,
+            candle_tx,
             job_tx,
             result_rx,
             // WASM: Store the handles so they don't get dropped
@@ -116,16 +151,12 @@ impl SniperEngine {
             current_config: ANALYSIS.clone(),
             config_overrides: HashMap::new(),
             ledger: OpportunityLedger::new(),
-            candle_rx,
-            candle_tx,
+            results_repo: Arc::new(repo),
         }
     }
 
     /// Process incoming live candles
     pub fn process_live_data(&mut self) {
-        // We accumulate updates to minimize lock contention?
-        // No, try_recv is fast. Let's just lock once if we have data.
-
         // 1. Check if we have data
         // We use a loop to drain the channel so we don't lag behind
         let mut updates = Vec::new();
@@ -141,7 +172,6 @@ impl SniperEngine {
 
         // 2. Write Lock (on local Arc)
         if let Ok(mut ts_collection) = ts_lock.write() {
-
             for candle in updates {
                 if let Some(series) = ts_collection
                     .series_data
@@ -151,12 +181,11 @@ impl SniperEngine {
                     series.update_from_live(&candle);
 
                     if candle.is_closed {
-                        // #[cfg(debug_assertions)]
-                        // log::info!(
-                        //     "HEARTBEAT: Closed Candle for {} @ {} so gonna trigger force_recalc() on this pair....",
-                        //     candle.symbol,
-                        //     candle.close
-                        // );
+                        #[cfg(debug_assertions)]
+                        log::info!(
+                            "ENGINE: Candle Closed for {}. Triggering Recalc.",
+                            candle.symbol
+                        );
 
                         // 3. Trigger Recalc
                         // This is now allowed because 'ts_collection' borrows 'ts_lock', not 'self'.
@@ -169,12 +198,121 @@ impl SniperEngine {
                 }
             }
         }
+        // THE REAPER: Garbage Collect dead trades
+        // CRITICAL: We run this on EVERY tick (not just close).
+        // If a wick hits our Stop Loss mid-candle, we want to kill the trade immediately.
+        self.prune_ledger();
+    }
+
+    /// GARBAGE COLLECTION: Removes finished trades and archives them.
+    pub fn prune_ledger(&mut self) {
+        let now_ms = TimeUtils::now_timestamp_ms();
+        let mut dead_trades: Vec<TradeResult> = Vec::new();
+        let mut ids_to_remove: Vec<String> = Vec::new();
+
+        // Access TimeSeries mainly for High/Low checks on the latest candle
+        let ts_guard = self.timeseries.read().unwrap();
+
+        // 1. Scan Ledger
+        for (id, op) in &self.ledger.opportunities {
+            // A. Get Data context
+            let pair = &op.pair_name;
+            let interval_ms = self.current_config.interval_width_ms;
+
+            if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, pair, interval_ms) {
+                let current_price = series.close_prices.last().copied().unwrap_or(0.0);
+                let current_high = series.high_prices.last().copied().unwrap_or(0.0);
+                let current_low = series.low_prices.last().copied().unwrap_or(0.0);
+                if current_price <= f64::EPSILON {
+                    continue;
+                }
+
+                let outcome = op.check_exit_condition(current_high, current_low, now_ms);
+                let mut exit_price = 0.0;
+
+                if let Some(ref reason) = outcome {
+                    exit_price = match reason {
+                        TradeOutcome::TargetHit => op.target_price,
+                        TradeOutcome::StopHit => op.stop_price,
+                        TradeOutcome::Timeout => current_price,
+                        TradeOutcome::ManualClose => current_price,
+                    };
+                }
+
+                // D. Process Death
+                if let Some(reason) = outcome {
+                    let pnl = match op.direction {
+                        TradeDirection::Long => {
+                            (exit_price - op.start_price) / op.start_price * 100.0
+                        }
+                        TradeDirection::Short => {
+                            (op.start_price - exit_price) / op.start_price * 100.0
+                        }
+                    };
+
+                    #[cfg(debug_assertions)]
+                    log::info!(
+                        "THE REAPER: Pruning {} [{}] -> {}. PnL: {:.2}%",
+                        pair,
+                        id,
+                        reason,
+                        pnl
+                    );
+
+                    let result = TradeResult {
+                        trade_id: id.clone(),
+                        pair: pair.clone(),
+                        direction: op.direction.clone(),
+                        entry_price: op.start_price,
+                        exit_price,
+                        outcome: reason,
+                        entry_time: op.created_at,
+                        exit_time: now_ms,
+                        final_pnl_pct: pnl,
+                        model_snapshot: None,
+                    };
+
+                    dead_trades.push(result);
+                    ids_to_remove.push(id.clone());
+                }
+            }
+        }
+
+        // Drop lock before async operations (though we just fire and forget mostly)
+        drop(ts_guard);
+
+        // Archive Dead Trades
+       if !dead_trades.is_empty() {
+            // NATIVE: Spawn async task to save
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                // Only clone the repo if we are actually going to use it
+                let repo = self.results_repo.clone(); 
+                let trades = dead_trades.clone();
+                
+                thread::spawn(move || {
+                    let rt = Runtime::new().unwrap();
+                    rt.block_on(async {
+                        for trade in trades {
+                            if let Err(e) = repo.record_trade(trade).await {
+                                log::error!("Failed to archive trade: {}", e);
+                            }
+                        }
+                    });
+                });
+            }
+        }
+
+        // 3. Update Ledger
+        for id in ids_to_remove {
+            self.ledger.remove(&id);
+        }
     }
 
     /// Generates the master list for the Trade Finder.
     pub fn get_trade_finder_rows(
         &self,
-        overrides: Option<&std::collections::HashMap<String, f64>>,
+        overrides: Option<&HashMap<String, f64>>,
     ) -> Vec<TradeFinderRow> {
         crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
             let mut rows = Vec::new();
@@ -185,8 +323,7 @@ impl SniperEngine {
             let day_ms = 86_400_000;
 
             // 1. Group Ledger Opportunities by Pair for fast lookup
-            let mut ops_by_pair: HashMap<String, Vec<&TradeOpportunity>> =
-                HashMap::new();
+            let mut ops_by_pair: HashMap<String, Vec<&TradeOpportunity>> = HashMap::new();
             for op in self.ledger.get_all() {
                 ops_by_pair
                     .entry(op.pair_name.clone())
@@ -252,14 +389,8 @@ impl SniperEngine {
                             current_price,
                             live_roi: op.live_roi(current_price),
                             annualized_roi: op.live_annualized_roi(current_price),
-                            risk_pct: calculate_percent_diff(
-                                op.stop_price,
-                                current_price,
-                            ),
-                            reward_pct: calculate_percent_diff(
-                                op.target_price,
-                                current_price,
-                            ),
+                            risk_pct: calculate_percent_diff(op.stop_price, current_price),
+                            reward_pct: calculate_percent_diff(op.target_price, current_price),
                             max_duration_ms: op.max_duration_ms,
                         };
 
@@ -332,7 +463,7 @@ impl SniperEngine {
         results.sort_by(|a, b| {
             b.live_roi
                 .partial_cmp(&a.live_roi)
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .unwrap_or(Ordering::Equal)
         });
 
         results
@@ -350,12 +481,12 @@ impl SniperEngine {
 
     /// THE GAME LOOP.
     pub fn update(&mut self, _protected_id: Option<&str>) {
-        // 0. Ingest Live Data (The Heartbeat
+        // Ingest Live Data (The Heartbeat)
         let t1 = AppInstant::now();
         self.process_live_data();
         let d1 = t1.elapsed().as_micros();
 
-        // 1. WASM ONLY: Process jobs manually in the main thread
+        // WASM ONLY: Process jobs manually in the main thread
         #[cfg(target_arch = "wasm32")]
         {
             // Non-blocking check for work
@@ -365,19 +496,19 @@ impl SniperEngine {
             }
         }
 
-        // 3. Results
+        // Results
         let t2 = AppInstant::now();
         while let Ok(result) = self.result_rx.try_recv() {
             self.handle_job_result(result);
         }
         let d2 = t2.elapsed().as_micros();
 
-        // 4. Triggers
+        // Triggers
         let t3 = AppInstant::now();
         self.check_automatic_triggers();
         let d3 = t3.elapsed().as_micros();
 
-        // 5. Queue
+        // Queue
         let t4 = AppInstant::now();
         self.process_queue();
         let d4 = t4.elapsed().as_micros();
@@ -416,8 +547,6 @@ impl SniperEngine {
         self.timeseries.read().unwrap().unique_pair_names()
     }
 
-    // --- TELEMETRY ---
-
     pub fn get_queue_len(&self) -> usize {
         self.queue.len()
     }
@@ -450,17 +579,12 @@ impl SniperEngine {
         }
     }
 
-    // --- CONFIG UPDATES ---
-
     pub fn update_config(&mut self, new_config: AnalysisConfig) {
         self.current_config = new_config;
     }
 
     /// Smart Global Invalidation
     pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
-        // #[cfg(debug_assertions)]
-        // log::info!("ENGINE: Global Recalc Triggered (Startup/Reset)");
-
         self.queue.clear();
 
         let mut all_pairs = self.get_all_pair_names();
@@ -476,14 +600,10 @@ impl SniperEngine {
         for pair in all_pairs {
             self.queue.push_back((pair, None));
         }
-
-        // log::info!("Global Invalidation: Queue Rebuilt ({} pairs).", self.queue.len());
     }
 
     /// Force a single recalc with optional price override
     pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, _reason: &str) {
-        // #[cfg(debug_assertions)]
-        // log::info!("ENGINE: Recalc Triggered for [{}] by [{}]", pair, _reason);
 
         // Check if calculating
         let is_calculating = self
@@ -525,7 +645,7 @@ impl SniperEngine {
                         .count();
                     // ------------------------
 
-                    // --- NEW: Sync to Ledger ---
+                    // Sync to Ledger ---
                     for op in &model.opportunities {
                         self.ledger.evolve(op.clone());
                     }
@@ -550,21 +670,18 @@ impl SniperEngine {
                         total_ledger
                     );
 
-                    // 3. Success: Update State
+                    // Success: Update State
                     state.model = Some(model.clone());
 
-                    // 3. Success: Update State
+                    // Success: Update State
                     state.model = Some(model.clone());
                     state.is_calculating = false;
                     state.last_update_time = AppInstant::now();
                     state.last_error = None;
 
-                    // 4. Monitor Logic: Feed the result to the signal monitor
-                    // let ctx = PairContext::new((*model).clone(), state.last_update_price);
-                    // self.multi_pair_monitor.add_pair(ctx);
                 }
                 Err(e) => {
-                    // 5. Failure: Clear Model, Set Error
+                    // Failure: Clear Model, Set Error
                     log::error!("Worker failed for {}: {}", result.pair_name, e);
                     state.last_error = Some(e);
                     state.is_calculating = false;
@@ -607,7 +724,6 @@ impl SniperEngine {
                             continue;
                         }
 
-                        // Normal Logic
                         let diff = (current_price - state.last_update_price).abs();
                         let pct_diff = diff / state.last_update_price;
 
@@ -644,11 +760,7 @@ impl SniperEngine {
             }
         }
 
-        // Pop the tuple
         if let Some((pair, price_opt)) = self.queue.pop_front() {
-            // #[cfg(debug_assertions)]
-            // log::warn!("ENGINE QUEUE: Popped job for [{}]", pair); // <--- LOG THIS
-
             self.dispatch_job(pair, price_opt, JobMode::Standard);
         }
     }
