@@ -182,7 +182,7 @@ pub struct ZoneSniperApp {
     pub show_candle_range: bool,
 
     // TradeFinder State
-    pub tf_filter_pair_only: bool, // True = Current Base Pairs, False = All
+    pub tf_scope_match_base: bool, // True = Current Base Pairs, False = All
     pub tf_sort_col: SortColumn,
     pub tf_sort_dir: SortDirection,
 
@@ -249,7 +249,7 @@ impl Default for ZoneSniperApp {
             ticker_state: TickerState::default(),
             last_frame_time: None,
             show_opportunity_details: false,
-            tf_filter_pair_only: false,
+            tf_scope_match_base: false,
             selected_opportunity: None,
             show_candle_range: false,
             tf_sort_col: SortColumn::LiveRoi, // Default to Money

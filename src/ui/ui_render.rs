@@ -10,12 +10,13 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::analysis::adaptive::AdaptiveParameters;
-use crate::config::ANALYSIS;
 
+use crate::config::ANALYSIS;
 use crate::config::TICKER;
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::domain::pair_interval::PairInterval;
+
 use crate::models::cva::ScoreType;
 use crate::models::trading_view::{
     NavigationTarget, SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
@@ -31,7 +32,6 @@ use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
-
 use crate::utils::maths_utils::{
     calculate_percent_diff, format_fixed_chars, format_volume_compact,
 };
@@ -574,20 +574,33 @@ impl ZoneSniperApp {
 
         // --- 2. SCOPE TOGGLE ---
         ui.horizontal(|ui| {
+            // Item count
             ui.label(
                 RichText::new(format!("{} {}", count, "items"))
                     .strong()
                     .color(PLOT_CONFIG.color_text_subdued),
             );
 
+            // NEW: Locate Button (Center on Target)
+            // Only show if we actually have a target to scroll to
+            if self.selected_pair.is_some() {
+                ui.add_space(5.0);
+                if ui.small_button(RichText::new(UI_TEXT.label_target.as_str()).color(PLOT_CONFIG.color_info))
+                    .on_hover_text("Scroll to Selected Target")
+                    .clicked() 
+                {
+                    self.update_scroll_to_selection();
+                }
+            }
+
             ui.separator();
 
             // "ALL PAIRS" Button
             if ui
-                .selectable_label(!self.tf_filter_pair_only, &UI_TEXT.tf_scope_all)
+                .selectable_label(!self.tf_scope_match_base, &UI_TEXT.tf_scope_all)
                 .clicked()
             {
-                self.tf_filter_pair_only = false;
+                self.tf_scope_match_base = false;
                 filter_changed = true;
                 self.update_scroll_to_selection();
             }
@@ -601,10 +614,10 @@ impl ZoneSniperApp {
 
             let pair_label = format!("{} {}", base_asset, UI_TEXT.tf_scope_selected);
             if ui
-                .selectable_label(self.tf_filter_pair_only, pair_label)
+                .selectable_label(self.tf_scope_match_base, pair_label)
                 .clicked()
             {
-                self.tf_filter_pair_only = true;
+                self.tf_scope_match_base = true;
                 filter_changed = true;
                 self.update_scroll_to_selection();
             }
@@ -622,45 +635,6 @@ impl ZoneSniperApp {
 
     fn down_from_top(&self, ui: &mut Ui) {
         ui.add_space(CELL_PADDING_Y);
-    }
-
-    fn render_empty_state(&mut self, ui: &mut Ui) {
-        ui.centered_and_justified(|ui| {
-            ui.vertical_centered(|ui| {
-                ui.label(
-                    RichText::new(&UI_TEXT.icon_search)
-                        .size(32.0)
-                        .color(PLOT_CONFIG.color_text_subdued),
-                );
-                ui.add_space(10.0);
-
-                if self.tf_filter_pair_only {
-                    // Scope Case
-                    if let Some(pair) = &self.selected_pair {
-                        ui.heading(format!("No worthwhile trades for {}", pair));
-                        ui.add_space(10.0);
-
-                        if ui
-                            .button(format!("View {}", UI_TEXT.tf_scope_all))
-                            .clicked()
-                        {
-                            self.tf_filter_pair_only = false;
-                            self.scroll_target = Some(NavigationTarget::Pair(pair.clone()));
-                        }
-                    } else {
-                        ui.heading("No pair selected");
-                    }
-                } else {
-                    // Global Case
-                    ui.heading("No Opportunities Found");
-                    ui.label(
-                        RichText::new("Market is quiet or settings are too strict.").italics(),
-                    );
-                    ui.add_space(5.0);
-                    ui.label("Try adjusting Price Horizon or lowering ROI threshold.");
-                }
-            });
-        });
     }
 
     fn render_trade_finder_content(&mut self, ui: &mut Ui) {
@@ -688,7 +662,7 @@ impl ZoneSniperApp {
 
         // Empty table check
         if rows.is_empty() {
-            self.render_empty_state(ui);
+            ui.centered_and_justified(|ui| ui.label("Loading Market Data..."));
             return;
         }
 
@@ -1115,7 +1089,7 @@ impl ZoneSniperApp {
 
         // Scope Logic
         let is_in_scope = |pair: &str| -> bool {
-            if !self.tf_filter_pair_only {
+            if !self.tf_scope_match_base {
                 return true;
             }
             // Always keep selected/target pair
