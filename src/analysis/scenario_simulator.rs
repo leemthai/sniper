@@ -1,15 +1,15 @@
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-// #[cfg(target_arch = "x86_64")]
-// use std::arch::x86_64::*;
-use crate::utils::time_utils::AppInstant;
-
 use crate::analysis::market_state::MarketState;
+
 use crate::config::SimilaritySettings;
+use crate::config::DEBUG_FLAGS;
+
 use crate::models::OhlcvTimeSeries;
 use crate::models::trading_view::TradeDirection;
+
+use crate::utils::time_utils::AppInstant;
 
 /// Structure of Arrays (SoA) layout for AVX-512 processing.
 /// Instead of [State, State, State], we have [All_Vols], [All_Moms], [All_Rels].
@@ -30,21 +30,12 @@ impl SimdHistory {
         }
     }
 
-    pub fn push(&mut self, idx: usize, state: MarketState) {
-        self.indices.push(idx);
-        self.vol.push(state.volatility_pct as f32);
-        self.mom.push(state.momentum_pct as f32);
-        self.rel_vol.push(state.relative_volume as f32);
-    }
-
     /// Padding ensures we don't segfault when loading chunks of 16 at the end
     pub fn pad_to_16(&mut self) {
         while self.vol.len() % 16 != 0 {
             self.vol.push(0.0);
             self.mom.push(0.0);
             self.rel_vol.push(0.0);
-            // Index doesn't matter for padding, but keep lengths synced
-            self.indices.push(0);
         }
     }
 }
@@ -116,6 +107,151 @@ unsafe fn calculate_scores_avx512(
     results
 }
 
+/// Generates Momentum using AVX-512 for (Close - OldClose) / OldClose
+fn generate_momentum_optimized(
+    ts: &OhlcvTimeSeries,
+    start_idx: usize,
+    end_idx: usize,
+    lookback: usize,
+) -> Vec<f32> {
+    let len = end_idx.saturating_sub(start_idx);
+    let mut results = vec![0.0f32; len];
+
+    if start_idx < lookback { return results; } 
+
+    // AVX-512 Block (Processing 8 f64 -> 8 f32)
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    if is_x86_feature_detected!("avx512f") {
+        unsafe {
+            use std::arch::x86_64::*;
+            let stride = 8; 
+            let loop_len = len - (len % stride);
+            let close_ptr = ts.close_prices.as_ptr();
+
+            for i in (0..loop_len).step_by(stride) {
+                let curr_idx = start_idx + i;
+                let prev_idx = curr_idx - lookback;
+
+                let curr = _mm512_loadu_pd(close_ptr.add(curr_idx));
+                let prev = _mm512_loadu_pd(close_ptr.add(prev_idx));
+
+                let diff = _mm512_sub_pd(curr, prev);
+                let mom_f64 = _mm512_div_pd(diff, prev);
+
+                // Convert f64 -> f32 (256-bit result)
+                let mom_f32 = _mm512_cvtpd_ps(mom_f64);
+
+                _mm256_storeu_ps(results.as_mut_ptr().add(i), mom_f32);
+            }
+        }
+    }
+
+    // Scalar Fallback / Tail
+    // FIX: Define 'processed' logic inside cfg blocks to avoid unused variables
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
+    let processed = 0;
+
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    let processed = if is_x86_feature_detected!("avx512f") { 
+        len - (len % 8) 
+    } else { 
+        0 
+    };
+
+    for i in processed..len {
+        let curr_idx = start_idx + i;
+        let prev_idx = curr_idx - lookback;
+        let c = ts.close_prices[curr_idx];
+        let p = ts.close_prices[prev_idx];
+        if p > 0.0 {
+            results[i] = ((c - p) / p) as f32;
+        }
+    }
+
+    results
+}
+
+/// Generates Volatility using AVX-512 for Raw Vals + Rolling Sum
+fn generate_volatility_optimized(
+    ts: &OhlcvTimeSeries,
+    start_idx: usize,
+    end_idx: usize,
+    lookback: usize,
+) -> Vec<f32> {
+    let len = end_idx.saturating_sub(start_idx);
+    let mut results = vec![0.0f32; len];
+
+    // 1. Generate Raw Volatility: (H - L) / C
+    let raw_start = start_idx.saturating_sub(lookback);
+    let raw_len = end_idx - raw_start;
+    let mut raw_vols = vec![0.0f64; raw_len];
+
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    if is_x86_feature_detected!("avx512f") {
+        unsafe {
+            use std::arch::x86_64::*;
+            let stride = 8;
+            let loop_len = raw_len - (raw_len % stride);
+            
+            let h_ptr = ts.high_prices.as_ptr();
+            let l_ptr = ts.low_prices.as_ptr();
+            let c_ptr = ts.close_prices.as_ptr();
+
+            for i in (0..loop_len).step_by(stride) {
+                let idx = raw_start + i;
+                let h = _mm512_loadu_pd(h_ptr.add(idx));
+                let l = _mm512_loadu_pd(l_ptr.add(idx));
+                let c = _mm512_loadu_pd(c_ptr.add(idx));
+
+                let range = _mm512_sub_pd(h, l);
+                let val = _mm512_div_pd(range, c);
+
+                _mm512_storeu_pd(raw_vols.as_mut_ptr().add(i), val);
+            }
+        }
+    }
+
+    // Scalar Tail for Raw Vols
+    // FIX: Define 'processed' logic inside cfg blocks
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
+    let processed = 0;
+
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    let processed = if is_x86_feature_detected!("avx512f") { 
+        raw_len - (raw_len % 8) 
+    } else { 
+        0 
+    };
+
+    for i in processed..raw_len {
+        let idx = raw_start + i;
+        let h = ts.high_prices[idx];
+        let l = ts.low_prices[idx];
+        let c = ts.close_prices[idx];
+        if c > 0.0 {
+            raw_vols[i] = (h - l) / c;
+        }
+    }
+
+    // 2. Rolling Sum (SMA)
+    let mut current_sum: f64 = raw_vols.iter().take(lookback).sum();
+    let lookback_f = lookback as f64;
+
+    if len > 0 {
+        results[0] = (current_sum / lookback_f) as f32;
+    }
+
+    for i in 1..len {
+        let leaving = raw_vols[i - 1]; 
+        let entering = raw_vols[i + lookback - 1]; 
+        current_sum = current_sum - leaving + entering;
+        results[i] = (current_sum / lookback_f) as f32;
+    }
+
+    results
+}
+
+
 #[derive(Debug, Clone)]
 pub struct ScenarioConfig {
     pub target_price: f64,
@@ -146,8 +282,6 @@ impl ScenarioSimulator {
     /// STEP 1: The Heavy Lift.
     /// Scans history to find the Top N moments that look like "Now".
     /// This runs ONCE per job.
-    ///
-    /// /// Scans history to find the Top N moments that look like "Now".
     pub fn find_historical_matches(
         pair_name: &str,
         ts: &OhlcvTimeSeries,
@@ -164,20 +298,34 @@ impl ScenarioSimulator {
 
         // 2. Define Scan Range (Matches original logic exactly)
         let end_scan = current_idx.saturating_sub(max_duration_candles);
-
-        // --- PHASE 1: DATA PREPARATION (SoA Construction) ---
+        // --- PHASE 1: DATA PREPARATION (Optimized Generation) ---
         let t_prep_start = AppInstant::now();
+        
+        let start_idx = trend_lookback;
+        let end_idx = end_scan;
+        let count = end_idx.saturating_sub(start_idx);
+        
+        let mut simd_history = SimdHistory::new(count);
+        
+        if count > 0 {
+            // A. Indices
+            simd_history.indices = (start_idx..end_idx).collect();
 
-        // Use parallel iterator to generate states
-        let history_states: Vec<(usize, MarketState)> = (trend_lookback..end_scan)
-            .into_par_iter()
-            .filter_map(|i| MarketState::calculate(ts, i, trend_lookback).map(|ms| (i, ms)))
-            .collect();
+            // B. Relative Volume (Copy & Cast)
+            // Scalar copy is fast enough here
+            if start_idx < ts.relative_volumes.len() {
+                let safe_end = end_idx.min(ts.relative_volumes.len());
+                simd_history.rel_vol = ts.relative_volumes[start_idx..safe_end]
+                    .iter()
+                    .map(|&v| v as f32)
+                    .collect();
+            }
 
-        // Flatten into SoA
-        let mut simd_history = SimdHistory::new(history_states.len());
-        for (i, state) in history_states {
-            simd_history.push(i, state);
+            // C. Momentum (AVX Gen)
+            simd_history.mom = generate_momentum_optimized(ts, start_idx, end_idx, trend_lookback);
+
+            // D. Volatility (AVX Gen + Rolling Sum)
+            simd_history.vol = generate_volatility_optimized(ts, start_idx, end_idx, trend_lookback);
         }
 
         // Critical for SIMD safety: Pad float vectors only
@@ -193,7 +341,6 @@ impl ScenarioSimulator {
 
         #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
         if is_x86_feature_detected!("avx512f") {
-            // SAFETY: We verified the feature is detected and arrays are padded
             raw_scores = unsafe {
                 calculate_scores_avx512(&simd_history, &current_market_state, sim_config)
             };
@@ -212,7 +359,6 @@ impl ScenarioSimulator {
         let t_sort_start = AppInstant::now();
 
         // Zip indices back with scores
-        // We iterate indices (which are NOT padded) so we ignore the float padding naturally
         let mut candidates: Vec<(usize, f64)> = simd_history
             .indices
             .iter()
@@ -221,16 +367,10 @@ impl ScenarioSimulator {
             .collect();
 
         // Partial Sort (The "Quickselect" Optimization)
-        // If we have more than N items, we only care about the top N.
         if candidates.len() > sample_count {
-            // This partitions the array: Smallest N items move to the front.
-            // The rest are moved to the back. Order within the groups is undefined.
-            // This is O(N) instead of O(N log N).
             candidates.select_nth_unstable_by(sample_count, |a, b| {
                 a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)
             });
-
-            // Discard the trash immediately
             candidates.truncate(sample_count);
         }
 
@@ -239,16 +379,13 @@ impl ScenarioSimulator {
         let t_sort = t_sort_start.elapsed();
         let t_total = t_start.elapsed();
 
-        // --- LOGGING ---
-        log::error!(
-            "PATHFINDER SIMD [{}]: Scanned {} items in {:.2?} (Prep: {:.2?} | SIMD: {:.2?} | Sort: {:.2?})",
-            pair_name,
-            simd_history.indices.len(),
-            t_total,
-            t_prep,
-            t_simd,
-            t_sort
-        );
+         // Manual trace_time logic
+        if DEBUG_FLAGS.enable_perf_logging {
+            log::info!(
+                "TRACE: ScenarioSimulator [{}]: Total {:.2?} (Items: {} | Prep: {:.2?} | SIMD: {:.2?} | Sort: {:.2?})",
+                pair_name, t_total, simd_history.indices.len(), t_prep, t_simd, t_sort
+            );
+        }
 
         Some((candidates, current_market_state))
     }

@@ -8,8 +8,7 @@ use crate::domain::pair_interval::PairInterval;
 
 use crate::models::cva::{CVACore, ScoreType};
 
-#[cfg(debug_assertions)]
-use crate::config::DEBUG_FLAGS;
+const RVOL_WINDOW: usize = 20;
 
 // ============================================================================
 // OhlcvTimeSeries: Raw time series data for a trading pair
@@ -45,6 +44,8 @@ pub struct OhlcvTimeSeries {
     pub base_asset_volumes: Vec<f64>,
     pub quote_asset_volumes: Vec<f64>,
 
+    pub relative_volumes: Vec<f64>,
+
 }
 
 pub fn find_matching_ohlcv<'a>(
@@ -70,18 +71,32 @@ impl OhlcvTimeSeries {
 
     pub fn update_from_live(&mut self, candle: &LiveCandle) {
         if self.timestamps.is_empty() { return; }
-
+        
         let last_idx = self.timestamps.len() - 1;
         let last_ts = self.timestamps[last_idx];
 
-        if candle.open_time == last_ts {
+        // Logic: Is this an update to the current candle, or a new one?
+        let is_update = candle.open_time == last_ts;
+
+        if is_update {
             // Update current (forming) candle
             self.high_prices[last_idx] = candle.high;
             self.low_prices[last_idx] = candle.low;
             self.close_prices[last_idx] = candle.close;
             self.base_asset_volumes[last_idx] = candle.volume;
             self.quote_asset_volumes[last_idx] = candle.quote_vol;
-        } else if candle.open_time > last_ts {
+            
+            // Recalculate RVOL for this updating candle
+            let rvol = self.calculate_rvol_at_index(last_idx);
+            
+            // Safety check for vector length sync
+            if last_idx < self.relative_volumes.len() {
+                self.relative_volumes[last_idx] = rvol;
+            } else {
+                self.relative_volumes.push(rvol);
+            }
+
+        } else {
             // New candle started
             self.timestamps.push(candle.open_time);
             self.open_prices.push(candle.open);
@@ -90,9 +105,112 @@ impl OhlcvTimeSeries {
             self.close_prices.push(candle.close);
             self.base_asset_volumes.push(candle.volume);
             self.quote_asset_volumes.push(candle.quote_vol);
+            
+            // Calculate RVOL for the new candle
+            let new_idx = self.timestamps.len() - 1;
+            let rvol = self.calculate_rvol_at_index(new_idx);
+            self.relative_volumes.push(rvol);
         }
     }
-    
+
+
+    /// Helper: Calculates Relative Volume for a specific index using existing data
+    fn calculate_rvol_at_index(&self, idx: usize) -> f64 {
+        let start = idx.saturating_sub(RVOL_WINDOW - 1);
+        let slice = &self.base_asset_volumes[start..=idx];
+        let sum: f64 = slice.iter().sum();
+        let count = slice.len().max(1) as f64;
+        let avg = sum / count;
+        
+        let current_vol = self.base_asset_volumes[idx];
+        
+        if avg > f64::EPSILON {
+            current_vol / avg
+        } else {
+            1.0 // Default if Avg is 0
+        }
+    }
+
+    // ... calculate_volatility_in_range implementation ...
+
+    /// Create a TimeSeries from a list of Candles (Loaded from DB)
+    pub fn from_candles(pair_interval: PairInterval, candles: Vec<Candle>) -> Self {
+        if candles.is_empty() {
+            return Self {
+                pair_interval,
+                first_kline_timestamp_ms: 0,
+                timestamps: vec![],
+                open_prices: vec![],
+                high_prices: vec![],
+                low_prices: vec![],
+                close_prices: vec![],
+                base_asset_volumes: vec![],
+                quote_asset_volumes: vec![],
+                relative_volumes: vec![],
+            };
+        }
+
+        let len = candles.len();
+        let first_ts = candles.first().map(|c| c.timestamp_ms).unwrap_or(0);
+
+        // Pre-allocate everything
+        let mut ts_vec = Vec::with_capacity(len);
+        let mut open_vec = Vec::with_capacity(len);
+        let mut high_vec = Vec::with_capacity(len);
+        let mut low_vec = Vec::with_capacity(len);
+        let mut close_vec = Vec::with_capacity(len);
+        let mut base_vec = Vec::with_capacity(len);
+        let mut quote_vec = Vec::with_capacity(len);
+        let mut rvol_vec = Vec::with_capacity(len);
+
+        // Optimization: Rolling Sum for RVOL
+        let mut rolling_sum = 0.0;
+        let window_size = RVOL_WINDOW; 
+
+        for (i, c) in candles.iter().enumerate() {
+            ts_vec.push(c.timestamp_ms);
+            open_vec.push(c.open_price);
+            high_vec.push(c.high_price);
+            low_vec.push(c.low_price);
+            close_vec.push(c.close_price);
+            base_vec.push(c.base_asset_volume);
+            quote_vec.push(c.quote_asset_volume);
+
+            // --- RVOL Calculation (O(1) Rolling) ---
+            rolling_sum += c.base_asset_volume;
+
+            if i >= window_size {
+                // Subtract the element that fell out of the window
+                rolling_sum -= candles[i - window_size].base_asset_volume;
+            }
+
+            // Count is i+1 until we hit window_size, then it stays at window_size
+            let count = (i + 1).min(window_size) as f64;
+            let avg = rolling_sum / count;
+
+            let rvol = if avg > f64::EPSILON {
+                c.base_asset_volume / avg
+            } else {
+                1.0
+            };
+            rvol_vec.push(rvol);
+        }
+
+        Self {
+            pair_interval,
+            first_kline_timestamp_ms: first_ts,
+            timestamps: ts_vec,
+            open_prices: open_vec,
+            high_prices: high_vec,
+            low_prices: low_vec,
+            close_prices: close_vec,
+            base_asset_volumes: base_vec,
+            quote_asset_volumes: quote_vec,
+            relative_volumes: rvol_vec,
+        }
+    }
+
+
     /// Calculates the Average Volatility ((High-Low)/Close) over a range of indices.
     /// Returns 0.0 if range is invalid or empty.
     pub fn calculate_volatility_in_range(&self, start_idx: usize, end_idx: usize) -> f64 {
@@ -117,90 +235,6 @@ impl OhlcvTimeSeries {
             sum_vol / count as f64
         } else {
             0.0
-        }
-    }
-
-    /// Create a TimeSeries from a list of Candles (Loaded from DB)
-    pub fn from_candles(pair_interval: PairInterval, candles: Vec<Candle>) -> Self {
-        if candles.is_empty() {
-            return Self {
-                pair_interval,
-                first_kline_timestamp_ms: 0,
-                timestamps: vec![],
-                open_prices: vec![],
-                high_prices: vec![],
-                low_prices: vec![],
-                close_prices: vec![],
-                base_asset_volumes: vec![],
-                quote_asset_volumes: vec![],
-            };
-        }
-
-        let first_ts = candles[0].timestamp_ms;
-        let len = candles.len();
-
-        // Pre-allocate everything
-        let mut ts_vec = Vec::with_capacity(len);
-        let mut open_vec = Vec::with_capacity(len);
-        let mut high_vec = Vec::with_capacity(len);
-        let mut low_vec = Vec::with_capacity(len);
-        let mut close_vec = Vec::with_capacity(len);
-        let mut base_vec = Vec::with_capacity(len);
-        let mut quote_vec = Vec::with_capacity(len);
-
-        for c in candles {
-            ts_vec.push(c.timestamp_ms); // Store the REAL timestamp
-            open_vec.push(c.open_price);
-            high_vec.push(c.high_price);
-            low_vec.push(c.low_price);
-            close_vec.push(c.close_price);
-            base_vec.push(c.base_asset_volume);
-            quote_vec.push(c.quote_asset_volume);
-        }
-
-      // --- GAP DETECTION (DEBUG LOGGING ONLY) ---
-        // This block runs only in debug builds to inform you about data quality.
-        // It does not affect the struct or production performance.
-        #[cfg(debug_assertions)]
-        if DEBUG_FLAGS.gap_report
-        {
-            let last_ts = ts_vec.last().copied().unwrap_or(first_ts);
-            let duration_ms = last_ts - first_ts;
-            
-            let expected_count = if pair_interval.interval_ms > 0 {
-                (duration_ms / pair_interval.interval_ms) as usize + 1
-            } else {
-                len
-            };
-
-            let gap_pct = if expected_count > len {
-                let missing = expected_count - len;
-                (missing as f64 / expected_count as f64) * 100.0
-            } else {
-                0.0
-            };
-
-            if gap_pct > 0.2 {
-                log::info!(
-                    "📉 Gap Report [{}]: {:.2}% Missing. (Has {} candles, Timeframe implies {})", 
-                    pair_interval.name(), 
-                    gap_pct, 
-                    len, 
-                    expected_count
-                );
-            }
-        }
-
-        Self {
-            pair_interval,
-            first_kline_timestamp_ms: first_ts,
-            timestamps: ts_vec,
-            open_prices: open_vec,
-            high_prices: high_vec,
-            low_prices: low_vec,
-            close_prices: close_vec,
-            base_asset_volumes: base_vec,
-            quote_asset_volumes: quote_vec,
         }
     }
 

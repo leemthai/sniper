@@ -59,25 +59,9 @@ impl MarketState {
             0.0
         };
 
-        // 3. Relative Volume (FIXED SHORT LOOKBACK - O(N) Loop)
-        // We decouple this from trend_lookback to prevent the "Computational Bomb".
-        // 20 candles (approx 1.5 hours on 5m) is standard for Rel Vol.
-        let vol_lookback = 20; 
-        
-        // Safety for volume loop
-        if idx < vol_lookback { return None; }
-
-        let mut vol_sum = 0.0;
-        for i in 0..vol_lookback {
-            vol_sum += ts.base_asset_volumes[idx - i];
-        }
-        let avg_vol = vol_sum / vol_lookback as f64;
-        
-        let rel_vol = if avg_vol > 0.0 {
-            current.base_asset_volume / avg_vol
-        } else {
-            0.0
-        };
+        // 3. Relative Volume (O(1) Lookup)
+        // We now read the pre-calculated value directly.
+        let rel_vol = ts.relative_volumes.get(idx).copied().unwrap_or(1.0);
 
         Some(Self {
             volatility_pct: volatility,
