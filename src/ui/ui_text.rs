@@ -41,7 +41,7 @@ pub const ICON_CLOSE: &str = "\u{f00d}";
 pub const ICON_PLUS_MINUS: &str = "\u{f14c9}";
 pub const ICON_SEARCH: &str = "\u{f0978}";
 pub const ICON_UNFILTERED: &str = "\u{f14ef}";
-
+pub const ICON_RECENTER: &str = "\u{f0622}";
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
 // pub const ICON_CROSSHAIR: &str  = "\u{f05b}"; // (Crosshairs)
@@ -144,6 +144,7 @@ pub struct UiText {
     pub tf_time: String,
 
     // General use
+    pub label_recenter: String,
     pub label_id: String,
     pub label_volume: String,
     pub label_volume_24h: String,
@@ -266,6 +267,7 @@ pub struct UiText {
 pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
     UiText {
 
+        label_recenter: ICON_RECENTER.to_string(),
         hover_scroll_to_selected_target: "Scroll to Selected Target".to_string(),
         icon_close: ICON_CLOSE.to_string(),
         label_pair: "Pair".to_string(),

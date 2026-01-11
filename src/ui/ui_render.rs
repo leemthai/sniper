@@ -583,7 +583,7 @@ impl ZoneSniperApp {
             // Only show if we actually have a target to scroll to
             if self.selected_pair.is_some() {
                 ui.add_space(5.0);
-                if ui.small_button(RichText::new(UI_TEXT.label_target.as_str()).color(PLOT_CONFIG.color_info))
+                if ui.small_button(RichText::new(UI_TEXT.label_recenter.as_str()).color(PLOT_CONFIG.color_info))
                     .on_hover_text(&UI_TEXT.hover_scroll_to_selected_target)
                     .clicked() 
                 {
