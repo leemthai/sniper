@@ -62,7 +62,7 @@ fn run_pathfinder_simulations(
     current_price: f64,
     config: &AnalysisConfig,
 ) -> Vec<TradeOpportunity> {
-    crate::trace_time!("Worker: Pathfinder Sim", 2_000, {
+    crate::trace_time!("Worker: Pathfinder Sim", 10_000, {
         let mut opportunities = Vec::new();
 
         // 1. Setup & Adaptive Lookback
@@ -426,26 +426,26 @@ fn perform_standard_analysis(
     let ph_pct = req.config.price_horizon.threshold_pct * 100.0;
     let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct);
 
-    crate::trace_time!(&format!("Total JOB [{}]", base_label), 5000, {
+    crate::trace_time!(&format!("Total JOB [{}]", base_label), 10_000, {
         let start = AppInstant::now();
 
         // 1. Price
         let price = resolve_analysis_price(req, ts_collection);
 
         // 2. Count
-        let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 500, {
+        let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 2_000, {
             calculate_exact_candle_count(req, ts_collection, price)
         });
 
         let full_label = format!("{} ({} candles)", base_label, count);
 
         // 3. CVA
-        let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 1000, {
+        let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 3_000, {
             pair_analysis_pure(req.pair_name.clone(), ts_collection, price, &req.config)
         });
 
         // 4. Profiler
-        let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 1000, {
+        let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 2_000, {
             get_or_generate_profile(req, ts_collection, price)
         });
 

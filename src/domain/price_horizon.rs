@@ -13,7 +13,7 @@ pub fn auto_select_ranges(
     let (price_min, price_max) = calculate_price_range(current_price, config.threshold_pct);
 
     // 2. Find all ranges where price is relevant
-    let ranges = crate::trace_time!("Scan All Candles", 500, {
+    let ranges = crate::trace_time!("Scan All Candles", 2_000, {
         find_relevant_ranges(timeseries, price_min, price_max)
     });
 

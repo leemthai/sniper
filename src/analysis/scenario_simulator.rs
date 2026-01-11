@@ -3,8 +3,8 @@ use std::cmp::Ordering;
 
 use crate::analysis::market_state::MarketState;
 
-use crate::config::SimilaritySettings;
 use crate::config::DEBUG_FLAGS;
+use crate::config::SimilaritySettings;
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::trading_view::TradeDirection;
@@ -117,14 +117,16 @@ fn generate_momentum_optimized(
     let len = end_idx.saturating_sub(start_idx);
     let mut results = vec![0.0f32; len];
 
-    if start_idx < lookback { return results; } 
+    if start_idx < lookback {
+        return results;
+    }
 
     // AVX-512 Block (Processing 8 f64 -> 8 f32)
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
     if is_x86_feature_detected!("avx512f") {
         unsafe {
             use std::arch::x86_64::*;
-            let stride = 8; 
+            let stride = 8;
             let loop_len = len - (len % stride);
             let close_ptr = ts.close_prices.as_ptr();
 
@@ -152,10 +154,10 @@ fn generate_momentum_optimized(
     let processed = 0;
 
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
-    let processed = if is_x86_feature_detected!("avx512f") { 
-        len - (len % 8) 
-    } else { 
-        0 
+    let processed = if is_x86_feature_detected!("avx512f") {
+        len - (len % 8)
+    } else {
+        0
     };
 
     for i in processed..len {
@@ -192,7 +194,7 @@ fn generate_volatility_optimized(
             use std::arch::x86_64::*;
             let stride = 8;
             let loop_len = raw_len - (raw_len % stride);
-            
+
             let h_ptr = ts.high_prices.as_ptr();
             let l_ptr = ts.low_prices.as_ptr();
             let c_ptr = ts.close_prices.as_ptr();
@@ -217,10 +219,10 @@ fn generate_volatility_optimized(
     let processed = 0;
 
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
-    let processed = if is_x86_feature_detected!("avx512f") { 
-        raw_len - (raw_len % 8) 
-    } else { 
-        0 
+    let processed = if is_x86_feature_detected!("avx512f") {
+        raw_len - (raw_len % 8)
+    } else {
+        0
     };
 
     for i in processed..raw_len {
@@ -242,15 +244,14 @@ fn generate_volatility_optimized(
     }
 
     for i in 1..len {
-        let leaving = raw_vols[i - 1]; 
-        let entering = raw_vols[i + lookback - 1]; 
+        let leaving = raw_vols[i - 1];
+        let entering = raw_vols[i + lookback - 1];
         current_sum = current_sum - leaving + entering;
         results[i] = (current_sum / lookback_f) as f32;
     }
 
     results
 }
-
 
 #[derive(Debug, Clone)]
 pub struct ScenarioConfig {
@@ -300,13 +301,13 @@ impl ScenarioSimulator {
         let end_scan = current_idx.saturating_sub(max_duration_candles);
         // --- PHASE 1: DATA PREPARATION (Optimized Generation) ---
         let t_prep_start = AppInstant::now();
-        
+
         let start_idx = trend_lookback;
         let end_idx = end_scan;
         let count = end_idx.saturating_sub(start_idx);
-        
+
         let mut simd_history = SimdHistory::new(count);
-        
+
         if count > 0 {
             // A. Indices
             simd_history.indices = (start_idx..end_idx).collect();
@@ -325,7 +326,8 @@ impl ScenarioSimulator {
             simd_history.mom = generate_momentum_optimized(ts, start_idx, end_idx, trend_lookback);
 
             // D. Volatility (AVX Gen + Rolling Sum)
-            simd_history.vol = generate_volatility_optimized(ts, start_idx, end_idx, trend_lookback);
+            simd_history.vol =
+                generate_volatility_optimized(ts, start_idx, end_idx, trend_lookback);
         }
 
         // Critical for SIMD safety: Pad float vectors only
@@ -379,12 +381,21 @@ impl ScenarioSimulator {
         let t_sort = t_sort_start.elapsed();
         let t_total = t_start.elapsed();
 
-         // Manual trace_time logic
+        // Manual trace_time logic
         if DEBUG_FLAGS.enable_perf_logging {
-            log::info!(
-                "TRACE: ScenarioSimulator [{}]: Total {:.2?} (Items: {} | Prep: {:.2?} | SIMD: {:.2?} | Sort: {:.2?})",
-                pair_name, t_total, simd_history.indices.len(), t_prep, t_simd, t_sort
-            );
+            let t_threshold = 1000;
+            if t_total.as_micros() > t_threshold {
+                log::info!(
+                    "TRACE: ScenarioSimulator [{}]: Total {:.2?} (Items: {} | Prep: {:.2?} | SIMD: {:.2?} | Sort: {:.2?}) (Threshold: {}ms)",
+                    pair_name,
+                    t_total,
+                    simd_history.indices.len(),
+                    t_prep,
+                    t_simd,
+                    t_sort,
+                    t_threshold,
+                );
+            }
         }
 
         Some((candidates, current_market_state))
