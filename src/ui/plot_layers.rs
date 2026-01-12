@@ -31,6 +31,22 @@ pub struct OpportunityLayer;
 fn find_best_opportunity(model: &TradingModel) -> Option<&TradeOpportunity> {
     let profile = &ANALYSIS.journey.profile;
 
+    // --- FORENSIC LOGGING START ---
+    #[cfg(debug_assertions)]
+    if model.cva.pair_name == "PAXGUSDT" {
+        log::info!("🔍 PLOT AUDIT [PAXGUSDT]: Model has {} ops.", model.opportunities.len());
+        for op in &model.opportunities {
+             // We check the specific filter used by the plot logic
+             let worthwhile = op.is_worthwhile(profile); 
+             log::info!(
+                "   -> ID: {} | ROI: {:.2}% | Worthwhile: {}", 
+                op.id, 
+                op.expected_roi(),
+                worthwhile
+            );
+        }
+    }
+
     model
         .opportunities
         .iter()
@@ -52,19 +68,42 @@ impl PlotLayer for OpportunityLayer {
         };
 
         // --- SELECTION LOGIC START ---
-        // Determine which Op to show: Selected (if matches pair) OR Best (Fallback)
-        let target_opp = if let Some(selected) = ctx.selected_opportunity {
+        // Determine which Op to show
+        let (best_opp, source_reason) = if let Some(selected) = &ctx.selected_opportunity {
             if selected.pair_name == ctx.trading_model.cva.pair_name {
-                Some(selected) // ID matches naturally because it's the same object
+                (Some(selected), "User Selection")
             } else {
-                find_best_opportunity(ctx.trading_model)
+                (
+                    find_best_opportunity(ctx.trading_model),
+                    "Fallback (User Selected Other Pair)",
+                )
             }
         } else {
-            find_best_opportunity(ctx.trading_model)
+            (
+                find_best_opportunity(ctx.trading_model),
+                "Fallback (None Selected)",
+            )
         };
 
         // 2. Find Best Opportunity
-        if let Some(best_opp) = target_opp {
+        if let Some(op) = best_opp {
+            // --- FORENSIC LOGGING ---
+            #[cfg(debug_assertions)]
+            {
+                // Only log once per second to avoid freezing the UI (Plot renders at 60fps)
+                // or check if it matches the weird 6300/4940 values you saw.
+                if op.target_price > 6000.0 {
+                    // Trigger on the "Ghost" Target
+                    log::warn!(
+                        "👻 GHOST HUNT [Plot Layer]: Rendering ID: {} | Target: ${:.2} | ROI: {:.2}% | Reason: {}",
+                        op.id,
+                        op.target_price,
+                        op.expected_roi(),
+                        source_reason
+                    );
+                }
+            }
+
             // 3. Setup Foreground Painter
             // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
             // FIX: Create Painter with Clipping
@@ -81,12 +120,12 @@ impl PlotLayer for OpportunityLayer {
             let current_pos_screen =
                 plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, current_price));
             let target_pos_screen =
-                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, best_opp.target_price));
+                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, op.target_price));
             let sl_pos_screen =
-                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, best_opp.stop_price));
+                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, op.stop_price));
 
             // --- 1. RESOLVE SEMANTIC COLORS & STYLES ---
-            let direction_color = best_opp.direction.color();
+            let direction_color = op.direction.color();
             let sl_color = PLOT_CONFIG.color_stop_loss;
 
             // Resolve Dimming levels via Config
@@ -186,17 +225,16 @@ impl PlotLayer for HorizonLinesLayer {
 pub struct CandlestickLayer;
 
 impl PlotLayer for CandlestickLayer {
-
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         if ctx.trading_model.segments.is_empty() {
             return;
         }
 
         // We track the cumulative visual offset for previous segments
-        // (assuming segments are contiguous in view space, or ui_plot_view handles the gaps between segments via separate logic. 
+        // (assuming segments are contiguous in view space, or ui_plot_view handles the gaps between segments via separate logic.
         //  If ui_plot_view sums up segment widths, we need to replicate that.)
-        let mut segment_start_visual_x = 0.0; 
-        
+        let mut segment_start_visual_x = 0.0;
+
         let agg_interval_ms = ctx.resolution.interval_ms();
 
         // 1. Optimization Setup
@@ -204,35 +242,36 @@ impl PlotLayer for CandlestickLayer {
         let screen_width_px = plot_ui.response().rect.width() as f64;
         let batch_size = if view_width_steps > 0.0 && screen_width_px > 1.0 {
             (view_width_steps / screen_width_px).ceil() as usize
-        } else { 1 };
+        } else {
+            1
+        };
         let step = batch_size.max(1);
-        let render_width = step as f64 * PLOT_CONFIG.candle_width_pct; 
+        let render_width = step as f64 * PLOT_CONFIG.candle_width_pct;
 
         for segment in &ctx.trading_model.segments {
             // Calculate Segment Start Time for relative offset
             let seg_start_ts = ctx.ohlcv.get_candle(segment.start_idx).timestamp_ms;
-            
+
             // Align start to the grid
             let grid_start_ts = (seg_start_ts / agg_interval_ms) * agg_interval_ms;
 
             let mut i = segment.start_idx;
 
             while i < segment.end_idx {
-                
                 // --- BATCHING ---
                 let mut batch_open = 0.0;
                 let mut batch_high = f64::MIN;
                 let mut batch_low = f64::MAX;
                 let mut batch_close = 0.0;
                 let mut steps_processed = 0;
-                
+
                 // Capture the timestamp of the first candle in this batch
                 let first_candle_ts = ctx.ohlcv.get_candle(i).timestamp_ms;
                 let current_grid_ts = (first_candle_ts / agg_interval_ms) * agg_interval_ms;
 
                 while steps_processed < step && i < segment.end_idx {
                     let first = ctx.ohlcv.get_candle(i);
-                    
+
                     // Standard Aggregation (Resolution)
                     let boundary_start = (first.timestamp_ms / agg_interval_ms) * agg_interval_ms;
                     let boundary_end = boundary_start + agg_interval_ms;
@@ -245,14 +284,18 @@ impl PlotLayer for CandlestickLayer {
                     let mut next_i = i + 1;
                     while next_i < segment.end_idx {
                         let c = ctx.ohlcv.get_candle(next_i);
-                        if c.timestamp_ms >= boundary_end { break; }
+                        if c.timestamp_ms >= boundary_end {
+                            break;
+                        }
                         high = high.max(c.high_price);
                         low = low.min(c.low_price);
                         close = c.close_price;
                         next_i += 1;
                     }
 
-                    if steps_processed == 0 { batch_open = open; }
+                    if steps_processed == 0 {
+                        batch_open = open;
+                    }
                     batch_high = batch_high.max(high);
                     batch_low = batch_low.min(low);
                     batch_close = close;
@@ -266,7 +309,7 @@ impl PlotLayer for CandlestickLayer {
                     // Offset = (CurrentBatchTime - SegmentGridStart) / Interval
                     // This creates gaps correctly where data is missing.
                     let time_offset = (current_grid_ts - grid_start_ts) / agg_interval_ms;
-                    
+
                     // Absolute Plot X = SegmentStart + Offset + CenterBias
                     let draw_x = segment_start_visual_x + time_offset as f64 + 0.5; // +0.5 to center in slot
 
@@ -283,30 +326,30 @@ impl PlotLayer for CandlestickLayer {
                     );
                 }
             }
-            
+
             // Advance the visual cursor by the TOTAL width of this segment (including gaps)
             // This ensures the next segment starts at the right place.
             let last_candle_ts = ctx.ohlcv.get_candle(segment.end_idx - 1).timestamp_ms;
             let segment_duration = last_candle_ts - seg_start_ts;
             let segment_width = (segment_duration / agg_interval_ms) as f64 + 1.0;
-            
+
             segment_start_visual_x += segment_width + PLOT_CONFIG.segment_gap_width;
         }
 
-         // --- ADD THIS LOGGING BLOCK AT THE VERY END ---
+        // --- ADD THIS LOGGING BLOCK AT THE VERY END ---
         // #[cfg(debug_assertions)]
         // if ctx.visibility.candles {
         //      let view_width = ctx.x_max - ctx.x_min;
-             
+
         //      // Log if there is a massive mismatch (e.g. View is 1000 but we only drew 50)
         //      // We check if visual_x (total drawn width) is significantly smaller than the view
-        //      // Note: This might trigger on zooming out (which is normal), so we focus on 
+        //      // Note: This might trigger on zooming out (which is normal), so we focus on
         //      // "Shift to Left" scenarios where x_max is huge.
         //      if view_width > visual_x * 1.5 && visual_x > 0.0 {
         //          log::warn!(
-        //              "PLOT MISMATCH [{}]: Axis thinks width is {:.1}, but Renderer only drew {:.1}. (Res: {:?})", 
+        //              "PLOT MISMATCH [{}]: Axis thinks width is {:.1}, but Renderer only drew {:.1}. (Res: {:?})",
         //              ctx.trading_model.cva.pair_name,
-        //              view_width, 
+        //              view_width,
         //              visual_x,
         //              ctx.resolution
         //          );
@@ -314,7 +357,6 @@ impl PlotLayer for CandlestickLayer {
         // }
         // ----------------------------------------------
     }
-
 }
 
 // Helper: Draws the candle (splitting logic included)
@@ -432,7 +474,11 @@ fn draw_body_rect(
     }
 
     let pts = vec![[left, bottom], [right, bottom], [right, top], [left, top]];
-    ui.polygon(Polygon::new("", PlotPoints::new(pts)).fill_color(color).stroke(Stroke::NONE));
+    ui.polygon(
+        Polygon::new("", PlotPoints::new(pts))
+            .fill_color(color)
+            .stroke(Stroke::NONE),
+    );
 }
 
 /// Context passed to every layer during rendering.

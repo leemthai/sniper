@@ -17,7 +17,7 @@ use crate::models::horizon_profile::HorizonProfile;
 use crate::ui::config::UI_TEXT;
 
 use crate::utils::maths_utils::{
-    calculate_annualized_roi, calculate_expected_roi_pct, calculate_stats, normalize_max,
+    calculate_annualized_roi, calculate_stats, normalize_max,
     smooth_data, is_opportunity_worthwhile,
 };
 
@@ -232,23 +232,31 @@ impl TradeOpportunity {
         is_opportunity_worthwhile(roi, aroi, profile.min_roi, profile.min_aroi)
     }
 
-    /// Calculates the Expected ROI % per trade for this specific opportunity.
+/// Calculates the Expected ROI % per trade for this specific opportunity.
     pub fn expected_roi(&self) -> f64 {
-        calculate_expected_roi_pct(
-            self.start_price,
-            self.target_price,
-            self.stop_price,
-            self.simulation.success_rate,
-        )
+        // RETURN THE SIMULATION TRUTH
+        // The simulation already calculated the true average PnL (including timeouts).
+        // We multiply by 100 to convert decimal (0.05) to percent (5.0).
+        self.simulation.avg_pnl_pct * 100.0
     }
-    /// Calculates the Expected ROI % using a dynamic live price.
+
+/// Calculates the Expected ROI % using a dynamic live price.
+    /// Uses the Simulation Result as the baseline and adjusts for price movement.
     pub fn live_roi(&self, current_price: f64) -> f64 {
-        calculate_expected_roi_pct(
-            current_price,
-            self.target_price,
-            self.stop_price,
-            self.simulation.success_rate,
-        )
+        // 1. Get the baseline "True PnL" from the simulation (e.g. 7.0%)
+        let base_roi = self.expected_roi(); 
+
+        // 2. Calculate how much price has moved in our favor since entry
+        // Long: (Current - Start) / Start
+        // Short: (Start - Current) / Start
+        let price_drift_pct = match self.direction {
+            TradeDirection::Long => (current_price - self.start_price) / self.start_price,
+            TradeDirection::Short => (self.start_price - current_price) / self.start_price,
+        };
+
+        // 3. Adjust the ROI
+        // If price moved +1% in our favor, our expected return improves by +1% (simplification)
+        base_roi + (price_drift_pct * 100.0)
     }
 
     /// Calculates Annualized ROI based on LIVE price and AVERAGE duration.

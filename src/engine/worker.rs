@@ -33,12 +33,11 @@ use crate::TradingModel;
 use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::{AppInstant, TimeUtils};
 
-use crate::utils::maths_utils::{calculate_annualized_roi, is_opportunity_worthwhile, calculate_percent_diff};
-#[cfg(debug_assertions)]
-use {
-    crate::ui::ui_text::UI_TEXT,
-    crate::utils::maths_utils::{calculate_expected_roi_pct},
+use crate::utils::maths_utils::{
+    calculate_annualized_roi, calculate_percent_diff, is_opportunity_worthwhile,
 };
+#[cfg(debug_assertions)]
+use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::calculate_expected_roi_pct};
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -97,14 +96,17 @@ fn simulate_target(
         duration_candles,
         config.journey.risk_reward_tests,
         profile,
+        config.interval_width_ms,
         0,
     );
 
     if let Some((result, stop_price, variants)) = best_sl_opt {
+        let avg_duration_ms = (result.avg_candle_count * config.interval_width_ms as f64) as i64;
         // Calculate Score (The Judge)
+        // 2. Calculate Score (The Judge) using CORRECT UNITS (ms)
         let score = profile.goal.calculate_score(
             result.avg_pnl_pct * 100.0, // ROI
-            result.avg_duration,        // Duration (ms)
+            avg_duration_ms as f64,
             profile.weight_roi,
             profile.weight_aroi,
         );
@@ -119,8 +121,6 @@ fn simulate_target(
         );
         let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, unique_string.as_bytes()).to_string();
 
-        let avg_dur_ms = (result.avg_duration * 60_000.0 * 5.0) as i64;
-
         let opp = TradeOpportunity {
             id: uuid,
             created_at: TimeUtils::now_timestamp_ms(),
@@ -132,7 +132,7 @@ fn simulate_target(
             target_price,
             stop_price,
             max_duration_ms: duration_ms as i64,
-            avg_duration_ms: avg_dur_ms,
+            avg_duration_ms,
             simulation: result,
             variants,
         };
@@ -152,6 +152,7 @@ fn apply_diversity_filter(
     mut candidates: Vec<CandidateResult>,
     config: &AnalysisConfig,
     volatility: f64,
+    pair_name: &str,
 ) -> Vec<TradeOpportunity> {
     if candidates.is_empty() {
         return Vec::new();
@@ -163,7 +164,8 @@ fn apply_diversity_filter(
     // --- INSERT LOG HERE (Before 'candidates' is consumed) ---
     #[cfg(debug_assertions)]
     log::info!(
-        "🔍 OPTIMAL SEARCH [Strategy: {}]: Filtering {} candidates based on Volatility {:.2}%",
+        "🔍 OPTIMAL SEARCH [{}] [Strategy: {}]: Filtering {} candidates based on Volatility {:.2}%",
+        pair_name, // <--- ADDED
         config.journey.profile.goal,
         candidates.len(),
         volatility * 100.0
@@ -192,7 +194,8 @@ fn apply_diversity_filter(
         if is_distinct {
             #[cfg(debug_assertions)]
             log::info!(
-                "   ✅ Accepted Winner [{}]: Score {:.2} | Target ${:.4}",
+                "   ✅ Accepted Winner [{}] [{}]: Score {:.2} | Target ${:.4}",
+                pair_name,
                 candidate.source_desc,
                 candidate.score,
                 candidate.opportunity.target_price
@@ -218,6 +221,8 @@ fn run_pathfinder_simulations(
     if current_price <= 0.0 {
         return Vec::new();
     }
+
+    let pair_name = ohlcv.pair_interval.name();
 
     let opt_config = &config.journey.optimization;
 
@@ -257,6 +262,17 @@ fn run_pathfinder_simulations(
     };
 
     let (ph_min, ph_max) = price_horizon::calculate_price_range(current_price, ph_pct);
+    #[cfg(debug_assertions)]
+    log::info!(
+        "🎯 PATHFINDER START [{}] Price: ${:.4} | PH Range: ${:.4} - ${:.4} ({:.2}%) | Vol: {:.3}%",
+        pair_name,
+        current_price,
+        ph_min,
+        ph_max,
+        ph_pct * 100.0,
+        avg_volatility * 100.0
+    );
+
     let mut all_results: Vec<CandidateResult> = Vec::new();
 
     // --- PHASE A: THE SCOUTS (Coarse Grid) ---
@@ -316,7 +332,8 @@ fn run_pathfinder_simulations(
 
     #[cfg(debug_assertions)]
     log::info!(
-        "🔍 SCOUT PHASE: Found {} viable candidates from grid search.",
+        "🔍 SCOUT PHASE [{}]: Found {} viable candidates from grid search.",
+        pair_name,
         all_results.len()
     );
 
@@ -325,6 +342,19 @@ fn run_pathfinder_simulations(
 
     // Sort current results by score
     all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+    #[cfg(debug_assertions)]
+    {
+        log::info!("🔍 SCOUT PHASE COMPLETE [{}]. Top 5 Candidates:", pair_name);
+        for (i, c) in all_results.iter().take(5).enumerate() {
+            log::info!(
+                "   #{}: [{}] Target ${:.4} | Score {:.2}",
+                i + 1,
+                c.source_desc,
+                c.opportunity.target_price,
+                c.score
+            );
+        }
+    }
 
     // Take Top N Scouts to drill into
     let top_scouts_count = opt_config.drill_top_n.min(all_results.len());
@@ -337,7 +367,8 @@ fn run_pathfinder_simulations(
 
     #[cfg(debug_assertions)]
     log::info!(
-        "⛏️ DRILL PHASE [Strategy: {}]: Refining Top {} scouts (Offset: {:.4}%)",
+        "⛏️ DRILL PHASE [{}] [Strategy: {}]: Refining Top {} scouts (Offset: {:.4}%)",
+        pair_name,
         config.journey.profile.goal,
         top_scouts_count,
         drill_offset_pct * 100.0
@@ -386,7 +417,8 @@ fn run_pathfinder_simulations(
     #[cfg(debug_assertions)]
     if !drill_results.is_empty() {
         log::info!(
-            "   -> Drill found {} better micro-adjustments.",
+            "   -> [{}] Drill found {} better micro-adjustments.",
+            pair_name, // <--- Add pair_name
             drill_results.len()
         );
     }
@@ -395,7 +427,7 @@ fn run_pathfinder_simulations(
     all_results.extend(drill_results);
 
     // --- PHASE C: DIVERSITY FILTER (Select Winners) ---
-    apply_diversity_filter(all_results, config, avg_volatility)
+    apply_diversity_filter(all_results, config, avg_volatility, pair_name)
 }
 
 /// Helper function to find the optimal Stop Loss for a given target
@@ -409,6 +441,7 @@ fn run_stop_loss_tournament(
     duration_candles: usize,
     risk_tests: &[f64],
     profile: &TradeProfile,
+    interval_ms: i64, // <--- NEW PARAMETER
     _zone_idx: usize,
 ) -> Option<(SimulationResult, f64, Vec<TradeVariant>)> {
     let mut best_score = f64::NEG_INFINITY; // Track Score, not just ROI
@@ -417,7 +450,7 @@ fn run_stop_loss_tournament(
 
     let target_dist_abs = (target_price - current_price).abs();
 
-    // 1. Safety Check: Volatility Floor. Ensure sl is not triggered by random noise (2x Volatility)
+    // 1. Safety Check: Volatility Floor.
     let vol_floor_pct = current_state.volatility_pct * 2.0;
     let min_stop_dist = current_price * vol_floor_pct;
 
@@ -472,18 +505,30 @@ fn run_stop_loss_tournament(
             // Metrics
             let roi = result.avg_pnl_pct * 100.0;
 
+            // --- FIX: UNIT CONVERSION (Candles -> MS) ---
+            let duration_real_ms = result.avg_candle_count * interval_ms as f64;
+
             // Calculate AROI for the Gatekeeper & Judge
-            // (Note: result.avg_duration is in ms)
-            let aroi = calculate_annualized_roi(roi, result.avg_duration);
+            let aroi = calculate_annualized_roi(roi, duration_real_ms);
 
             #[cfg(debug_assertions)]
             let binary_roi = calculate_expected_roi_pct(
                 result.success_rate,
                 result.avg_pnl_pct,
-                result.success_rate, // simplified loss rate
+                result.success_rate,
                 (current_price - candidate_stop).abs() / current_price * 100.0,
             );
 
+            // #[cfg(debug_assertions)]
+            // if roi < 0.0 {
+            //     log::warn!(
+            //         "GATEKEEPER AUDIT: ROI {:.4} vs Min {:.4} | AROI {:.4} vs Min {:.4}",
+            //         roi,
+            //         profile.min_roi,
+            //         aroi,
+            //         profile.min_aroi
+            //     );
+            // }
             // GATEKEEPER: Check both ROI and AROI against profile
             let is_worthwhile =
                 is_opportunity_worthwhile(roi, aroi, profile.min_roi, profile.min_aroi);
@@ -497,10 +542,10 @@ fn run_stop_loss_tournament(
                     simulation: result.clone(),
                 });
 
-                // JUDGE: Calculate Score based on User Strategy (OptimizationGoal)
+                // JUDGE: Calculate Score based on Strategy (using CORRECT Time units)
                 let score = profile.goal.calculate_score(
                     roi,
-                    result.avg_duration,
+                    duration_real_ms,
                     profile.weight_roi,
                     profile.weight_aroi,
                 );

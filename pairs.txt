@@ -1,4 +1,5 @@
 # 50 High volume pairs (in volume order) - according to https://coinmarketcap.com/exchanges/binance/
+PAXGUSDT
 BTCFDUSD
 BTCUSDT
 USDCUSDT

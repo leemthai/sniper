@@ -1,15 +1,10 @@
+use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, RwLock};
-use std::cmp::Ordering;
 
 #[cfg(not(target_arch = "wasm32"))]
-use {
-    std::path::Path,
-    std::thread,
-    tokio::runtime::Runtime,
-    crate::config::PERSISTENCE,
-};
+use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::Runtime};
 
 use crate::analysis::adaptive::AdaptiveParameters;
 use crate::analysis::market_state::MarketState;
@@ -282,14 +277,14 @@ impl SniperEngine {
         drop(ts_guard);
 
         // Archive Dead Trades
-       if !dead_trades.is_empty() {
+        if !dead_trades.is_empty() {
             // NATIVE: Spawn async task to save
             #[cfg(not(target_arch = "wasm32"))]
             {
                 // Only clone the repo if we are actually going to use it
-                let repo = self.results_repo.clone(); 
+                let repo = self.results_repo.clone();
                 let trades = dead_trades.clone();
-                
+
                 thread::spawn(move || {
                     let rt = Runtime::new().unwrap();
                     rt.block_on(async {
@@ -372,6 +367,28 @@ impl SniperEngine {
                 // Default to empty slice if no ops found for this pair
                 let raw_ops = ops_by_pair.get(pair).map(|v| v.as_slice()).unwrap_or(&[]);
 
+                #[cfg(debug_assertions)]
+                if pair == "PAXGUSDT" && raw_ops.len() > 0 {
+                    // Target the problem pair
+                    log::info!(
+                        "🔍 TF AUDIT [PAXGUSDT]: Found {} raw ops in Ledger.",
+                        raw_ops.len()
+                    );
+                    for op in raw_ops {
+                        let roi = op.expected_roi();
+                        log::info!(
+                            "   -> ID: {} | ROI: {:.2}% | Status: {}",
+                            op.id,
+                            roi,
+                            if roi > 0.0 {
+                                "✅ ACCEPT"
+                            } else {
+                                "❌ REJECT (ROI <= 0)"
+                            }
+                        );
+                    }
+                }
+
                 // Filter worthwhile trades (Static ROI check)
                 let valid_ops: Vec<&TradeOpportunity> = raw_ops
                     .iter()
@@ -384,6 +401,18 @@ impl SniperEngine {
                 if total_ops > 0 {
                     // Create a ROW for EACH Opportunity
                     for op in valid_ops {
+                        #[cfg(debug_assertions)]
+                        if pair == "PAXGUSDT" {
+                            let live_val = op.live_roi(current_price);
+                            let static_val = op.expected_roi();
+                            log::warn!(
+                                "🕵️ ROI MISMATCH AUDIT [{}]: Static: {:.2}% | Live: {:.2}% | Diff: {:.2}%",
+                                op.id,
+                                static_val,
+                                live_val,
+                                static_val - live_val
+                            );
+                        }
                         let live_opp = LiveOpportunity {
                             opportunity: op.clone(),
                             current_price,
@@ -604,7 +633,6 @@ impl SniperEngine {
 
     /// Force a single recalc with optional price override
     pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, _reason: &str) {
-
         // Check if calculating
         let is_calculating = self
             .pairs
@@ -678,7 +706,6 @@ impl SniperEngine {
                     state.is_calculating = false;
                     state.last_update_time = AppInstant::now();
                     state.last_error = None;
-
                 }
                 Err(e) => {
                     // Failure: Clear Model, Set Error

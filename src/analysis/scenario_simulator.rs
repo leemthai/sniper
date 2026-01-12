@@ -270,7 +270,7 @@ pub enum Outcome {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationResult {
     pub success_rate: f64,      // 0.0 to 1.0
-    pub avg_duration: f64,      // Average candles to result
+    pub avg_candle_count: f64,      // Average candles to result
     pub risk_reward_ratio: f64, // Based on historical outcomes
     pub sample_size: usize,     // How many similar scenarios we found
     pub avg_pnl_pct: f64,       // The True Expected Retun (Continuous)
@@ -401,17 +401,14 @@ impl ScenarioSimulator {
         Some((candidates, current_market_state))
     }
 
-    /// STEP 2: The Fast Replay.
-    /// Runs the specific trade parameters on the pre-calculated matches.
-    /// This runs MANY times (once per Zone).
     pub fn analyze_outcome(
         ts: &OhlcvTimeSeries,
-        matches: &[(usize, f64)], // The candidates found in Step 1
+        matches: &[(usize, f64)],
         current_market_state: MarketState,
         entry_price: f64,
         target_price: f64,
         stop_price: f64,
-        max_duration: usize,
+        max_duration_candles: usize, // Unit: Count
         direction: TradeDirection,
     ) -> Option<SimulationResult> {
         if matches.is_empty() {
@@ -419,14 +416,12 @@ impl ScenarioSimulator {
         }
 
         let mut wins = 0;
-        let mut total_duration = 0.0;
+        let mut accumulated_candle_count = 0.0; // Unit: Count (aggregated as float)
         let mut valid_samples = 0;
-        let mut total_pnl_pct = 0.0;
+        let mut total_pnl_pct = 0.0; // Unit: Percentage
 
         // Pre-calculate theoretical max PnL for Hit/Stop
-        // Long: Target > Entry (Positive), Stop < Entry (Negative)
-        // Short: Target < Entry (Positive), Stop > Entry (Negative)
-        let (win_pnl, lose_pnl) = match direction {
+        let (win_pnl_pct, lose_pnl_pct) = match direction {
             TradeDirection::Long => (
                 (target_price - entry_price) / entry_price,
                 (stop_price - entry_price) / entry_price,
@@ -444,24 +439,27 @@ impl ScenarioSimulator {
                 entry_price,
                 target_price,
                 stop_price,
-                max_duration,
+                max_duration_candles,
                 direction,
             );
 
             match outcome {
-                Outcome::TargetHit(duration) => {
+                Outcome::TargetHit(candles_taken) => {
                     wins += 1;
-                    total_duration += duration as f64;
+                    accumulated_candle_count += candles_taken as f64;
                     valid_samples += 1;
-                    total_pnl_pct += win_pnl;
+                    total_pnl_pct += win_pnl_pct;
                 }
-                Outcome::StopHit(_) => {
+                Outcome::StopHit(candles_taken) => {
+                    accumulated_candle_count += candles_taken as f64;
                     valid_samples += 1;
-                    total_pnl_pct += lose_pnl;
+                    total_pnl_pct += lose_pnl_pct;
                 }
-                Outcome::TimedOut(final_pct) => {
+                Outcome::TimedOut(final_drift_pct) => {
+                    // Timeout means the full candle limit was exhausted
+                    accumulated_candle_count += max_duration_candles as f64;
                     valid_samples += 1;
-                    total_pnl_pct += final_pct; // Add the actual drift
+                    total_pnl_pct += final_drift_pct; 
                 }
             }
         }
@@ -473,28 +471,25 @@ impl ScenarioSimulator {
         // Calculate Stats
         let success_rate = wins as f64 / valid_samples as f64;
 
-        let avg_duration = if wins > 0 {
-            total_duration / wins as f64
-        } else {
-            0.0
-        };
+        // Calculate Average Candle Count
+        let avg_candle_count = accumulated_candle_count / valid_samples as f64;
 
         // R:R
         let risk = (entry_price - stop_price).abs();
         let reward = (target_price - entry_price).abs();
-        let rr = if risk > f64::EPSILON {
+        let risk_reward_ratio = if risk > f64::EPSILON {
             reward / risk
         } else {
             0.0
         };
 
-        // real Average pnl (The "true" ROI of the sim)
+        // Real Average PnL (The "true" ROI of the sim)
         let avg_pnl_pct = total_pnl_pct / valid_samples as f64;
 
         Some(SimulationResult {
             success_rate,
-            avg_duration,
-            risk_reward_ratio: rr,
+            avg_candle_count,
+            risk_reward_ratio,
             sample_size: valid_samples,
             avg_pnl_pct,
             market_state: current_market_state,
