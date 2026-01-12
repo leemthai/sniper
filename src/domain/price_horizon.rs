@@ -21,7 +21,7 @@ pub fn auto_select_ranges(
 }
 
 /// Calculates the price range considered "relevant" to the current price.
-fn calculate_price_range(current_price: f64, threshold: f64) -> (f64, f64) {
+pub fn calculate_price_range(current_price: f64, threshold: f64) -> (f64, f64) {
     let min = current_price * (1.0 - threshold);
     let max = current_price * (1.0 + threshold);
     (min, max)

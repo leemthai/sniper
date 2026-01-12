@@ -1,23 +1,47 @@
 //! Analysis and computation configuration
 
 use serde::{Deserialize, Serialize};
-use std::time::Duration; // Add Import
+use std::time::Duration;
+use strum_macros::{Display, EnumIter};
 
 use crate::utils::TimeUtils;
 
 pub const DEFAULT_PH_THRESHOLD: f64 = 0.15;
 pub const DEFAULT_TIME_DECAY: f64 = 1.5; // Manually synced to match 0.15 logic
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter)]
+pub enum OptimizationGoal {
+    #[strum(to_string = "Max ROI")]
+    MaxROI,
+    #[strum(to_string = "Max AROI")]
+    MaxAROI,
+    #[strum(to_string = "Balanced")]
+    Balanced,
+}
+
 #[derive(Clone, Debug)]
 pub struct TradeProfile {
     pub min_roi: f64,       // e.g. 0.5%
     pub min_aroi: f64,      // e.g. 20.0%
+
+    pub goal: OptimizationGoal,
     
     // Scoring Weights
     pub weight_roi: f64,    // e.g. 1.0
     pub weight_aroi: f64,   // e.g. 0.05 (AROI is usually huge, so we dampen it)
 }
 
+// impl Default for TradeProfile {
+//     fn default() -> Self {
+//         Self {
+//             min_roi: 0.50,
+//             min_aroi: 20.0,
+//             goal: OptimizationGoal::Balanced,
+//             weight_roi: 1.0,
+//             weight_aroi: 0.05,
+//         }
+//     }
+// }
 
 /// Configuration for the Price Horizon.
 /// Determines the vertical price range of interest relative to the current price.
@@ -103,19 +127,47 @@ pub struct AnalysisConfig {
 }
 
 #[derive(Clone, Debug)]
-pub struct JourneySettings {
-    // Stop-loss threshold (percentage move against position)
-    // pub stop_loss_pct: f64,
-    // Max duration for the trade simulation
-    pub sample_count: usize,
-    // pub min_win_rate: f64,
-    pub risk_reward_tests: &'static [f64],
+pub struct OptimalSearchSettings {
+    pub scout_steps: usize,          
+    pub drill_top_n: usize,          
+    pub drill_offset_factor: f64,    
+    pub volatility_lookback: usize,  
+    pub diversity_vol_factor: f64,   
+    pub max_results: usize,          
+    pub price_buffer_pct: f64,       
+}
 
-    // Dynamic Time Settings
+impl OptimalSearchSettings {
+    // SINGLE SOURCE OF TRUTH (Const Function)
+    pub const fn new() -> Self {
+        Self {
+            scout_steps: 30,
+            drill_top_n: 5,
+            drill_offset_factor: 0.25,
+            volatility_lookback: 50,
+            diversity_vol_factor: 2.0,
+            max_results: 10,
+            price_buffer_pct: 0.005,
+        }
+    }
+}
+
+// Standard Default trait just calls the const constructor
+impl Default for OptimalSearchSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct JourneySettings {
+    pub sample_count: usize,
+    pub risk_reward_tests: &'static [f64],
     pub volatility_zigzag_factor: f64, // Multiplier for "Straight Line" time (e.g. 6.0)
     pub min_journey_duration: Duration, // Floor (e.g. 1 Hour)
     pub max_journey_time: Duration,    // Ceiling (increased to 90 days)
     pub profile: TradeProfile,
+    pub optimization: OptimalSearchSettings,
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
@@ -127,27 +179,21 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
     time_decay_factor: DEFAULT_TIME_DECAY,
 
     journey: JourneySettings {
-        // stop_loss_pct: 5.0,
         sample_count: 50,
-        // min_win_rate: 0.05,
-        // NEW: The Tournament Ratios
         risk_reward_tests: &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0],
-        // Cap at 90 Days (Quarterly). Dynamic logic will usually result in much less.
-        max_journey_time: Duration::from_secs(86400 * 90),
-        // Markets move 6x slower than a straight line on average
-        volatility_zigzag_factor: 6.0,
-
-        // Floor at 1 Hour. Don't simulate 5-minute trades.
-        min_journey_duration: Duration::from_secs(3600),
+        max_journey_time: Duration::from_secs(86400 * 90), // Cap at 90 Days (Quarterly). Dynamic logic will usually result in much less.
+        volatility_zigzag_factor: 6.0, // Markets move 6x slower than a straight line on average
+        min_journey_duration: Duration::from_secs(3600), // Floor at 1 Hour. Don't simulate 5-minute trades.
 
         profile: TradeProfile {
             min_roi: 0.50,   // 0.5% Minimum yield
             min_aroi: 20.0,  // 20% Annualized Minimum
-            
-            // Scoring: We value hard cash (ROI) 20x more than theoretical speed (AROI)
-            weight_roi: 1.0, 
+            goal: OptimizationGoal::Balanced,
+            weight_roi: 1.0,  // Scoring: We value hard cash (ROI) 20x more than theoretical speed (AROI)
             weight_aroi: 0.05, 
         },
+
+        optimization: OptimalSearchSettings::new(),
     },
 
     similarity: SimilaritySettings {
@@ -166,13 +212,11 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
             // Absolute: Bin must hold > 0.1% of Total Volume
             viability_pct: 0.001,
 
-            // Sigma 0.5 (Broad Acceptance):
             // Volume is "Fat". Market structure isn't just the single highest peak;
             // it is the broad shoulders of activity around it.
             // We use a low Sigma to capture the "Bulk" of the volume profile,
             // ensuring we see the full context of where trading has occurred,
             // not just the extreme outliers.
-            // sigma: 0.5,
             sigma: 0.2, // Trying to capture zones with less amplitude e.g. PAXGUSDT at 8.122%
         },
 

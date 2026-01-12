@@ -1,6 +1,6 @@
 use eframe::egui::{
-    Align, CentralPanel, Color32, Context, FontId, Grid, Layout, Order, RichText, Sense, SidePanel,
-    TopBottomPanel, Ui, Window, Frame,
+    Align, CentralPanel, Color32, ComboBox, Context, FontId, Frame, Grid, Layout, Order, RichText,
+    Sense, SidePanel, TopBottomPanel, Ui, Window,
 };
 
 use egui_extras::{Column, TableBuilder, TableRow};
@@ -11,9 +11,8 @@ use strum::IntoEnumIterator;
 
 use crate::analysis::adaptive::AdaptiveParameters;
 
-use crate::config::ANALYSIS;
-use crate::config::TICKER;
 use crate::config::plot::PLOT_CONFIG;
+use crate::config::{ANALYSIS, OptimizationGoal, TICKER};
 
 use crate::domain::pair_interval::PairInterval;
 
@@ -62,7 +61,10 @@ impl ZoneSniperApp {
             let cmp = match self.tf_sort_col {
                 SortColumn::PairName => a.pair_name.cmp(&b.pair_name),
 
-                SortColumn::QuoteVolume24h => a.quote_volume_24h.total_cmp(&b.quote_volume_24h).then_with(|| a.pair_name.cmp(&b.pair_name)),
+                SortColumn::QuoteVolume24h => a
+                    .quote_volume_24h
+                    .total_cmp(&b.quote_volume_24h)
+                    .then_with(|| a.pair_name.cmp(&b.pair_name)),
 
                 SortColumn::Volatility => {
                     let va = a
@@ -75,7 +77,8 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|m| m.volatility_pct)
                         .unwrap_or(0.0);
-                    va.total_cmp(&vb).then_with(|| a.pair_name.cmp(&b.pair_name))
+                    va.total_cmp(&vb)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::Momentum => {
                     let ma = a
@@ -88,7 +91,8 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|m| m.momentum_pct)
                         .unwrap_or(0.0);
-                    ma.total_cmp(&mb).then_with(|| a.pair_name.cmp(&b.pair_name))
+                    ma.total_cmp(&mb)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
 
                 SortColumn::LiveRoi => {
@@ -102,7 +106,9 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.live_roi)
                         .unwrap_or(f64::NEG_INFINITY);
-                    val_a.total_cmp(&val_b).then_with(|| a.pair_name.cmp(&b.pair_name))
+                    val_a
+                        .total_cmp(&val_b)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::AnnualizedRoi => {
                     let val_a = a
@@ -115,7 +121,9 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.annualized_roi)
                         .unwrap_or(f64::NEG_INFINITY);
-                    val_a.total_cmp(&val_b).then_with(|| a.pair_name.cmp(&b.pair_name))
+                    val_a
+                        .total_cmp(&val_b)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::AvgDuration => {
                     let val_a = a
@@ -128,7 +136,9 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.opportunity.avg_duration_ms)
                         .unwrap_or(i64::MAX);
-                    val_b.cmp(&val_a).then_with(|| a.pair_name.cmp(&b.pair_name))
+                    val_b
+                        .cmp(&val_a)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::VariantCount => {
                     let va = a
@@ -574,18 +584,26 @@ impl ZoneSniperApp {
         ui.horizontal(|ui| {
             // Item count
             ui.label(
-                RichText::new(format!("{} {}", count, UI_TEXT.label_targets_text.to_lowercase()))
-                    .strong()
-                    .color(PLOT_CONFIG.color_text_subdued),
+                RichText::new(format!(
+                    "{} {}",
+                    count,
+                    UI_TEXT.label_targets_text.to_lowercase()
+                ))
+                .strong()
+                .color(PLOT_CONFIG.color_text_subdued),
             );
 
             // Locate Button (Center on Target)
             // Only show if we actually have a target to scroll to
             if self.selected_pair.is_some() {
                 ui.add_space(5.0);
-                if ui.small_button(RichText::new(UI_TEXT.label_recenter.as_str()).color(PLOT_CONFIG.color_info))
+                if ui
+                    .small_button(
+                        RichText::new(UI_TEXT.label_recenter.as_str())
+                            .color(PLOT_CONFIG.color_info),
+                    )
                     .on_hover_text(&UI_TEXT.hover_scroll_to_selected_target)
-                    .clicked() 
+                    .clicked()
                 {
                     self.update_scroll_to_selection();
                 }
@@ -788,12 +806,7 @@ impl ZoneSniperApp {
 
         // Col 4: Time
         header.col(|ui| {
-            header_stack(
-                ui,
-                SortColumn::AvgDuration,
-                &UI_TEXT.tf_time,
-                None,
-            );
+            header_stack(ui, SortColumn::AvgDuration, &UI_TEXT.tf_time, None);
         });
 
         // Col 5: Volume
@@ -1229,15 +1242,22 @@ impl ZoneSniperApp {
                             let roi = op.live_roi(current_price);
                             let color = get_outcome_color(roi);
 
-                            ui.label(RichText::new(format!("{} {:+.2}%", UI_TEXT.label_roi, roi)).color(color));
+                            ui.label(
+                                RichText::new(format!("{} {:+.2}%", UI_TEXT.label_roi, roi))
+                                    .color(color),
+                            );
                         });
 
                         // Source info + ID
                         ui.horizontal(|ui| {
                             ui.label(
-                                RichText::new(format!("{} {:.2}%", UI_TEXT.label_source_ph, op.source_ph * 100.0))
-                                    .small()
-                                    .color(PLOT_CONFIG.color_text_subdued),
+                                RichText::new(format!(
+                                    "{} {:.2}%",
+                                    UI_TEXT.label_source_ph,
+                                    op.source_ph * 100.0
+                                ))
+                                .small()
+                                .color(PLOT_CONFIG.color_text_subdued),
                             );
 
                             #[cfg(debug_assertions)]
@@ -1351,6 +1371,31 @@ impl ZoneSniperApp {
                     for res in CandleResolution::iter() {
                         ui.selectable_value(&mut self.candle_resolution, res, res.to_string());
                     }
+
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    // OPTIMIZATION GOAL SELECTOR
+                    ui.label("Goal:");
+                    let current_goal = self.app_config.journey.profile.goal;
+
+                    ComboBox::from_id_salt("opt_goal_selector")
+                        .selected_text(current_goal.to_string())
+                        .width(100.0)
+                        .show_ui(ui, |ui| {
+                            for goal in OptimizationGoal::iter() {
+                                if ui
+                                    .selectable_value(
+                                        &mut self.app_config.journey.profile.goal,
+                                        goal,
+                                        goal.to_string(),
+                                    )
+                                    .clicked()
+                                {
+                                    self.handle_strategy_change();
+                                }
+                            }
+                        });
 
                     ui.separator();
 

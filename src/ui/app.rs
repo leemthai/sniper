@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, BTreeMap};
 use std::fmt;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
+
 
 use eframe::egui::{
     Align, CentralPanel, Context, FontData, FontDefinitions, FontFamily, Grid, Key, Layout,
@@ -14,12 +14,15 @@ use strum_macros::EnumIter;
 
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::runtime::Runtime;
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread;
+
 
 use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
+use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig, DEBUG_FLAGS};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -27,7 +30,7 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::engine::SniperEngine;
 
 use crate::models::ledger::OpportunityLedger;
-use crate::models::trading_view::{SortColumn, SortDirection, TradeOpportunity, NavigationTarget};
+use crate::models::trading_view::{NavigationTarget, SortColumn, SortDirection, TradeOpportunity};
 use crate::models::{ProgressEvent, SyncStatus};
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
@@ -38,8 +41,6 @@ use crate::ui::utils::setup_custom_visuals;
 
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
-
-
 
 #[derive(PartialEq, Eq)]
 pub enum ScrollBehavior {
@@ -145,7 +146,6 @@ impl fmt::Display for CandleResolution {
     }
 }
 
-// NEW: Centralized Logic
 impl CandleResolution {
     pub fn step_size(&self) -> usize {
         match self {
@@ -193,14 +193,14 @@ pub struct ZoneSniperApp {
 
     // PERSISTENCE: Holds trades between sessions
     pub saved_ledger: OpportunityLedger,
-    pub last_selected_opp_id: Option<String>, 
+    pub last_selected_opp_id: Option<String>,
 
     #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>,
     #[serde(skip)]
     pub app_config: AnalysisConfig,
     #[serde(skip)]
-    pub scroll_target: Option<NavigationTarget>, 
+    pub scroll_target: Option<NavigationTarget>,
     #[serde(skip)]
     pub engine: Option<SniperEngine>,
     #[serde(skip)]
@@ -266,6 +266,39 @@ impl Default for ZoneSniperApp {
 }
 
 impl ZoneSniperApp {
+
+    /// Handles a change in global strategy (Optimization Goal).
+    pub fn handle_strategy_change(&mut self) {
+        // 1. Guard: Check if the strategy ACTUALLY changed.
+        // We borrow engine immutably first to compare configs.
+        let is_real_change = if let Some(engine) = &self.engine {
+            engine.current_config.journey.profile.goal != self.app_config.journey.profile.goal
+        } else {
+            false
+        };
+
+        if !is_real_change {
+            return;
+        }
+
+        // 2. Prepare Data (Solve Borrow Checker)
+        // We must extract the priority pair string BEFORE mutably borrowing the engine.
+        // We don't need 'get_display_price' here because 'trigger_global_recalc'
+        // handles price resolution internally (using live price or existing overrides).
+        let priority_pair = self.selected_pair.clone();
+
+        // 3. Execute Update
+        if let Some(engine) = &mut self.engine {
+            // A. Update the config in the engine
+            engine.update_config(self.app_config.clone());
+
+            // B. Global Invalidation
+            // Since the "Rules of the Game" changed, every pair needs to be re-judged.
+            // We pass the current pair as priority so the user sees the active screen update first.
+            engine.trigger_global_recalc(priority_pair);
+        }
+    }
+
     /// Standard Pair Switch (Manual or programmatic).
     /// Updates Global State to point to this pair, but does NOT auto-select a trade.
     pub fn handle_pair_selection(&mut self, new_pair: String) {
@@ -357,7 +390,7 @@ impl ZoneSniperApp {
         };
     }
 
-/// Smart navigation via Name Click (Ticker, Lists, Startup).
+    /// Smart navigation via Name Click (Ticker, Lists, Startup).
     /// - Checks Ledger for best Op.
     /// - If found: Tunes & Locks.
     /// - If not: Market View.
@@ -383,7 +416,7 @@ impl ZoneSniperApp {
 
         // 3. Action
         self.handle_pair_selection(pair.clone()); // Sets selected_pair
-        
+
         if let Some(op) = best_op {
             self.selected_opportunity = Some(op);
         } else {
@@ -498,7 +531,7 @@ impl ZoneSniperApp {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let args_clone = args.clone();
-            std::thread::spawn(move || {
+            thread::spawn(move || {
                 let rt = Runtime::new().expect("Failed to create runtime");
                 rt.block_on(async move {
                     let (data, sig) = fetch_pair_data(300, &args_clone, Some(prog_tx)).await;
@@ -912,21 +945,25 @@ impl ZoneSniperApp {
         }
     }
 
-/// Helper: Checks if the background thread has finished.
+    /// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
     fn check_loading_completion(&mut self) -> Option<AppState> {
         // Access rx without borrowing self for long
         if let Some(rx) = &self.data_rx {
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
-                
+
+
                 // 1. Get List of ACTUAL loaded pairs
                 let available_pairs = timeseries.unique_pair_names();
-                let valid_set: std::collections::HashSet<String> = available_pairs.iter().cloned().collect();
+                let valid_set: HashSet<String> =
+                    available_pairs.iter().cloned().collect();
 
                 // 2. Resolve Startup Pair
                 // Check if the saved 'selected_pair' actually exists in the loaded data.
-                let valid_startup_pair = self.selected_pair.as_ref()
+                let valid_startup_pair = self
+                    .selected_pair
+                    .as_ref()
                     .filter(|p| valid_set.contains(*p))
                     .cloned();
 
@@ -936,7 +973,11 @@ impl ZoneSniperApp {
                     // Saved pair is invalid/missing. Fallback to first available.
                     let fallback = available_pairs.first().cloned().unwrap_or_default();
                     #[cfg(debug_assertions)]
-                    log::warn!("STARTUP FIX: Saved pair {:?} not found in loaded data. Falling back to {}.", self.selected_pair, fallback);
+                    log::warn!(
+                        "STARTUP FIX: Saved pair {:?} not found in loaded data. Falling back to {}.",
+                        self.selected_pair,
+                        fallback
+                    );
                     fallback
                 };
 
@@ -945,31 +986,39 @@ impl ZoneSniperApp {
 
                 // 4. Initialize Engine
                 let mut engine = SniperEngine::new(timeseries);
-                
+
                 // RESTORE LEDGER
-                engine.ledger = self.saved_ledger.clone(); 
+                // If the Nuke Flag is on, we start fresh. Otherwise, we load persistence.
+                if DEBUG_FLAGS.wipe_ledger_on_startup {
+                    #[cfg(debug_assertions)]
+                    log::warn!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
+                    engine.ledger = OpportunityLedger::new();
+                } else { engine.ledger = self.saved_ledger.clone();}
 
                 // --- NEW: CULL ORPHANS ---
                 // Remove opportunities for pairs that were not loaded in this session.
                 #[cfg(debug_assertions)]
                 let count_before = engine.ledger.opportunities.len();
-                
-                engine.ledger.retain(|_id, op| {
-                    valid_set.contains(&op.pair_name)
-                });
-                
+
+                engine
+                    .ledger
+                    .retain(|_id, op| valid_set.contains(&op.pair_name));
+
                 #[cfg(debug_assertions)]
                 {
                     let count_after = engine.ledger.opportunities.len();
                     if count_before != count_after {
-                        log::warn!("STARTUP CLEANUP: Culled {} orphan trades (Data not loaded).", count_before - count_after);
+                        log::warn!(
+                            "STARTUP CLEANUP: Culled {} orphan trades (Data not loaded).",
+                            count_before - count_after
+                        );
                     }
                 }
                 // -------------------------
 
                 engine.update_config(self.app_config.clone());
                 engine.set_all_overrides(self.price_horizon_overrides.clone());
-                
+
                 // Trigger global calc for the VALID pair first
                 engine.trigger_global_recalc(Some(final_pair.clone()));
 
@@ -977,19 +1026,20 @@ impl ZoneSniperApp {
                 // We clone the sender from the engine and give it to the stream manager.
                 // Note: Engine::new() internally sets up the channel, but if we need
                 // to hook anything else up or if previous logic required this step:
-                // Actually, based on previous fixes, Engine::new() now handles the wiring internally 
-                // for Native builds. 
-                
+                // Actually, based on previous fixes, Engine::new() now handles the wiring internally
+                // for Native builds.
+
                 self.engine = Some(engine);
 
                 // 6. EXECUTE SMART SELECTION
-                // Force a "New Switch" by clearing selection first (even though we just set it above, 
+                // Force a "New Switch" by clearing selection first (even though we just set it above,
                 // this ensures jump_to_pair treats it as a fresh navigation event).
-                self.selected_pair = None; 
+                self.selected_pair = None;
                 self.jump_to_pair(final_pair.clone());
-                
+
                 // 7. Reset Navigation
-                self.nav_states.insert(final_pair, NavigationState::default());
+                self.nav_states
+                    .insert(final_pair, NavigationState::default());
 
                 return Some(AppState::Running);
             }

@@ -8,8 +8,7 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::ZoneParams;
-use crate::config::{ANALYSIS, AnalysisConfig, TradeProfile};
+use crate::config::{ANALYSIS, AnalysisConfig, TradeProfile, ZoneParams, OptimizationGoal};
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
@@ -21,6 +20,23 @@ use crate::utils::maths_utils::{
     calculate_annualized_roi, calculate_expected_roi_pct, calculate_stats, normalize_max,
     smooth_data, is_opportunity_worthwhile,
 };
+
+impl OptimizationGoal {
+    /// Calculate a score based on the strategy
+    pub fn calculate_score(&self, roi: f64, duration_ms: f64, weight_roi: f64, weight_aroi: f64) -> f64 {
+        match self {
+            OptimizationGoal::MaxROI => roi,
+            OptimizationGoal::MaxAROI => {
+                // ROI acts as a hard filter (via Gatekeeper), but we maximize speed here
+                calculate_annualized_roi(roi, duration_ms)
+            },
+            OptimizationGoal::Balanced => {
+                let aroi = calculate_annualized_roi(roi, duration_ms);
+                (roi * weight_roi) + (aroi * weight_aroi)
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradeVariant {
@@ -156,7 +172,18 @@ pub enum NavigationTarget {
 
 impl TradeOpportunity {
 
-       /// Centralized "Referee" Logic. 
+    /// Calculates a composite Quality Score (0.0 to 100.0+)
+    /// Used for "Auto-Tuning" and finding the best setups.
+    pub fn calculate_quality_score(&self, profile: &TradeProfile) -> f64 {
+        profile.goal.calculate_score(
+            self.expected_roi(), 
+            self.avg_duration_ms as f64, 
+            profile.weight_roi, 
+            profile.weight_aroi
+        )
+    }
+
+    /// Centralized "Referee" Logic. 
     /// Determines if the trade is dead based on current price action and time.
     pub fn check_exit_condition(
         &self, 
@@ -203,16 +230,6 @@ impl TradeOpportunity {
         let roi = self.expected_roi();
         let aroi = calculate_annualized_roi(roi, self.avg_duration_ms as f64);
         is_opportunity_worthwhile(roi, aroi, profile.min_roi, profile.min_aroi)
-    }
-
-    /// Calculates a composite Quality Score (0.0 to 100.0+)
-    /// Used for "Auto-Tuning" and finding the best setups.
-    pub fn calculate_quality_score(&self, profile: &TradeProfile) -> f64 {
-        let roi = self.expected_roi();
-        let aroi = calculate_annualized_roi(roi, self.avg_duration_ms as f64);
-        
-        // Score = (ROI * 1.0) + (AROI * 0.05)
-        (roi * profile.weight_roi) + (aroi * profile.weight_aroi)
     }
 
     /// Calculates the Expected ROI % per trade for this specific opportunity.
