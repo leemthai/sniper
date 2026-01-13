@@ -34,10 +34,10 @@ use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::{AppInstant, TimeUtils};
 
 use crate::utils::maths_utils::{
-    calculate_annualized_roi, calculate_percent_diff, is_opportunity_worthwhile,
+    calculate_annualized_roi, is_opportunity_worthwhile,
 };
 #[cfg(debug_assertions)]
-use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::calculate_expected_roi_pct};
+use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::{calculate_expected_roi_pct, calculate_percent_diff}};
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -154,7 +154,7 @@ fn simulate_target(
 fn apply_diversity_filter(
     candidates: Vec<CandidateResult>, 
     config: &AnalysisConfig,
-    pair_name: &str,
+    _pair_name: &str,
     range_min: f64,
     range_max: f64,
 ) -> Vec<TradeOpportunity> {
@@ -176,7 +176,7 @@ fn apply_diversity_filter(
     #[cfg(debug_assertions)]
     log::info!(
         "🏆 REGIONAL CHAMPIONSHIP [{}]: {} Candidates. Global Best: {:.2} | Qualifying: {:.2} ({:.0}%)",
-        pair_name,
+        _pair_name,
         candidates.len(),
         global_best_score,
         qualifying_score,
@@ -214,21 +214,21 @@ fn apply_diversity_filter(
     // 3. The Qualifiers (Filter & Collect)
     let mut final_results = Vec::new();
 
-    for (i, winner_opt) in regional_winners.into_iter().enumerate() {
+    for (_i, winner_opt) in regional_winners.into_iter().enumerate() {
         if let Some(winner) = winner_opt {
             // Check if they beat the qualifying time
             if winner.score >= qualifying_score {
                 #[cfg(debug_assertions)]
                 log::info!(
                     "   ✅ Region #{} Winner [{}]: Score {:.2} | Target ${:.2} (Qualified)",
-                    i, winner.source_desc, winner.score, winner.opportunity.target_price
+                    _i, winner.source_desc, winner.score, winner.opportunity.target_price
                 );
                 final_results.push(winner.opportunity);
             } else {
                 #[cfg(debug_assertions)]
                 log::debug!(
                     "   ❌ Region #{} Winner [{}]: Score {:.2} (Failed Qualifier < {:.2})",
-                    i, winner.source_desc, winner.score, qualifying_score
+                    _i, winner.source_desc, winner.score, qualifying_score
                 );
             }
         }
