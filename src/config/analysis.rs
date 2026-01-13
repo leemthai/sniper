@@ -21,14 +21,14 @@ pub enum OptimizationGoal {
 
 #[derive(Clone, Debug)]
 pub struct TradeProfile {
-    pub min_roi: f64,       // e.g. 0.5%
-    pub min_aroi: f64,      // e.g. 20.0%
+    pub min_roi: f64,  // e.g. 0.5%
+    pub min_aroi: f64, // e.g. 20.0%
 
     pub goal: OptimizationGoal,
-    
+
     // Scoring Weights
-    pub weight_roi: f64,    // e.g. 1.0
-    pub weight_aroi: f64,   // e.g. 0.05 (AROI is usually huge, so we dampen it)
+    pub weight_roi: f64,  // e.g. 1.0
+    pub weight_aroi: f64, // e.g. 0.05 (AROI is usually huge, so we dampen it)
 }
 
 // impl Default for TradeProfile {
@@ -128,26 +128,31 @@ pub struct AnalysisConfig {
 
 #[derive(Clone, Debug)]
 pub struct OptimalSearchSettings {
-    pub scout_steps: usize,          
-    pub drill_top_n: usize,          
-    pub drill_offset_factor: f64,    
-    pub volatility_lookback: usize,  
-    pub diversity_vol_factor: f64,   
-    pub max_results: usize,          
-    pub price_buffer_pct: f64,       
+    pub scout_steps: usize,
+    pub drill_top_n: usize,
+    pub drill_offset_factor: f64,
+    pub volatility_lookback: usize,
+    pub diversity_regions: usize, // Number of regions (e.g. 10)
+    pub diversity_cut_off: f64,   // % of Top Score required to qualify (e.g. 0.5 = 50%)
+    pub max_results: usize,
+    pub price_buffer_pct: f64,
+    pub fuzzy_match_tolerance: f64, // % tolerance for merging similar trade ideas (in evolve())
 }
 
 impl OptimalSearchSettings {
-    // SINGLE SOURCE OF TRUTH (Const Function)
+    // SSOT (Const Function)
     pub const fn new() -> Self {
         Self {
             scout_steps: 30,
             drill_top_n: 5,
             drill_offset_factor: 0.25,
             volatility_lookback: 50,
-            diversity_vol_factor: 2.0,
-            max_results: 10,
+            // NEW: Regional Championship Settings
+            diversity_regions: 10,
+            diversity_cut_off: 0.5, // Trade must be at least 50% as good as the winner
+            max_results: 10, // Absolute limi on how many trades can qualify (per candle update)
             price_buffer_pct: 0.005,
+            fuzzy_match_tolerance: 0.5,
         }
     }
 }
@@ -186,11 +191,11 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         min_journey_duration: Duration::from_secs(3600), // Floor at 1 Hour. Don't simulate 5-minute trades.
 
         profile: TradeProfile {
-            min_roi: 0.50,   // 0.5% Minimum yield
-            min_aroi: 20.0,  // 20% Annualized Minimum
+            min_roi: 0.50,  // 0.5% Minimum yield
+            min_aroi: 20.0, // 20% Annualized Minimum
             goal: OptimizationGoal::Balanced,
-            weight_roi: 1.0,  // Scoring: We value hard cash (ROI) 20x more than theoretical speed (AROI)
-            weight_aroi: 0.05, 
+            weight_roi: 1.0, // Scoring: We value hard cash (ROI) 20x more than theoretical speed (AROI)
+            weight_aroi: 0.05,
         },
 
         optimization: OptimalSearchSettings::new(),

@@ -367,28 +367,6 @@ impl SniperEngine {
                 // Default to empty slice if no ops found for this pair
                 let raw_ops = ops_by_pair.get(pair).map(|v| v.as_slice()).unwrap_or(&[]);
 
-                #[cfg(debug_assertions)]
-                if pair == "PAXGUSDT" && raw_ops.len() > 0 {
-                    // Target the problem pair
-                    log::info!(
-                        "🔍 TF AUDIT [PAXGUSDT]: Found {} raw ops in Ledger.",
-                        raw_ops.len()
-                    );
-                    for op in raw_ops {
-                        let roi = op.expected_roi();
-                        log::info!(
-                            "   -> ID: {} | ROI: {:.2}% | Status: {}",
-                            op.id,
-                            roi,
-                            if roi > 0.0 {
-                                "✅ ACCEPT"
-                            } else {
-                                "❌ REJECT (ROI <= 0)"
-                            }
-                        );
-                    }
-                }
-
                 // Filter worthwhile trades (Static ROI check)
                 let valid_ops: Vec<&TradeOpportunity> = raw_ops
                     .iter()
@@ -405,13 +383,15 @@ impl SniperEngine {
                         if pair == "PAXGUSDT" {
                             let live_val = op.live_roi(current_price);
                             let static_val = op.expected_roi();
-                            log::warn!(
-                                "🕵️ ROI MISMATCH AUDIT [{}]: Static: {:.2}% | Live: {:.2}% | Diff: {:.2}%",
-                                op.id,
-                                static_val,
-                                live_val,
-                                static_val - live_val
-                            );
+                            if (live_val - static_val).abs() > 0.15 {
+                                log::warn!(
+                                    "🕵️ ROI MISMATCH AUDIT [{}]: Static: {:.2}% | Live: {:.2}% | Diff: {:.2}%",
+                                    op.id,
+                                    static_val,
+                                    live_val,
+                                    static_val - live_val
+                                );
+                            }
                         }
                         let live_opp = LiveOpportunity {
                             opportunity: op.clone(),
@@ -663,40 +643,11 @@ impl SniperEngine {
 
             match result.result {
                 Ok(model) => {
-                    // #[cfg(debug_assertions)]
-                    // // --- DIAGNOSTIC START ---
-                    // let pair_count_before = self
-                    //     .ledger
-                    //     .opportunities
-                    //     .values()
-                    //     .filter(|o| o.pair_name == result.pair_name)
-                    //     .count();
-                    // // ------------------------
-
                     // Sync to Ledger ---
+                    let fuzzy_tolerance = self.current_config.journey.optimization.fuzzy_match_tolerance;
                     for op in &model.opportunities {
-                        self.ledger.evolve(op.clone());
+                        self.ledger.evolve(op.clone(), fuzzy_tolerance);
                     }
-
-                    // --- DIAGNOSTIC END ---
-                    // #[cfg(debug_assertions)]
-                    // let pair_count_after = self
-                    //     .ledger
-                    //     .opportunities
-                    //     .values()
-                    //     .filter(|o| o.pair_name == result.pair_name)
-                    //     .count();
-                    // #[cfg(debug_assertions)]
-                    // let total_ledger = self.ledger.opportunities.len();
-
-                    // #[cfg(debug_assertions)]
-                    // log::info!(
-                    //     "LEDGER MONITOR [{}]: Ops for this pair {} -> {}. Total Ledger: {}",
-                    //     result.pair_name,
-                    //     pair_count_before,
-                    //     pair_count_after,
-                    //     total_ledger
-                    // );
 
                     // Success: Update State
                     state.model = Some(model.clone());

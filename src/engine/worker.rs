@@ -147,69 +147,109 @@ fn simulate_target(
     None
 }
 
-/// Phase C: Filters opportunities to remove duplicates/clumps.
+/// Phase C: Filters opportunities using the "Regional Championship" strategy.
+/// 1. Divides the price range into N regions.
+/// 2. Finds the best trade in each region (Local Winner).
+/// 3. Filters Local Winners against the Global Best Score (Qualifying Round).
 fn apply_diversity_filter(
-    mut candidates: Vec<CandidateResult>,
+    candidates: Vec<CandidateResult>, 
     config: &AnalysisConfig,
-    volatility: f64,
     pair_name: &str,
+    range_min: f64,
+    range_max: f64,
 ) -> Vec<TradeOpportunity> {
-    if candidates.is_empty() {
-        return Vec::new();
-    }
+    if candidates.is_empty() { return Vec::new(); }
 
-    // 1. Sort by Score (Descending) - Absolute best trades first
-    candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+    let opt_config = &config.journey.optimization;
+    let regions = opt_config.diversity_regions;
+    let cutoff_ratio = opt_config.diversity_cut_off;
 
-    // --- INSERT LOG HERE (Before 'candidates' is consumed) ---
+    // 1. Identify Global Max Score (The Gold Standard)
+    // We need this to determine the qualifying time.
+    let global_best_score = candidates
+        .iter()
+        .map(|c| c.score)
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    let qualifying_score = global_best_score * cutoff_ratio;
+
     #[cfg(debug_assertions)]
     log::info!(
-        "🔍 OPTIMAL SEARCH [{}] [Strategy: {}]: Filtering {} candidates based on Volatility {:.2}%",
-        pair_name, // <--- ADDED
-        config.journey.profile.goal,
+        "🏆 REGIONAL CHAMPIONSHIP [{}]: {} Candidates. Global Best: {:.2} | Qualifying: {:.2} ({:.0}%)",
+        pair_name,
         candidates.len(),
-        volatility * 100.0
+        global_best_score,
+        qualifying_score,
+        cutoff_ratio * 100.0
     );
 
-    let mut winners: Vec<TradeOpportunity> = Vec::new();
+    // 2. Hold Local Tournaments
+    // Vector of Options to hold the winner of each region
+    let mut regional_winners: Vec<Option<CandidateResult>> = (0..regions).map(|_| None).collect();
+    let total_range = range_max - range_min;
+    let bucket_size = total_range / regions as f64;
 
-    // Config: Radius based on volatility
-    let opt_config = &config.journey.optimization;
-    let exclusion_radius_pct = (volatility * opt_config.diversity_vol_factor).max(0.01);
+    for cand in candidates {
+        // Determine Region Index
+        let offset = cand.opportunity.target_price - range_min;
+        // Clamp index to 0..regions-1 (handle edge cases where price == max)
+        let idx = ((offset / bucket_size).floor() as usize).min(regions - 1);
 
-    for candidate in candidates {
-        let mut is_distinct = true;
-        for existing in &winners {
-            // Check Proximity
-            let dist_pct =
-                calculate_percent_diff(candidate.opportunity.target_price, existing.target_price);
-            let same_dir = candidate.opportunity.direction == existing.direction;
-
-            if same_dir && dist_pct < exclusion_radius_pct {
-                is_distinct = false;
-                break;
+        // Battle for the Region
+        match &mut regional_winners[idx] {
+            None => {
+                // Uncontested (so far)
+                regional_winners[idx] = Some(cand);
+            },
+            Some(current_champ) => {
+                // Challenger vs Champion
+                // We respect the Strategy because 'score' is calculated using the user's goal
+                if cand.score > current_champ.score {
+                    regional_winners[idx] = Some(cand);
+                }
             }
-        }
-
-        if is_distinct {
-            #[cfg(debug_assertions)]
-            log::info!(
-                "   ✅ Accepted Winner [{}] [{}]: Score {:.2} | Target ${:.4}",
-                pair_name,
-                candidate.source_desc,
-                candidate.score,
-                candidate.opportunity.target_price
-            );
-            winners.push(candidate.opportunity);
-        }
-
-        // Config: Max Results
-        if winners.len() >= opt_config.max_results {
-            break;
         }
     }
 
-    winners
+    // 3. The Qualifiers (Filter & Collect)
+    let mut final_results = Vec::new();
+
+    for (i, winner_opt) in regional_winners.into_iter().enumerate() {
+        if let Some(winner) = winner_opt {
+            // Check if they beat the qualifying time
+            if winner.score >= qualifying_score {
+                #[cfg(debug_assertions)]
+                log::info!(
+                    "   ✅ Region #{} Winner [{}]: Score {:.2} | Target ${:.2} (Qualified)",
+                    i, winner.source_desc, winner.score, winner.opportunity.target_price
+                );
+                final_results.push(winner.opportunity);
+            } else {
+                #[cfg(debug_assertions)]
+                log::debug!(
+                    "   ❌ Region #{} Winner [{}]: Score {:.2} (Failed Qualifier < {:.2})",
+                    i, winner.source_desc, winner.score, qualifying_score
+                );
+            }
+        }
+    }
+
+    // 4. Final Sort (Best of the Best first)
+    final_results.sort_by(|a, b| {
+        // Recalculate score for sorting or store it? 
+        // TradeOpportunity doesn't store the raw score, but we can re-calc cheaply or trust the input order.
+        // Let's re-calc to be safe and strict sort.
+        let score_a = a.calculate_quality_score(&config.journey.profile);
+        let score_b = b.calculate_quality_score(&config.journey.profile);
+        score_b.partial_cmp(&score_a).unwrap_or(Ordering::Equal)
+    });
+    
+    // Hard Limit (if configured lower than region count)
+    if final_results.len() > opt_config.max_results {
+        final_results.truncate(opt_config.max_results);
+    }
+
+    final_results
 }
 
 // MAIN FUNCTION: Runs Scout & Drill optimization
@@ -218,6 +258,7 @@ fn run_pathfinder_simulations(
     current_price: f64,
     config: &AnalysisConfig,
 ) -> Vec<TradeOpportunity> {
+
     if current_price <= 0.0 {
         return Vec::new();
     }
@@ -427,7 +468,7 @@ fn run_pathfinder_simulations(
     all_results.extend(drill_results);
 
     // --- PHASE C: DIVERSITY FILTER (Select Winners) ---
-    apply_diversity_filter(all_results, config, avg_volatility, pair_name)
+    apply_diversity_filter(all_results, config, pair_name, ph_min, ph_max)
 }
 
 /// Helper function to find the optimal Stop Loss for a given target
@@ -519,16 +560,6 @@ fn run_stop_loss_tournament(
                 (current_price - candidate_stop).abs() / current_price * 100.0,
             );
 
-            // #[cfg(debug_assertions)]
-            // if roi < 0.0 {
-            //     log::warn!(
-            //         "GATEKEEPER AUDIT: ROI {:.4} vs Min {:.4} | AROI {:.4} vs Min {:.4}",
-            //         roi,
-            //         profile.min_roi,
-            //         aroi,
-            //         profile.min_aroi
-            //     );
-            // }
             // GATEKEEPER: Check both ROI and AROI against profile
             let is_worthwhile =
                 is_opportunity_worthwhile(roi, aroi, profile.min_roi, profile.min_aroi);

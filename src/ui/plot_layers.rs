@@ -10,7 +10,6 @@ use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 
 use crate::analysis::range_gap_finder::GapReason;
 
-use crate::config::ANALYSIS;
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::models::OhlcvTimeSeries;
@@ -27,34 +26,6 @@ pub struct HorizonLinesLayer;
 
 pub struct OpportunityLayer;
 
-// Helper to find the default "Best" op if nothing is selected
-fn find_best_opportunity(model: &TradingModel) -> Option<&TradeOpportunity> {
-    let profile = &ANALYSIS.journey.profile;
-
-    // --- FORENSIC LOGGING START ---
-    #[cfg(debug_assertions)]
-    if model.cva.pair_name == "PAXGUSDT" {
-        log::info!("🔍 PLOT AUDIT [PAXGUSDT]: Model has {} ops.", model.opportunities.len());
-        for op in &model.opportunities {
-             // We check the specific filter used by the plot logic
-             let worthwhile = op.is_worthwhile(profile); 
-             log::info!(
-                "   -> ID: {} | ROI: {:.2}% | Worthwhile: {}", 
-                op.id, 
-                op.expected_roi(),
-                worthwhile
-            );
-        }
-    }
-
-    model
-        .opportunities
-        .iter()
-        // FIX: Use is_worthwhile to enforce MWT (Min ROI / Min AROI)
-        .filter(|op| op.is_worthwhile(profile))
-        .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap())
-}
-
 impl PlotLayer for OpportunityLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         if !ctx.visibility.opportunities {
@@ -67,42 +38,14 @@ impl PlotLayer for OpportunityLayer {
             _ => return,
         };
 
-        // --- SELECTION LOGIC START ---
-        // Determine which Op to show
-        let (best_opp, source_reason) = if let Some(selected) = &ctx.selected_opportunity {
-            if selected.pair_name == ctx.trading_model.cva.pair_name {
-                (Some(selected), "User Selection")
-            } else {
-                (
-                    find_best_opportunity(ctx.trading_model),
-                    "Fallback (User Selected Other Pair)",
-                )
-            }
-        } else {
-            (
-                find_best_opportunity(ctx.trading_model),
-                "Fallback (None Selected)",
-            )
-        };
+        // 2. SSOT SELECTION LOGIC (Matching render_active_target_panel)
+        // The Plot is a slave. It only renders what is explicitly selected.
+        let opp_opt = ctx.selected_opportunity;
+        let current_pair = &ctx.trading_model.cva.pair_name;
 
         // 2. Find Best Opportunity
-        if let Some(op) = best_opp {
-            // --- FORENSIC LOGGING ---
-            #[cfg(debug_assertions)]
-            {
-                // Only log once per second to avoid freezing the UI (Plot renders at 60fps)
-                // or check if it matches the weird 6300/4940 values you saw.
-                if op.target_price > 6000.0 {
-                    // Trigger on the "Ghost" Target
-                    log::warn!(
-                        "👻 GHOST HUNT [Plot Layer]: Rendering ID: {} | Target: ${:.2} | ROI: {:.2}% | Reason: {}",
-                        op.id,
-                        op.target_price,
-                        op.expected_roi(),
-                        source_reason
-                    );
-                }
-            }
+        match opp_opt {
+            Some(op) if &op.pair_name == current_pair => {
 
             // 3. Setup Foreground Painter
             // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
@@ -175,6 +118,19 @@ impl PlotLayer for OpportunityLayer {
                 faint_stroke,
             );
             painter.circle_filled(target_pos_screen, 3.0, scope_color);
+        },
+        Some(_) => {
+                // (Probably can't happen .....) --- CASE B: MISMATCH ---
+                // User has an Op selected, but it's for a DIFFERENT pair (e.g. ETH selected, viewing BTC).
+                // We draw NOTHING.
+                panic!("Can't happen in theory");
+        },
+
+        None => {
+                // --- CASE C: NO SELECTION ---
+                // User has no active trade selected (maybe none available for this pair)
+                // We draw NOTHING.
+        }
         }
     }
 }
