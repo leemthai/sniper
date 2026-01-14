@@ -1,6 +1,7 @@
 // src/models/ledger.rs
 
 use std::collections::HashMap;
+use std::cmp::Ordering;
 use serde::{Deserialize, Serialize};
 
 use crate::models::trading_view::TradeOpportunity;
@@ -38,7 +39,7 @@ impl OpportunityLedger {
                 let diff = calculate_percent_diff(op.target_price, new_opp.target_price);
                 (op.id.clone(), diff)
             })
-            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
 
         // 3. Evaluate Match using Configured Tolerance
         if let Some((id, diff)) = closest_match {
@@ -98,15 +99,18 @@ impl OpportunityLedger {
              // LOGGING ROI Change
             #[cfg(debug_assertions)]
             if (existing.expected_roi() - new_opp.expected_roi()).abs() > 0.1 {
-                log::info!("LEDGER EVOLVE [{}]: ID {} kept. ROI {:.2}% -> {:.2}% | SL: {:.2} -> {:.2}", 
+                log::info!("LEDGER EVOLVE [{}]: ID {} kept. ROI {:.2}% -> {:.2}% (Win: {:.1}%->{:.1}%) | SL: {:.2} -> {:.2}", 
                     new_opp.pair_name, 
                     if existing_id.len() > 8 { &existing_id[..8] } else { existing_id }, 
                     existing.expected_roi(), 
                     new_opp.expected_roi(),
+                    existing.simulation.success_rate * 100.0,
+                    new_opp.simulation.success_rate * 100.0,
                     existing.stop_price,
                     new_opp.stop_price
                 );
             }
+
 
             // CRITICAL: Preserve Identity
             new_opp.id = existing.id.clone();         // Keep the OLD ID (so UI selection sticks)

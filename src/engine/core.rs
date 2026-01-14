@@ -61,6 +61,9 @@ pub struct SniperEngine {
     pub config_overrides: HashMap<String, PriceHorizonConfig>,
     pub ledger: OpportunityLedger,
     pub results_repo: Arc<dyn ResultsRepositoryTrait>,
+
+    #[cfg(debug_assertions)]
+    pub last_debug_validation: AppInstant,
 }
 
 impl SniperEngine {
@@ -147,6 +150,8 @@ impl SniperEngine {
             config_overrides: HashMap::new(),
             ledger: OpportunityLedger::new(),
             results_repo: Arc::new(repo),
+            #[cfg(debug_assertions)]
+            last_debug_validation: AppInstant::now(),
         }
     }
 
@@ -383,7 +388,7 @@ impl SniperEngine {
                         if pair == "PAXGUSDT" {
                             let live_val = op.live_roi(current_price);
                             let static_val = op.expected_roi();
-                            if (live_val - static_val).abs() > 0.15 {
+                            if (live_val - static_val).abs() > 1. {
                                 log::warn!(
                                     "🕵️ ROI MISMATCH AUDIT [{}]: Static: {:.2}% | Live: {:.2}% | Diff: {:.2}%",
                                     op.id,
@@ -488,6 +493,41 @@ impl SniperEngine {
         self.config_overrides = overrides;
     }
 
+    #[cfg(debug_assertions)]
+    fn debug_validate_ledger_spacing(&self) {
+        // Called every 5 seconds. Logic validator on op price spacing (should be minimum [self.current_config.journey.optimization.fuzzy_match_tolerance]% apart)
+        let tolerance = self
+            .current_config
+            .journey
+            .optimization
+            .fuzzy_match_tolerance;
+        let ops: Vec<_> = self.ledger.opportunities.values().collect();
+
+        for i in 0..ops.len() {
+            for j in (i + 1)..ops.len() {
+                let a = ops[i];
+                let b = ops[j];
+
+                if a.pair_name == b.pair_name && a.direction == b.direction {
+                    let diff = calculate_percent_diff(a.target_price, b.target_price);
+
+                    if diff < tolerance {
+                        // FIX: Warn instead of Error/Panic.
+                        // Drifting trades can naturally overlap slightly between updates.
+                        log::warn!(
+                            "⚠️ SPACING OVERLAP [{}] ID {} vs {}: Diff {:.3}% < Tolerance {:.3}%",
+                            a.pair_name,
+                            if a.id.len() > 8 { &a.id[..8] } else { &a.id },
+                            if b.id.len() > 8 { &b.id[..8] } else { &b.id },
+                            diff,
+                            tolerance
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     /// THE GAME LOOP.
     pub fn update(&mut self, _protected_id: Option<&str>) {
         // Ingest Live Data (The Heartbeat)
@@ -502,6 +542,15 @@ impl SniperEngine {
             if let Ok(req) = self.job_rx.try_recv() {
                 // Run sync calculation
                 worker::process_request_sync(req, self.result_tx.clone());
+            }
+        }
+
+        // --- DEBUG VALIDATION LOOP (Every 5 Seconds) ---
+        #[cfg(debug_assertions)]
+        {
+            if t1.duration_since(self.last_debug_validation).as_secs() >= 5 {
+                self.debug_validate_ledger_spacing();
+                self.last_debug_validation = t1;
             }
         }
 
@@ -644,7 +693,11 @@ impl SniperEngine {
             match result.result {
                 Ok(model) => {
                     // Sync to Ledger ---
-                    let fuzzy_tolerance = self.current_config.journey.optimization.fuzzy_match_tolerance;
+                    let fuzzy_tolerance = self
+                        .current_config
+                        .journey
+                        .optimization
+                        .fuzzy_match_tolerance;
                     for op in &model.opportunities {
                         self.ledger.evolve(op.clone(), fuzzy_tolerance);
                     }

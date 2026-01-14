@@ -61,6 +61,23 @@ impl ZoneSniperApp {
             let cmp = match self.tf_sort_col {
                 SortColumn::PairName => a.pair_name.cmp(&b.pair_name),
 
+                // NEW: Target Price Sort
+                SortColumn::TargetPrice => {
+                    let val_a = a
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.opportunity.target_price)
+                        .unwrap_or(0.0);
+                    let val_b = b
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.opportunity.target_price)
+                        .unwrap_or(0.0);
+                    val_a
+                        .total_cmp(&val_b)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
+                }
+
                 SortColumn::QuoteVolume24h => a
                     .quote_volume_24h
                     .total_cmp(&b.quote_volume_24h)
@@ -140,6 +157,24 @@ impl ZoneSniperApp {
                         .cmp(&val_a)
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
+                // Sort by Strategy Score (Balanced/ROI/AROI)
+                SortColumn::Score => {
+                    let profile = &self.app_config.journey.profile;
+                    let val_a = a
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.opportunity.calculate_quality_score(profile))
+                        .unwrap_or(f64::NEG_INFINITY);
+                    let val_b = b
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.opportunity.calculate_quality_score(profile))
+                        .unwrap_or(f64::NEG_INFINITY);
+
+                    val_a
+                        .total_cmp(&val_b)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
+                }
                 SortColumn::VariantCount => {
                     let va = a
                         .opportunity
@@ -177,12 +212,10 @@ impl ZoneSniperApp {
         };
         let current_price = self.get_display_price(&pair).unwrap_or(0.0);
 
-        // 3. Find the "Current Opportunity" (Same logic as HUD)
-        let best_opp = model
-            .opportunities
-            .iter()
-            .filter(|op| op.expected_roi() > 0.0)
-            .max_by(|a, b| a.expected_roi().partial_cmp(&b.expected_roi()).unwrap());
+        let target_op = self
+            .selected_opportunity
+            .clone()
+            .filter(|op| op.pair_name == pair);
 
         // 4. Render Window
         Window::new(format!("Opportunity Explainer: {}", pair))
@@ -192,30 +225,16 @@ impl ZoneSniperApp {
             .open(&mut self.show_opportunity_details)
             .default_width(600.)
             .show(ctx, |ui| {
-                if let Some(op) = best_opp {
+                if let Some(op) = target_op {
                     let calc_price = if current_price > f64::EPSILON {
                         current_price
                     } else {
                         op.start_price
                     };
                     let sim = &op.simulation;
-                    // --- LOOKUP TARGET ZONE FOR TITLE ---
-                    // Try to find the zone definition to get its bounds
-                    let zone_info = model
-                        .zones
-                        .sticky_superzones
-                        .iter()
-                        .find(|z| z.id == op.target_zone_id)
-                        .map(|z| {
-                            format!(
-                                "{} - {}",
-                                format_price(z.price_bottom),
-                                format_price(z.price_top)
-                            )
-                        })
-                        .unwrap_or_else(|| format!("Zone #{}", op.target_zone_id)); // Fallback
 
-                    ui.heading(format!("{}: {}", UI_TEXT.opp_exp_current_opp, zone_info));
+                    let target_str = format_price(op.target_price);
+                    ui.heading(format!("{}: {}", UI_TEXT.opp_exp_current_opp, target_str));
                     // "Setup Type: LONG" (with encoded color)
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
@@ -720,7 +739,7 @@ impl ZoneSniperApp {
                 .resizable(false)
                 .sense(Sense::click()) // Enable row clicks
                 .cell_layout(Layout::left_to_right(Align::Min))
-                .column(Column::exact(120.0).clip(true)) // Pair (Fixed base, resizable)
+                .column(Column::exact(140.0).clip(true)) // Pair (Fixed base, resizable)
                 .column(Column::exact(55.0).clip(true)) // ROI/AROI (Strict width, clip overflow)
                 .column(Column::exact(55.0).clip(true)) // Vol/Mom
                 .column(Column::exact(55.0).clip(true)) // Time/Ops
@@ -781,7 +800,12 @@ impl ZoneSniperApp {
 
         // Col 1: Pair
         header.col(|ui| {
-            header_stack(ui, SortColumn::PairName, &UI_TEXT.label_pair, None);
+            header_stack(
+                ui,
+                SortColumn::PairName,
+                &UI_TEXT.label_pair,
+                Some((SortColumn::TargetPrice, &UI_TEXT.label_target)),
+            );
         });
 
         // Col 2: Return
@@ -804,9 +828,14 @@ impl ZoneSniperApp {
             );
         });
 
-        // Col 4: Time
+        // Col 4: Average Duration / Trade Balance Score
         header.col(|ui| {
-            header_stack(ui, SortColumn::AvgDuration, &UI_TEXT.tf_time, None);
+            header_stack(
+                ui,
+                SortColumn::AvgDuration,
+                &UI_TEXT.tf_time,
+                Some((SortColumn::Score, &UI_TEXT.icon_strategy)),
+            );
         });
 
         // Col 5: Volume
@@ -927,6 +956,14 @@ impl ZoneSniperApp {
                             TradeDirection::Long => &UI_TEXT.icon_long,
                             TradeDirection::Short => &UI_TEXT.icon_short,
                         };
+
+                        // --- STRATEGY ICON ---
+                        let strategy_icon = op.strategy.icon();
+                        ui.label(
+                            RichText::new(strategy_icon)
+                                .size(14.0)
+                                .color(PLOT_CONFIG.color_text_neutral),
+                        );
                         ui.label(RichText::new(arrow).color(dir_color));
                     }
                 });
@@ -1032,6 +1069,19 @@ impl ZoneSniperApp {
                         RichText::new(time_str)
                             .small()
                             .color(PLOT_CONFIG.color_text_neutral),
+                    );
+
+                    // Line 2: Strategy Score
+                    let profile = &self.app_config.journey.profile;
+                    let score = live_op.opportunity.calculate_quality_score(profile);
+
+                    // If Balanced, show "Eff" (Efficiency) score.
+                    // If ROI/AROI, the score is redundant (it matches col 2), so maybe hide it or dim it?
+                    // Let's show it consistently but dim.
+                    ui.label(
+                        RichText::new(format!("Sc: {:.0}", score)) // No decimals for cleaner look
+                            .size(9.0)
+                            .color(PLOT_CONFIG.color_text_subdued),
                     );
                 } else {
                     self.display_no_data(ui);
@@ -1376,19 +1426,23 @@ impl ZoneSniperApp {
                     ui.separator();
 
                     // OPTIMIZATION GOAL SELECTOR
-                    ui.label("Goal:");
+                    // ui.label(format!("{}:", UI_TEXT.label_goal));
+                    ui.label(format!("{} {}", UI_TEXT.label_goal, UI_TEXT.icon_strategy));
                     let current_goal = self.app_config.journey.profile.goal;
+                    // FIX: Format the selected text to include the icon so it is visible when closed
+                    let selected_text = format!("{} {}", current_goal.icon(), current_goal);
 
                     ComboBox::from_id_salt("opt_goal_selector")
-                        .selected_text(current_goal.to_string())
+                        .selected_text(selected_text)
                         .width(100.0)
                         .show_ui(ui, |ui| {
                             for goal in OptimizationGoal::iter() {
+                                let item_text = format!("{} {}", goal.icon(), goal);
                                 if ui
                                     .selectable_value(
                                         &mut self.app_config.journey.profile.goal,
                                         goal,
-                                        goal.to_string(),
+                                        item_text,
                                     )
                                     .clicked()
                                 {
@@ -1468,13 +1522,14 @@ impl ZoneSniperApp {
 
     fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            // 1. Determine which variant is currently active (Moved OUT of closure)
+            // 1. Determine which variant is currently active
             let active_stop_price = if let Some(sel) = &self.selected_opportunity {
-                // If selected op matches this card, use its stop price
-                if sel.pair_name == op.pair_name && sel.target_zone_id == op.target_zone_id {
+                // FIX: Check exact UUID match.
+                // Previous logic checked target_zone_id, which is now often 0 for generated trades,
+                // causing all trades to think they were selected.
+                if sel.id == op.id {
                     sel.stop_price
                 } else {
-                    // Otherwise use the default/best
                     op.stop_price
                 }
             } else {
@@ -1497,7 +1552,9 @@ impl ZoneSniperApp {
                 UI_TEXT.label_sl_variants_short
             );
 
-            let id_source = format!("var_menu_{}_{}", op.pair_name, op.target_zone_id);
+            // FIX: Use Unique UUID for the UI ID source.
+            // Using target_zone_id (which is 0) caused ID collisions in egui.
+            let id_source = format!("var_menu_{}", op.id);
 
             // CALL THE HELPER
             ui.custom_dropdown(&id_source, &label_text, |ui| {
@@ -1507,7 +1564,6 @@ impl ZoneSniperApp {
                     let risk_pct = calculate_percent_diff(variant.stop_price, op.start_price);
                     let win_rate = variant.simulation.success_rate * 100.0;
 
-                    // Add index to dropdown text too for clarity? "1. ROI..."
                     let text = format!(
                         "{}. {} {:+.2}%   {} {:.0}%   {} -{:.2}%",
                         i + 1,

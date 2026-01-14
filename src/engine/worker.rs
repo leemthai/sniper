@@ -111,13 +111,14 @@ fn simulate_target(
             profile.weight_aroi,
         );
 
-        // Generate ID
+        // FIX: Removed 'profile.goal' from the hash source. 
+        // This ensures the same trade found by different strategies shares the same ID.
         let unique_string = format!(
-            "{}_{}_{}_{}",
+            "{}_{}_{}",
             ohlcv.pair_interval.name(),
             source_id_suffix,
             direction,
-            profile.goal
+            // profile.goal
         );
         let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, unique_string.as_bytes()).to_string();
 
@@ -126,13 +127,13 @@ fn simulate_target(
             created_at: TimeUtils::now_timestamp_ms(),
             source_ph: ph_pct,
             pair_name: ohlcv.pair_interval.name().to_string(),
-            target_zone_id: 0, // 0 indicates "Generated Target" (Not a Zone)
             direction,
             start_price: current_price,
             target_price,
             stop_price,
             max_duration_ms: duration_ms as i64,
             avg_duration_ms,
+            strategy: profile.goal,
             simulation: result,
             variants,
         };
@@ -158,11 +159,35 @@ fn apply_diversity_filter(
     range_min: f64,
     range_max: f64,
 ) -> Vec<TradeOpportunity> {
+
     if candidates.is_empty() { return Vec::new(); }
 
     let opt_config = &config.journey.optimization;
     let regions = opt_config.diversity_regions;
     let cutoff_ratio = opt_config.diversity_cut_off;
+
+        // --- INSERT START: DEBUG SCOREBOARD ---
+    // This creates a temporary view to log the top candidates without consuming the vector
+    #[cfg(debug_assertions)]
+    if config.journey.profile.goal == crate::config::OptimizationGoal::Balanced {
+        // Create vector of references so we can sort them for display only
+        let mut debug_view: Vec<&CandidateResult> = candidates.iter().collect();
+        debug_view.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        
+        log::info!("⚖️ BALANCED SCOREBOARD [{}] (Top 5 Inputs):", _pair_name);
+        for (i, c) in debug_view.iter().take(5).enumerate() {
+            let roi = c.opportunity.expected_roi();
+            let dur_ms = c.opportunity.avg_duration_ms;
+            let dur_str = crate::utils::TimeUtils::format_duration(dur_ms);
+            let aroi = crate::utils::maths_utils::calculate_annualized_roi(roi, dur_ms as f64);
+            
+            log::info!(
+                "   #{}: Score {:.1} | ROI {:.2}% | AROI {:.0}% | Time {}", 
+                i+1, c.score, roi, aroi, dur_str
+            );
+        }
+    }
+    
 
     // 1. Identify Global Max Score (The Gold Standard)
     // We need this to determine the qualifying time.
@@ -248,6 +273,7 @@ fn apply_diversity_filter(
     if final_results.len() > opt_config.max_results {
         final_results.truncate(opt_config.max_results);
     }
+
 
     final_results
 }

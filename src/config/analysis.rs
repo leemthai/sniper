@@ -5,6 +5,8 @@ use std::time::Duration;
 use strum_macros::{Display, EnumIter};
 
 use crate::utils::TimeUtils;
+use crate::ui::config::UI_TEXT;
+
 
 pub const DEFAULT_PH_THRESHOLD: f64 = 0.15;
 pub const DEFAULT_TIME_DECAY: f64 = 1.5; // Manually synced to match 0.15 logic
@@ -19,6 +21,16 @@ pub enum OptimizationGoal {
     Balanced,
 }
 
+impl OptimizationGoal {
+    pub fn icon(&self) -> String {
+        match self {
+            OptimizationGoal::MaxROI => UI_TEXT.icon_strategy_roi.to_string(),
+            OptimizationGoal::MaxAROI => UI_TEXT.icon_strategy_aroi.to_string(),
+            OptimizationGoal::Balanced => UI_TEXT.icon_strategy_balanced.to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TradeProfile {
     pub min_roi: f64,  // e.g. 0.5%
@@ -30,18 +42,6 @@ pub struct TradeProfile {
     pub weight_roi: f64,  // e.g. 1.0
     pub weight_aroi: f64, // e.g. 0.05 (AROI is usually huge, so we dampen it)
 }
-
-// impl Default for TradeProfile {
-//     fn default() -> Self {
-//         Self {
-//             min_roi: 0.50,
-//             min_aroi: 20.0,
-//             goal: OptimizationGoal::Balanced,
-//             weight_roi: 1.0,
-//             weight_aroi: 0.05,
-//         }
-//     }
-// }
 
 /// Configuration for the Price Horizon.
 /// Determines the vertical price range of interest relative to the current price.
@@ -147,10 +147,9 @@ impl OptimalSearchSettings {
             drill_top_n: 5,
             drill_offset_factor: 0.25,
             volatility_lookback: 50,
-            // NEW: Regional Championship Settings
-            diversity_regions: 10,
+            diversity_regions: 5, // NEW: Regional Championship Settings
             diversity_cut_off: 0.5, // Trade must be at least 50% as good as the winner
-            max_results: 10, // Absolute limi on how many trades can qualify (per candle update)
+            max_results: 5, // Absolute limit on how many trades can qualify (per candle update as it turns out)
             price_buffer_pct: 0.005,
             fuzzy_match_tolerance: 0.5,
         }
@@ -195,7 +194,7 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
             min_aroi: 20.0, // 20% Annualized Minimum
             goal: OptimizationGoal::Balanced,
             weight_roi: 1.0, // Scoring: We value hard cash (ROI) 20x more than theoretical speed (AROI)
-            weight_aroi: 0.05,
+            weight_aroi: 0.002,
         },
 
         optimization: OptimalSearchSettings::new(),

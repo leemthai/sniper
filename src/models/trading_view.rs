@@ -23,7 +23,7 @@ use crate::utils::maths_utils::{
 
 impl OptimizationGoal {
     /// Calculate a score based on the strategy
-    pub fn calculate_score(&self, roi: f64, duration_ms: f64, weight_roi: f64, weight_aroi: f64) -> f64 {
+    pub fn calculate_score(&self, roi: f64, duration_ms: f64, _weight_roi: f64, _weight_aroi: f64) -> f64 {
         match self {
             OptimizationGoal::MaxROI => roi,
             OptimizationGoal::MaxAROI => {
@@ -31,8 +31,19 @@ impl OptimizationGoal {
                 calculate_annualized_roi(roi, duration_ms)
             },
             OptimizationGoal::Balanced => {
+
+                // GEOMETRIC MEAN (Efficiency Score)
                 let aroi = calculate_annualized_roi(roi, duration_ms);
-                (roi * weight_roi) + (aroi * weight_aroi)
+                
+                // If trade is losing, score is negative.
+                if roi <= 0.0 {
+                    return roi; // Simple fallback for losers
+                }
+                
+                // If ROI is positive but AROI is massive (tiny duration), sqrt dampens it.
+                // If ROI is massive but AROI is low (long duration), sqrt dampens it.
+                // It peaks when BOTH are healthy.
+                (roi * aroi).sqrt()
             }
         }
     }
@@ -99,15 +110,15 @@ impl SortDirection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SortColumn {
     PairName,
+    TargetPrice,
     LiveRoi,
     AnnualizedRoi,
     AvgDuration,
-    // TargetDist,
-    // StopDist,
     QuoteVolume24h,
     Volatility,
     Momentum,
     VariantCount,
+    Score,
 }
 
 /// A row in the consolidated Trade Finder list.
@@ -148,10 +159,9 @@ impl std::fmt::Display for TradeOutcome {
 pub struct TradeOpportunity {
     pub id: String,
     pub created_at: i64,
-    pub source_ph: f64, // The PH threshold that generated this opp (e.g. 0.05)
+    pub source_ph: f64,
 
     pub pair_name: String,
-    pub target_zone_id: usize,
     pub direction: TradeDirection,
     pub start_price: f64,
     pub target_price: f64,
@@ -159,6 +169,8 @@ pub struct TradeOpportunity {
     
     pub max_duration_ms: i64,
     pub avg_duration_ms: i64,
+
+    pub strategy: OptimizationGoal,
     
     pub simulation: SimulationResult,
     pub variants: Vec<TradeVariant>,

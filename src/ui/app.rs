@@ -1,8 +1,7 @@
-use std::collections::{HashMap, HashSet, BTreeMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
-
 
 use eframe::egui::{
     Align, CentralPanel, Context, FontData, FontDefinitions, FontFamily, Grid, Key, Layout,
@@ -13,16 +12,15 @@ use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
 #[cfg(not(target_arch = "wasm32"))]
-use tokio::runtime::Runtime;
-#[cfg(not(target_arch = "wasm32"))]
 use std::thread;
-
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::runtime::Runtime;
 
 use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig, DEBUG_FLAGS};
+use crate::config::{ANALYSIS, AnalysisConfig, DEBUG_FLAGS, OptimizationGoal, PriceHorizonConfig};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -194,6 +192,8 @@ pub struct ZoneSniperApp {
     // PERSISTENCE: Holds trades between sessions
     pub saved_ledger: OpportunityLedger,
     pub last_selected_opp_id: Option<String>,
+    // And trading strategy
+    pub saved_strategy: OptimizationGoal,
 
     #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>,
@@ -261,12 +261,12 @@ impl Default for ZoneSniperApp {
             tf_sort_dir: SortDirection::Descending, // Highest first
             saved_ledger: OpportunityLedger::default(),
             last_selected_opp_id: None,
+            saved_strategy: OptimizationGoal::MaxROI,
         }
     }
 }
 
 impl ZoneSniperApp {
-
     /// Handles a change in global strategy (Optimization Goal).
     pub fn handle_strategy_change(&mut self) {
         // 1. Guard: Check if the strategy ACTUALLY changed.
@@ -291,6 +291,8 @@ impl ZoneSniperApp {
         if let Some(engine) = &mut self.engine {
             // A. Update the config in the engine
             engine.update_config(self.app_config.clone());
+
+            self.saved_strategy = self.app_config.journey.profile.goal;
 
             // B. Global Invalidation
             // Since the "Rules of the Game" changed, every pair needs to be re-judged.
@@ -517,6 +519,9 @@ impl ZoneSniperApp {
         // Overwrite the default config's PH with the saved user preference.
         // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
         app.app_config.price_horizon = app.global_price_horizon.clone();
+        // APPLY SAVED STRATEGY TO CONFIG
+        // This ensures the engine starts with the user's last choice
+        app.app_config.journey.profile.goal = app.saved_strategy;
 
         app.plot_view = PlotView::new();
         app.simulated_prices = HashMap::new();
@@ -952,12 +957,9 @@ impl ZoneSniperApp {
         if let Some(rx) = &self.data_rx {
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
-
-
                 // 1. Get List of ACTUAL loaded pairs
                 let available_pairs = timeseries.unique_pair_names();
-                let valid_set: HashSet<String> =
-                    available_pairs.iter().cloned().collect();
+                let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
 
                 // 2. Resolve Startup Pair
                 // Check if the saved 'selected_pair' actually exists in the loaded data.
@@ -993,7 +995,9 @@ impl ZoneSniperApp {
                     #[cfg(debug_assertions)]
                     log::warn!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
                     engine.ledger = OpportunityLedger::new();
-                } else { engine.ledger = self.saved_ledger.clone();}
+                } else {
+                    engine.ledger = self.saved_ledger.clone();
+                }
 
                 // --- NEW: CULL ORPHANS ---
                 // Remove opportunities for pairs that were not loaded in this session.
