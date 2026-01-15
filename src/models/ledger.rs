@@ -127,7 +127,7 @@ impl OpportunityLedger {
                         let score_a = a.calculate_quality_score(&judge_profile);
                         let score_b = b.calculate_quality_score(&judge_profile);
 
-                        let (winner, loser) = if score_a >= score_b {
+                        let (_winner, loser) = if score_a >= score_b {
                             (a, b)
                         } else {
                             (b, a)
@@ -138,7 +138,7 @@ impl OpportunityLedger {
                             "🧹 LEDGER PRUNE [Strategy: {}]: Merging duplicate trade {} into {}. (Diff {:.3}%)", 
                             a.strategy, 
                             if loser.id.len() > 8 { &loser.id[..8] } else { &loser.id },
-                            if winner.id.len() > 8 { &winner.id[..8] } else { &winner.id },
+                            if _winner.id.len() > 8 { &_winner.id[..8] } else { &_winner.id },
                             diff
                         );
                         
@@ -174,7 +174,7 @@ impl OpportunityLedger {
                     if diff < tolerance_pct {
                         // COLLISION FOUND.
                         // Strategy: Keep the one with better ROI. Kill the other.
-                        let (winner, loser) = if a.expected_roi() >= b.expected_roi() {
+                        let (_winner, loser) = if a.expected_roi() >= b.expected_roi() {
                             (a, b)
                         } else {
                             (b, a)
@@ -185,7 +185,7 @@ impl OpportunityLedger {
                         log::info!(
                             "🧹 LEDGER PRUNE: Merging overlapping trade {} into {}. (Diff {:.3}%)", 
                             if loser.id.len() > 8 { &loser.id[..8] } else { &loser.id },
-                            if winner.id.len() > 8 { &winner.id[..8] } else { &winner.id },
+                            if _winner.id.len() > 8 { &_winner.id[..8] } else { &_winner.id },
                             diff
                         );
                         
