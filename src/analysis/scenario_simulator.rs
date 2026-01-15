@@ -270,7 +270,7 @@ pub enum Outcome {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationResult {
     pub success_rate: f64,      // 0.0 to 1.0
-    pub avg_candle_count: f64,      // Average candles to result
+    pub avg_candle_count: f64,  // Average candles to result
     pub risk_reward_ratio: f64, // Based on historical outcomes
     pub sample_size: usize,     // How many similar scenarios we found
     pub avg_pnl_pct: f64,       // The True Expected Retun (Continuous)
@@ -385,7 +385,7 @@ impl ScenarioSimulator {
         if DEBUG_FLAGS.enable_perf_logging {
             let t_threshold = 1000;
             if t_total.as_micros() > t_threshold {
-                log::info!(
+                log::error!(
                     "TRACE: ScenarioSimulator [{}]: Total {:.2?} (Items: {} | Prep: {:.2?} | SIMD: {:.2?} | Sort: {:.2?}) (Threshold: {}ms)",
                     pair_name,
                     t_total,
@@ -411,93 +411,146 @@ impl ScenarioSimulator {
         max_duration_candles: usize, // Unit: Count
         direction: TradeDirection,
     ) -> Option<SimulationResult> {
-        if matches.is_empty() {
-            return None;
-        }
+        crate::trace_time!("Sim: Analyze Outcome (50 Matches)", 50, {
+            if matches.is_empty() {
+                return None;
+            }
 
-        let mut wins = 0;
-        let mut accumulated_candle_count = 0.0; // Unit: Count (aggregated as float)
-        let mut valid_samples = 0;
-        let mut total_pnl_pct = 0.0; // Unit: Percentage
+            let mut wins = 0;
+            let mut accumulated_candle_count = 0.0; // Unit: Count (aggregated as float)
+            let mut valid_samples = 0;
+            let mut total_pnl_pct = 0.0; // Unit: Percentage
 
-        // Pre-calculate theoretical max PnL for Hit/Stop
-        let (win_pnl_pct, lose_pnl_pct) = match direction {
-            TradeDirection::Long => (
-                (target_price - entry_price) / entry_price,
-                (stop_price - entry_price) / entry_price,
-            ),
-            TradeDirection::Short => (
-                (entry_price - target_price) / entry_price,
-                (entry_price - stop_price) / entry_price,
-            ),
-        };
+            // Pre-calculate theoretical max PnL for Hit/Stop
+            let (win_pnl_pct, lose_pnl_pct) = match direction {
+                TradeDirection::Long => (
+                    (target_price - entry_price) / entry_price,
+                    (stop_price - entry_price) / entry_price,
+                ),
+                TradeDirection::Short => (
+                    (entry_price - target_price) / entry_price,
+                    (entry_price - stop_price) / entry_price,
+                ),
+            };
 
-        for &(start_idx, _score) in matches {
-            let outcome = Self::replay_path(
-                ts,
-                start_idx,
-                entry_price,
-                target_price,
-                stop_price,
-                max_duration_candles,
-                direction,
-            );
+            for &(start_idx, _score) in matches {
+                let outcome = Self::replay_path(
+                    ts,
+                    start_idx,
+                    entry_price,
+                    target_price,
+                    stop_price,
+                    max_duration_candles,
+                    direction,
+                );
 
-            match outcome {
-                Outcome::TargetHit(candles_taken) => {
-                    wins += 1;
-                    accumulated_candle_count += candles_taken as f64;
-                    valid_samples += 1;
-                    total_pnl_pct += win_pnl_pct;
-                }
-                Outcome::StopHit(candles_taken) => {
-                    accumulated_candle_count += candles_taken as f64;
-                    valid_samples += 1;
-                    total_pnl_pct += lose_pnl_pct;
-                }
-                Outcome::TimedOut(final_drift_pct) => {
-                    // Timeout means the full candle limit was exhausted
-                    accumulated_candle_count += max_duration_candles as f64;
-                    valid_samples += 1;
-                    total_pnl_pct += final_drift_pct; 
+                match outcome {
+                    Outcome::TargetHit(candles_taken) => {
+                        wins += 1;
+                        accumulated_candle_count += candles_taken as f64;
+                        valid_samples += 1;
+                        total_pnl_pct += win_pnl_pct;
+                    }
+                    Outcome::StopHit(candles_taken) => {
+                        accumulated_candle_count += candles_taken as f64;
+                        valid_samples += 1;
+                        total_pnl_pct += lose_pnl_pct;
+                    }
+                    Outcome::TimedOut(final_drift_pct) => {
+                        // Timeout means the full candle limit was exhausted
+                        accumulated_candle_count += max_duration_candles as f64;
+                        valid_samples += 1;
+                        total_pnl_pct += final_drift_pct;
+                    }
                 }
             }
-        }
 
-        if valid_samples == 0 {
-            return None;
-        }
+            if valid_samples == 0 {
+                return None;
+            }
 
-        // Calculate Stats
-        let success_rate = wins as f64 / valid_samples as f64;
+            // Calculate Stats
+            let success_rate = wins as f64 / valid_samples as f64;
 
-        // Calculate Average Candle Count
-        let avg_candle_count = accumulated_candle_count / valid_samples as f64;
+            // Calculate Average Candle Count
+            let avg_candle_count = accumulated_candle_count / valid_samples as f64;
 
-        // R:R
-        let risk = (entry_price - stop_price).abs();
-        let reward = (target_price - entry_price).abs();
-        let risk_reward_ratio = if risk > f64::EPSILON {
-            reward / risk
-        } else {
-            0.0
-        };
+            // R:R
+            let risk = (entry_price - stop_price).abs();
+            let reward = (target_price - entry_price).abs();
+            let risk_reward_ratio = if risk > f64::EPSILON {
+                reward / risk
+            } else {
+                0.0
+            };
 
-        // Real Average PnL (The "true" ROI of the sim)
-        let avg_pnl_pct = total_pnl_pct / valid_samples as f64;
+            // Real Average PnL (The "true" ROI of the sim)
+            let avg_pnl_pct = total_pnl_pct / valid_samples as f64;
 
-        Some(SimulationResult {
-            success_rate,
-            avg_candle_count,
-            risk_reward_ratio,
-            sample_size: valid_samples,
-            avg_pnl_pct,
-            market_state: current_market_state,
+            Some(SimulationResult {
+                success_rate,
+                avg_candle_count,
+                risk_reward_ratio,
+                sample_size: valid_samples,
+                avg_pnl_pct,
+                market_state: current_market_state,
+            })
         })
     }
 
-    /// Helper: Replays a single path using % moves to normalize price differences
+    /// Wrapper: Dispatches to SIMD or Scalar and verifies consistency in Debug.
     fn replay_path(
+        ts: &OhlcvTimeSeries,
+        start_idx: usize,
+        current_price_ref: f64,
+        target: f64,
+        stop: f64,
+        duration: usize,
+        direction: TradeDirection,
+    ) -> Outcome {
+        // 1. Run SIMD if available
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+        let result = if is_x86_feature_detected!("avx512f") {
+            unsafe {
+                Self::replay_path_simd(ts, start_idx, current_price_ref, target, stop, duration, direction)
+            }
+        } else {
+            Self::replay_path_scalar(ts, start_idx, current_price_ref, target, stop, duration, direction)
+        };
+
+        // Fallback for non-AVX builds
+        #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
+        let result = Self::replay_path_scalar(ts, start_idx, current_price_ref, target, stop, duration, direction);
+
+        #[cfg(debug_assertions)]
+        {
+            // Always run scalar to compare
+            let scalar_result = Self::replay_path_scalar(ts, start_idx, current_price_ref, target, stop, duration, direction);
+            
+            // Compare outcomes. 
+            // FIX: Allow 1-candle slip for floating point rounding differences near the edge.
+            let mismatch = match (&result, &scalar_result) {
+                (Outcome::TargetHit(i1), Outcome::TargetHit(i2)) => i1.abs_diff(*i2) > 1,
+                (Outcome::StopHit(i1), Outcome::StopHit(i2)) => i1.abs_diff(*i2) > 1,
+                (Outcome::TimedOut(p1), Outcome::TimedOut(p2)) => (p1 - p2).abs() > 0.0000001,
+                _ => true, // Different types (e.g. TargetHit vs StopHit) is always a failure
+            };
+
+            if mismatch {
+                log::error!(
+                    "SIMD REPLAY MISMATCH [Dir: {}]: SIMD {:?} vs SCALAR {:?}", 
+                    direction, result, scalar_result
+                );
+                // We panic on significant mismatches to catch logic bugs
+                panic!("CRITICAL: SIMD Simulation diverged significantly from Scalar Logic.");
+            }
+        }
+
+        result
+    }
+
+    /// The Scalar Implementation (Your Authoritative Logic)
+    fn replay_path_scalar(
         ts: &OhlcvTimeSeries,
         start_idx: usize,
         current_price_ref: f64,
@@ -538,9 +591,7 @@ impl ScenarioSimulator {
                 }
             };
 
-            if hit_target && hit_stop {
-                return Outcome::StopHit(i);
-            }
+            // Pessimistic assumption: If both hit, Stop hit first.
             if hit_stop {
                 return Outcome::StopHit(i);
             }
@@ -548,6 +599,114 @@ impl ScenarioSimulator {
                 return Outcome::TargetHit(i);
             }
         }
+
+        Outcome::TimedOut(final_pnl)
+    }
+
+/// The SIMD Implementation (AVX-512 Optimized)
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    unsafe fn replay_path_simd(
+        ts: &OhlcvTimeSeries,
+        start_idx: usize,
+        current_price_ref: f64,
+        target: f64,
+        stop: f64,
+        duration: usize,
+        direction: TradeDirection,
+    ) -> Outcome {
+        use std::arch::x86_64::*;
+
+        let len = ts.high_prices.len();
+        if start_idx >= len {
+            return Outcome::TimedOut(0.0);
+        }
+
+        let start_candle = ts.get_candle(start_idx);
+        let hist_entry_price = start_candle.close_price;
+        let scale = hist_entry_price / current_price_ref;
+        
+        let hist_target = target * scale;
+        let hist_stop = stop * scale;
+
+        let offset_start = start_idx + 1;
+        let search_end = (start_idx + duration).min(len - 1) + 1; 
+        let search_len = search_end.saturating_sub(offset_start);
+
+        if search_len == 0 {
+             return Outcome::TimedOut(0.0);
+        }
+        
+        let stride = 8;
+        let loop_len = search_len - (search_len % stride);
+        let mut hit_idx_offset = None;
+
+        let h_ptr = ts.high_prices.as_ptr();
+        let l_ptr = ts.low_prices.as_ptr();
+
+        // 1. AVX Scan Loop
+        unsafe {
+            let v_target = _mm512_set1_pd(hist_target);
+            let v_stop = _mm512_set1_pd(hist_stop);
+
+            for i in (0..loop_len).step_by(stride) {
+                let curr = offset_start + i;
+                
+                let v_h = _mm512_loadu_pd(h_ptr.add(curr));
+                let v_l = _mm512_loadu_pd(l_ptr.add(curr));
+
+                let mask = match direction {
+                    TradeDirection::Long => {
+                        let m_win = _mm512_cmp_pd_mask(v_h, v_target, _CMP_GE_OQ);
+                        let m_loss = _mm512_cmp_pd_mask(v_l, v_stop, _CMP_LE_OQ);
+                        m_win | m_loss
+                    },
+                    TradeDirection::Short => {
+                        let m_win = _mm512_cmp_pd_mask(v_l, v_target, _CMP_LE_OQ);
+                        let m_loss = _mm512_cmp_pd_mask(v_h, v_stop, _CMP_GE_OQ);
+                        m_win | m_loss
+                    }
+                };
+
+                if mask != 0 {
+                    hit_idx_offset = Some(i);
+                    break; 
+                }
+            }
+        }
+
+        // 2. Scalar Processing (Hit Block or Tail)
+        let scalar_start_offset = hit_idx_offset.unwrap_or(loop_len);
+        
+        // Explicit unsafe block for raw pointer dereferencing in the scalar tail
+        unsafe {
+            for i in scalar_start_offset..search_len {
+                let idx = offset_start + i;
+                let h = *h_ptr.add(idx);
+                let l = *l_ptr.add(idx);
+                let candle_count = i + 1; 
+
+                match direction {
+                    TradeDirection::Long => {
+                        if l <= hist_stop { return Outcome::StopHit(candle_count); }
+                        if h >= hist_target { return Outcome::TargetHit(candle_count); }
+                    },
+                    TradeDirection::Short => {
+                        if h >= hist_stop { return Outcome::StopHit(candle_count); }
+                        if l <= hist_target { return Outcome::TargetHit(candle_count); }
+                    }
+                }
+            }
+        }
+
+        // 3. Time Out
+        let final_idx = offset_start + search_len - 1;
+        let final_close = ts.close_prices[final_idx];
+        let close_change = (final_close - hist_entry_price) / hist_entry_price;
+        
+        let final_pnl = match direction {
+            TradeDirection::Long => close_change,
+            TradeDirection::Short => -close_change,
+        };
 
         Outcome::TimedOut(final_pnl)
     }

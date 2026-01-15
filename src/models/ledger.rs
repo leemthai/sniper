@@ -153,53 +153,6 @@ impl OpportunityLedger {
         }
     }
 
-    /// Scans for overlapping trades (same pair/direction/target) and merges them.
-    /// Keeps the one with the higher ROI.
-    pub fn prune_collisions_old(&mut self, tolerance_pct: f64) {
-        let mut to_remove = Vec::new();
-        // Clone values to iterate while checking collisions
-        let ops: Vec<_> = self.opportunities.values().cloned().collect();
-
-        for i in 0..ops.len() {
-            for j in (i + 1)..ops.len() {
-                let a = &ops[i];
-                let b = &ops[j];
-                
-                // Skip if already marked for deletion
-                if to_remove.contains(&a.id) || to_remove.contains(&b.id) { continue; }
-
-                if a.pair_name == b.pair_name && a.direction == b.direction {
-                    let diff = calculate_percent_diff(a.target_price, b.target_price);
-                    
-                    if diff < tolerance_pct {
-                        // COLLISION FOUND.
-                        // Strategy: Keep the one with better ROI. Kill the other.
-                        let (_winner, loser) = if a.expected_roi() >= b.expected_roi() {
-                            (a, b)
-                        } else {
-                            (b, a)
-                        };
-
-                        // We log this in Release too, because trade disappearance is a significant event
-                        #[cfg(debug_assertions)]
-                        log::info!(
-                            "🧹 LEDGER PRUNE: Merging overlapping trade {} into {}. (Diff {:.3}%)", 
-                            if loser.id.len() > 8 { &loser.id[..8] } else { &loser.id },
-                            if _winner.id.len() > 8 { &_winner.id[..8] } else { &_winner.id },
-                            diff
-                        );
-                        
-                        to_remove.push(loser.id.clone());
-                    }
-                }
-            }
-        }
-
-        for id in to_remove {
-            self.opportunities.remove(&id);
-        }
-    }
-
     /// Helper to update an existing opportunity while preserving its history
     fn update_existing(&mut self, existing_id: &str, mut new_opp: TradeOpportunity) {
         if let Some(existing) = self.opportunities.get(existing_id) {

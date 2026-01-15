@@ -144,7 +144,7 @@ impl OptimalSearchSettings {
     // SSOT (Const Function)
     pub const fn new() -> Self {
         Self {
-            scout_steps: 30,
+            scout_steps: 20, // Optimization (from 30)
             drill_top_n: 5,
             drill_offset_factor: 0.25,
             volatility_lookback: 50,
