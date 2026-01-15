@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::cmp::Ordering;
 use serde::{Deserialize, Serialize};
 
+use crate::config::TradeProfile;
 use crate::models::trading_view::TradeOpportunity;
 
 use crate::utils::maths_utils::calculate_percent_diff;
@@ -93,15 +94,123 @@ impl OpportunityLedger {
         self.opportunities.remove(id);
     }
 
+    /// Scans for overlapping trades.
+    /// POLICY: Strategy Segregation.
+    /// 1. Trades from different strategies (e.g. ROI vs AROI) NEVER merge. They coexist.
+    /// 2. Trades from the SAME strategy with overlapping targets are merged.
+    /// 3. The winner is decided by the Score of that specific strategy.
+    pub fn prune_collisions(&mut self, tolerance_pct: f64, global_profile: &TradeProfile) {
+        let mut to_remove = Vec::new();
+        let ops: Vec<_> = self.opportunities.values().cloned().collect();
+
+        for i in 0..ops.len() {
+            for j in (i + 1)..ops.len() {
+                let a = &ops[i];
+                let b = &ops[j];
+                
+                if to_remove.contains(&a.id) || to_remove.contains(&b.id) { continue; }
+
+                if a.pair_name == b.pair_name && a.direction == b.direction {
+                    // SEGREGATION: Different strategies = Different trades.
+                    // Keep both (e.g. Keep the Scalp AND the Swing).
+                    if a.strategy != b.strategy { continue; }
+
+                    let diff = calculate_percent_diff(a.target_price, b.target_price);
+                    
+                    if diff < tolerance_pct {
+                        // COLLISION (Same Strategy, Same Target).
+                        // Create a profile context for this specific strategy to judge them.
+                        // We use the global weights, but force the goal to match the trade's strategy.
+                        let mut judge_profile = global_profile.clone();
+                        judge_profile.goal = a.strategy;
+
+                        let score_a = a.calculate_quality_score(&judge_profile);
+                        let score_b = b.calculate_quality_score(&judge_profile);
+
+                        let (winner, loser) = if score_a >= score_b {
+                            (a, b)
+                        } else {
+                            (b, a)
+                        };
+
+                        #[cfg(debug_assertions)]
+                        log::info!(
+                            "🧹 LEDGER PRUNE [Strategy: {}]: Merging duplicate trade {} into {}. (Diff {:.3}%)", 
+                            a.strategy, 
+                            if loser.id.len() > 8 { &loser.id[..8] } else { &loser.id },
+                            if winner.id.len() > 8 { &winner.id[..8] } else { &winner.id },
+                            diff
+                        );
+                        
+                        to_remove.push(loser.id.clone());
+                    }
+                }
+            }
+        }
+
+        for id in to_remove {
+            self.opportunities.remove(&id);
+        }
+    }
+
+    /// Scans for overlapping trades (same pair/direction/target) and merges them.
+    /// Keeps the one with the higher ROI.
+    pub fn prune_collisions_old(&mut self, tolerance_pct: f64) {
+        let mut to_remove = Vec::new();
+        // Clone values to iterate while checking collisions
+        let ops: Vec<_> = self.opportunities.values().cloned().collect();
+
+        for i in 0..ops.len() {
+            for j in (i + 1)..ops.len() {
+                let a = &ops[i];
+                let b = &ops[j];
+                
+                // Skip if already marked for deletion
+                if to_remove.contains(&a.id) || to_remove.contains(&b.id) { continue; }
+
+                if a.pair_name == b.pair_name && a.direction == b.direction {
+                    let diff = calculate_percent_diff(a.target_price, b.target_price);
+                    
+                    if diff < tolerance_pct {
+                        // COLLISION FOUND.
+                        // Strategy: Keep the one with better ROI. Kill the other.
+                        let (winner, loser) = if a.expected_roi() >= b.expected_roi() {
+                            (a, b)
+                        } else {
+                            (b, a)
+                        };
+
+                        // We log this in Release too, because trade disappearance is a significant event
+                        #[cfg(debug_assertions)]
+                        log::info!(
+                            "🧹 LEDGER PRUNE: Merging overlapping trade {} into {}. (Diff {:.3}%)", 
+                            if loser.id.len() > 8 { &loser.id[..8] } else { &loser.id },
+                            if winner.id.len() > 8 { &winner.id[..8] } else { &winner.id },
+                            diff
+                        );
+                        
+                        to_remove.push(loser.id.clone());
+                    }
+                }
+            }
+        }
+
+        for id in to_remove {
+            self.opportunities.remove(&id);
+        }
+    }
+
     /// Helper to update an existing opportunity while preserving its history
     fn update_existing(&mut self, existing_id: &str, mut new_opp: TradeOpportunity) {
         if let Some(existing) = self.opportunities.get(existing_id) {
              // LOGGING ROI Change
             #[cfg(debug_assertions)]
             if (existing.expected_roi() - new_opp.expected_roi()).abs() > 0.1 {
-                log::info!("LEDGER EVOLVE [{}]: ID {} kept. ROI {:.2}% -> {:.2}% (Win: {:.1}%->{:.1}%) | SL: {:.2} -> {:.2}", 
+                log::info!("LEDGER EVOLVE [{}]: ID {} kept. Target: {:.2} -> {:.2} | ROI {:.2}% -> {:.2}% (Win: {:.1}%->{:.1}%) | SL: {:.2} -> {:.2}", 
                     new_opp.pair_name, 
                     if existing_id.len() > 8 { &existing_id[..8] } else { existing_id }, 
+                    existing.target_price, // <--- Added Old Target
+                    new_opp.target_price,  // <--- Added New Target
                     existing.expected_roi(), 
                     new_opp.expected_roi(),
                     existing.simulation.success_rate * 100.0,
@@ -110,7 +219,6 @@ impl OpportunityLedger {
                     new_opp.stop_price
                 );
             }
-
 
             // CRITICAL: Preserve Identity
             new_opp.id = existing.id.clone();         // Keep the OLD ID (so UI selection sticks)

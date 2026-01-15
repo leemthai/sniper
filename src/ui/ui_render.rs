@@ -672,6 +672,73 @@ impl ZoneSniperApp {
         ui.add_space(CELL_PADDING_Y);
     }
 
+    fn render_strategy_header_grid(&mut self, ui: &mut Ui, sort_changed: &mut bool) {
+        let goals: Vec<_> = OptimizationGoal::iter().collect();
+        let count = goals.len();
+        
+        // Helper closure to render a specific goal by index
+        let mut render_btn = |ui: &mut Ui, idx: usize| {
+            if let Some(goal) = goals.get(idx) {
+                let col = match goal {
+                    OptimizationGoal::MaxROI => SortColumn::LiveRoi,
+                    OptimizationGoal::MaxAROI => SortColumn::AnnualizedRoi,
+                    OptimizationGoal::Balanced => SortColumn::Score,
+                };
+                if self.render_sort_icon_button(ui, col, &goal.icon()) {
+                    *sort_changed = true;
+                }
+            }
+        };
+
+        ui.vertical_centered(|ui| {
+            ui.add_space(2.0);
+
+            if count == 1 {
+                // Case 1: Single Center
+                ui.horizontal(|ui| {ui.add_space(12.0);
+                render_btn(ui, 0);
+                });
+            } 
+            else if count == 2 {
+                // Case 2: Split Left/Right
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0; // Gap
+                    render_btn(ui, 0);
+                    render_btn(ui, 1);
+                });
+            }
+            else if count == 3 {
+                // Case 3: Top Center, Bottom Split
+                // Top Row
+                ui.horizontal(|ui| {ui.add_space(12.0);
+                render_btn(ui, 0);
+                });
+                
+                // Bottom Row
+                ui.horizontal(|ui| {
+                    // Manual padding to center the pair or split them
+                    // Since column is 70px wide, and icons are ~20px, we have room.
+                    ui.spacing_mut().item_spacing.x = 12.0; 
+                    render_btn(ui, 1);
+                    render_btn(ui, 2);
+                });
+            }
+            else if count >= 4 {
+                // Case 4: 2x2 Grid
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    render_btn(ui, 0);
+                    render_btn(ui, 1);
+                });
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    render_btn(ui, 2);
+                    render_btn(ui, 3);
+                });
+            }
+        });
+    }
+
     fn render_trade_finder_content(&mut self, ui: &mut Ui) {
         let mut rows = self.get_filtered_rows();
 
@@ -740,7 +807,7 @@ impl ZoneSniperApp {
                 .sense(Sense::click()) // Enable row clicks
                 .cell_layout(Layout::left_to_right(Align::Min))
                 .column(Column::exact(140.0).clip(true)) // Pair (Fixed base, resizable)
-                .column(Column::exact(55.0).clip(true)) // ROI/AROI (Strict width, clip overflow)
+                .column(Column::exact(70.0).clip(true)) // ROI/AROI (Strict width, clip overflow)
                 .column(Column::exact(55.0).clip(true)) // Vol/Mom
                 .column(Column::exact(55.0).clip(true)) // Time/Ops
                 .column(Column::exact(55.0).clip(true)) // Volume
@@ -777,51 +844,54 @@ impl ZoneSniperApp {
         });
     }
 
+    /// Helper to render a stacked header (Primary Sort Top, Optional Secondary Sort Bottom)
+    fn render_header_stack(
+        &mut self,
+        ui: &mut Ui,
+        sort_changed: &mut bool,
+        col_top: SortColumn,
+        txt_top: &str,
+        col_bot: Option<(SortColumn, &str)>,
+    ) {
+        ui.vertical_centered(|ui| {
+            // Top Item
+            if self.render_stable_sort_label(ui, col_top, txt_top) {
+                *sort_changed = true;
+            }
+            
+            // Bottom Item (Optional)
+            if let Some((c, t)) = col_bot {
+                if self.render_stable_sort_label(ui, c, t) {
+                    *sort_changed = true;
+                }
+            }
+        });
+    }
+
     fn render_tf_table_header(&mut self, header: &mut TableRow, sort_changed: &mut bool) {
         // Helper to render stacked headers
-        let mut header_stack =
-            |ui: &mut Ui,
-             col_top: SortColumn,
-             txt_top: &str,
-             col_bot: Option<(SortColumn, &str)>| {
-                ui.vertical(|ui| {
-                    // Top Item
-                    if self.render_stable_sort_label(ui, col_top, txt_top) {
-                        *sort_changed = true;
-                    }
-                    // Bottom Item
-                    if let Some((c, t)) = col_bot {
-                        if self.render_stable_sort_label(ui, c, t) {
-                            *sort_changed = true;
-                        }
-                    }
-                });
-            };
 
-        // Col 1: Pair
+        // Col 1: Pair (Top) / Target (Bottom)
         header.col(|ui| {
-            header_stack(
-                ui,
-                SortColumn::PairName,
-                &UI_TEXT.label_pair,
-                Some((SortColumn::TargetPrice, &UI_TEXT.label_target)),
+            self.render_header_stack(
+                ui, 
+                sort_changed,
+                SortColumn::PairName, 
+                &UI_TEXT.label_pair, 
+                Some((SortColumn::TargetPrice, &UI_TEXT.label_target))
             );
         });
 
-        // Col 2: Return
+// Col 2: Strategy Metrics (Grid Layout)
         header.col(|ui| {
-            header_stack(
-                ui,
-                SortColumn::LiveRoi,
-                &UI_TEXT.label_roi,
-                Some((SortColumn::AnnualizedRoi, &UI_TEXT.label_aroi)),
-            );
+            self.render_strategy_header_grid(ui, sort_changed);
         });
 
         // Col 3: Market
         header.col(|ui| {
-            header_stack(
+            self.render_header_stack(
                 ui,
+                sort_changed,
                 SortColumn::Volatility,
                 &UI_TEXT.label_volatility_short,
                 Some((SortColumn::Momentum, &UI_TEXT.label_momentum_short)),
@@ -830,18 +900,20 @@ impl ZoneSniperApp {
 
         // Col 4: Average Duration / Trade Balance Score
         header.col(|ui| {
-            header_stack(
+            self.render_header_stack(
                 ui,
+                sort_changed,
                 SortColumn::AvgDuration,
                 &UI_TEXT.tf_time,
-                Some((SortColumn::Score, &UI_TEXT.icon_strategy)),
+                None,
             );
         });
 
         // Col 5: Volume
         header.col(|ui| {
-            header_stack(
+            self.render_header_stack(
                 ui,
+                sort_changed,
                 SortColumn::QuoteVolume24h,
                 &UI_TEXT.label_volume_24h,
                 None,
@@ -850,8 +922,9 @@ impl ZoneSniperApp {
 
         // Col 6: Risk
         header.col(|ui| {
-            header_stack(
+            self.render_header_stack(
                 ui,
+                sort_changed,
                 SortColumn::VariantCount,
                 &UI_TEXT.label_stop_loss_short,
                 None,
@@ -879,7 +952,7 @@ impl ZoneSniperApp {
 
         // We pass the scroll tracker as a local bool to the column helper
         self.col_pair_name(table_row, row, index);
-        self.col_return_metrics(table_row, row);
+        self.col_strategy_metrics(table_row, row);
         self.col_market_state(table_row, row);
         self.col_time(table_row, row);
         self.col_volume_24h(table_row, row);
@@ -1013,22 +1086,52 @@ impl ZoneSniperApp {
         });
     }
 
-    fn col_return_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+fn col_strategy_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         table_row.col(|ui| {
             if let Some(live_op) = &row.opportunity {
+                let op = &live_op.opportunity;
                 let roi_color = get_outcome_color(live_op.live_roi);
+                
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
-                    ui.label(
-                        RichText::new(format!("{:+.2}%", live_op.live_roi))
-                            .small()
-                            .color(roi_color),
-                    );
-                    ui.label(
-                        RichText::new(format!("{:+.0}%", live_op.annualized_roi))
-                            .small()
-                            .color(roi_color.linear_multiply(0.7)),
-                    );
+
+                    // 1. ROI (Primary) + Icon
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.label(RichText::new(&UI_TEXT.icon_strategy_roi).size(10.0)); // Mountain
+                        ui.label(
+                            RichText::new(format!("{:+.2}%", live_op.live_roi))
+                                .strong()
+                                .color(roi_color),
+                        );
+                    });
+
+                    // 2. AROI (Secondary) + Icon
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.label(RichText::new(&UI_TEXT.icon_strategy_aroi).size(10.0)); // Lightning
+                        ui.label(
+                            RichText::new(format!("{:+.0}%", live_op.annualized_roi))
+                                .size(10.0)
+                                .color(roi_color.linear_multiply(0.7)),
+                        );
+                    });
+
+                    // 3. Score (Conditional)
+                    // Show if sorting by Score OR if the trade was born from Balance strategy
+                    let show_score = self.tf_sort_col == SortColumn::Score 
+                        || op.strategy == OptimizationGoal::Balanced;
+
+                    if show_score {
+                        let profile = &self.app_config.journey.profile;
+                        let score = op.calculate_quality_score(profile);
+                        
+                        ui.label(
+                            RichText::new(format!("{}: {:.0}", UI_TEXT.icon_strategy_balanced, score))
+                                .size(9.0)
+                                .color(PLOT_CONFIG.color_text_subdued),
+                        );
+                    }
                 });
             } else {
                 self.display_no_data(ui);
@@ -1059,34 +1162,21 @@ impl ZoneSniperApp {
         });
     }
 
-    fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         table_row.col(|ui| {
-            ui.vertical(|ui| {
-                self.down_from_top(ui);
-                if let Some(live_op) = &row.opportunity {
-                    let time_str = TimeUtils::format_duration(live_op.opportunity.avg_duration_ms);
+            if let Some(live_op) = &row.opportunity {
+                ui.vertical(|ui| {
+                    self.down_from_top(ui);
+                    // Avg Duration Only
                     ui.label(
-                        RichText::new(time_str)
+                        RichText::new(TimeUtils::format_duration(live_op.opportunity.avg_duration_ms))
                             .small()
                             .color(PLOT_CONFIG.color_text_neutral),
                     );
-
-                    // Line 2: Strategy Score
-                    let profile = &self.app_config.journey.profile;
-                    let score = live_op.opportunity.calculate_quality_score(profile);
-
-                    // If Balanced, show "Eff" (Efficiency) score.
-                    // If ROI/AROI, the score is redundant (it matches col 2), so maybe hide it or dim it?
-                    // Let's show it consistently but dim.
-                    ui.label(
-                        RichText::new(format!("Sc: {:.0}", score)) // No decimals for cleaner look
-                            .size(9.0)
-                            .color(PLOT_CONFIG.color_text_subdued),
-                    );
-                } else {
-                    self.display_no_data(ui);
-                }
-            });
+                });
+            } else {
+                self.display_no_data(ui);
+            }
         });
     }
 
@@ -1199,6 +1289,43 @@ impl ZoneSniperApp {
         }
 
         final_rows
+    }
+
+/// Renders a small icon-only sort button. Returns true if sort changed.
+    fn render_sort_icon_button(&mut self, ui: &mut Ui, col: SortColumn, icon: &str) -> bool {
+        let is_active = self.tf_sort_col == col;
+        
+        let color = if is_active {
+            PLOT_CONFIG.color_text_primary
+        } else {
+            PLOT_CONFIG.color_text_subdued
+        };
+
+        // NEW: Append Sort Arrow if active
+        let label_text = if is_active {
+            let arrow = match self.tf_sort_dir {
+                SortDirection::Ascending => &UI_TEXT.icon_sort_asc,
+                SortDirection::Descending => &UI_TEXT.icon_sort_desc,
+            };
+            // Small gap between icon and arrow
+            format!("{}{}", icon, arrow)
+        } else {
+            icon.to_string()
+        };
+
+        // Render
+        let response = ui.interactive_label(&label_text, is_active, color, FontId::proportional(14.0));
+        
+        if response.clicked() {
+            if is_active {
+                self.tf_sort_dir = self.tf_sort_dir.toggle();
+            } else {
+                self.tf_sort_col = col;
+                self.tf_sort_dir = SortDirection::Descending;
+            }
+            return true;
+        }
+        false
     }
 
     /// Renders a single sortable label using the Interactive Button style

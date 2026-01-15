@@ -62,8 +62,8 @@ pub struct SniperEngine {
     pub ledger: OpportunityLedger,
     pub results_repo: Arc<dyn ResultsRepositoryTrait>,
 
-    #[cfg(debug_assertions)]
-    pub last_debug_validation: AppInstant,
+    // Maintenance Timer (Runs in Release & Debug)
+    pub last_ledger_maintenance: AppInstant,
 }
 
 impl SniperEngine {
@@ -150,8 +150,7 @@ impl SniperEngine {
             config_overrides: HashMap::new(),
             ledger: OpportunityLedger::new(),
             results_repo: Arc::new(repo),
-            #[cfg(debug_assertions)]
-            last_debug_validation: AppInstant::now(),
+            last_ledger_maintenance: AppInstant::now(),
         }
     }
 
@@ -493,41 +492,6 @@ impl SniperEngine {
         self.config_overrides = overrides;
     }
 
-    #[cfg(debug_assertions)]
-    fn debug_validate_ledger_spacing(&self) {
-        // Called every 5 seconds. Logic validator on op price spacing (should be minimum [self.current_config.journey.optimization.fuzzy_match_tolerance]% apart)
-        let tolerance = self
-            .current_config
-            .journey
-            .optimization
-            .fuzzy_match_tolerance;
-        let ops: Vec<_> = self.ledger.opportunities.values().collect();
-
-        for i in 0..ops.len() {
-            for j in (i + 1)..ops.len() {
-                let a = ops[i];
-                let b = ops[j];
-
-                if a.pair_name == b.pair_name && a.direction == b.direction {
-                    let diff = calculate_percent_diff(a.target_price, b.target_price);
-
-                    if diff < tolerance {
-                        // FIX: Warn instead of Error/Panic.
-                        // Drifting trades can naturally overlap slightly between updates.
-                        log::warn!(
-                            "⚠️ SPACING OVERLAP [{}] ID {} vs {}: Diff {:.3}% < Tolerance {:.3}%",
-                            a.pair_name,
-                            if a.id.len() > 8 { &a.id[..8] } else { &a.id },
-                            if b.id.len() > 8 { &b.id[..8] } else { &b.id },
-                            diff,
-                            tolerance
-                        );
-                    }
-                }
-            }
-        }
-    }
-
     /// THE GAME LOOP.
     pub fn update(&mut self, _protected_id: Option<&str>) {
         // Ingest Live Data (The Heartbeat)
@@ -545,13 +509,16 @@ impl SniperEngine {
             }
         }
 
-        // --- DEBUG VALIDATION LOOP (Every 5 Seconds) ---
-        #[cfg(debug_assertions)]
-        {
-            if t1.duration_since(self.last_debug_validation).as_secs() >= 5 {
-                self.debug_validate_ledger_spacing();
-                self.last_debug_validation = t1;
-            }
+        // Maintenance loop - checks for drifting trades that have overlapped and merges them.
+        let journey_settings = &self.current_config.journey; // Access journey settings
+        
+        if t1.duration_since(self.last_ledger_maintenance).as_secs() >= journey_settings.optimization.prune_interval_sec {
+            // Pass the Tolerance AND the Profile (Strategy)
+            self.ledger.prune_collisions(
+                journey_settings.optimization.fuzzy_match_tolerance,
+                &journey_settings.profile
+            );
+            self.last_ledger_maintenance = t1;
         }
 
         // Results

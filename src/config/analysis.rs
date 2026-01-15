@@ -137,6 +137,7 @@ pub struct OptimalSearchSettings {
     pub max_results: usize,
     pub price_buffer_pct: f64,
     pub fuzzy_match_tolerance: f64, // % tolerance for merging similar trade ideas (in evolve())
+    pub prune_interval_sec: u64, // How often we test for dynamic drift in opportunites and merge them if too close.
 }
 
 impl OptimalSearchSettings {
@@ -152,6 +153,7 @@ impl OptimalSearchSettings {
             max_results: 5, // Absolute limit on how many trades can qualify (per candle update as it turns out)
             price_buffer_pct: 0.005,
             fuzzy_match_tolerance: 0.5,
+            prune_interval_sec: 10,
         }
     }
 }
