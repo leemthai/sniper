@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
+use rayon::prelude::*;
 
 // Only import thread crate on non-WASM target
 #[cfg(not(target_arch = "wasm32"))]
@@ -249,7 +250,7 @@ fn apply_diversity_filter(
                 final_results.push(winner.opportunity);
             } else {
                 #[cfg(debug_assertions)]
-                log::debug!(
+                log::info!(
                     "   ❌ Region #{} Winner [{}]: Score {:.2} (Failed Qualifier < {:.2})",
                     _i,
                     winner.source_desc,
@@ -293,61 +294,124 @@ struct PathfinderContext<'a> {
 }
 
 fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
-    let mut results = Vec::new();
+
     let opt_config = &ctx.config.journey.optimization;
     let steps = opt_config.scout_steps;
     let scout_risks = [2.5]; // Optimization: 1 variant
 
-    crate::trace_time!("Pathfinder: Phase A (Scouts)", 5000, {
-        // 1. Long Scouts
-        let long_start = ctx.current_price * (1.0 + opt_config.price_buffer_pct);
-        if ctx.ph_max > long_start {
-            let range = ctx.ph_max - long_start;
-            let step_size = range / steps as f64;
+       // --- OPTIMIZATION #2: DIRECTIONAL BIAS (Pruning) ---
+    // Analyze the historical outcomes of our matches to detect strong trends.
+    let mut bias_long = true;
+    let mut bias_short = true;
 
-            for i in 0..=steps {
-                let target = long_start + (i as f64 * step_size);
-                if let Some(res) = simulate_target(
-                    ctx,
-                    target,
-                    &format!("scout_long_{}", i),
-                    &scout_risks,
-                    20, // Optimization: Tiered Sampling
-                ) {
-                    results.push(res);
-                }
+    if !ctx.matches.is_empty() {
+        let mut up_votes = 0;
+        let mut down_votes = 0;
+        
+        // Check the outcome of every historical match
+        for (start_idx, _) in &ctx.matches {
+            // Safety: Ensure we don't read past end of data
+            let end_idx = (start_idx + ctx.duration_candles).min(ctx.ohlcv.close_prices.len() - 1);
+            
+            let start_price = ctx.ohlcv.close_prices[*start_idx];
+            let end_price = ctx.ohlcv.close_prices[end_idx];
+
+            if end_price > start_price {
+                up_votes += 1;
+            } else if end_price < start_price {
+                down_votes += 1;
             }
         }
 
-        // 2. Short Scouts
-        let short_end = ctx.current_price * (1.0 - opt_config.price_buffer_pct);
-        if ctx.ph_min < short_end {
-            let range = short_end - ctx.ph_min;
-            let step_size = range / steps as f64;
+        // --- TEST CHEAT CODE (Uncomment to force a direction for debugging) ---
+        // up_votes = 50; down_votes = 0; // Force BULLISH (Skip Shorts)
+        // up_votes = 0; down_votes = 50; // Force BEARISH (Skip Longs)
+        // ---------------------------------------------------------------------
 
-            for i in 0..=steps {
-                let target = ctx.ph_min + (i as f64 * step_size);
-                if let Some(res) = simulate_target(
-                    ctx,
-                    target,
-                    &format!("scout_short_{}", i),
-                    &scout_risks,
-                    20, 
-                ) {
-                    results.push(res);
-                }
+        let total_votes = up_votes + down_votes;
+        if total_votes > 0 {
+            let up_ratio = up_votes as f64 / total_votes as f64;
+            let down_ratio = down_votes as f64 / total_votes as f64;
+            let threshold = 0.80; // 80% Consensus required to prune
+
+            if up_ratio >= threshold {
+                bias_short = false; // Market is STRONGLY BULLISH -> Skip Shorts
+                #[cfg(debug_assertions)]
+                log::info!("🌊 DIRECTIONAL BIAS [{}]: Bullish Consensus ({:.0}%). Pruning SHORT Scouts.", ctx.pair_name, up_ratio * 100.0);
+            } else if down_ratio >= threshold {
+                bias_long = false; // Market is STRONGLY BEARISH -> Skip Longs
+                #[cfg(debug_assertions)]
+                log::info!("🌊 DIRECTIONAL BIAS [{}]: Bearish Consensus ({:.0}%). Pruning LONG Scouts.", ctx.pair_name, down_ratio * 100.0);
             }
         }
-    });
+    }
 
-    #[cfg(debug_assertions)]
-    log::info!(
-        "🔍 SCOUT PHASE [{}]: Found {} viable candidates.",
-        ctx.pair_name,
-        results.len()
-    );
 
-    results
+    // Pre-calculate ranges and booleans to avoid repeated math in the loop
+    let long_start = ctx.current_price * (1.0 + opt_config.price_buffer_pct);
+    let short_end = ctx.current_price * (1.0 - opt_config.price_buffer_pct);
+    
+    // Combine PH constraints with Bias constraints
+    let long_active = (ctx.ph_max > long_start) && bias_long;
+    let short_active = (ctx.ph_min < short_end) && bias_short;
+    // log::error!("{}: long active is {} short active is {}", ctx.pair_name, long_active, short_active);
+
+    // Calculate step sizes
+    let long_step_size = if long_active {
+        (ctx.ph_max - long_start) / steps as f64
+    } else { 0.0 };
+
+    let short_step_size = if short_active {
+        (short_end - ctx.ph_min) / steps as f64
+    } else { 0.0 };
+
+    crate::trace_time!("Pathfinder: Phase A (Scouts)", 10, {
+        // Use Rayon to process Longs and Shorts in parallel (Single Batch)
+        let results: Vec<CandidateResult> = (0..=steps).into_par_iter()
+            .flat_map(|i| {
+                let mut local_results = Vec::with_capacity(2);
+
+                // 1. Long Scout Logic
+                if long_active {
+                    let target = long_start + (i as f64 * long_step_size);
+                    if let Some(res) = simulate_target(
+                        ctx,
+                        target,
+                        &format!("scout_long_{}", i),
+                        &scout_risks,
+                        20, // JIT Sample Count
+                    ) {
+                        local_results.push(res);
+                    }
+                }
+
+                // 2. Short Scout Logic
+                if short_active {
+                    let target = ctx.ph_min + (i as f64 * short_step_size);
+                    if let Some(res) = simulate_target(
+                        ctx,
+                        target,
+                        &format!("scout_short_{}", i),
+                        &scout_risks,
+                        20, // JIT Sample Count
+                    ) {
+                        local_results.push(res);
+                    }
+                }
+
+                local_results
+            })
+            .collect();
+
+        #[cfg(debug_assertions)]
+        log::info!(
+            "🔍 SCOUT PHASE [{}]: Found {} viable candidates (Parallel).",
+            ctx.pair_name,
+            results.len()
+        );
+
+        results
+    })
 }
 
 fn run_drill_phase(ctx: &PathfinderContext, mut candidates: Vec<CandidateResult>) -> Vec<CandidateResult> {
@@ -368,12 +432,11 @@ fn run_drill_phase(ctx: &PathfinderContext, mut candidates: Vec<CandidateResult>
     }
 
     crate::trace_time!("Pathfinder: Phase B (Drill)", 2000, {
-        let mut drill_results = Vec::new();
         let mut drill_targets = Vec::new();
         
         let grid_step_pct = (ctx.ph_max - ctx.ph_min) / ctx.current_price / steps as f64;
         let drill_offset_pct = grid_step_pct * opt_config.drill_offset_factor;
-        let dedup_radius = grid_step_pct * 100.0 * 1.0; 
+        let dedup_radius = grid_step_pct * 100.0;
 
         // NEW: Adaptive Cutoff Score
         let best_score = candidates[0].score;
@@ -390,7 +453,7 @@ fn run_drill_phase(ctx: &PathfinderContext, mut candidates: Vec<CandidateResult>
             // Optimization #4: Adaptive Cutoff
             if candidate.score < score_threshold {
                 #[cfg(debug_assertions)]
-                log::debug!("   🛑 Cutting off Scout [{}]: Score {:.2} < Threshold", candidate.source_desc, candidate.score);
+                log::info!("   🛑 Cutting off Scout [{}]: Score {:.2} < Threshold", candidate.source_desc, candidate.score);
                 break; 
             }
 
@@ -420,27 +483,32 @@ fn run_drill_phase(ctx: &PathfinderContext, mut candidates: Vec<CandidateResult>
             ctx.pair_name, ctx.config.journey.profile.goal, drill_targets.len()
         );
 
-        // 2. Drill Loop
+        // 2. Drill Loop (Parallelized)
         let full_risks = ctx.config.journey.risk_reward_tests;
         let full_samples = ctx.config.journey.sample_count;
 
-        for &scout_idx in &drill_targets {
-            let scout = &candidates[scout_idx];
-            let base_target = scout.opportunity.target_price;
+        // Use Rayon to calculate results in parallel
+        let drill_results: Vec<CandidateResult> = drill_targets.par_iter()
+            .flat_map(|&scout_idx| {
+                let scout = &candidates[scout_idx];
+                let base_target = scout.opportunity.target_price;
+                let mut local_batch = Vec::with_capacity(3);
 
-            // A. Promote Scout
-            if let Some(res) = simulate_target(ctx, base_target, &scout.source_desc, full_risks, full_samples) {
-                 if res.score > scout.score { drill_results.push(res); }
-            }
-            // B. Drill Up
-            if let Some(res) = simulate_target(ctx, base_target * (1.0 + drill_offset_pct), &format!("drill_{}_up", scout_idx), full_risks, full_samples) {
-                drill_results.push(res);
-            }
-            // C. Drill Down
-            if let Some(res) = simulate_target(ctx, base_target * (1.0 - drill_offset_pct), &format!("drill_{}_down", scout_idx), full_risks, full_samples) {
-                drill_results.push(res);
-            }
-        }
+                // A. Promote Scout
+                if let Some(res) = simulate_target(ctx, base_target, &scout.source_desc, full_risks, full_samples) {
+                     if res.score > scout.score { local_batch.push(res); }
+                }
+                // B. Drill Up
+                if let Some(res) = simulate_target(ctx, base_target * (1.0 + drill_offset_pct), &format!("drill_{}_up", scout_idx), full_risks, full_samples) {
+                    local_batch.push(res);
+                }
+                // C. Drill Down
+                if let Some(res) = simulate_target(ctx, base_target * (1.0 - drill_offset_pct), &format!("drill_{}_down", scout_idx), full_risks, full_samples) {
+                    local_batch.push(res);
+                }
+                local_batch
+            })
+            .collect();
 
         if !drill_results.is_empty() {
              #[cfg(debug_assertions)]
@@ -649,7 +717,7 @@ fn run_stop_loss_tournament(
                 if debug {
                     let risk_pct = calculate_percent_diff(candidate_stop, current_price);
                     let status_icon = if is_worthwhile { "✅" } else { "🔻" };
-                    log::debug!(
+                    log::info!(
                         "   [R:R {:.1}] {} Stop: {:.4} | {}: {:.1}% | ROI: {:+.2}% (Bin: {:+.2}%) | AROI: {:+.0}% | Risk: {:.2}%",
                         ratio,
                         status_icon,

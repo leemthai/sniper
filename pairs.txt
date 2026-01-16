@@ -1,8 +1,9 @@
 # 50 High volume pairs (in volume order) - according to https://coinmarketcap.com/exchanges/binance/
 PAXGUSDT
-BTCFDUSD
+DOGEUSDT
 BTCUSDT
 USDCUSDT
+BTCFDUSD
 ETHUSDT
 ETHFDUSD
 BTCUSDC
@@ -20,7 +21,6 @@ LUNAUSDT
 BNBUSDC
 ATUSDT
 ADAUSDT
-DOGEUSDT
 FDUSDUSDC
 ETHBTC
 SUIUSDT
