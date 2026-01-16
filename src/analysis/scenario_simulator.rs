@@ -411,7 +411,8 @@ impl ScenarioSimulator {
         max_duration_candles: usize, // Unit: Count
         direction: TradeDirection,
     ) -> Option<SimulationResult> {
-        crate::trace_time!("Sim: Analyze Outcome (50 Matches)", 50, {
+
+        crate::trace_time!("Sim: Analyze Outcome (50 Matches)", 65, {
             if matches.is_empty() {
                 return None;
             }
@@ -522,26 +523,55 @@ impl ScenarioSimulator {
         #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
         let result = Self::replay_path_scalar(ts, start_idx, current_price_ref, target, stop, duration, direction);
 
+        // 2. DEBUG VERIFICATION
         #[cfg(debug_assertions)]
         {
-            // Always run scalar to compare
             let scalar_result = Self::replay_path_scalar(ts, start_idx, current_price_ref, target, stop, duration, direction);
             
-            // Compare outcomes. 
-            // FIX: Allow 1-candle slip for floating point rounding differences near the edge.
             let mismatch = match (&result, &scalar_result) {
                 (Outcome::TargetHit(i1), Outcome::TargetHit(i2)) => i1.abs_diff(*i2) > 1,
                 (Outcome::StopHit(i1), Outcome::StopHit(i2)) => i1.abs_diff(*i2) > 1,
                 (Outcome::TimedOut(p1), Outcome::TimedOut(p2)) => (p1 - p2).abs() > 0.0000001,
-                _ => true, // Different types (e.g. TargetHit vs StopHit) is always a failure
+                _ => true, 
             };
 
             if mismatch {
+                // --- FORENSIC LOGGING ---
+                // Calculate the comparison values for the disputed index to see why they disagreed
+                let start_candle = ts.get_candle(start_idx);
+                let hist_entry = start_candle.close_price;
+                
+                // Reconstruct params
+                let stop_dist = (stop - current_price_ref) / current_price_ref;
+                let scale = hist_entry / current_price_ref;
+                let hist_stop = stop * scale;
+
+                log::error!("--- SIMD vs SCALAR MISMATCH FORENSICS ---");
+                log::error!("Pair context: Entry(Live): {}, Entry(Hist): {}, Scale: {}", current_price_ref, hist_entry, scale);
+                log::error!("Stop(Live): {} ({:.4}%), Stop(Hist_Abs): {}", stop, stop_dist*100.0, hist_stop);
+
+                // If one stopped early, let's look at that candle
+                if let Outcome::StopHit(simd_idx) = result {
+                    let abs_idx = start_idx + simd_idx;
+                    let c = ts.get_candle(abs_idx);
+                    
+                    // Scalar Logic Check
+                    let low_change = (c.low_price - hist_entry) / hist_entry;
+                    let scalar_hit = low_change <= stop_dist;
+                    
+                    // SIMD Logic Check (Manual)
+                    let simd_hit = c.low_price <= hist_stop;
+
+                    log::error!("At Index {} (SIMD Stop): Low = {}", simd_idx, c.low_price);
+                    log::error!("   Scalar Logic: (Low - Entry)/Entry = {:.10} <= {:.10}? -> {}", low_change, stop_dist, scalar_hit);
+                    log::error!("   SIMD Logic:   Low <= HistStop      = {:.10} <= {:.10}? -> {}", c.low_price, hist_stop, simd_hit);
+                }
+                // ------------------------
+
                 log::error!(
                     "SIMD REPLAY MISMATCH [Dir: {}]: SIMD {:?} vs SCALAR {:?}", 
                     direction, result, scalar_result
                 );
-                // We panic on significant mismatches to catch logic bugs
                 panic!("CRITICAL: SIMD Simulation diverged significantly from Scalar Logic.");
             }
         }

@@ -65,92 +65,73 @@ struct CandidateResult {
 
 /// Helper: Runs the simulation tournament for a specific target price.
 fn simulate_target(
+    ctx: &PathfinderContext,
     target_price: f64,
     source_id_suffix: &str,
-    ohlcv: &OhlcvTimeSeries,
-    matches: &[(usize, f64)],
-    current_state: MarketState,
-    current_price: f64,
-    config: &AnalysisConfig,
-    duration_candles: usize,
-    duration_ms: u64,
-    ph_pct: f64,
     risk_tests: &[f64],
     limit_samples: usize,
 ) -> Option<CandidateResult> {
+
     crate::trace_time!("Worker: Simulate Target", 500, {
-        let profile = &config.journey.profile;
+            let profile = &ctx.config.journey.profile;
 
-        // Determine Direction
-        let direction = if target_price > current_price {
-            TradeDirection::Long
-        } else {
-            TradeDirection::Short
-        };
+    let direction = if target_price > ctx.current_price {
+        TradeDirection::Long
+    } else {
+        TradeDirection::Short
+    };
 
-        // Run Stop Loss Tournament
-        let best_sl_opt = run_stop_loss_tournament(
-            ohlcv,
-            matches,
-            current_state,
-            current_price,
-            target_price,
-            direction,
-            duration_candles,
-            risk_tests,
-            profile,
-            config.interval_width_ms,
-            limit_samples,
-            0,
+    let best_sl_opt = run_stop_loss_tournament(
+        ctx.ohlcv,
+        &ctx.matches,
+        ctx.current_state,
+        ctx.current_price,
+        target_price,
+        direction,
+        ctx.duration_candles,
+        risk_tests,
+        profile,
+        ctx.config.interval_width_ms,
+        limit_samples,
+        0,
+    );
+
+    if let Some((result, stop_price, variants)) = best_sl_opt {
+        let avg_dur_ms = (result.avg_candle_count * ctx.config.interval_width_ms as f64) as i64;
+        let score = profile.goal.calculate_score(
+            result.avg_pnl_pct * 100.0,
+            avg_dur_ms as f64,
+            profile.weight_roi,
+            profile.weight_aroi,
         );
 
-        if let Some((result, stop_price, variants)) = best_sl_opt {
-            let avg_duration_ms =
-                (result.avg_candle_count * config.interval_width_ms as f64) as i64;
-            // Calculate Score (The Judge)
-            // 2. Calculate Score (The Judge) using CORRECT UNITS (ms)
-            let score = profile.goal.calculate_score(
-                result.avg_pnl_pct * 100.0, // ROI
-                avg_duration_ms as f64,
-                profile.weight_roi,
-                profile.weight_aroi,
-            );
+        let unique_string = format!("{}_{}_{}", ctx.pair_name, source_id_suffix, direction);
+        let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, unique_string.as_bytes()).to_string();
 
-            // FIX: Removed 'profile.goal' from the hash source.
-            // This ensures the same trade found by different strategies shares the same ID.
-            let unique_string = format!(
-                "{}_{}_{}",
-                ohlcv.pair_interval.name(),
-                source_id_suffix,
-                direction,
-                // profile.goal
-            );
-            let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, unique_string.as_bytes()).to_string();
+        let opp = TradeOpportunity {
+            id: uuid,
+            created_at: TimeUtils::now_timestamp_ms(),
+            source_ph: ctx.ph_pct,
+            pair_name: ctx.pair_name.to_string(),
+            // target_zone_id removed
+            direction,
+            start_price: ctx.current_price,
+            target_price,
+            stop_price,
+            max_duration_ms: ctx.duration_ms as i64,
+            avg_duration_ms: avg_dur_ms,
+            strategy: profile.goal,
+            simulation: result,
+            variants,
+        };
 
-            let opp = TradeOpportunity {
-                id: uuid,
-                created_at: TimeUtils::now_timestamp_ms(),
-                source_ph: ph_pct,
-                pair_name: ohlcv.pair_interval.name().to_string(),
-                direction,
-                start_price: current_price,
-                target_price,
-                stop_price,
-                max_duration_ms: duration_ms as i64,
-                avg_duration_ms,
-                strategy: profile.goal,
-                simulation: result,
-                variants,
-            };
-
-            return Some(CandidateResult {
-                score,
-                opportunity: opp,
-                source_desc: source_id_suffix.to_string(),
-            });
-        }
-
-        None
+        return Some(CandidateResult {
+            score,
+            opportunity: opp,
+            source_desc: source_id_suffix.to_string(),
+        });
+    }
+    None
     })
 }
 
@@ -189,8 +170,8 @@ fn apply_diversity_filter(
         for (i, c) in debug_view.iter().take(5).enumerate() {
             let roi = c.opportunity.expected_roi();
             let dur_ms = c.opportunity.avg_duration_ms;
-            let dur_str = crate::utils::TimeUtils::format_duration(dur_ms);
-            let aroi = crate::utils::maths_utils::calculate_annualized_roi(roi, dur_ms as f64);
+            let dur_str = TimeUtils::format_duration(dur_ms);
+            let aroi = calculate_annualized_roi(roi, dur_ms as f64);
 
             log::info!(
                 "   #{}: Score {:.1} | ROI {:.2}% | AROI {:.0}% | Time {}",
@@ -297,307 +278,245 @@ fn apply_diversity_filter(
     final_results
 }
 
-// MAIN FUNCTION: Runs Scout & Drill optimization
+struct PathfinderContext<'a> {
+    pair_name: &'a str,
+    ohlcv: &'a OhlcvTimeSeries,
+    matches: Vec<(usize, f64)>, // Ownership moved here for convenience or reference
+    current_state: MarketState,
+    current_price: f64,
+    config: &'a AnalysisConfig,
+    duration_candles: usize,
+    duration_ms: u64,
+    ph_pct: f64,
+    ph_min: f64,
+    ph_max: f64,
+}
+
+fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
+    let mut results = Vec::new();
+    let opt_config = &ctx.config.journey.optimization;
+    let steps = opt_config.scout_steps;
+    let scout_risks = [2.5]; // Optimization: 1 variant
+
+    crate::trace_time!("Pathfinder: Phase A (Scouts)", 5000, {
+        // 1. Long Scouts
+        let long_start = ctx.current_price * (1.0 + opt_config.price_buffer_pct);
+        if ctx.ph_max > long_start {
+            let range = ctx.ph_max - long_start;
+            let step_size = range / steps as f64;
+
+            for i in 0..=steps {
+                let target = long_start + (i as f64 * step_size);
+                if let Some(res) = simulate_target(
+                    ctx,
+                    target,
+                    &format!("scout_long_{}", i),
+                    &scout_risks,
+                    20, // Optimization: Tiered Sampling
+                ) {
+                    results.push(res);
+                }
+            }
+        }
+
+        // 2. Short Scouts
+        let short_end = ctx.current_price * (1.0 - opt_config.price_buffer_pct);
+        if ctx.ph_min < short_end {
+            let range = short_end - ctx.ph_min;
+            let step_size = range / steps as f64;
+
+            for i in 0..=steps {
+                let target = ctx.ph_min + (i as f64 * step_size);
+                if let Some(res) = simulate_target(
+                    ctx,
+                    target,
+                    &format!("scout_short_{}", i),
+                    &scout_risks,
+                    20, 
+                ) {
+                    results.push(res);
+                }
+            }
+        }
+    });
+
+    #[cfg(debug_assertions)]
+    log::info!(
+        "🔍 SCOUT PHASE [{}]: Found {} viable candidates.",
+        ctx.pair_name,
+        results.len()
+    );
+
+    results
+}
+
+fn run_drill_phase(ctx: &PathfinderContext, mut candidates: Vec<CandidateResult>) -> Vec<CandidateResult> {
+    if candidates.is_empty() { return candidates; }
+
+    let opt_config = &ctx.config.journey.optimization;
+    let steps = opt_config.scout_steps;
+    
+    // Sort Best First
+    candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+
+    #[cfg(debug_assertions)]
+    {
+        log::info!("🔍 SCOUT PHASE COMPLETE [{}]. Top 5 Candidates:", ctx.pair_name);
+        for (i, c) in candidates.iter().take(5).enumerate() {
+            log::info!("   #{}: [{}] Target ${:.4} | Score {:.2}", i + 1, c.source_desc, c.opportunity.target_price, c.score);
+        }
+    }
+
+    crate::trace_time!("Pathfinder: Phase B (Drill)", 2000, {
+        let mut drill_results = Vec::new();
+        let mut drill_targets = Vec::new();
+        
+        let grid_step_pct = (ctx.ph_max - ctx.ph_min) / ctx.current_price / steps as f64;
+        let drill_offset_pct = grid_step_pct * opt_config.drill_offset_factor;
+        let dedup_radius = grid_step_pct * 100.0 * 1.0; 
+
+        // NEW: Adaptive Cutoff Score
+        let best_score = candidates[0].score;
+        let score_threshold = best_score * opt_config.drill_cutoff_pct;
+
+        #[cfg(debug_assertions)]
+        log::info!(
+            "🔍 PHASE B: Drill Selection (Radius: {:.3}%, Cutoff Score: {:.2})", 
+            dedup_radius, score_threshold
+        );
+
+        // 1. Smart Selection (Dedup + Cutoff)
+        for (idx, candidate) in candidates.iter().enumerate() {
+            // Optimization #4: Adaptive Cutoff
+            if candidate.score < score_threshold {
+                #[cfg(debug_assertions)]
+                log::debug!("   🛑 Cutting off Scout [{}]: Score {:.2} < Threshold", candidate.source_desc, candidate.score);
+                break; 
+            }
+
+            let mut is_distinct = true;
+            for &picked_idx in &drill_targets {
+                let picked: &CandidateResult = &candidates[picked_idx];
+                let diff = calculate_percent_diff(candidate.opportunity.target_price, picked.opportunity.target_price);
+                
+                if candidate.opportunity.direction == picked.opportunity.direction && diff < dedup_radius {
+                    is_distinct = false;
+                    break;
+                }
+            }
+
+            if is_distinct {
+                drill_targets.push(idx);
+            }
+
+            if drill_targets.len() >= opt_config.drill_top_n {
+                break;
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        log::info!(
+            "⛏️ DRILL PHASE [{}] [Strategy: {}]: Drilling {} distinct scouts",
+            ctx.pair_name, ctx.config.journey.profile.goal, drill_targets.len()
+        );
+
+        // 2. Drill Loop
+        let full_risks = ctx.config.journey.risk_reward_tests;
+        let full_samples = ctx.config.journey.sample_count;
+
+        for &scout_idx in &drill_targets {
+            let scout = &candidates[scout_idx];
+            let base_target = scout.opportunity.target_price;
+
+            // A. Promote Scout
+            if let Some(res) = simulate_target(ctx, base_target, &scout.source_desc, full_risks, full_samples) {
+                 if res.score > scout.score { drill_results.push(res); }
+            }
+            // B. Drill Up
+            if let Some(res) = simulate_target(ctx, base_target * (1.0 + drill_offset_pct), &format!("drill_{}_up", scout_idx), full_risks, full_samples) {
+                drill_results.push(res);
+            }
+            // C. Drill Down
+            if let Some(res) = simulate_target(ctx, base_target * (1.0 - drill_offset_pct), &format!("drill_{}_down", scout_idx), full_risks, full_samples) {
+                drill_results.push(res);
+            }
+        }
+
+        if !drill_results.is_empty() {
+             #[cfg(debug_assertions)]
+             log::info!("   -> [{}] Drill generated {} refined candidates.", ctx.pair_name, drill_results.len());
+             candidates.extend(drill_results);
+        }
+    });
+
+    candidates
+}
+
 fn run_pathfinder_simulations(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
     config: &AnalysisConfig,
 ) -> Vec<TradeOpportunity> {
-    if current_price <= 0.0 {
-        return Vec::new();
-    }
+    if current_price <= 0.0 { return Vec::new(); }
 
-    let pair_name = ohlcv.pair_interval.name();
-    let opt_config = &config.journey.optimization;
+    // 1. Setup Context
     let ph_pct = config.price_horizon.threshold_pct;
-
-    // Volatility Context: Use Configured Lookback
+    
+    // Volatility
     let max_idx = ohlcv.klines().saturating_sub(1);
-    let vol_lookback = opt_config.volatility_lookback.min(max_idx);
+    let vol_lookback = config.journey.optimization.volatility_lookback.min(max_idx);
     let start_vol = ohlcv.klines().saturating_sub(vol_lookback);
     let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol, ohlcv.klines());
 
+    // Matches
     let trend_lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
-    let duration = AdaptiveParameters::calculate_dynamic_journey_duration(
-        ph_pct,
-        avg_volatility,
-        config.interval_width_ms,
-    );
+    let duration = AdaptiveParameters::calculate_dynamic_journey_duration(ph_pct, avg_volatility, config.interval_width_ms);
     let duration_candles = duration_to_candles(duration, config.interval_width_ms);
-    let duration_ms = duration.as_millis() as u64;
-
-    // 2. Find Matches (SIMD)
-    // Correct usage: ScenarioSimulator imported at top
+    
     let matches_opt = ScenarioSimulator::find_historical_matches(
         ohlcv.pair_interval.name(),
         ohlcv,
-        ohlcv.klines().saturating_sub(1),
+        max_idx,
         &config.similarity,
         config.journey.sample_count,
         trend_lookback,
         duration_candles,
     );
 
-    let (matches, current_state) = match matches_opt {
-        Some((m, s)) if !m.is_empty() => (m, s),
-        _ => return Vec::new(),
+    let (matches, _current_state) = match matches_opt {
+        Some(tuple) => (tuple.0, tuple.1),
+        None => return Vec::new(),
     };
 
     let (ph_min, ph_max) = price_horizon::calculate_price_range(current_price, ph_pct);
+
+    // Build Context Object
+    let ctx = PathfinderContext {
+        pair_name: ohlcv.pair_interval.name(),
+        ohlcv,
+        matches,
+        current_state: _current_state,
+        current_price,
+        config,
+        duration_candles,
+        duration_ms: duration.as_millis() as u64,
+        ph_pct,
+        ph_min,
+        ph_max,
+    };
+
     #[cfg(debug_assertions)]
     log::info!(
         "🎯 PATHFINDER START [{}] Price: ${:.4} | PH Range: ${:.4} - ${:.4} ({:.2}%) | Vol: {:.3}%",
-        pair_name,
-        current_price,
-        ph_min,
-        ph_max,
-        ph_pct * 100.0,
-        avg_volatility * 100.0
+        ctx.pair_name, ctx.current_price, ctx.ph_min, ctx.ph_max, ctx.ph_pct * 100.0, avg_volatility * 100.0
     );
 
-    let steps = opt_config.scout_steps;
-
-    let mut all_results: Vec<CandidateResult> = Vec::new();
-    // OPTIMIZATION: Use a single risk test for Scouts to filter quickly
-    let scout_risks = [2.5]; // 1 variant
-
-    crate::trace_time!("Pathfinder: Phase A (Scouts)", 5000, {
-        // --- PHASE A: THE SCOUTS (Coarse Grid) ---
-        // Use Configured Steps
-
-        // 1. Long Scouts (Current -> Max)
-        // Use Configured Buffer
-        let long_start = current_price * (1.0 + opt_config.price_buffer_pct);
-        if ph_max > long_start {
-            let range = ph_max - long_start;
-            let step_size = range / steps as f64;
-
-            for i in 0..=steps {
-                let target = long_start + (i as f64 * step_size);
-                if let Some(res) = simulate_target(
-                    target,
-                    &format!("scout_long_{}", i),
-                    ohlcv,
-                    &matches,
-                    current_state,
-                    current_price,
-                    config,
-                    duration_candles,
-                    duration_ms,
-                    ph_pct,
-                    &scout_risks,
-                    20,
-                ) {
-                    all_results.push(res);
-                }
-            }
-        }
-
-        // 2. Short Scouts (Min -> Current)
-        let short_end = current_price * (1.0 - opt_config.price_buffer_pct);
-        if ph_min < short_end {
-            let range = short_end - ph_min;
-            let step_size = range / steps as f64;
-
-            for i in 0..=steps {
-                let target = ph_min + (i as f64 * step_size);
-                if let Some(res) = simulate_target(
-                    target,
-                    &format!("scout_short_{}", i),
-                    ohlcv,
-                    &matches,
-                    current_state,
-                    current_price,
-                    config,
-                    duration_candles,
-                    duration_ms,
-                    ph_pct,
-                    &scout_risks,
-                    20,
-                ) {
-                    all_results.push(res);
-                }
-            }
-        }
-    });
-
-    #[cfg(debug_assertions)]
-    log::info!(
-        "🔍 SCOUT PHASE [{}]: Found {} viable candidates from grid search.",
-        pair_name,
-        all_results.len()
-    );
-
-    // --- PHASE B: THE DRILL (Local Optimization) ---
-    // 2000 micros = 2ms threshold
-    crate::trace_time!("Pathfinder: Phase B (Drill)", 2000, {
-        if !all_results.is_empty() {
-            // 1. Sort current results by score (Best First)
-            all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
-
-            // 2. Log Top Candidates (Moved inside Phase B)
-            #[cfg(debug_assertions)]
-            {
-                log::info!("🔍 SCOUT PHASE COMPLETE [{}]. Top 5 Candidates:", pair_name);
-                for (i, c) in all_results.iter().take(5).enumerate() {
-                    log::info!(
-                        "   #{}: [{}] Target ${:.4} | Score {:.2}",
-                        i + 1,
-                        c.source_desc,
-                        c.opportunity.target_price,
-                        c.score
-                    );
-                }
-            }
-
-            // 3. SMART SELECTION (Neighbor Deduplication)
-            let mut drill_results: Vec<CandidateResult> = Vec::new();
-            let mut drill_targets: Vec<usize> = Vec::new(); // Indices of scouts to drill
-
-            // Recalculate grid step locally for radius (using 'steps' from outer scope)
-            let grid_step_pct = (ph_max - ph_min) / current_price / steps as f64;
-            let drill_offset_pct = grid_step_pct * opt_config.drill_offset_factor;
-            let dedup_radius = grid_step_pct * 1.0;
-
-            #[cfg(debug_assertions)]
-            log::info!(
-                "🔍 PHASE B: Selecting Drill Targets (Radius: {:.3}%)",
-                dedup_radius * 100.0
-            );
-
-            for (idx, candidate) in all_results.iter().enumerate() {
-                let mut is_distinct = true;
-
-                // Check against scouts we have already picked to drill
-                for &picked_idx in &drill_targets {
-                    let picked = &all_results[picked_idx];
-                    let diff = calculate_percent_diff(
-                        candidate.opportunity.target_price,
-                        picked.opportunity.target_price,
-                    );
-
-                    if candidate.opportunity.direction == picked.opportunity.direction
-                        && diff < dedup_radius
-                    {
-                        is_distinct = false;
-                        #[cfg(debug_assertions)]
-                        log::debug!(
-                            "   ⏭️ Skipped Neighbor [{}]: Too close to [{}] (Diff {:.3}%)",
-                            candidate.source_desc,
-                            picked.source_desc,
-                            diff
-                        );
-                        break;
-                    }
-                }
-
-                if is_distinct {
-                    drill_targets.push(idx);
-                    #[cfg(debug_assertions)]
-                    log::info!(
-                        "   🎯 Selected for Drill [{}]: Score {:.2} | Target ${:.4}",
-                        candidate.source_desc,
-                        candidate.score,
-                        candidate.opportunity.target_price
-                    );
-                }
-
-                // Stop once we have found N distinct targets
-                if drill_targets.len() >= opt_config.drill_top_n {
-                    break;
-                }
-            }
-
-            #[cfg(debug_assertions)]
-            log::info!(
-                "⛏️ DRILL PHASE [{}] [Strategy: {}]: Drilling {} distinct scouts",
-                pair_name,
-                config.journey.profile.goal,
-                drill_targets.len()
-            );
-
-            // 4. DRILL LOOP (Run Full Simulation on Selected Scouts + Neighbors)
-            let full_risks = config.journey.risk_reward_tests;
-            let full_samples = config.journey.sample_count; // e.g. 50
-
-            for &scout_idx in &drill_targets {
-                let scout = &all_results[scout_idx];
-                let base_target = scout.opportunity.target_price;
-
-                // A. Promote Scout (Re-run with FULL risks & FULL samples)
-                if let Some(res) = simulate_target(
-                    base_target,
-                    &scout.source_desc,
-                    ohlcv,
-                    &matches,
-                    current_state,
-                    current_price,
-                    config,
-                    duration_candles,
-                    duration_ms,
-                    ph_pct,
-                    full_risks,
-                    full_samples,
-                ) {
-                    if res.score > scout.score {
-                        drill_results.push(res);
-                    }
-                }
-
-                // B. Drill Up
-                let target_high = base_target * (1.0 + drill_offset_pct);
-                if let Some(res) = simulate_target(
-                    target_high,
-                    &format!("drill_{}_up", scout_idx),
-                    ohlcv,
-                    &matches,
-                    current_state,
-                    current_price,
-                    config,
-                    duration_candles,
-                    duration_ms,
-                    ph_pct,
-                    full_risks,
-                    full_samples,
-                ) {
-                    drill_results.push(res);
-                }
-
-                // C. Drill Down
-                let target_low = base_target * (1.0 - drill_offset_pct);
-                if let Some(res) = simulate_target(
-                    target_low,
-                    &format!("drill_{}_down", scout_idx),
-                    ohlcv,
-                    &matches,
-                    current_state,
-                    current_price,
-                    config,
-                    duration_candles,
-                    duration_ms,
-                    ph_pct,
-                    full_risks,
-                    full_samples,
-                ) {
-                    drill_results.push(res);
-                }
-            }
-
-            // 5. Extend Results
-            if !drill_results.is_empty() {
-                #[cfg(debug_assertions)]
-                log::info!(
-                    "   -> [{}] Drill generated {} refined candidates.",
-                    pair_name,
-                    drill_results.len()
-                );
-                all_results.extend(drill_results);
-            }
-        }
-    });
+    // 2. Run Pipeline
+    let scouts = run_scout_phase(&ctx);
+    let drill_results = run_drill_phase(&ctx, scouts);
     
-    // --- PHASE C: DIVERSITY FILTER (Select Winners) ---
-    apply_diversity_filter(all_results, config, pair_name, ph_min, ph_max)
+    // 3. Final Filter
+    apply_diversity_filter(drill_results, config, ctx.pair_name, ctx.ph_min, ctx.ph_max)
 }
 
 /// Helper function to find the optimal Stop Loss for a given target

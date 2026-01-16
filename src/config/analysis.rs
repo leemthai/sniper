@@ -131,6 +131,7 @@ pub struct OptimalSearchSettings {
     pub scout_steps: usize,
     pub drill_top_n: usize,
     pub drill_offset_factor: f64,
+    pub drill_cutoff_pct: f64, // Drop scouts if < N% of best score
     pub volatility_lookback: usize,
     pub diversity_regions: usize, // Number of regions (e.g. 10)
     pub diversity_cut_off: f64,   // % of Top Score required to qualify (e.g. 0.5 = 50%)
@@ -147,6 +148,7 @@ impl OptimalSearchSettings {
             scout_steps: 20, // Optimization (from 30)
             drill_top_n: 5,
             drill_offset_factor: 0.25,
+            drill_cutoff_pct: 0.70,
             volatility_lookback: 50,
             diversity_regions: 5, // NEW: Regional Championship Settings
             diversity_cut_off: 0.5, // Trade must be at least 50% as good as the winner

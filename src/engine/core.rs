@@ -334,14 +334,19 @@ impl SniperEngine {
 
             for (pair, _state) in &self.pairs {
                 // 2. Get Context (Price)
-                let current_price = if let Some(map) = overrides {
+                // STRICT MODE: Do not default to 0.0. If no price, skip the pair.
+                let price_opt = if let Some(map) = overrides {
                     map.get(pair)
                         .copied()
                         .or_else(|| self.price_stream.get_price(pair))
                 } else {
                     self.price_stream.get_price(pair)
-                }
-                .unwrap_or(0.0);
+                };
+
+                let current_price = match price_opt {
+                    Some(p) if p > f64::EPSILON => p,
+                    _ => continue, // Skip this pair completely until we have data
+                };
 
                 // 3. Calculate Volume & Market State (From TimeSeries)
                 // We do this for every pair regardless of whether it has ops
