@@ -46,91 +46,91 @@ impl PlotLayer for OpportunityLayer {
         // 2. Find Best Opportunity
         match opp_opt {
             Some(op) if &op.pair_name == current_pair => {
+                // 3. Setup Foreground Painter
+                // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
+                // FIX: Create Painter with Clipping
+                // This ensures the HUD never bleeds outside the plot area
+                let painter = plot_ui
+                    .ctx()
+                    .layer_painter(LayerId::new(Order::Foreground, Id::new("sniper_hud")))
+                    .with_clip_rect(ctx.clip_rect);
 
-            // 3. Setup Foreground Painter
-            // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
-            // FIX: Create Painter with Clipping
-            // This ensures the HUD never bleeds outside the plot area
-            let painter = plot_ui
-                .ctx()
-                .layer_painter(LayerId::new(Order::Foreground, Id::new("sniper_hud")))
-                .with_clip_rect(ctx.clip_rect);
+                // 4. Coordinates (Time/Price -> Screen Pixels)
+                let x_center_plot = (ctx.x_min + ctx.x_max) / 2.0;
 
-            // 4. Coordinates (Time/Price -> Screen Pixels)
-            let x_center_plot = (ctx.x_min + ctx.x_max) / 2.0;
+                // Map key points to screen space
+                let current_pos_screen =
+                    plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, current_price));
+                let target_pos_screen =
+                    plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, op.target_price));
+                let sl_pos_screen =
+                    plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, op.stop_price));
 
-            // Map key points to screen space
-            let current_pos_screen =
-                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, current_price));
-            let target_pos_screen =
-                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, op.target_price));
-            let sl_pos_screen =
-                plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, op.stop_price));
+                // --- 1. RESOLVE SEMANTIC COLORS & STYLES ---
+                let direction_color = op.direction.color();
+                let sl_color = PLOT_CONFIG.color_stop_loss;
 
-            // --- 1. RESOLVE SEMANTIC COLORS & STYLES ---
-            let direction_color = op.direction.color();
-            let sl_color = PLOT_CONFIG.color_stop_loss;
+                // Resolve Dimming levels via Config
+                let scope_color = apply_opacity(direction_color, PLOT_CONFIG.opacity_scope_base);
+                let crosshair_color =
+                    apply_opacity(scope_color, PLOT_CONFIG.opacity_scope_crosshair);
+                let path_color = apply_opacity(scope_color, PLOT_CONFIG.opacity_path_line);
 
-            // Resolve Dimming levels via Config
-            let scope_color = apply_opacity(direction_color, PLOT_CONFIG.opacity_scope_base);
-            let crosshair_color = apply_opacity(scope_color, PLOT_CONFIG.opacity_scope_crosshair);
-            let path_color = apply_opacity(scope_color, PLOT_CONFIG.opacity_path_line);
+                // --- A. PATH LINE ---
+                painter.line_segment(
+                    [current_pos_screen, target_pos_screen],
+                    Stroke::new(2.0, path_color),
+                );
 
-            // --- A. PATH LINE ---
-            painter.line_segment(
-                [current_pos_screen, target_pos_screen],
-                Stroke::new(2.0, path_color),
-            );
+                // --- B. STOP LOSS ---
+                let screen_rect = plot_ui.response().rect;
+                let sl_width_px = screen_rect.width() * 0.4;
 
-            // --- B. STOP LOSS ---
-            let screen_rect = plot_ui.response().rect;
-            let sl_width_px = screen_rect.width() * 0.4;
+                let sl_left = sl_pos_screen - Vec2::new(sl_width_px / 2.0, 0.0);
+                let sl_right = sl_pos_screen + Vec2::new(sl_width_px / 2.0, 0.0);
 
-            let sl_left = sl_pos_screen - Vec2::new(sl_width_px / 2.0, 0.0);
-            let sl_right = sl_pos_screen + Vec2::new(sl_width_px / 2.0, 0.0);
+                painter.line_segment([sl_left, sl_right], Stroke::new(1.5, sl_color));
+                painter.text(
+                    sl_left + Vec2::new(0.0, -4.0),
+                    Align2::LEFT_BOTTOM,
+                    &UI_TEXT.label_stop_loss,
+                    FontId::proportional(10.0),
+                    sl_color,
+                );
 
-            painter.line_segment([sl_left, sl_right], Stroke::new(1.5, sl_color));
-            painter.text(
-                sl_left + Vec2::new(0.0, -4.0),
-                Align2::LEFT_BOTTOM,
-                &UI_TEXT.label_stop_loss,
-                FontId::proportional(10.0),
-                sl_color,
-            );
+                // --- C. SCOPE ---
+                painter.circle_stroke(target_pos_screen, 15.0, Stroke::new(2.0, scope_color));
+                let hair_len = 20.0;
+                let faint_stroke = Stroke::new(1.0, crosshair_color);
 
-            // --- C. SCOPE ---
-            painter.circle_stroke(target_pos_screen, 15.0, Stroke::new(2.0, scope_color));
-            let hair_len = 20.0;
-            let faint_stroke = Stroke::new(1.0, crosshair_color);
-
-            painter.line_segment(
-                [
-                    target_pos_screen - Vec2::new(0.0, hair_len),
-                    target_pos_screen + Vec2::new(0.0, hair_len),
-                ],
-                faint_stroke,
-            );
-            painter.line_segment(
-                [
-                    target_pos_screen - Vec2::new(hair_len, 0.0),
-                    target_pos_screen + Vec2::new(hair_len, 0.0),
-                ],
-                faint_stroke,
-            );
-            painter.circle_filled(target_pos_screen, 3.0, scope_color);
-        },
-        Some(_) => {
+                painter.line_segment(
+                    [
+                        target_pos_screen - Vec2::new(0.0, hair_len),
+                        target_pos_screen + Vec2::new(0.0, hair_len),
+                    ],
+                    faint_stroke,
+                );
+                painter.line_segment(
+                    [
+                        target_pos_screen - Vec2::new(hair_len, 0.0),
+                        target_pos_screen + Vec2::new(hair_len, 0.0),
+                    ],
+                    faint_stroke,
+                );
+                painter.circle_filled(target_pos_screen, 3.0, scope_color);
+            }
+            Some(_) => {
                 // (Probably can't happen .....) --- CASE B: MISMATCH ---
                 // User has an Op selected, but it's for a DIFFERENT pair (e.g. ETH selected, viewing BTC).
                 // We draw NOTHING.
                 panic!("Can't happen in theory");
-        },
+            }
 
-        None => {
+            None => {
                 // --- CASE C: NO SELECTION ---
                 // User has no active trade selected (maybe none available for this pair)
                 // We draw NOTHING.
-        }
+            }
         }
     }
 }
@@ -190,17 +190,27 @@ impl PlotLayer for CandlestickLayer {
         // (assuming segments are contiguous in view space, or ui_plot_view handles the gaps between segments via separate logic.
         //  If ui_plot_view sums up segment widths, we need to replicate that.)
         let mut segment_start_visual_x = 0.0;
-
         let agg_interval_ms = ctx.resolution.interval_ms();
 
         // 1. Optimization Setup
         let view_width_steps = (ctx.x_max - ctx.x_min).abs();
         let screen_width_px = plot_ui.response().rect.width() as f64;
-        let batch_size = if view_width_steps > 0.0 && screen_width_px > 1.0 {
-            (view_width_steps / screen_width_px).ceil() as usize
+
+        // FIX: Target a minimum physical pixel width per candle (e.g. 3px)
+        // This ensures that even after applying the 80% width factor, we have > 2.4px solid body.
+        // 1px = Faint/Sub-pixel. 3px = Crisp.
+        let min_px_per_candle = 1.0;
+
+        // How many candles can we physically fit on screen at this density?
+        let max_candles_on_screen = (screen_width_px / min_px_per_candle).max(1.0);
+
+        // Calculate aggregation batch size based on this limit
+        let batch_size = if view_width_steps > 0.0 {
+            (view_width_steps / max_candles_on_screen).ceil() as usize
         } else {
             1
         };
+
         let step = batch_size.max(1);
         let render_width = step as f64 * PLOT_CONFIG.candle_width_pct;
 
@@ -291,27 +301,6 @@ impl PlotLayer for CandlestickLayer {
 
             segment_start_visual_x += segment_width + PLOT_CONFIG.segment_gap_width;
         }
-
-        // --- ADD THIS LOGGING BLOCK AT THE VERY END ---
-        // #[cfg(debug_assertions)]
-        // if ctx.visibility.candles {
-        //      let view_width = ctx.x_max - ctx.x_min;
-
-        //      // Log if there is a massive mismatch (e.g. View is 1000 but we only drew 50)
-        //      // We check if visual_x (total drawn width) is significantly smaller than the view
-        //      // Note: This might trigger on zooming out (which is normal), so we focus on
-        //      // "Shift to Left" scenarios where x_max is huge.
-        //      if view_width > visual_x * 1.5 && visual_x > 0.0 {
-        //          log::warn!(
-        //              "PLOT MISMATCH [{}]: Axis thinks width is {:.1}, but Renderer only drew {:.1}. (Res: {:?})",
-        //              ctx.trading_model.cva.pair_name,
-        //              view_width,
-        //              visual_x,
-        //              ctx.resolution
-        //          );
-        //      }
-        // }
-        // ----------------------------------------------
     }
 }
 
@@ -323,83 +312,88 @@ fn draw_split_candle(
     high: f64,
     low: f64,
     close: f64,
-    width: f64, // <--- ADDED ARGUMENT
+    width: f64,
     ph_bounds: (f64, f64),
     min_x: f64,
 ) {
     let (ph_min, ph_max) = ph_bounds;
 
-    // VISUAL FIX 2: Ghost Color
     let is_bullish = close >= open;
     let base_color = if is_bullish {
         PLOT_CONFIG.candle_bullish_color
     } else {
         PLOT_CONFIG.candle_bearish_color
     };
-    let ghost_color = base_color.linear_multiply(0.2);
+    
+    let ghost_color = base_color.linear_multiply(0.2); 
 
-    // 1. Draw Wicks
-    // Top Ghost
-    let top = high.min(ph_min);
-    draw_wick_line(ui, x, high, top, ghost_color, min_x);
-
-    // Bottom Ghost
-    let bottom = low.max(ph_max);
-    draw_wick_line(ui, x, bottom, low, ghost_color, min_x);
-
-    // Solid Wick (Within PH)
-    let solid_top = high.min(ph_max);
-    let solid_bot = low.max(ph_min);
-
-    if solid_top > solid_bot {
-        draw_wick_line(ui, x, solid_top, solid_bot, base_color, min_x);
+    // --- 1. WICKS ---
+    
+    // A. Bottom Ghost Wick (Below ph_min)
+    // Range: [low, min(high, ph_min)]
+    let bg_wick_top = high.min(ph_min);
+    let bg_wick_bot = low;
+    if bg_wick_top > bg_wick_bot {
+        draw_wick_line(ui, x, bg_wick_top, bg_wick_bot, ghost_color, min_x);
     }
 
-    // 2. Draw Body
+    // B. Top Ghost Wick (Above ph_max)
+    // Range: [max(low, ph_max), high]
+    let tg_wick_top = high;
+    let tg_wick_bot = low.max(ph_max);
+    if tg_wick_top > tg_wick_bot {
+        draw_wick_line(ui, x, tg_wick_top, tg_wick_bot, ghost_color, min_x);
+    }
+
+    // C. Solid Wick (Inside Zone)
+    // Range: [max(low, ph_min), min(high, ph_max)]
+    let solid_wick_top = high.min(ph_max);
+    let solid_wick_bot = low.max(ph_min);
+    if solid_wick_top > solid_wick_bot {
+        draw_wick_line(ui, x, solid_wick_top, solid_wick_bot, base_color, min_x);
+    }
+
+    // --- 2. BODIES ---
+
     let body_top_raw = open.max(close);
     let body_bot_raw = open.min(close);
-
-    // Use the passed width
     let half_w = width / 2.0;
 
     // Doji check
     let body_top = if (body_top_raw - body_bot_raw).abs() < f64::EPSILON {
-        body_top_raw + 0.00001 // minimal height
+        body_top_raw + 0.00001 
     } else {
         body_top_raw
     };
     let body_bot = body_bot_raw;
 
-    // Top Ghost Body
-    let t = body_top.min(ph_min);
-    draw_body_rect(ui, x, half_w, t, body_bot, ghost_color, min_x);
+    // A. Bottom Ghost Body (Below ph_min)
+    let bg_body_top = body_top.min(ph_min);
+    let bg_body_bot = body_bot;
+    if bg_body_top > bg_body_bot {
+        draw_body_rect(ui, x, half_w, bg_body_top, bg_body_bot, ghost_color, min_x);
+    }
 
-    // Bottom Ghost Body
-    let b = body_bot.max(ph_max);
-    draw_body_rect(ui, x, half_w, body_top, b, ghost_color, min_x);
+    // B. Top Ghost Body (Above ph_max)
+    let tg_body_top = body_top;
+    let tg_body_bot = body_bot.max(ph_max);
+    if tg_body_top > tg_body_bot {
+        draw_body_rect(ui, x, half_w, tg_body_top, tg_body_bot, ghost_color, min_x);
+    }
 
-    // Solid Body
+    // C. Solid Body (Inside Zone)
     let solid_body_top = body_top.min(ph_max);
     let solid_body_bot = body_bot.max(ph_min);
-
     if solid_body_top > solid_body_bot {
-        draw_body_rect(
-            ui,
-            x,
-            half_w,
-            solid_body_top,
-            solid_body_bot,
-            base_color,
-            min_x,
-        );
+        draw_body_rect(ui, x, half_w, solid_body_top, solid_body_bot, base_color, min_x);
     }
 }
 
 #[inline]
 fn draw_wick_line(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32, min_x: f64) {
-    if x < min_x {
+    if x < min_x || top <= bottom + f64::EPSILON {
         return;
-    } // clipping logic
+    }
 
     ui.line(
         Line::new("", PlotPoints::new(vec![[x, bottom], [x, top]]))

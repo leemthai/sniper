@@ -228,7 +228,7 @@ pub fn generate_profile(
     let t_total = t_total_start.elapsed();
 
     // Manual trace_time logic: Check global flag before logging
-    let t_threshold = 2000;
+    let t_threshold = 5_000;
     if DEBUG_FLAGS.enable_perf_logging {
         if t_total.as_micros() > t_threshold {
             log::error!(

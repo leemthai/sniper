@@ -383,7 +383,7 @@ impl ScenarioSimulator {
 
         // Manual trace_time logic
         if DEBUG_FLAGS.enable_perf_logging {
-            let t_threshold = 1000;
+            let t_threshold = 5_000;
             if t_total.as_micros() > t_threshold {
                 log::error!(
                     "TRACE: ScenarioSimulator [{}]: Total {:.2?} (Items: {} | Prep: {:.2?} | SIMD: {:.2?} | Sort: {:.2?}) (Threshold: {}ms)",
@@ -411,7 +411,7 @@ impl ScenarioSimulator {
         max_duration_candles: usize, // Unit: Count
         direction: TradeDirection,
     ) -> Option<SimulationResult> {
-        crate::trace_time!("Sim: Analyze Outcome (50 Matches)", 115, {
+        crate::trace_time!("Sim: Analyze Outcome (50 Matches)", 250, {
             if matches.is_empty() {
                 return None;
             }

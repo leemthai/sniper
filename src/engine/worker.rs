@@ -365,7 +365,7 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
         (short_end - ctx.ph_min) / steps as f64
     } else { 0.0 };
 
-    crate::trace_time!("Pathfinder: Phase A (Scouts)", 10, {
+    crate::trace_time!("Pathfinder: Phase A (Scouts)", 1000, {
         // Use Rayon to process Longs and Shorts in parallel (Single Batch)
         let results: Vec<CandidateResult> = (0..=steps).into_par_iter()
             .flat_map(|i| {
@@ -602,7 +602,8 @@ fn run_stop_loss_tournament(
     limit_samples: usize,
     _zone_idx: usize,
 ) -> Option<(SimulationResult, f64, Vec<TradeVariant>)> {
-    crate::trace_time!("Worker: SL Tournament", 500, {
+    crate::trace_time!("Worker: SL Tournament", 1500, {
+
         let mut best_score = f64::NEG_INFINITY; // Track Score, not just ROI
         let mut best_result: Option<(SimulationResult, f64, f64)> = None; // (Result, Stop, Ratio)
         let mut valid_variants = Vec::new();
@@ -848,14 +849,14 @@ fn perform_standard_analysis(
         let price = resolve_analysis_price(req, ts_collection);
 
         // 2. Count
-        let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 2_000, {
+        let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 4_000, {
             calculate_exact_candle_count(req, ts_collection, price)
         });
 
         let full_label = format!("{} ({} candles)", base_label, count);
 
         // 3. CVA
-        let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 3_000, {
+        let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 10_000, {
             pair_analysis_pure(req.pair_name.clone(), ts_collection, price, &req.config)
         });
 

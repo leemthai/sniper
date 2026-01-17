@@ -144,7 +144,7 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     // --- CANDLESTICKS (NEW) ---
     candle_bullish_color: Color32::from_rgb(38, 166, 154), // TradingView Green
     candle_bearish_color: Color32::from_rgb(239, 83, 80),  // TradingView Red
-    candle_width_pct: 0.8, // 80% width leaves a small gap between candles
+    candle_width_pct: 0.9, // 80% width leaves a small gap between candles
     candle_wick_width: 1.0,
     segment_gap_width: 4.0, // Visual gap between accordion segments
 

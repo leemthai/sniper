@@ -319,7 +319,7 @@ impl TimeSeriesSlice<'_> {
 
         // Process all candles across all ranges, maintaining temporal decay based on position
         let mut position = 0;
-        crate::trace_time!("CVA Math Loop", 5000, {
+        crate::trace_time!("CVA Math Loop", 8000, {
             for (start_idx, end_idx) in &self.ranges {
                 for idx in *start_idx..*end_idx {
                     let candle = self.series_data.get_candle(idx);
