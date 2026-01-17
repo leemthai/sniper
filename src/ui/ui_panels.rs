@@ -434,12 +434,12 @@ impl<'a> DataGenerationPanel<'a> {
         };
 
         if let Some(profile) = self.profile {
-            // --- A. CUSTOM HEATMAP WIDGET ---
+            // --- A. CUSTOM HEATMAP WIDGET click only now. Drag is disabled. To re-enable, make it Sense::click_and_drag()  ---
             let (rect, response) =
-                ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click_and_drag());
+                ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click());
 
             // Handle Input (Logarithmic)
-            if response.dragged() || response.clicked() {
+            if response.clicked() {
                 if let Some(pointer_pos) = response.interact_pointer_pos() {
                     let x_frac = ((pointer_pos.x - rect.min.x) / rect.width()) as f64;
                     let new_val = mapper.frac_to_value(x_frac);
