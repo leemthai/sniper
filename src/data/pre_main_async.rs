@@ -18,9 +18,16 @@ use {
     crate::domain::pair_interval::PairInterval,
     crate::models::OhlcvTimeSeries,
     crate::models::SyncStatus,
+    crate::utils::TimeUtils,
     anyhow::Result,
     futures::stream::{self, StreamExt},
     std::sync::Arc,
+    std::fs,
+};
+
+#[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
+use {
+    crate::config::DEBUG_FLAGS,
 };
 
 // ----------------------------------------------------------------------------
@@ -33,7 +40,7 @@ async fn sync_pair(
     storage: Arc<SqliteStorage>,
     provider: Arc<BinanceProvider>,
 ) -> Result<(OhlcvTimeSeries, usize)> {
-    let interval_str = crate::utils::TimeUtils::interval_to_string(interval_ms);
+    let interval_str = TimeUtils::interval_to_string(interval_ms);
 
     // 1. Check DB for last candle
     let last_time = storage.get_last_candle_time(&pair, interval_str).await?;
@@ -114,17 +121,16 @@ pub async fn fetch_pair_data(
         let limiter = GlobalRateLimiter::new(safe_limit);
 
         let provider = Arc::new(BinanceProvider::new(limiter));
-        let config = crate::config::BINANCE;
 
         // Read ALL pairs from file first
-        let mut supply_pairs: Vec<String> = match std::fs::read_to_string(config.pairs_filename) {
+        let mut supply_pairs: Vec<String> = match fs::read_to_string(BINANCE.pairs_filename) {
             Ok(content) => content
                 .lines()
                 .map(|s| s.trim().to_uppercase())
                 .filter(|s| !s.is_empty() && !s.starts_with('#'))
                 .collect(),
             Err(_) => {
-                log::warn!("{} not found, using default BTC/ETH", config.pairs_filename);
+                log::warn!("{} not found, using default BTC/ETH", BINANCE.pairs_filename);
                 vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()]
             }
         };
@@ -132,14 +138,14 @@ pub async fn fetch_pair_data(
         // --- APPLY LIMITS ---
 
         // 1. Production Limit (from binance.rs)
-        if supply_pairs.len() > config.max_pairs {
-            supply_pairs.truncate(config.max_pairs);
+        if supply_pairs.len() > BINANCE.max_pairs {
+            supply_pairs.truncate(BINANCE.max_pairs);
         }
 
         // 2. Debug Limit (from debug.rs)
         #[cfg(debug_assertions)]
         {
-            let debug_limit = crate::config::DEBUG_FLAGS.max_pairs_load;
+            let debug_limit = DEBUG_FLAGS.max_pairs_load;
             // If the flag is smaller than the current list, truncate it.
             // (If you set debug_limit to 1000, it effectively loads 'all')
             if supply_pairs.len() > debug_limit {

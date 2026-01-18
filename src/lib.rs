@@ -11,9 +11,8 @@ pub mod domain;
 pub mod models;
 pub mod ui;
 pub mod utils;
-
-// NEW: The engine
 pub mod engine;
+pub mod ph_audit;
 
 // Re-export commonly used types
 pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};

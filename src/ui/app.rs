@@ -12,9 +12,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
 #[cfg(not(target_arch = "wasm32"))]
-use std::thread;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::runtime::Runtime;
+use {std::thread, tokio::runtime::Runtime};
 
 use crate::Cli;
 
@@ -267,6 +265,60 @@ impl Default for ZoneSniperApp {
 }
 
 impl ZoneSniperApp {
+    pub fn new(cc: &eframe::CreationContext<'_>, args: Cli) -> Self {
+        let mut app: ZoneSniperApp = if let Some(storage) = cc.storage {
+            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+        } else {
+            Self::default()
+        };
+
+        // --- 1. SETUP FONTS ---
+        Self::configure_fonts(&cc.egui_ctx);
+
+        // RESTORE STATE:
+        // Overwrite the default config's PH with the saved user preference.
+        // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
+        app.app_config.price_horizon = app.global_price_horizon.clone();
+        // APPLY SAVED STRATEGY TO CONFIG
+        // This ensures the engine starts with the user's last choice
+        app.app_config.journey.profile.goal = app.saved_strategy;
+
+        app.plot_view = PlotView::new();
+        app.simulated_prices = HashMap::new();
+        app.state = AppState::Loading(LoadingState::default());
+
+        let (data_tx, data_rx) = mpsc::channel();
+        let (prog_tx, prog_rx) = mpsc::channel();
+
+        app.data_rx = Some(data_rx);
+        app.progress_rx = Some(prog_rx);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let args_clone = args.clone();
+            thread::spawn(move || {
+                let rt = Runtime::new().expect("Failed to create runtime");
+                rt.block_on(async move {
+                    let (data, sig) = fetch_pair_data(300, &args_clone, Some(prog_tx)).await;
+
+                    let _ = data_tx.send((data, sig));
+                });
+            });
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = prog_tx;
+            let args_clone = args.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let (data, sig) = fetch_pair_data(0, &args_clone, None).await;
+                let _ = data_tx.send((data, sig));
+            });
+        }
+
+        app
+    }
+
     /// Handles a change in global strategy (Optimization Goal).
     pub fn handle_strategy_change(&mut self) {
         // 1. Guard: Check if the strategy ACTUALLY changed.
@@ -396,7 +448,6 @@ impl ZoneSniperApp {
     /// - Checks Ledger for best Op.
     /// - If found: Tunes & Locks.
     /// - If not: Market View.
-
     pub fn jump_to_pair(&mut self, pair: String) {
         // 1. Same Pair Check (Preserve Context)
         if self.selected_pair.as_deref() == Some(&pair) {
@@ -490,7 +541,6 @@ impl ZoneSniperApp {
             .insert("hack_propo".to_owned(), Arc::new(font_data_propo));
 
         // 4. Prioritize!
-
         // A. MONOSPACE Family -> Use "hack_mono"
         if let Some(family) = fonts.families.get_mut(&FontFamily::Monospace) {
             family.insert(0, "hack_mono".to_owned());
@@ -503,60 +553,6 @@ impl ZoneSniperApp {
 
         // 5. Apply
         ctx.set_fonts(fonts);
-    }
-
-    pub fn new(cc: &eframe::CreationContext<'_>, args: Cli) -> Self {
-        let mut app: ZoneSniperApp = if let Some(storage) = cc.storage {
-            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
-        } else {
-            Self::default()
-        };
-
-        // --- 1. SETUP FONTS ---
-        Self::configure_fonts(&cc.egui_ctx);
-
-        // RESTORE STATE:
-        // Overwrite the default config's PH with the saved user preference.
-        // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
-        app.app_config.price_horizon = app.global_price_horizon.clone();
-        // APPLY SAVED STRATEGY TO CONFIG
-        // This ensures the engine starts with the user's last choice
-        app.app_config.journey.profile.goal = app.saved_strategy;
-
-        app.plot_view = PlotView::new();
-        app.simulated_prices = HashMap::new();
-        app.state = AppState::Loading(LoadingState::default());
-
-        let (data_tx, data_rx) = mpsc::channel();
-        let (prog_tx, prog_rx) = mpsc::channel();
-
-        app.data_rx = Some(data_rx);
-        app.progress_rx = Some(prog_rx);
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let args_clone = args.clone();
-            thread::spawn(move || {
-                let rt = Runtime::new().expect("Failed to create runtime");
-                rt.block_on(async move {
-                    let (data, sig) = fetch_pair_data(300, &args_clone, Some(prog_tx)).await;
-
-                    let _ = data_tx.send((data, sig));
-                });
-            });
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = prog_tx;
-            let args_clone = args.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                let (data, sig) = fetch_pair_data(0, &args_clone, None).await;
-                let _ = data_tx.send((data, sig));
-            });
-        }
-
-        app
     }
 
     pub fn is_simulation_mode(&self) -> bool {
@@ -1105,6 +1101,36 @@ impl eframe::App for ZoneSniperApp {
                 Self::render_loading_screen(ctx, state);
             }
             AppState::Running => {
+               // --- AUDIT HOOK (Feature Flagged) ---
+                #[cfg(feature = "ph_audit")]
+                {
+                    if let Some(engine) = &self.engine {
+                        let ts_guard = engine.timeseries.read().unwrap();
+                        
+                        if !ts_guard.series_data.is_empty() {
+                            drop(ts_guard); 
+
+                            println!(">> App State is RUNNING. Collecting Prices & Starting Audit...");
+
+                            // 1. Gather Live Prices from the Ticker
+                            // We construct a HashMap of the 4 pairs we care about
+                            let mut live_prices = std::collections::HashMap::new();
+                            for &pair in crate::ph_audit::config::AUDIT_PAIRS {
+                                if let Some(p) = engine.price_stream.get_price(pair) {
+                                    live_prices.insert(pair.to_string(), p);
+                                }
+                            }
+
+                            let config = self.app_config.clone();
+                            let ts = engine.timeseries.read().unwrap();
+
+                            // 2. Execute with REAL prices
+                            crate::ph_audit::runner::execute_audit(&ts, &config, &live_prices);
+                            
+                            return;
+                        }
+                    }
+                }
                 self.render_running_state(ctx);
             }
         }

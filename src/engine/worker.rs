@@ -520,7 +520,7 @@ fn run_drill_phase(ctx: &PathfinderContext, mut candidates: Vec<CandidateResult>
     candidates
 }
 
-fn run_pathfinder_simulations(
+pub fn run_pathfinder_simulations(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
     config: &AnalysisConfig,
