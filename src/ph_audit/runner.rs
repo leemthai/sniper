@@ -102,50 +102,52 @@ fn run_single_simulation(
     let strat_name = format!("{:?}", strategy);
 
     if cva_res.is_err() {
-        reporter.add_row(pair, &strat_name, ph_pct, 0, 0, 0.0, 0, 0.0, start_time.elapsed().as_millis());
         return;
     }
+    let cva = cva_res.unwrap();
+    let ph_candles = cva.relevant_candle_count;
 
     // 2. Pathfinder (Scout + Drill)
-    let opportunities = worker::run_pathfinder_simulations(ohlcv, price, &config);
+    let pf_result = worker::run_pathfinder_simulations(ohlcv, price, &config);
     let elapsed = start_time.elapsed().as_millis();
+    let opportunities = pf_result.opportunities;
+    let trend_k = pf_result.trend_lookback; // Truth from the engine
+    let sim_k = pf_result.sim_duration; // Truth from the engine
 
     // D. Extract Stats
     let count = opportunities.len();
-    let top_score = opportunities
-        .first()
-        .map(|o| o.calculate_quality_score(&config.journey.profile))
-        .unwrap_or(0.0);
 
-    // Average Duration of Top 5
-    let top_5 = opportunities.iter().take(5);
-    let avg_dur: u64 = if count > 0 {
-        top_5.clone().map(|o| o.avg_duration_ms as u64).sum::<u64>() / top_5.count() as u64
-    } else {
-        0
-    };
+    let top_score = opportunities.first().map(|o| o.calculate_quality_score(&config.journey.profile));
 
+    // DISPLAY LOGIC: Convert ms to hours for CSV readability
+    let durations_hours: Vec<f64> = opportunities.iter()
+        .take(5)
+        .map(|o| o.avg_duration_ms as f64 / 3_600_000.0) 
+        .collect();
+    
     // Avg Stop Loss %
     let top_5_b = opportunities.iter().take(5);
-    let avg_stop: f64 = if count > 0 {
-        top_5_b
-            .clone()
+    let avg_stop: Option<f64> = if count > 0 {
+        let sum: f64 = top_5_b.clone()
             .map(|o| (o.stop_price - o.start_price).abs() / o.start_price)
-            .sum::<f64>()
-            / top_5_b.count() as f64
+            .sum();
+        Some(sum / top_5_b.count() as f64)
     } else {
-        0.0
+        None
     };
 
     reporter.add_row(
         pair,
         &strat_name,
         ph_pct,
+        trend_k,
+        sim_k,
         ohlcv.close_prices.len(),
+        ph_candles,
         count,
         top_score,
-        avg_dur,
         avg_stop,
-        elapsed
+        elapsed,
+        &durations_hours,
     );
 }

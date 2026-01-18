@@ -1046,6 +1046,47 @@ impl ZoneSniperApp {
         }
         None
     }
+
+        // --- AUDIT HELPER ---
+    #[cfg(feature = "ph_audit")]
+    fn try_run_audit(&self, ctx: &Context) {
+        if let Some(engine) = &self.engine {
+            // 1. CHECK TICKER: Do we have prices for all audit pairs?
+            for &pair in crate::ph_audit::config::AUDIT_PAIRS {
+                if engine.price_stream.get_price(pair).is_none() {
+                    // Not ready yet. Keep the loop alive to pump the WebSocket.
+                    // ctx.request_repaint(); 
+                    return;
+                }
+            }
+
+            // 2. CHECK DATA: Do we have KLines loaded?
+            let ts_guard = engine.timeseries.read().unwrap();
+            if ts_guard.series_data.is_empty() {
+                // Not ready yet. Data loader is still working.
+                return; 
+            }
+            drop(ts_guard); // Release lock
+
+            // 3. EXECUTE
+            println!(">> App State is RUNNING. Ticker & Data Ready. Starting Audit...");
+
+            // Gather Live Prices
+            let mut live_prices = std::collections::HashMap::new();
+            for &pair in crate::ph_audit::config::AUDIT_PAIRS {
+                if let Some(p) = engine.price_stream.get_price(pair) {
+                    live_prices.insert(pair.to_string(), p);
+                }
+            }
+
+            let config = self.app_config.clone();
+            let ts = engine.timeseries.read().unwrap();
+
+            // Run & Exit
+            crate::ph_audit::runner::execute_audit(&ts, &config, &live_prices);
+        }
+    }
+
 }
 
 impl eframe::App for ZoneSniperApp {
@@ -1101,38 +1142,12 @@ impl eframe::App for ZoneSniperApp {
                 Self::render_loading_screen(ctx, state);
             }
             AppState::Running => {
-               // --- AUDIT HOOK (Feature Flagged) ---
                 #[cfg(feature = "ph_audit")]
-                {
-                    if let Some(engine) = &self.engine {
-                        let ts_guard = engine.timeseries.read().unwrap();
-                        
-                        if !ts_guard.series_data.is_empty() {
-                            drop(ts_guard); 
-
-                            println!(">> App State is RUNNING. Collecting Prices & Starting Audit...");
-
-                            // 1. Gather Live Prices from the Ticker
-                            // We construct a HashMap of the 4 pairs we care about
-                            let mut live_prices = std::collections::HashMap::new();
-                            for &pair in crate::ph_audit::config::AUDIT_PAIRS {
-                                if let Some(p) = engine.price_stream.get_price(pair) {
-                                    live_prices.insert(pair.to_string(), p);
-                                }
-                            }
-
-                            let config = self.app_config.clone();
-                            let ts = engine.timeseries.read().unwrap();
-
-                            // 2. Execute with REAL prices
-                            crate::ph_audit::runner::execute_audit(&ts, &config, &live_prices);
-                            
-                            return;
-                        }
-                    }
-                }
+                self.try_run_audit(ctx);
                 self.render_running_state(ctx);
             }
         }
     }
+
+    
 }

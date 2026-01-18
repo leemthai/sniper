@@ -194,8 +194,8 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         min_journey_duration: Duration::from_secs(3600), // Floor at 1 Hour. Don't simulate 5-minute trades.
 
         profile: TradeProfile {
-            min_roi: 0.50,  // 0.5% Minimum yield
-            min_aroi: 20.0, // 20% Annualized Minimum
+            min_roi: 0.10,  // 0.1% minimum yield (potential for going even lower than this in future)
+            min_aroi: 20.0, // 20% Annualized Minimum (seems safer than ROI value tbh)
             goal: OptimizationGoal::Balanced,
             weight_roi: 1.0, // Scoring: We value hard cash (ROI) 20x more than theoretical speed (AROI)
             weight_aroi: 0.002,

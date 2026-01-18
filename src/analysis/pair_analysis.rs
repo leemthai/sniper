@@ -15,7 +15,6 @@ pub fn pair_analysis_pure(
     timeseries_data: &TimeSeriesCollection,
     current_price: f64,
     config: &AnalysisConfig,
-    // price_horizon_config: &PriceHorizonConfig,
 ) -> Result<CVACore> {
     // Use Constants from Config
     let zone_count = ANALYSIS.zone_count;
