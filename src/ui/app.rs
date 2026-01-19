@@ -18,7 +18,10 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{ANALYSIS, AnalysisConfig, DEBUG_FLAGS, OptimizationGoal, PriceHorizonConfig};
+use crate::config::{
+    ANALYSIS, AnalysisConfig, DEBUG_FLAGS, OptimizationGoal, PriceHorizonConfig, StationId,
+    TimeTunerConfig,
+};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -27,7 +30,7 @@ use crate::engine::SniperEngine;
 
 use crate::models::ledger::OpportunityLedger;
 use crate::models::trading_view::{NavigationTarget, SortColumn, SortDirection, TradeOpportunity};
-use crate::models::{ProgressEvent, SyncStatus};
+use crate::models::{ProgressEvent, SyncStatus, find_matching_ohlcv};
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
 use crate::ui::config::UI_TEXT;
@@ -175,7 +178,9 @@ impl CandleResolution {
 pub struct ZoneSniperApp {
     pub selected_pair: Option<String>,
     pub global_price_horizon: PriceHorizonConfig,
-    pub price_horizon_overrides: HashMap<String, PriceHorizonConfig>,
+    // pub price_horizon_overrides: HashMap<String, PriceHorizonConfig>,
+    pub global_tuner_config: TimeTunerConfig,
+    pub station_overrides: HashMap<String, StationId>,
     pub plot_visibility: PlotVisibility,
     pub show_debug_help: bool,
     pub show_ph_help: bool,
@@ -229,10 +234,16 @@ pub struct ZoneSniperApp {
 
 impl Default for ZoneSniperApp {
     fn default() -> Self {
+        let tuner_defaults = TimeTunerConfig::standard_defaults();
+        let mut app_config = ANALYSIS.clone();
+        app_config.tuner = tuner_defaults.clone();
+
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
+            global_tuner_config: tuner_defaults,
+            station_overrides: HashMap::new(),
             app_config: ANALYSIS.clone(),
-            price_horizon_overrides: HashMap::new(),
+            // price_horizon_overrides: HashMap::new(),
             global_price_horizon: ANALYSIS.price_horizon.clone(),
             plot_visibility: PlotVisibility::default(),
             show_debug_help: false,
@@ -279,6 +290,34 @@ impl ZoneSniperApp {
         // Overwrite the default config's PH with the saved user preference.
         // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
         app.app_config.price_horizon = app.global_price_horizon.clone();
+
+        // Restore Tuner Buttons (Scalp/Swing definitions) from disk to the Engine Config
+        app.app_config.tuner = app.global_tuner_config.clone();
+        #[cfg(debug_assertions)]
+        log::info!(
+            "🔧 TUNER INIT: Loaded {} global station definitions.",
+            app.app_config.tuner.stations.len()
+        );
+
+        // Restore Active Station for the specific startup pair
+        if let Some(pair) = &app.selected_pair {
+            if let Some(saved_station) = app.station_overrides.get(pair) {
+                app.app_config.tuner.active_station_id = Some(*saved_station);
+                #[cfg(debug_assertions)]
+                log::info!(
+                    "🔧 TUNER INIT: Restored saved station '{:?}' for [{}]",
+                    saved_station,
+                    pair
+                );
+            } else {
+                #[cfg(debug_assertions)]
+                log::info!(
+                    "🔧 TUNER INIT: No save found for [{}]. Using default '{:?}'",
+                    pair,
+                    app.app_config.tuner.active_station_id
+                );
+            }
+        }
         // APPLY SAVED STRATEGY TO CONFIG
         // This ensures the engine starts with the user's last choice
         app.app_config.journey.profile.goal = app.saved_strategy;
@@ -353,45 +392,109 @@ impl ZoneSniperApp {
         }
     }
 
+    /// Helper: Runs the Auto-Tune algorithm for a specific pair and station.
+    /// Returns Some(new_ph) if successful. Returns None if data/price is missing.
+    fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<f64> {
+        if let Some(engine) = &self.engine {
+            // 1. Get Config for the requested Station
+            let station = self.app_config.tuner.stations.iter().find(|s| s.id == station_id)?;
+
+            // 2. Get Price (Strict Check - must be live)
+            let price = engine.price_stream.get_price(pair)?;
+
+            // 3. Get Data
+            let ts_guard = engine.timeseries.read().unwrap();
+            let ohlcv = find_matching_ohlcv(
+                &ts_guard.series_data,
+                pair,
+                self.app_config.interval_width_ms
+            ).ok()?;
+
+            // 4. Run Worker Logic
+            return crate::engine::worker::tune_to_station(
+                ohlcv,
+                price,
+                &self.app_config,
+                station
+            );
+        }
+        None
+    }
+
     /// Standard Pair Switch (Manual or programmatic).
     /// Updates Global State to point to this pair, but does NOT auto-select a trade.
     pub fn handle_pair_selection(&mut self, new_pair: String) {
-        // 1. Save current config for the OLD pair
+        // --- 1. SAVE STATE (Old Pair) ---
+        // We only remember which Station (Button) the user was on.
         if let Some(old_pair) = &self.selected_pair {
-            let old_config = self.app_config.price_horizon.clone();
-            self.price_horizon_overrides
-                .insert(old_pair.clone(), old_config.clone());
-            if let Some(engine) = &mut self.engine {
-                engine.set_price_horizon_override(old_pair.clone(), old_config.clone());
-            }
+            // Default to Swing if for some reason nothing is set (Safety)
+            let current_station = self
+                .app_config
+                .tuner
+                .active_station_id
+                .unwrap_or(StationId::Swing);
+
+            self.station_overrides
+                .insert(old_pair.clone(), current_station);
+
+            #[cfg(debug_assertions)]
+            log::info!(
+                "💾 SAVE [{}]: Saved Station '{:?}'",
+                old_pair,
+                current_station
+            );
         }
 
         // 2. Set New Pair & Reset View Flags
         self.selected_pair = Some(new_pair.clone());
         self.auto_scale_y = true;
 
-        // 3. Load config for the NEW pair
-        if let Some(saved_config) = self.price_horizon_overrides.get(&new_pair) {
-            let mut config = saved_config.clone();
-            config.min_threshold_pct = crate::config::ANALYSIS.price_horizon.min_threshold_pct;
-            config.max_threshold_pct = crate::config::ANALYSIS.price_horizon.max_threshold_pct;
-            config.threshold_pct = config
-                .threshold_pct
-                .clamp(config.min_threshold_pct, config.max_threshold_pct);
-            self.app_config.price_horizon = config;
+        // --- 3. LOAD STATE (New Pair) ---
+        // Lookup the saved station for the new pair, or default to Swing.
+        let target_station = *self
+            .station_overrides
+            .get(&new_pair)
+            .unwrap_or(&StationId::Swing);
+
+        // Apply it to the config
+        self.app_config.tuner.active_station_id = Some(target_station);
+
+        // --- 4. EXECUTE TUNING ---
+        // We MUST calculate the PH now based on the new pair's volatility.
+        // We do not load a stale number.
+        if let Some(best_ph) = self.run_auto_tune_logic(&new_pair, target_station) {
+            self.app_config.price_horizon.threshold_pct = best_ph;
+            #[cfg(debug_assertions)]
+            log::info!(
+                "📂 LOAD [{}]: Station '{:?}' -> Tuned to {:.2}%",
+                new_pair,
+                target_station,
+                best_ph * 100.0
+            );
         } else {
-            self.app_config.price_horizon = crate::config::ANALYSIS.price_horizon.clone();
+            // Fallback: If we don't have prices yet (rare during runtime), pick the station's minimum scan range
+            // so the UI isn't broken. The next price tick will fix it via the auto-tuner or user interaction.
+            if let Some(station_def) = self
+                .app_config
+                .tuner
+                .stations
+                .iter()
+                .find(|s| s.id == target_station)
+            {
+                self.app_config.price_horizon.threshold_pct = station_def.scan_ph_min;
+            }
+            #[cfg(debug_assertions)]
+            log::warn!(
+                "📂 LOAD [{}]: Station '{:?}' -> Tuning deferred (No Price). Using default min.",
+                new_pair,
+                target_station
+            );
         }
 
         // 4. Update Engine Context
         let price = self.get_display_price(&new_pair);
         if let Some(engine) = &mut self.engine {
             engine.update_config(self.app_config.clone());
-            engine.set_price_horizon_override(
-                new_pair.clone(),
-                self.app_config.price_horizon.clone(),
-            );
-
             let needs_calc = engine.get_model(&new_pair).is_none();
             if needs_calc {
                 engine.force_recalc(&new_pair, price, "USER PAIR SELECTION");
@@ -405,26 +508,13 @@ impl ZoneSniperApp {
     }
 
     pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
-        // 1. CLEAR STALE OP
-        // The old opportunity is based on old zones. It is now invalid.
-        // self.selected_opportunity = None;
-
         if let Some(pair) = self.selected_pair.clone() {
             // log::info!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
 
             let price = self.get_display_price(&pair);
-            let new_config = self.app_config.price_horizon.clone();
-
-            // Update override map
-            self.price_horizon_overrides
-                .insert(pair.clone(), new_config.clone());
 
             if let Some(engine) = &mut self.engine {
-                // Update global config context
                 engine.update_config(self.app_config.clone());
-                // Update specific override
-                engine.set_price_horizon_override(pair.clone(), new_config);
-                // Trigger Recalc
                 engine.force_recalc(
                     &pair,
                     price,
@@ -482,17 +572,30 @@ impl ZoneSniperApp {
 
     /// Selects a specific opportunity and TUNES the engine to view it correctly.
     pub fn select_specific_opportunity(&mut self, op: TradeOpportunity, scroll: ScrollBehavior) {
-        // 1. Tune the Radio (Update PH to match the trade's origin)
-        // We must update the override map so handle_pair_selection respects it.
-        let mut new_config = self.app_config.price_horizon.clone();
-        new_config.threshold_pct = op.source_ph;
+        // let mut new_config = self.app_config.price_horizon.clone();
+        // new_config.threshold_pct = op.source_ph;
 
-        self.price_horizon_overrides
-            .insert(op.pair_name.clone(), new_config.clone());
-        self.app_config.price_horizon = new_config; // Update global for UI slider sync
+        // self.price_horizon_overrides
+        //     .insert(op.pair_name.clone(), new_config.clone());
+        // self.app_config.price_horizon = new_config; // Update global for UI slider sync
 
         // 2. Switch Pair (This triggers engine recalc at the NEW PH)
         self.handle_pair_selection(op.pair_name.clone());
+
+        // 2. OVERRIDE with Specific Trade Context
+        // The Auto-Tune might have picked 5%, but this trade was found at 15%.
+        // We must force the engine to use the trade's original PH.
+        self.app_config.price_horizon.threshold_pct = op.source_ph;
+
+        // FIX: Calculate price BEFORE borrowing self.engine mutably
+        let price = self.get_display_price(&op.pair_name);
+
+        // 3. Force Engine Update
+        // We send a second job to the worker to re-run the math at the exact PH needed.
+        if let Some(engine) = &mut self.engine {
+            engine.update_config(self.app_config.clone());
+            engine.force_recalc(&op.pair_name, price, "SELECT SPECIFIC OPPORTUNITY");
+        }
 
         // 3. Force the Specific Selection
         // (handle_pair_selection auto-selects the "Best", but we want THIS one)
@@ -1017,7 +1120,7 @@ impl ZoneSniperApp {
                 // -------------------------
 
                 engine.update_config(self.app_config.clone());
-                engine.set_all_overrides(self.price_horizon_overrides.clone());
+                // engine.set_all_overrides(self.price_horizon_overrides.clone());
 
                 // Trigger global calc for the VALID pair first
                 engine.trigger_global_recalc(Some(final_pair.clone()));
@@ -1054,24 +1157,25 @@ impl ZoneSniperApp {
             // 1. ACCESS DATA FIRST
             // We need to know what pairs we actually HAVE before we decide what to wait for.
             let ts_guard = engine.timeseries.read().unwrap();
-            
+
             // If data hasn't loaded yet, keep waiting.
             if ts_guard.series_data.is_empty() {
                 // println!("Waiting for KLines...");
-                return; 
+                return;
             }
 
             // 2. CHECK TICKER (Smart Wait)
             // Only wait for prices on pairs that actually exist in our KLine data.
             let mut waiting_for_price = false;
-            
+
             for &pair in crate::ph_audit::config::AUDIT_PAIRS {
                 // Check if we have KLines for this pair
-                let has_data = crate::models::timeseries::find_matching_ohlcv(
-                    &ts_guard.series_data, 
-                    pair, 
-                    self.app_config.interval_width_ms
-                ).is_ok();
+                let has_data = find_matching_ohlcv(
+                    &ts_guard.series_data,
+                    pair,
+                    self.app_config.interval_width_ms,
+                )
+                .is_ok();
 
                 if has_data {
                     // If we have data, we MUST wait for a live price
@@ -1091,7 +1195,7 @@ impl ZoneSniperApp {
             // 3. EXECUTE
             // We hold the lock from step 1, so we drop it now to allow the runner to use it if needed
             // (though we pass a ref, so dropping is just good hygiene here)
-            drop(ts_guard); 
+            drop(ts_guard);
 
             println!(">> App State is RUNNING. Ticker & Data Ready. Starting Audit...");
 
@@ -1173,6 +1277,4 @@ impl eframe::App for ZoneSniperApp {
             }
         }
     }
-
-    
 }

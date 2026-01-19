@@ -17,7 +17,7 @@ use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{AnalysisConfig, TradeProfile};
+use crate::config::{AnalysisConfig, TradeProfile, TunerStation, ANALYSIS};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -62,6 +62,124 @@ struct CandidateResult {
     opportunity: TradeOpportunity,
     #[allow(dead_code)]
     source_desc: String,
+}
+
+/// Runs the "Scan & Fit" algorithm to find the optimal Price Horizon
+/// that produces trades within the Station's target time range.
+pub fn tune_to_station(
+    ohlcv: &OhlcvTimeSeries,
+    current_price: f64,
+    base_config: &AnalysisConfig,
+    station: &TunerStation,
+) -> Option<f64> {
+    let t_start = AppInstant::now();
+    let strategy = base_config.journey.profile.goal;
+
+    #[cfg(debug_assertions)]
+    log::info!(
+        "📻 TUNER START [{}]: Station '{}' (Target: {:.1}-{:.1}h) | Scan Range: {:.1}%-{:.1}% | Strategy: {}",
+        ohlcv.pair_interval.name(),
+        station.name,
+        station.target_min_hours,
+        station.target_max_hours,
+        station.scan_ph_min * 100.0,
+        station.scan_ph_max * 100.0,
+        strategy
+    );
+
+    // 1. Generate Scan Points (Linear Interpolation)
+    let mut scan_points = Vec::with_capacity(ANALYSIS.tuner_scan_steps);
+    if ANALYSIS.tuner_scan_steps > 1 {
+        let step_size = (station.scan_ph_max - station.scan_ph_min) / (ANALYSIS.tuner_scan_steps - 1) as f64;
+        for i in 0..ANALYSIS.tuner_scan_steps {
+            scan_points.push(station.scan_ph_min + (i as f64 * step_size));
+        }
+    } else {
+        scan_points.push(station.scan_ph_min); // Fallback
+    }
+
+    // 2. Run Simulations
+    // We store: (PH, Score, Duration_Hours, Candidate_Count)
+    let mut results: Vec<(f64, f64, f64, usize)> = Vec::new();
+
+    for &ph in &scan_points {
+        let mut config = base_config.clone();
+        config.price_horizon.threshold_pct = ph;
+
+        // Run the Optimized Pathfinder
+        let result = run_pathfinder_simulations(ohlcv, current_price, &config);
+        
+        let count = result.opportunities.len();
+        if count > 0 {
+            // Calculate Average Duration of top results (in Hours)
+            let avg_dur_ms = result.opportunities.iter()
+                .map(|o| o.avg_duration_ms)
+                .sum::<i64>() as f64 / count as f64;
+            
+            let dur_hours = avg_dur_ms / 3_600_000.0;
+
+            // Calculate Representative Score (Top Score)
+            let top_score = result.opportunities[0].calculate_quality_score(&config.journey.profile);
+
+            results.push((ph, top_score, dur_hours, count));
+
+            #[cfg(debug_assertions)]
+            log::info!(
+                "   📡 PROBE {:.2}%: Found {} ops | Top Score {:.2} | Avg Dur {:.1}h",
+                ph * 100.0, count, top_score, dur_hours
+            );
+        } else {
+            #[cfg(debug_assertions)]
+            log::warn!("   📡 PROBE {:.2}%: No signals found (0 candidates).", ph * 100.0);
+        }
+    }
+
+    // 3. The "Fit" Logic (Selection)
+    if results.is_empty() {
+        #[cfg(debug_assertions)]
+        log::warn!("⚠️ TUNER FAILED: No candidates found across entire range.");
+        return None;
+    }
+
+    // A. Filter: Must be within Target Duration Window
+    let valid_fits: Vec<&(f64, f64, f64, usize)> = results.iter()
+        .filter(|(_, _, dur, _)| *dur >= station.target_min_hours && *dur <= station.target_max_hours)
+        .collect();
+
+    let best_match = if !valid_fits.is_empty() {
+        // B. Selector: Best Score among valid fits
+        valid_fits.into_iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal))
+            .unwrap()
+    } else {
+        // Fallback: Nothing fit the time window perfectly.
+        // Pick the result closest to the target duration range (Center point).
+        #[cfg(debug_assertions)]
+        log::warn!("   ⚠️ No perfect time fit. Falling back to closest duration.");
+        
+        let target_center = (station.target_min_hours + station.target_max_hours) / 2.0;
+        
+        results.iter()
+            .min_by(|a, b| {
+                let dist_a = (a.2 - target_center).abs();
+                let dist_b = (b.2 - target_center).abs();
+                dist_a.partial_cmp(&dist_b).unwrap_or(Ordering::Equal)
+            })
+            .unwrap()
+    };
+
+    let elapsed = t_start.elapsed();
+    
+    #[cfg(debug_assertions)]
+    log::info!(
+        "✅ TUNER LOCKED: {:.2}% (Score {:.2}, Duration {:.1}h) | Took {:?}",
+        best_match.0 * 100.0,
+        best_match.1,
+        best_match.2,
+        elapsed
+    );
+
+    Some(best_match.0)
 }
 
 /// Helper: Runs the simulation tournament for a specific target price.

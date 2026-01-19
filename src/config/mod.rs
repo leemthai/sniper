@@ -12,7 +12,7 @@ mod ticker;
 pub mod plot;
 
 // Re-export commonly used items
-pub use analysis::{ANALYSIS, ZoneParams, AnalysisConfig, PriceHorizonConfig, SimilaritySettings, TradeProfile, OptimizationGoal};
+pub use analysis::{ANALYSIS, ZoneParams, AnalysisConfig, PriceHorizonConfig, SimilaritySettings, TradeProfile, OptimizationGoal, TimeTunerConfig, StationId, TunerStation};
 pub use binance::{BINANCE, BinanceApiConfig};
 pub use debug::DEBUG_FLAGS;
 pub use demo::DEMO;

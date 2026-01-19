@@ -10,6 +10,7 @@ use crate::ui::config::UI_TEXT;
 
 pub const DEFAULT_PH_THRESHOLD: f64 = 0.15;
 pub const DEFAULT_TIME_DECAY: f64 = 1.5; // Manually synced to match 0.15 logic
+pub const DEFAULT_TUNER_SCAN_STEPS: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter)]
 pub enum OptimizationGoal {
@@ -113,6 +114,7 @@ pub struct AnalysisConfig {
     pub zone_count: usize,
 
     pub time_decay_factor: f64,
+    pub tuner_scan_steps: usize,
 
     // Sub-groups
     // pub journey: JourneySettings,
@@ -124,6 +126,8 @@ pub struct AnalysisConfig {
     pub journey: JourneySettings,
 
     pub similarity: SimilaritySettings,
+
+    pub tuner: TimeTunerConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -179,12 +183,16 @@ pub struct JourneySettings {
 }
 
 pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
+
+    tuner: TimeTunerConfig::new_const(),
+
     interval_width_ms: TimeUtils::MS_IN_5_MIN,
     zone_count: 256,
 
     // 2. Derive the default automatically
     // 2. Use the Constant
     time_decay_factor: DEFAULT_TIME_DECAY,
+    tuner_scan_steps: DEFAULT_TUNER_SCAN_STEPS,
 
     journey: JourneySettings {
         sample_count: 50,
@@ -257,3 +265,80 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
         profiler_steps: 1000,   // With 50% range, this is 0.05% per bucket
     },
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum StationId {
+    Scalp,
+    Day,
+    Swing,
+    Macro,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TunerStation {
+    pub id: StationId,
+    pub name: String,
+    // The Goal: User wants trades lasting this long
+    pub target_min_hours: f64, 
+    pub target_max_hours: f64,
+    // The Engine Hint: Where should we look for these? (Optimization)
+    pub scan_ph_min: f64, 
+    pub scan_ph_max: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeTunerConfig {
+    pub stations: Vec<TunerStation>,
+    pub active_station_id: Option<StationId>, // Which button is active?
+}
+
+impl TimeTunerConfig {
+    // 1. Const Constructor (For ANALYSIS) - Returns Empty
+    pub const fn new_const() -> Self {
+        Self {
+            stations: Vec::new(), // Allowed in const in modern Rust
+            active_station_id: None,
+        }
+    }
+
+    // 2. Hydration Constructor (For App Startup) - Returns the Real Defaults
+    pub fn standard_defaults() -> Self {
+        Self {
+            active_station_id: Some(StationId::Swing),
+            stations: vec![
+                TunerStation {
+                    id: StationId::Scalp,
+                    name: "⚡ SCALP".to_string(),
+                    target_min_hours: 1.0,
+                    target_max_hours: 6.0,
+                    scan_ph_min: 0.01,
+                    scan_ph_max: 0.04,
+                },
+                TunerStation {
+                    id: StationId::Day,
+                    name: "☀️ DAY".to_string(),
+                    target_min_hours: 6.0,
+                    target_max_hours: 24.0,
+                    scan_ph_min: 0.03,
+                    scan_ph_max: 0.08,
+                },
+                TunerStation {
+                    id: StationId::Swing,
+                    name: "🌊 SWING".to_string(),
+                    target_min_hours: 24.0,
+                    target_max_hours: 120.0,
+                    scan_ph_min: 0.05,
+                    scan_ph_max: 0.15,
+                },
+                TunerStation {
+                    id: StationId::Macro,
+                    name: "🏔️ MACRO".to_string(),
+                    target_min_hours: 336.0,
+                    target_max_hours: 2160.0,
+                    scan_ph_min: 0.15,
+                    scan_ph_max: 0.60,
+                },
+            ],
+        }
+    }
+}
