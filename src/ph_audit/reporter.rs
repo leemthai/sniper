@@ -38,21 +38,21 @@ impl AuditReporter {
             if let Some(hrs) = durations_hours.get(i) {
                 d_str.push_str(&format!(",{:.2}", hrs));
             } else {
-                d_str.push_str(",--");
+                d_str.push_str(",");
             }
         }
 
         // FIX: Conditional Formatting based on Strategy
         let score_str = top_score.map(|v| {
             if strategy.contains("ROI") {
-                format!("{:.2}%", v) // MaxROI or MaxAROI -> Add %
+                format!("{:.2}%", v) // MaxROI or MaxAROI -> Add % to show this is a % score not a raw score....
             } else {
                 format!("{:.2}", v)  // Balanced -> Raw Score
             }
-        }).unwrap_or_else(|| "--".to_string());
+        }).unwrap_or_else(|| "".to_string());
         
         // FIX: High Precision for Stop Loss
-        let stop_str = avg_stop_pct.map(|v| format!("{:.4}%", v * 100.0)).unwrap_or_else(|| "--".to_string());
+        let stop_str = avg_stop_pct.map(|v| format!("{:.4}%", v * 100.0)).unwrap_or_else(|| "".to_string());
 
         let row = format!(
             "{},{},{},{:.1}%,{},{},{},{},{},{},{},{}{}",

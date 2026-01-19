@@ -1047,31 +1047,55 @@ impl ZoneSniperApp {
         None
     }
 
-        // --- AUDIT HELPER ---
+    // --- AUDIT HELPER ---
     #[cfg(feature = "ph_audit")]
     fn try_run_audit(&self, ctx: &Context) {
         if let Some(engine) = &self.engine {
-            // 1. CHECK TICKER: Do we have prices for all audit pairs?
+            // 1. ACCESS DATA FIRST
+            // We need to know what pairs we actually HAVE before we decide what to wait for.
+            let ts_guard = engine.timeseries.read().unwrap();
+            
+            // If data hasn't loaded yet, keep waiting.
+            if ts_guard.series_data.is_empty() {
+                // println!("Waiting for KLines...");
+                return; 
+            }
+
+            // 2. CHECK TICKER (Smart Wait)
+            // Only wait for prices on pairs that actually exist in our KLine data.
+            let mut waiting_for_price = false;
+            
             for &pair in crate::ph_audit::config::AUDIT_PAIRS {
-                if engine.price_stream.get_price(pair).is_none() {
-                    // Not ready yet. Keep the loop alive to pump the WebSocket.
-                    // ctx.request_repaint(); 
-                    return;
+                // Check if we have KLines for this pair
+                let has_data = crate::models::timeseries::find_matching_ohlcv(
+                    &ts_guard.series_data, 
+                    pair, 
+                    self.app_config.interval_width_ms
+                ).is_ok();
+
+                if has_data {
+                    // If we have data, we MUST wait for a live price
+                    if engine.price_stream.get_price(pair).is_none() {
+                        waiting_for_price = true;
+                        break;
+                    }
                 }
             }
 
-            // 2. CHECK DATA: Do we have KLines loaded?
-            let ts_guard = engine.timeseries.read().unwrap();
-            if ts_guard.series_data.is_empty() {
-                // Not ready yet. Data loader is still working.
-                return; 
+            // If we are missing a price for a loaded pair, keep pumping the loop
+            if waiting_for_price {
+                ctx.request_repaint();
+                return;
             }
-            drop(ts_guard); // Release lock
 
             // 3. EXECUTE
+            // We hold the lock from step 1, so we drop it now to allow the runner to use it if needed
+            // (though we pass a ref, so dropping is just good hygiene here)
+            drop(ts_guard); 
+
             println!(">> App State is RUNNING. Ticker & Data Ready. Starting Audit...");
 
-            // Gather Live Prices
+            // Gather Live Prices (Only for the ones we found)
             let mut live_prices = std::collections::HashMap::new();
             for &pair in crate::ph_audit::config::AUDIT_PAIRS {
                 if let Some(p) = engine.price_stream.get_price(pair) {
@@ -1084,9 +1108,10 @@ impl ZoneSniperApp {
 
             // Run & Exit
             crate::ph_audit::runner::execute_audit(&ts, &config, &live_prices);
+        } else {
+            // Engine not initialized yet
         }
     }
-
 }
 
 impl eframe::App for ZoneSniperApp {
