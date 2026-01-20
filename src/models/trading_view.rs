@@ -8,11 +8,10 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{ANALYSIS, AnalysisConfig, TradeProfile, ZoneParams, OptimizationGoal};
+use crate::config::{ANALYSIS, AnalysisConfig, TradeProfile, ZoneParams, OptimizationGoal, StationId};
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
-use crate::models::horizon_profile::HorizonProfile;
 
 use crate::ui::config::UI_TEXT;
 
@@ -171,6 +170,8 @@ pub struct TradeOpportunity {
     pub avg_duration_ms: i64,
 
     pub strategy: OptimizationGoal,
+    pub station_id: StationId,
+    pub market_state: MarketState,
     
     pub simulation: SimulationResult,
     pub variants: Vec<TradeVariant>,
@@ -417,7 +418,7 @@ pub struct TradingModel {
     pub cva: Arc<CVACore>,
     pub zones: ClassifiedZones,
     pub coverage: ZoneCoverageStats,
-    pub profile: HorizonProfile,
+    // pub profile: HorizonProfile,
     pub segments: Vec<DisplaySegment>,
     pub opportunities: Vec<TradeOpportunity>,
 }
@@ -434,7 +435,7 @@ impl TradingModel {
     /// Create a new trading model from CVA results and optional current price
     pub fn from_cva(
         cva: Arc<CVACore>,
-        profile: HorizonProfile,
+        // profile: HorizonProfile,
         ohlcv: &OhlcvTimeSeries,
         config: &AnalysisConfig,
     ) -> Self {
@@ -447,7 +448,7 @@ impl TradingModel {
 
         Self {
             cva,
-            profile,
+            // profile,
             zones: classified,
             coverage: stats,
             pair_name: ohlcv.pair_interval.name().to_string(),

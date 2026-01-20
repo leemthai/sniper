@@ -10,6 +10,7 @@ pub mod utils;
 pub mod plot_layers;
 pub mod styles;
 pub mod ticker;
+pub mod time_tuner;
 
 // Re-export main app
 pub use app::ZoneSniperApp;

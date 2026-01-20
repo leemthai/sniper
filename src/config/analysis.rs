@@ -52,11 +52,11 @@ pub struct PriceHorizonConfig {
     pub threshold_pct: f64,
 
     // UI Bounds
-    pub min_threshold_pct: f64,
-    pub max_threshold_pct: f64,
+    // pub min_threshold_pct: f64,
+    // pub max_threshold_pct: f64,
 
     // Configurable Resolution
-    pub profiler_steps: usize,
+    // pub profiler_steps: usize,
 }
 
 /// Settings for CVA (Cumulative Volume Analysis)
@@ -260,16 +260,17 @@ pub const ANALYSIS: AnalysisConfig = AnalysisConfig {
 
     price_horizon: PriceHorizonConfig {
         threshold_pct: DEFAULT_PH_THRESHOLD,
-        min_threshold_pct: 0.001, // = 0.10% minimum - seems fine for stablecoins even, let's see
-        max_threshold_pct: 1.0, // 1.0 = 100% Range (From 0 to 2x Current Price. Can increase this if we want to set range higher than 2x current price).
-        profiler_steps: 1000,   // With 50% range, this is 0.05% per bucket
+        // min_threshold_pct: 0.001, // = 0.10% minimum - seems fine for stablecoins even, let's see
+        // max_threshold_pct: 1.0, // 1.0 = 100% Range (From 0 to 2x Current Price. Can increase this if we want to set range higher than 2x current price).
+        // profiler_steps: 1000,   // With 50% range, this is 0.05% per bucket
     },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum StationId {
     Scalp,
     Day,
+    #[default]
     Swing,
     Macro,
 }
@@ -289,22 +290,22 @@ pub struct TunerStation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeTunerConfig {
     pub stations: Vec<TunerStation>,
-    pub active_station_id: Option<StationId>, // Which button is active?
+    pub active_station_id: StationId, // Which button is active?
 }
 
 impl TimeTunerConfig {
     // 1. Const Constructor (For ANALYSIS) - Returns Empty
     pub const fn new_const() -> Self {
         Self {
-            stations: Vec::new(), // Allowed in const in modern Rust
-            active_station_id: None,
+            stations: Vec::new(),
+            active_station_id: StationId::Swing,
         }
     }
 
     // 2. Hydration Constructor (For App Startup) - Returns the Real Defaults
     pub fn standard_defaults() -> Self {
         Self {
-            active_station_id: Some(StationId::Swing),
+            active_station_id: StationId::default(),
             stations: vec![
                 TunerStation {
                     id: StationId::Scalp,

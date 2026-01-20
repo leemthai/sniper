@@ -9,15 +9,14 @@ use std::thread;
 
 use uuid::Uuid;
 
-use super::messages::{JobMode, JobRequest, JobResult};
+use super::messages::{JobRequest, JobResult};
 
 use crate::analysis::adaptive::AdaptiveParameters;
-use crate::analysis::horizon_profiler;
 use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{AnalysisConfig, TradeProfile, TunerStation, ANALYSIS};
+use crate::config::{ANALYSIS, AnalysisConfig, TradeProfile, TunerStation};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -25,7 +24,6 @@ use crate::domain::price_horizon;
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::CVACore;
-use crate::models::horizon_profile::HorizonProfile;
 use crate::models::timeseries::find_matching_ohlcv;
 use crate::models::trading_view::{TradeDirection, TradeOpportunity, TradeVariant};
 
@@ -72,25 +70,29 @@ pub fn tune_to_station(
     base_config: &AnalysisConfig,
     station: &TunerStation,
 ) -> Option<f64> {
-    let t_start = AppInstant::now();
-    let strategy = base_config.journey.profile.goal;
+
+    let _strategy = base_config.journey.profile.goal;
+    let _t_start = AppInstant::now();
 
     #[cfg(debug_assertions)]
-    log::info!(
-        "📻 TUNER START [{}]: Station '{}' (Target: {:.1}-{:.1}h) | Scan Range: {:.1}%-{:.1}% | Strategy: {}",
-        ohlcv.pair_interval.name(),
-        station.name,
-        station.target_min_hours,
-        station.target_max_hours,
-        station.scan_ph_min * 100.0,
-        station.scan_ph_max * 100.0,
-        strategy
-    );
+    {
+        log::info!(
+            "📻 TUNER START [{}]: Station '{}' (Target: {:.1}-{:.1}h) | Scan Range: {:.1}%-{:.1}% | Strategy: {}",
+            ohlcv.pair_interval.name(),
+            station.name,
+            station.target_min_hours,
+            station.target_max_hours,
+            station.scan_ph_min * 100.0,
+            station.scan_ph_max * 100.0,
+            _strategy
+        );
+    }
 
     // 1. Generate Scan Points (Linear Interpolation)
     let mut scan_points = Vec::with_capacity(ANALYSIS.tuner_scan_steps);
     if ANALYSIS.tuner_scan_steps > 1 {
-        let step_size = (station.scan_ph_max - station.scan_ph_min) / (ANALYSIS.tuner_scan_steps - 1) as f64;
+        let step_size =
+            (station.scan_ph_max - station.scan_ph_min) / (ANALYSIS.tuner_scan_steps - 1) as f64;
         for i in 0..ANALYSIS.tuner_scan_steps {
             scan_points.push(station.scan_ph_min + (i as f64 * step_size));
         }
@@ -108,29 +110,39 @@ pub fn tune_to_station(
 
         // Run the Optimized Pathfinder
         let result = run_pathfinder_simulations(ohlcv, current_price, &config);
-        
+
         let count = result.opportunities.len();
         if count > 0 {
             // Calculate Average Duration of top results (in Hours)
-            let avg_dur_ms = result.opportunities.iter()
+            let avg_dur_ms = result
+                .opportunities
+                .iter()
                 .map(|o| o.avg_duration_ms)
-                .sum::<i64>() as f64 / count as f64;
-            
+                .sum::<i64>() as f64
+                / count as f64;
+
             let dur_hours = avg_dur_ms / 3_600_000.0;
 
             // Calculate Representative Score (Top Score)
-            let top_score = result.opportunities[0].calculate_quality_score(&config.journey.profile);
+            let top_score =
+                result.opportunities[0].calculate_quality_score(&config.journey.profile);
 
             results.push((ph, top_score, dur_hours, count));
 
             #[cfg(debug_assertions)]
             log::info!(
                 "   📡 PROBE {:.2}%: Found {} ops | Top Score {:.2} | Avg Dur {:.1}h",
-                ph * 100.0, count, top_score, dur_hours
+                ph * 100.0,
+                count,
+                top_score,
+                dur_hours
             );
         } else {
             #[cfg(debug_assertions)]
-            log::warn!("   📡 PROBE {:.2}%: No signals found (0 candidates).", ph * 100.0);
+            log::warn!(
+                "   📡 PROBE {:.2}%: No signals found (0 candidates).",
+                ph * 100.0
+            );
         }
     }
 
@@ -142,13 +154,17 @@ pub fn tune_to_station(
     }
 
     // A. Filter: Must be within Target Duration Window
-    let valid_fits: Vec<&(f64, f64, f64, usize)> = results.iter()
-        .filter(|(_, _, dur, _)| *dur >= station.target_min_hours && *dur <= station.target_max_hours)
+    let valid_fits: Vec<&(f64, f64, f64, usize)> = results
+        .iter()
+        .filter(|(_, _, dur, _)| {
+            *dur >= station.target_min_hours && *dur <= station.target_max_hours
+        })
         .collect();
 
     let best_match = if !valid_fits.is_empty() {
         // B. Selector: Best Score among valid fits
-        valid_fits.into_iter()
+        valid_fits
+            .into_iter()
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal))
             .unwrap()
     } else {
@@ -156,10 +172,11 @@ pub fn tune_to_station(
         // Pick the result closest to the target duration range (Center point).
         #[cfg(debug_assertions)]
         log::warn!("   ⚠️ No perfect time fit. Falling back to closest duration.");
-        
+
         let target_center = (station.target_min_hours + station.target_max_hours) / 2.0;
-        
-        results.iter()
+
+        results
+            .iter()
             .min_by(|a, b| {
                 let dist_a = (a.2 - target_center).abs();
                 let dist_b = (b.2 - target_center).abs();
@@ -168,16 +185,17 @@ pub fn tune_to_station(
             .unwrap()
     };
 
-    let elapsed = t_start.elapsed();
-    
     #[cfg(debug_assertions)]
-    log::info!(
-        "✅ TUNER LOCKED: {:.2}% (Score {:.2}, Duration {:.1}h) | Took {:?}",
-        best_match.0 * 100.0,
-        best_match.1,
-        best_match.2,
-        elapsed
-    );
+    {
+        let elapsed = _t_start.elapsed();
+        log::info!(
+            "✅ TUNER LOCKED: {:.2}% (Score {:.2}, Duration {:.1}h) | Took {:?}",
+            best_match.0 * 100.0,
+            best_match.1,
+            best_match.2,
+            elapsed
+        );
+    }
 
     Some(best_match.0)
 }
@@ -231,7 +249,6 @@ fn simulate_target(
                 created_at: TimeUtils::now_timestamp_ms(),
                 source_ph: ctx.ph_pct,
                 pair_name: ctx.pair_name.to_string(),
-                // target_zone_id removed
                 direction,
                 start_price: ctx.current_price,
                 target_price,
@@ -239,6 +256,8 @@ fn simulate_target(
                 max_duration_ms: ctx.duration_ms as i64,
                 avg_duration_ms: avg_dur_ms,
                 strategy: profile.goal,
+                station_id: ctx.config.tuner.active_station_id,
+                market_state: ctx.current_state,
                 simulation: result,
                 variants,
             };
@@ -965,7 +984,7 @@ fn run_stop_loss_tournament(
     })
 }
 
-pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
+pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
     // 1. ACQUIRE DATA (Clone & Release)
     let ts_local = match fetch_local_timeseries(&req) {
         Ok(ts) => ts,
@@ -975,23 +994,12 @@ pub fn process_request_sync(mut req: JobRequest, tx: Sender<JobResult>) {
                 duration_ms: 0,
                 result: Err(e),
                 cva: None,
-                profile: None,
+                // profile: None,
                 candle_count: 0,
             });
             return;
         }
     };
-
-    // 2. AUDIT DATA (The Proof)
-    // We check the *Cloned* data to ensure it has the latest updates
-    // audit_worker_data(&req, &ts_local);
-
-    // 3. AUTO-TUNE (Optional)
-    if req.mode == JobMode::AutoTune {
-        perform_auto_tune(&mut req, &ts_local);
-    }
-
-    // 4. EXECUTE ANALYSIS
     perform_standard_analysis(&req, &ts_local, tx);
 }
 
@@ -1014,37 +1022,6 @@ fn fetch_local_timeseries(req: &JobRequest) -> Result<TimeSeriesCollection, Stri
     } else {
         Err(format!("Worker: No data found for {}", req.pair_name))
     }
-}
-
-fn perform_auto_tune(req: &mut JobRequest, ts_collection: &TimeSeriesCollection) {
-    let candidates = vec![0.005, 0.020, 0.070, 0.200, 0.500];
-    let mut best_ph = req.config.price_horizon.threshold_pct;
-    let mut best_score = f64::NEG_INFINITY;
-
-    #[cfg(debug_assertions)]
-    log::info!("AUTO-TUNE [{}] Starting Spectrum Scan...", req.pair_name);
-
-    for ph in candidates {
-        req.config.price_horizon.threshold_pct = ph;
-
-        if let Some((score, _model)) = run_test_analysis(req, ts_collection) {
-            if score > best_score {
-                best_score = score;
-                best_ph = ph;
-            }
-        }
-    }
-
-    #[cfg(debug_assertions)]
-    log::info!(
-        "AUTO-TUNE [{}] Winner: {:.2}% (Score: {:.2})",
-        req.pair_name,
-        best_ph * 100.0,
-        best_score
-    );
-
-    req.config.price_horizon.threshold_pct = best_ph;
-    req.mode = JobMode::Standard;
 }
 
 fn perform_standard_analysis(
@@ -1073,65 +1050,30 @@ fn perform_standard_analysis(
             pair_analysis_pure(req.pair_name.clone(), ts_collection, price, &req.config)
         });
 
-        // 4. Profiler
-        let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 2_000, {
-            get_or_generate_profile(req, ts_collection, price)
-        });
+        // // 4. Profiler
+        // let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 2_000, {
+        //     get_or_generate_profile(req, ts_collection, price)
+        // });
 
         let elapsed = start.elapsed().as_millis();
 
         // 5. Result Construction
         let response = match result_cva {
             Ok(cva) => {
-                build_success_result(req, ts_collection, cva, profile, price, count, elapsed)
+                build_success_result(req, ts_collection, cva, price, count, elapsed)
             }
             Err(e) => JobResult {
                 pair_name: req.pair_name.clone(),
                 duration_ms: elapsed,
                 result: Err(e.to_string()),
                 cva: None,
-                profile: Some(profile),
+                // profile: Some(profile),
                 candle_count: count,
             },
         };
 
         let _ = tx.send(response);
     });
-}
-
-// Used by AutoTune to score a specific PH setting
-fn run_test_analysis(
-    req: &JobRequest,
-    ts_collection: &TimeSeriesCollection,
-) -> Option<(f64, TradingModel)> {
-    let price = resolve_analysis_price(req, ts_collection);
-
-    if let Ok(cva) = pair_analysis_pure(req.pair_name.clone(), ts_collection, price, &req.config) {
-        let cva_arc = Arc::new(cva);
-        let profile = get_or_generate_profile(req, ts_collection, price);
-
-        let ohlcv = find_matching_ohlcv(
-            &ts_collection.series_data,
-            &req.pair_name,
-            req.config.interval_width_ms,
-        )
-        .ok()?;
-
-        let mut model = TradingModel::from_cva(cva_arc, profile, ohlcv, &req.config);
-
-        let pf_result = run_pathfinder_simulations(ohlcv, price, &req.config);
-        model.opportunities = pf_result.opportunities;
-
-        let score: f64 = model
-            .opportunities
-            .iter()
-            .map(|op| op.calculate_quality_score(&req.config.journey.profile))
-            .sum();
-
-        Some((score, model))
-    } else {
-        None
-    }
 }
 
 fn resolve_analysis_price(req: &JobRequest, ts_collection: &TimeSeriesCollection) -> f64 {
@@ -1169,34 +1111,34 @@ fn calculate_exact_candle_count(
     }
 }
 
-fn get_or_generate_profile(
-    req: &JobRequest,
-    ts_collection: &TimeSeriesCollection,
-    price: f64,
-) -> HorizonProfile {
-    // Check existing
-    if let Some(existing) = &req.existing_profile {
-        let price_match = (existing.base_price - price).abs() < f64::EPSILON;
-        // Basic config check (reusing cached profile if valid)
-        if price_match {
-            return existing.clone();
-        }
-    }
+// fn get_or_generate_profile(
+//     req: &JobRequest,
+//     ts_collection: &TimeSeriesCollection,
+//     price: f64,
+// ) -> HorizonProfile {
+//     // Check existing
+//     if let Some(existing) = &req.existing_profile {
+//         let price_match = (existing.base_price - price).abs() < f64::EPSILON;
+//         // Basic config check (reusing cached profile if valid)
+//         if price_match {
+//             return existing.clone();
+//         }
+//     }
 
-    // Generate new
-    horizon_profiler::generate_profile(
-        &req.pair_name,
-        ts_collection,
-        price,
-        &req.config.price_horizon,
-    )
-}
+//     // Generate new
+//     horizon_profiler::generate_profile(
+//         &req.pair_name,
+//         ts_collection,
+//         price,
+//         &req.config.price_horizon,
+//     )
+// }
 
 fn build_success_result(
     req: &JobRequest,
     ts_collection: &TimeSeriesCollection,
     cva: CVACore,
-    profile: HorizonProfile,
+    // profile: HorizonProfile,
     price: f64,
     count: usize,
     elapsed: u128,
@@ -1210,7 +1152,7 @@ fn build_success_result(
     )
     .expect("OHLCV data missing despite CVA success");
 
-    let mut model = TradingModel::from_cva(cva_arc.clone(), profile.clone(), ohlcv, &req.config);
+    let mut model = TradingModel::from_cva(cva_arc.clone(), ohlcv, &req.config);
 
     // Run Pathfinder
     let pf_result = run_pathfinder_simulations(ohlcv, price, &req.config);
@@ -1222,7 +1164,7 @@ fn build_success_result(
         duration_ms: elapsed,
         result: Ok(Arc::new(model)),
         cva: Some(cva_arc),
-        profile: Some(profile),
+        // profile: Some(profile),
         candle_count: count,
     }
 }

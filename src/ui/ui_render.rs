@@ -24,16 +24,13 @@ use crate::models::trading_view::{
 use crate::ui::app::{CandleResolution, ScrollBehavior};
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color};
-use crate::ui::ui_panels::{
-    CandleRangePanel, DataGenerationEventChanged, DataGenerationPanel, Panel,
-};
+use crate::ui::time_tuner;
+use crate::ui::ui_panels::CandleRangePanel;
 use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
-use crate::utils::maths_utils::{
-    calculate_percent_diff, format_fixed_chars, format_volume_compact,
-};
+use crate::utils::maths_utils::{calculate_percent_diff, format_volume_compact};
 
 use super::app::ZoneSniperApp;
 
@@ -675,7 +672,7 @@ impl ZoneSniperApp {
     fn render_strategy_header_grid(&mut self, ui: &mut Ui, sort_changed: &mut bool) {
         let goals: Vec<_> = OptimizationGoal::iter().collect();
         let count = goals.len();
-        
+
         // Helper closure to render a specific goal by index
         let mut render_btn = |ui: &mut Ui, idx: usize| {
             if let Some(goal) = goals.get(idx) {
@@ -695,35 +692,34 @@ impl ZoneSniperApp {
 
             if count == 1 {
                 // Case 1: Single Center
-                ui.horizontal(|ui| {ui.add_space(12.0);
-                render_btn(ui, 0);
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    render_btn(ui, 0);
                 });
-            } 
-            else if count == 2 {
+            } else if count == 2 {
                 // Case 2: Split Left/Right
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0; // Gap
                     render_btn(ui, 0);
                     render_btn(ui, 1);
                 });
-            }
-            else if count == 3 {
+            } else if count == 3 {
                 // Case 3: Top Center, Bottom Split
                 // Top Row
-                ui.horizontal(|ui| {ui.add_space(12.0);
-                render_btn(ui, 0);
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    render_btn(ui, 0);
                 });
-                
+
                 // Bottom Row
                 ui.horizontal(|ui| {
                     // Manual padding to center the pair or split them
                     // Since column is 70px wide, and icons are ~20px, we have room.
-                    ui.spacing_mut().item_spacing.x = 12.0; 
+                    ui.spacing_mut().item_spacing.x = 12.0;
                     render_btn(ui, 1);
                     render_btn(ui, 2);
                 });
-            }
-            else if count >= 4 {
+            } else if count >= 4 {
                 // Case 4: 2x2 Grid
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
@@ -806,8 +802,8 @@ impl ZoneSniperApp {
                 .resizable(false)
                 .sense(Sense::click()) // Enable row clicks
                 .cell_layout(Layout::left_to_right(Align::Min))
-                .column(Column::exact(140.0).clip(true)) // Pair (Fixed base, resizable)
-                .column(Column::exact(70.0).clip(true)) // ROI/AROI (Strict width, clip overflow)
+                .column(Column::exact(140.0).clip(false)) // Pair
+                .column(Column::exact(70.0).clip(true)) // ROI/AROI
                 .column(Column::exact(55.0).clip(true)) // Vol/Mom
                 .column(Column::exact(55.0).clip(true)) // Time/Ops
                 .column(Column::exact(55.0).clip(true)) // Volume
@@ -858,7 +854,7 @@ impl ZoneSniperApp {
             if self.render_stable_sort_label(ui, col_top, txt_top) {
                 *sort_changed = true;
             }
-            
+
             // Bottom Item (Optional)
             if let Some((c, t)) = col_bot {
                 if self.render_stable_sort_label(ui, c, t) {
@@ -874,15 +870,15 @@ impl ZoneSniperApp {
         // Col 1: Pair (Top) / Target (Bottom)
         header.col(|ui| {
             self.render_header_stack(
-                ui, 
+                ui,
                 sort_changed,
-                SortColumn::PairName, 
-                &UI_TEXT.label_pair, 
-                Some((SortColumn::TargetPrice, &UI_TEXT.label_target))
+                SortColumn::PairName,
+                &UI_TEXT.label_pair,
+                Some((SortColumn::TargetPrice, &UI_TEXT.label_target)),
             );
         });
 
-// Col 2: Strategy Metrics (Grid Layout)
+        // Col 2: Strategy Metrics (Grid Layout)
         header.col(|ui| {
             self.render_strategy_header_grid(ui, sort_changed);
         });
@@ -1000,26 +996,28 @@ impl ZoneSniperApp {
                             .color(PLOT_CONFIG.color_text_primary),
                     );
 
-                    // 2. PH Badge (Context)
-                    // Logic: Use Trade Source if available, otherwise use User's Current Setting
-                    let ph_val_raw = if let Some(live_op) = &row.opportunity {
-                        live_op.opportunity.source_ph
-                    } else {
-                        // Fallback: Check overrides -> Global Config
-                        self.price_horizon_overrides
-                            .get(&row.pair_name)
-                            .map(|c| c.threshold_pct)
-                            .unwrap_or(self.app_config.price_horizon.threshold_pct)
-                    };
+                    // // 2. PH Badge (Context)
+                    // // Logic: Use Trade Source if available, otherwise use User's Current Setting
+                    // let ph_val_raw = if let Some(live_op) = &row.opportunity {
+                    //     live_op.opportunity.source_ph
+                    // } else {
+                    //     #[cfg(debug_assertions)]
+                    //     0.15
+                    //     // // Fallback: Check overrides -> Global Config
+                    //     // self.price_horizon_overrides
+                    //     //     .get(&row.pair_name)
+                    //     //     .map(|c| c.threshold_pct)
+                    //     //     .unwrap_or(self.app_config.price_horizon.threshold_pct)
+                    // };
 
-                    let ph_val = ph_val_raw * 100.0;
-                    if let Some(ph_str) = format_fixed_chars(ph_val, 4) {
-                        ui.label(
-                            RichText::new(format!("@{}%", ph_str))
-                                .size(10.0)
-                                .color(PLOT_CONFIG.color_text_subdued),
-                        );
-                    }
+                    // let ph_val = ph_val_raw * 100.0;
+                    // if let Some(ph_str) = format_fixed_chars(ph_val, 4) {
+                    //     ui.label(
+                    //         RichText::new(format!("@{}%", ph_str))
+                    //             .size(10.0)
+                    //             .color(PLOT_CONFIG.color_text_subdued),
+                    //     );
+                    // }
 
                     // Direction Icon
                     if let Some(live_op) = &row.opportunity {
@@ -1086,12 +1084,12 @@ impl ZoneSniperApp {
         });
     }
 
-fn col_strategy_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+    fn col_strategy_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         table_row.col(|ui| {
             if let Some(live_op) = &row.opportunity {
                 let op = &live_op.opportunity;
                 let roi_color = get_outcome_color(live_op.live_roi);
-                
+
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
 
@@ -1119,17 +1117,20 @@ fn col_strategy_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
 
                     // 3. Score (Conditional)
                     // Show if sorting by Score OR if the trade was born from Balance strategy
-                    let show_score = self.tf_sort_col == SortColumn::Score 
+                    let show_score = self.tf_sort_col == SortColumn::Score
                         || op.strategy == OptimizationGoal::Balanced;
 
                     if show_score {
                         let profile = &self.app_config.journey.profile;
                         let score = op.calculate_quality_score(profile);
-                        
+
                         ui.label(
-                            RichText::new(format!("{}: {:.0}", UI_TEXT.icon_strategy_balanced, score))
-                                .size(9.0)
-                                .color(PLOT_CONFIG.color_text_subdued),
+                            RichText::new(format!(
+                                "{}: {:.0}",
+                                UI_TEXT.icon_strategy_balanced, score
+                            ))
+                            .size(9.0)
+                            .color(PLOT_CONFIG.color_text_subdued),
                         );
                     }
                 });
@@ -1162,16 +1163,18 @@ fn col_strategy_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         });
     }
 
-fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
+    fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         table_row.col(|ui| {
             if let Some(live_op) = &row.opportunity {
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
                     // Avg Duration Only
                     ui.label(
-                        RichText::new(TimeUtils::format_duration(live_op.opportunity.avg_duration_ms))
-                            .small()
-                            .color(PLOT_CONFIG.color_text_neutral),
+                        RichText::new(TimeUtils::format_duration(
+                            live_op.opportunity.avg_duration_ms,
+                        ))
+                        .small()
+                        .color(PLOT_CONFIG.color_text_neutral),
                     );
                 });
             } else {
@@ -1291,10 +1294,10 @@ fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         final_rows
     }
 
-/// Renders a small icon-only sort button. Returns true if sort changed.
+    /// Renders a small icon-only sort button. Returns true if sort changed.
     fn render_sort_icon_button(&mut self, ui: &mut Ui, col: SortColumn, icon: &str) -> bool {
         let is_active = self.tf_sort_col == col;
-        
+
         let color = if is_active {
             PLOT_CONFIG.color_text_primary
         } else {
@@ -1314,8 +1317,9 @@ fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         };
 
         // Render
-        let response = ui.interactive_label(&label_text, is_active, color, FontId::proportional(14.0));
-        
+        let response =
+            ui.interactive_label(&label_text, is_active, color, FontId::proportional(14.0));
+
         if response.clicked() {
             if is_active {
                 self.tf_sort_dir = self.tf_sort_dir.toggle();
@@ -1472,6 +1476,57 @@ fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         ui.add_space(10.0);
     }
 
+    /// Handles events from the Time Tuner UI (Left Panel).
+    pub fn handle_tuner_action(&mut self, action: time_tuner::TunerAction) {
+        match action {
+            time_tuner::TunerAction::StationSelected(station_id) => {
+                // A. Update Active ID (Global Config)
+                self.app_config.tuner.active_station_id = station_id;
+
+                // B. Run Auto-Tune for the Active Pair
+                if let Some(pair) = &self.selected_pair {
+                    let pair_name = pair.clone();
+
+                    // Save the preference immediately
+                    self.station_overrides.insert(pair_name.clone(), station_id);
+
+                    if let Some(best_ph) = self.run_auto_tune_logic(&pair_name, station_id) {
+                        #[cfg(debug_assertions)]
+                        log::info!(
+                            "🎛️ BUTTON TUNE [{}] Station: {:?} -> PH {:.2}%",
+                            pair_name,
+                            station_id,
+                            best_ph * 100.0
+                        );
+
+                        // C. Apply Result to Config
+                        self.app_config.price_horizon.threshold_pct = best_ph;
+
+                        // D. Update Engine
+                        if let Some(engine) = &mut self.engine {
+                            // Create specific config for this pair's override
+                            let mut new_conf = self.app_config.price_horizon.clone();
+                            new_conf.threshold_pct = best_ph;
+                            engine.set_price_horizon_override(pair_name.clone(), new_conf);
+
+                            // Update global context & Fire
+                            engine.update_config(self.app_config.clone());
+                            // FIX: Use force_recalc to update ONLY this pair
+                            engine.force_recalc(&pair_name, None, "USER TUNE TIME BUTTON");
+                        }
+                    }
+                }
+                else {
+
+                }
+            }
+            time_tuner::TunerAction::ConfigureTuner => {
+                #[cfg(debug_assertions)]
+                log::info!("TODO: Open Config Modal for Time Tuner");
+            }
+        }
+    }
+
     pub(super) fn render_left_panel(&mut self, ctx: &Context) {
         let frame = UI_CONFIG.side_panel_frame();
 
@@ -1480,38 +1535,9 @@ fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
             .resizable(false)
             .frame(frame)
             .show(ctx, |ui| {
-                let data_events = self.data_generation_panel(ui);
-                for event in data_events {
-                    match event {
-                        DataGenerationEventChanged::Pair(new_pair) => {
-                            self.handle_pair_selection(new_pair);
-                        }
-                        DataGenerationEventChanged::PriceHorizonThreshold(new_threshold) => {
-                            let prev = self.app_config.price_horizon.threshold_pct;
-                            if (prev - new_threshold).abs() > f64::EPSILON {
-                                self.app_config.price_horizon.threshold_pct = new_threshold;
-                                self.global_price_horizon.threshold_pct = new_threshold;
-
-                                // --- ADAPTIVE DECAY LOGIC ---
-                                // "Drag left to Snipe (High Decay), Drag right to Invest (Low Decay)"
-                                let new_decay =
-                                    AdaptiveParameters::calculate_time_decay(new_threshold);
-
-                                // Apply only if changed (prevents log spam if dragging within same band)
-                                if (self.app_config.time_decay_factor - new_decay).abs()
-                                    > f64::EPSILON
-                                {
-                                    self.app_config.time_decay_factor = new_decay;
-                                }
-                                self.auto_scale_y = true;
-                                // NEW: If we change PH, the list might shuffle. Ensure we keep our selection in view.
-                                self.update_scroll_to_selection();
-                                self.invalidate_all_pairs_for_global_change(
-                                    "price horizon threshold changed",
-                                );
-                            }
-                        }
-                    }
+                // 1. TIME TUNER
+                if let Some(action) = time_tuner::render(ui, &self.app_config.tuner) {
+                    self.handle_tuner_action(action);
                 }
 
                 ui.add_space(10.0);
@@ -2152,38 +2178,38 @@ fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
             });
     }
 
-    fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
-        // 1. Get Data from Engine
-        let (_, profile, actual_count) = if let Some(engine) = &self.engine {
-            let pairs = engine.get_all_pair_names();
+    //     fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
+    //         // 1. Get Data from Engine
+    //         let (_, profile, actual_count) = if let Some(engine) = &self.engine {
+    //             let pairs = engine.get_all_pair_names();
 
-            let (prof, count) = if let Some(pair) = &self.selected_pair {
-                (engine.get_profile(pair), engine.get_candle_count(pair))
-            } else {
-                (None, 0)
-            };
+    //             let (prof, count) = if let Some(pair) = &self.selected_pair {
+    //                 (engine.get_profile(pair), engine.get_candle_count(pair))
+    //             } else {
+    //                 (None, 0)
+    //             };
 
-            (pairs, prof, count)
-        } else {
-            (Vec::new(), None, 0)
-        };
+    //             (pairs, prof, count)
+    //         } else {
+    //             (Vec::new(), None, 0)
+    //         };
 
-        // 2. Render Panel
-        let mut panel = DataGenerationPanel::new(
-            &self.app_config.price_horizon,
-            profile.as_ref(),
-            actual_count,
-            self.app_config.interval_width_ms,
-        );
+    //         // 2. Render Panel
+    //         let mut panel = DataGenerationPanel::new(
+    //             &self.app_config.price_horizon,
+    //             profile.as_ref(),
+    //             actual_count,
+    //             self.app_config.interval_width_ms,
+    //         );
 
-        let events = panel.render(ui, &mut self.show_ph_help);
+    //         let events = panel.render(ui, &mut self.show_ph_help);
 
-        // Render the window (it handles its own "if open" check internally via .open())
-        if self.show_ph_help {
-            DataGenerationPanel::render_ph_help_window(ui.ctx(), &mut self.show_ph_help);
-        }
-        events
-    }
+    //         // Render the window (it handles its own "if open" check internally via .open())
+    //         if self.show_ph_help {
+    //             DataGenerationPanel::render_ph_help_window(ui.ctx(), &mut self.show_ph_help);
+    //         }
+    //         events
+    //     }
 }
 
 fn render_fullscreen_message(ui: &mut Ui, title: &str, subtitle: &str, is_error: bool) {

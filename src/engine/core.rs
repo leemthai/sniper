@@ -6,16 +6,12 @@ use std::sync::{Arc, RwLock};
 #[cfg(not(target_arch = "wasm32"))]
 use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::Runtime};
 
-use crate::analysis::adaptive::AdaptiveParameters;
-use crate::analysis::market_state::MarketState;
-
 use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
 use crate::data::timeseries::TimeSeriesCollection;
 
-use crate::models::horizon_profile::HorizonProfile;
 use crate::models::ledger::OpportunityLedger;
 use crate::models::timeseries::{LiveCandle, find_matching_ohlcv};
 use crate::models::trading_view::{
@@ -26,7 +22,7 @@ use crate::utils::TimeUtils;
 use crate::utils::maths_utils::calculate_percent_diff;
 use crate::utils::time_utils::AppInstant;
 
-use super::messages::{JobMode, JobRequest, JobResult};
+use super::messages::{JobRequest, JobResult};
 use super::state::PairState;
 use super::worker;
 
@@ -58,7 +54,7 @@ pub struct SniperEngine {
     pub queue: VecDeque<(String, Option<f64>)>,
     /// The Live Configuration State
     pub current_config: AnalysisConfig,
-    pub config_overrides: HashMap<String, PriceHorizonConfig>,
+    pub price_horizon_config_overrides: HashMap<String, PriceHorizonConfig>,
     pub ledger: OpportunityLedger,
     pub results_repo: Arc<dyn ResultsRepositoryTrait>,
 
@@ -147,7 +143,7 @@ impl SniperEngine {
             result_tx,
             queue: VecDeque::new(),
             current_config: ANALYSIS.clone(),
-            config_overrides: HashMap::new(),
+            price_horizon_config_overrides: HashMap::new(),
             ledger: OpportunityLedger::new(),
             results_repo: Arc::new(repo),
             last_ledger_maintenance: AppInstant::now(),
@@ -316,8 +312,6 @@ impl SniperEngine {
         crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
             let mut rows = Vec::new();
 
-            let ph_pct = self.current_config.price_horizon.threshold_pct;
-            let lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
             let now_ms = TimeUtils::now_timestamp_ms();
             let day_ms = 86_400_000;
 
@@ -350,7 +344,6 @@ impl SniperEngine {
 
                 // 3. Calculate Volume & Market State (From TimeSeries)
                 // We do this for every pair regardless of whether it has ops
-                let mut m_state = None;
                 let mut vol_24h = 0.0;
 
                 if let Some(ts) = ts_guard
@@ -361,7 +354,7 @@ impl SniperEngine {
                     let count = ts.klines();
                     if count > 0 {
                         let current_idx = count - 1;
-                        m_state = MarketState::calculate(ts, current_idx, lookback);
+                        // m_state = MarketState::calculate(ts, current_idx, lookback);
                         for i in (0..=current_idx).rev() {
                             let c = ts.get_candle(i);
                             if now_ms - c.timestamp_ms > day_ms {
@@ -415,7 +408,7 @@ impl SniperEngine {
                         rows.push(TradeFinderRow {
                             pair_name: pair.clone(),
                             quote_volume_24h: vol_24h,
-                            market_state: m_state, // Copy state
+                            market_state: Some(op.market_state),
                             opportunity_count_total: total_ops,
                             opportunity: Some(live_opp),
                         });
@@ -425,7 +418,7 @@ impl SniperEngine {
                     rows.push(TradeFinderRow {
                         pair_name: pair.clone(),
                         quote_volume_24h: vol_24h,
-                        market_state: m_state,
+                        market_state: None,
                         opportunity_count_total: 0,
                         opportunity: None,
                     });
@@ -489,13 +482,13 @@ impl SniperEngine {
 
     // NEW: Helper to set an override
     pub fn set_price_horizon_override(&mut self, pair: String, config: PriceHorizonConfig) {
-        self.config_overrides.insert(pair, config);
+        self.price_horizon_config_overrides.insert(pair, config);
     }
 
-    // NEW: Helper to bulk update (for startup sync)
-    pub fn set_all_overrides(&mut self, overrides: HashMap<String, PriceHorizonConfig>) {
-        self.config_overrides = overrides;
-    }
+    // // NEW: Helper to bulk update (for startup sync)
+    // pub fn set_all_overrides(&mut self, overrides: HashMap<String, PriceHorizonConfig>) {
+    //     self.config_overrides = overrides;
+    // }
 
     /// THE GAME LOOP.
     pub fn update(&mut self, _protected_id: Option<&str>) {
@@ -655,9 +648,9 @@ impl SniperEngine {
     fn handle_job_result(&mut self, result: JobResult) {
         if let Some(state) = self.pairs.get_mut(&result.pair_name) {
             // 1. Always update profile if present (Success OR Failure)
-            if let Some(p) = result.profile {
-                state.profile = Some(p);
-            }
+            // if let Some(p) = result.profile {
+            //     state.profile = Some(p);
+            // }
 
             // 2. Always update the authoritative candle count
             state.last_candle_count = result.candle_count;
@@ -704,9 +697,9 @@ impl SniperEngine {
             .unwrap_or(0)
     }
 
-    pub fn get_profile(&self, pair: &str) -> Option<HorizonProfile> {
-        self.pairs.get(pair).and_then(|state| state.profile.clone())
-    }
+    // pub fn get_profile(&self, pair: &str) -> Option<HorizonProfile> {
+    //     self.pairs.get(pair).and_then(|state| state.profile.clone())
+    // }
 
     fn check_automatic_triggers(&mut self) {
         let pairs: Vec<String> = self.pairs.keys().cloned().collect();
@@ -739,7 +732,7 @@ impl SniperEngine {
                                 threshold,
                             );
 
-                            self.dispatch_job(pair.clone(), None, JobMode::Standard);
+                            self.dispatch_job(pair.clone(), None);
                         }
                     }
                 }
@@ -764,11 +757,11 @@ impl SniperEngine {
         }
 
         if let Some((pair, price_opt)) = self.queue.pop_front() {
-            self.dispatch_job(pair, price_opt, JobMode::Standard);
+            self.dispatch_job(pair, price_opt);
         }
     }
 
-    fn dispatch_job(&mut self, pair: String, price_override: Option<f64>, mode: JobMode) {
+    fn dispatch_job(&mut self, pair: String, price_override: Option<f64>) {
         if let Some(state) = self.pairs.get_mut(&pair) {
             // 1. Resolve Price
             // Priority: Override -> Live Stream -> None (Worker will fetch from DB)
@@ -789,10 +782,10 @@ impl SniperEngine {
 
             // APPLY OVERRIDE i.e. use per-pair setting, not global default
             let pair_upper = pair.to_uppercase();
-            if let Some(horizon) = self.config_overrides.get(&pair_upper) {
+            if let Some(horizon) = self.price_horizon_config_overrides.get(&pair_upper) {
                 config.price_horizon = horizon.clone();
             } else {
-                if let Some(horizon) = self.config_overrides.get(&pair) {
+                if let Some(horizon) = self.price_horizon_config_overrides.get(&pair) {
                     config.price_horizon = horizon.clone();
                 }
             }
@@ -804,7 +797,6 @@ impl SniperEngine {
                 config,                         // Use the local 'config' with overrides applied
                 timeseries: self.timeseries.clone(),
                 existing_profile, // Pass cached profile
-                mode,             // Auto or manual job
             };
 
             let _ = self.job_tx.send(req);

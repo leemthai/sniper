@@ -19,7 +19,7 @@ use crate::Cli;
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::config::{
-    ANALYSIS, AnalysisConfig, DEBUG_FLAGS, OptimizationGoal, PriceHorizonConfig, StationId,
+    ANALYSIS, AnalysisConfig, DEBUG_FLAGS, OptimizationGoal, StationId,
     TimeTunerConfig,
 };
 
@@ -27,6 +27,7 @@ use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::engine::SniperEngine;
+use crate::engine::worker;
 
 use crate::models::ledger::OpportunityLedger;
 use crate::models::trading_view::{NavigationTarget, SortColumn, SortDirection, TradeOpportunity};
@@ -63,8 +64,16 @@ impl Default for NavigationState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TuningState {
+    pub todo_list: Vec<String>,
+    pub total: usize,
+    pub completed: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AppState {
     Loading(LoadingState),
+    Tuning(TuningState),
     Running,
 }
 
@@ -177,8 +186,7 @@ impl CandleResolution {
 #[serde(default)]
 pub struct ZoneSniperApp {
     pub selected_pair: Option<String>,
-    pub global_price_horizon: PriceHorizonConfig,
-    // pub price_horizon_overrides: HashMap<String, PriceHorizonConfig>,
+    // pub global_price_horizon: PriceHorizonConfig,
     pub global_tuner_config: TimeTunerConfig,
     pub station_overrides: HashMap<String, StationId>,
     pub plot_visibility: PlotVisibility,
@@ -186,6 +194,7 @@ pub struct ZoneSniperApp {
     pub show_ph_help: bool,
     pub candle_resolution: CandleResolution,
     pub show_candle_range: bool,
+    pub startup_tune_done: bool,
 
     // TradeFinder State
     pub tf_scope_match_base: bool, // True = Current Base Pairs, False = All
@@ -243,8 +252,8 @@ impl Default for ZoneSniperApp {
             global_tuner_config: tuner_defaults,
             station_overrides: HashMap::new(),
             app_config: ANALYSIS.clone(),
-            // price_horizon_overrides: HashMap::new(),
-            global_price_horizon: ANALYSIS.price_horizon.clone(),
+            startup_tune_done: false,
+            // global_price_horizon: ANALYSIS.price_horizon.clone(),
             plot_visibility: PlotVisibility::default(),
             show_debug_help: false,
             show_ph_help: false,
@@ -289,7 +298,7 @@ impl ZoneSniperApp {
         // RESTORE STATE:
         // Overwrite the default config's PH with the saved user preference.
         // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
-        app.app_config.price_horizon = app.global_price_horizon.clone();
+        // app.app_config.price_horizon = app.global_price_horizon.clone();
 
         // Restore Tuner Buttons (Scalp/Swing definitions) from disk to the Engine Config
         app.app_config.tuner = app.global_tuner_config.clone();
@@ -301,8 +310,10 @@ impl ZoneSniperApp {
 
         // Restore Active Station for the specific startup pair
         if let Some(pair) = &app.selected_pair {
-            if let Some(saved_station) = app.station_overrides.get(pair) {
-                app.app_config.tuner.active_station_id = Some(*saved_station);
+            // Use .copied() to turn &StationId into StationId
+            if let Some(saved_station) = app.station_overrides.get(pair).copied() {
+                app.app_config.tuner.active_station_id = saved_station;
+
                 #[cfg(debug_assertions)]
                 log::info!(
                     "🔧 TUNER INIT: Restored saved station '{:?}' for [{}]",
@@ -394,10 +405,15 @@ impl ZoneSniperApp {
 
     /// Helper: Runs the Auto-Tune algorithm for a specific pair and station.
     /// Returns Some(new_ph) if successful. Returns None if data/price is missing.
-    fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<f64> {
+    pub fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<f64> {
         if let Some(engine) = &self.engine {
             // 1. Get Config for the requested Station
-            let station = self.app_config.tuner.stations.iter().find(|s| s.id == station_id)?;
+            let station = self
+                .app_config
+                .tuner
+                .stations
+                .iter()
+                .find(|s| s.id == station_id)?;
 
             // 2. Get Price (Strict Check - must be live)
             let price = engine.price_stream.get_price(pair)?;
@@ -407,16 +423,12 @@ impl ZoneSniperApp {
             let ohlcv = find_matching_ohlcv(
                 &ts_guard.series_data,
                 pair,
-                self.app_config.interval_width_ms
-            ).ok()?;
+                self.app_config.interval_width_ms,
+            )
+            .ok()?;
 
             // 4. Run Worker Logic
-            return crate::engine::worker::tune_to_station(
-                ohlcv,
-                price,
-                &self.app_config,
-                station
-            );
+            return worker::tune_to_station(ohlcv, price, &self.app_config, station);
         }
         None
     }
@@ -428,11 +440,7 @@ impl ZoneSniperApp {
         // We only remember which Station (Button) the user was on.
         if let Some(old_pair) = &self.selected_pair {
             // Default to Swing if for some reason nothing is set (Safety)
-            let current_station = self
-                .app_config
-                .tuner
-                .active_station_id
-                .unwrap_or(StationId::Swing);
+            let current_station = self.app_config.tuner.active_station_id;
 
             self.station_overrides
                 .insert(old_pair.clone(), current_station);
@@ -450,14 +458,14 @@ impl ZoneSniperApp {
         self.auto_scale_y = true;
 
         // --- 3. LOAD STATE (New Pair) ---
-        // Lookup the saved station for the new pair, or default to Swing.
-        let target_station = *self
+        let target_station = self
             .station_overrides
             .get(&new_pair)
-            .unwrap_or(&StationId::Swing);
+            .copied() // Converts &StationId to StationId
+            .unwrap_or_default();
 
         // Apply it to the config
-        self.app_config.tuner.active_station_id = Some(target_station);
+        self.app_config.tuner.active_station_id = target_station;
 
         // --- 4. EXECUTE TUNING ---
         // We MUST calculate the PH now based on the new pair's volatility.
@@ -1049,6 +1057,121 @@ impl ZoneSniperApp {
         }
     }
 
+    fn handle_tuning_phase(&mut self, ctx: &Context, mut state: TuningState) -> AppState {
+
+        CentralPanel::default().show(ctx, |ui| {
+            ui.centered_and_justified(|ui| {
+                ui.set_max_width(300.0);
+                ui.vertical(|ui| {
+                    ui.heading("Optimizing Models");
+                    ui.add_space(10.0);
+
+                    let progress = state.completed as f32 / state.total.max(1) as f32;
+                    let text = format!("Tuning {} / {} pairs...", state.completed, state.total);
+
+                    ui.add(ProgressBar::new(progress).text(text));
+                });
+            });
+        });
+
+        // 2. Process a Chunk (Batch of 5)
+        let chunk_size = 5;
+        let mut processed = 0;
+
+        if let Some(engine) = &mut self.engine {
+            while processed < chunk_size && !state.todo_list.is_empty() {
+                if let Some(pair) = state.todo_list.pop() {
+                    // A. Determine Station
+                    let station_id = self
+                        .station_overrides
+                        .get(&pair)
+                        .copied()
+                        .unwrap_or_default();
+
+                    // B. Get Station Definition
+                    if let Some(station_def) = self
+                        .app_config
+                        .tuner
+                        .stations
+                        .iter()
+                        .find(|s| s.id == station_id)
+                    {
+                        // C. Tune it
+                        let best_ph = {
+                            let ts_guard = engine.timeseries.read().unwrap();
+                            if let Ok(ohlcv) = find_matching_ohlcv(
+                                &ts_guard.series_data,
+                                &pair,
+                                self.app_config.interval_width_ms,
+                            ) {
+                                // let price = ohlcv.close_prices.last().copied().unwrap_or(0.0);
+                                if let Some(price) = engine.price_stream.get_price(&pair) {
+                                    if price > f64::EPSILON {
+                                        worker::tune_to_station(
+                                            ohlcv,
+                                            price,
+                                            &self.app_config,
+                                            station_def,
+                                        )
+                                    } else {
+                                        log::warn!("Can't tune because price is {} for {}", price, &pair);
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                log::warn!("Can't tune because we have no matching_ohlcv for {}", &pair);
+                                None
+                            }
+                        };
+
+                        // D. Apply Result
+                        if let Some(ph) = best_ph {
+                            let mut pair_config = self.app_config.price_horizon.clone();
+                            pair_config.threshold_pct = ph;
+
+                            engine.set_price_horizon_override(pair.clone(), pair_config);
+                            #[cfg(debug_assertions)]
+                            log::info!("For pair {} setting ph during tuning phase to: {}", &pair, ph);
+                            if Some(&pair) == self.selected_pair.as_ref() {
+                                #[cfg(debug_assertions)]
+                                log::info!("And because pair {} is selected, also setting self.app_config.price_horizon.threshold pct for some reason as well", &pair);
+                                self.app_config.price_horizon.threshold_pct = ph;
+                            }
+                        }
+                    }
+                    processed += 1;
+                }
+            }
+        }
+
+        // 3. Update State or Finish
+        state.completed += processed;
+
+        if state.todo_list.is_empty() {
+            // 1. Ignite the Engine (Run CVA + Pathfinder for ALL pairs with new settings)
+            if let Some(engine) = &mut self.engine {
+                println!(">> Global Tuning Complete. Igniting Engine.");
+                engine.update_config(self.app_config.clone());
+                engine.trigger_global_recalc(None);
+            }
+
+            // 2. EXECUTE SMART SELECTION (Restored Logic)
+            // We retrieve the startup pair we stored in check_loading_completion
+            if let Some(target_pair) = self.selected_pair.clone() {
+                // Force a "New Switch" by clearing selection first (even though we just set it above,
+                // this ensures jump_to_pair treats it as a fresh navigation event).
+                self.selected_pair = None;
+                self.jump_to_pair(target_pair);
+            }
+            AppState::Running
+        } else {
+            ctx.request_repaint();
+            AppState::Tuning(state)
+        }
+    }
+
     /// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
     fn check_loading_completion(&mut self) -> Option<AppState> {
@@ -1098,7 +1221,7 @@ impl ZoneSniperApp {
                     engine.ledger = self.saved_ledger.clone();
                 }
 
-                // --- NEW: CULL ORPHANS ---
+                // --- CULL ORPHANS ---
                 // Remove opportunities for pairs that were not loaded in this session.
                 #[cfg(debug_assertions)]
                 let count_before = engine.ledger.opportunities.len();
@@ -1120,10 +1243,9 @@ impl ZoneSniperApp {
                 // -------------------------
 
                 engine.update_config(self.app_config.clone());
-                // engine.set_all_overrides(self.price_horizon_overrides.clone());
 
                 // Trigger global calc for the VALID pair first
-                engine.trigger_global_recalc(Some(final_pair.clone()));
+                // engine.trigger_global_recalc(Some(final_pair.clone()));
 
                 // 5. WIRE UP THE STREAM
                 // We clone the sender from the engine and give it to the stream manager.
@@ -1134,17 +1256,19 @@ impl ZoneSniperApp {
 
                 self.engine = Some(engine);
 
-                // 6. EXECUTE SMART SELECTION
-                // Force a "New Switch" by clearing selection first (even though we just set it above,
-                // this ensures jump_to_pair treats it as a fresh navigation event).
-                self.selected_pair = None;
-                self.jump_to_pair(final_pair.clone());
-
-                // 7. Reset Navigation
+                // 5. Reset Navigation
                 self.nav_states
                     .insert(final_pair, NavigationState::default());
 
-                return Some(AppState::Running);
+                // 6. TRANSITION TO TUNING PHASE
+                // We create a todo list of ALL pairs to tune them before the app starts.
+                let all_pairs: Vec<String> = available_pairs.into_iter().collect();
+
+                return Some(AppState::Tuning(TuningState {
+                    total: all_pairs.len(),
+                    completed: 0,
+                    todo_list: all_pairs,
+                }));
             }
         }
         None
@@ -1265,10 +1389,12 @@ impl eframe::App for ZoneSniperApp {
             return;
         }
 
-        // --- PHASE C: RENDER ---
         match &self.state {
             AppState::Loading(state) => {
                 Self::render_loading_screen(ctx, state);
+            }
+            AppState::Tuning(tuning_state) => {
+                self.state = self.handle_tuning_phase(ctx, tuning_state.clone());
             }
             AppState::Running => {
                 #[cfg(feature = "ph_audit")]
