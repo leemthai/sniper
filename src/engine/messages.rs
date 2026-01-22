@@ -6,12 +6,17 @@ use crate::models::horizon_profile::HorizonProfile;
 use crate::models::trading_view::TradingModel;
 // use serde::{Deserialize, Serialize};
 
-// // --- NEW ENUM ---
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-// pub enum JobMode {
-//     Standard, // Normal recalc using provided config
-//     AutoTune, // Ignore provided PH, scan spectrum, return BEST PH
-// }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JobMode {
+    /// Standard operation: Calculate CVA, then run Pathfinder (Scouts/Drills)
+    FullAnalysis,
+    
+    /// Visualization only: Calculate CVA (Zones/Volume Profile) but SKIP Pathfinder.
+    /// Used when clicking an existing trade to restore the chart context.
+    ContextOnly,
+    
+    // (Delete 'AutoTune' if it still exists here, it is dead)
+}
 
 /// A request to calculate a model for a specific pair
 #[derive(Debug, Clone)]
@@ -20,6 +25,7 @@ pub struct JobRequest {
     pub current_price: Option<f64>,
     pub config: AnalysisConfig,
     pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
+    pub mode: JobMode,
     pub existing_profile: Option<HorizonProfile>,
     
 }

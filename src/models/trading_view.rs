@@ -72,23 +72,11 @@ impl fmt::Display for TradeDirection {
     }
 }
 
-/// Wrapper around TradeOpportunity that includes real-time calculations based on live pair price.
-#[derive(Debug, Clone)]
-pub struct LiveOpportunity {
-    pub opportunity: TradeOpportunity,
-    pub current_price: f64,
-    pub live_roi: f64,
-    pub annualized_roi: f64,
-    pub risk_pct: f64,   // Distance to Stop
-    pub reward_pct: f64, // Distance to Target
-    pub max_duration_ms: i64,
-}
-
-impl LiveOpportunity {
-    /// Checks if the LIVE status is *currently* worthwhile.
-    pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
-        is_opportunity_worthwhile(self.live_roi, self.annualized_roi, profile.min_roi, profile.min_aroi)
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisualFluff {
+    // Purely for visualization. Not used for calculation.
+    // The "Hills and Valleys" of volume (CVA Histogram).
+    pub volume_profile: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,7 +119,8 @@ pub struct TradeFinderRow {
     // Market State (Volatility, Momentum)
     pub market_state: Option<MarketState>, 
     
-    pub opportunity: Option<LiveOpportunity>,
+    pub opportunity: Option<TradeOpportunity>,
+    pub current_price: f64,
     pub opportunity_count_total: usize,
 }
 
@@ -172,6 +161,9 @@ pub struct TradeOpportunity {
     pub strategy: OptimizationGoal,
     pub station_id: StationId,
     pub market_state: MarketState,
+
+    #[serde(default)]
+    pub visuals: Option<VisualFluff>,
     
     pub simulation: SimulationResult,
     pub variants: Vec<TradeVariant>,

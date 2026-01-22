@@ -19,14 +19,14 @@ use crate::Cli;
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::config::{
-    ANALYSIS, AnalysisConfig, DEBUG_FLAGS, OptimizationGoal, StationId,
-    TimeTunerConfig,
+    ANALYSIS, AnalysisConfig, DEBUG_FLAGS, OptimizationGoal, StationId, TimeTunerConfig,
 };
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::engine::SniperEngine;
+use crate::engine::messages::JobMode;
 use crate::engine::worker;
 
 use crate::models::ledger::OpportunityLedger;
@@ -456,6 +456,7 @@ impl ZoneSniperApp {
         // 2. Set New Pair & Reset View Flags
         self.selected_pair = Some(new_pair.clone());
         self.auto_scale_y = true;
+        self.selected_opportunity = None;
 
         // --- 3. LOAD STATE (New Pair) ---
         let target_station = self
@@ -463,56 +464,8 @@ impl ZoneSniperApp {
             .get(&new_pair)
             .copied() // Converts &StationId to StationId
             .unwrap_or_default();
-
         // Apply it to the config
         self.app_config.tuner.active_station_id = target_station;
-
-        // --- 4. EXECUTE TUNING ---
-        // We MUST calculate the PH now based on the new pair's volatility.
-        // We do not load a stale number.
-        if let Some(best_ph) = self.run_auto_tune_logic(&new_pair, target_station) {
-            self.app_config.price_horizon.threshold_pct = best_ph;
-            #[cfg(debug_assertions)]
-            log::info!(
-                "📂 LOAD [{}]: Station '{:?}' -> Tuned to {:.2}%",
-                new_pair,
-                target_station,
-                best_ph * 100.0
-            );
-        } else {
-            // Fallback: If we don't have prices yet (rare during runtime), pick the station's minimum scan range
-            // so the UI isn't broken. The next price tick will fix it via the auto-tuner or user interaction.
-            if let Some(station_def) = self
-                .app_config
-                .tuner
-                .stations
-                .iter()
-                .find(|s| s.id == target_station)
-            {
-                self.app_config.price_horizon.threshold_pct = station_def.scan_ph_min;
-            }
-            #[cfg(debug_assertions)]
-            log::warn!(
-                "📂 LOAD [{}]: Station '{:?}' -> Tuning deferred (No Price). Using default min.",
-                new_pair,
-                target_station
-            );
-        }
-
-        // 4. Update Engine Context
-        let price = self.get_display_price(&new_pair);
-        if let Some(engine) = &mut self.engine {
-            engine.update_config(self.app_config.clone());
-            let needs_calc = engine.get_model(&new_pair).is_none();
-            if needs_calc {
-                engine.force_recalc(&new_pair, price, "USER PAIR SELECTION");
-            }
-        }
-
-        // 5. CLEAR OPPORTUNITY (The "Dumb" Logic)
-        // We do not guess. If the user wants a trade, they will click one.
-        // We start in "Market View".
-        self.selected_opportunity = None;
     }
 
     pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
@@ -526,6 +479,7 @@ impl ZoneSniperApp {
                 engine.force_recalc(
                     &pair,
                     price,
+                    JobMode::FullAnalysis,
                     "INVALIDATE ALL PAIRS -> PRICE HORIZON CHANGED",
                 );
             }
@@ -542,76 +496,82 @@ impl ZoneSniperApp {
         };
     }
 
-    /// Smart navigation via Name Click (Ticker, Lists, Startup).
+/// Smart navigation via Name Click (Ticker, Lists, Startup).
     /// - Checks Ledger for best Op.
-    /// - If found: Tunes & Locks.
-    /// - If not: Market View.
+    /// - If found: Selects that specific Op.
+    /// - If not: Selects the Pair (Market View).
     pub fn jump_to_pair(&mut self, pair: String) {
         // 1. Same Pair Check (Preserve Context)
         if self.selected_pair.as_deref() == Some(&pair) {
-            // Just scroll to whatever we currently have selected already
             self.update_scroll_to_selection();
             return;
         }
 
         // 2. Find Best Op (Smart Lookup)
+        // We look for an existing opportunity in the engine's current data
         let mut best_op = None;
         if let Some(eng) = &self.engine {
             let rows = eng.get_trade_finder_rows(Some(&self.simulated_prices));
             if let Some(row) = rows.into_iter().find(|r| r.pair_name == pair) {
-                if let Some(live_op) = row.opportunity {
-                    best_op = Some(live_op.opportunity);
+                if let Some(op) = row.opportunity {
+                    best_op = Some(op);
                 }
             }
         }
 
-        // 3. Action
-        self.handle_pair_selection(pair.clone()); // Sets selected_pair
-
+        // 3. Routing (The Fork)
         if let Some(op) = best_op {
-            self.selected_opportunity = Some(op);
+            // PATH A: Specific Opportunity
+            // Delegate to the sniper function to handle context override + highlighting
+            self.select_specific_opportunity(op, ScrollBehavior::Center);
         } else {
-            self.selected_opportunity = None;
+            // PATH B: Market View
+            // Just switch the UI context to this pair.
+            // We assume the Engine is already running/tuned for this pair via Startup/Background loop.
+            self.handle_pair_selection(pair);
         }
 
-        // Apply centralized scroll logic
+        // 4. Final Polish
         self.update_scroll_to_selection();
     }
 
     /// Selects a specific opportunity and TUNES the engine to view it correctly.
-    pub fn select_specific_opportunity(&mut self, op: TradeOpportunity, scroll: ScrollBehavior) {
-        // let mut new_config = self.app_config.price_horizon.clone();
-        // new_config.threshold_pct = op.source_ph;
-
-        // self.price_horizon_overrides
-        //     .insert(op.pair_name.clone(), new_config.clone());
-        // self.app_config.price_horizon = new_config; // Update global for UI slider sync
-
-        // 2. Switch Pair (This triggers engine recalc at the NEW PH)
+    pub fn select_specific_opportunity(
+        &mut self,
+        op: TradeOpportunity,
+        scroll: ScrollBehavior,
+    ) {
+        // 1. Switch State (Pure UI)
         self.handle_pair_selection(op.pair_name.clone());
 
-        // 2. OVERRIDE with Specific Trade Context
-        // The Auto-Tune might have picked 5%, but this trade was found at 15%.
-        // We must force the engine to use the trade's original PH.
+        // 2. OVERRIDE PH
+        // We ignore the Station's preference and enforce the Trade's origin PH.
         self.app_config.price_horizon.threshold_pct = op.source_ph;
 
-        // FIX: Calculate price BEFORE borrowing self.engine mutably
-        let price = self.get_display_price(&op.pair_name);
-
-        // 3. Force Engine Update
-        // We send a second job to the worker to re-run the math at the exact PH needed.
+        // 3. Trigger Engine (Context Only)
+        // We calculate CVA zones to match the trade, but skip simulations.
         if let Some(engine) = &mut self.engine {
+            // Override Engine Config for this pair
+            let mut pair_config = self.app_config.price_horizon.clone();
+            pair_config.threshold_pct = op.source_ph;
+            engine.set_price_horizon_override(op.pair_name.clone(), pair_config);
+
             engine.update_config(self.app_config.clone());
-            engine.force_recalc(&op.pair_name, price, "SELECT SPECIFIC OPPORTUNITY");
+
+            // FIRE! (Fast Mode)
+            engine.force_recalc(
+                &op.pair_name,
+                None,
+                JobMode::ContextOnly,
+                "SELECT SPECIFIC OP",
+            );
         }
 
-        // 3. Force the Specific Selection
-        // (handle_pair_selection auto-selects the "Best", but we want THIS one)
+        // 4. Update Selection
         self.selected_opportunity = Some(op.clone());
 
-        // 4. Conditional Scroll
+        // 5. Scroll
         if matches!(scroll, ScrollBehavior::Center) {
-            // FIX: Use NavigationTarget
             self.scroll_target = Some(NavigationTarget::Opportunity(op.id));
         }
     }
@@ -1058,7 +1018,6 @@ impl ZoneSniperApp {
     }
 
     fn handle_tuning_phase(&mut self, ctx: &Context, mut state: TuningState) -> AppState {
-
         CentralPanel::default().show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
                 ui.set_max_width(300.0);
@@ -1114,14 +1073,21 @@ impl ZoneSniperApp {
                                             station_def,
                                         )
                                     } else {
-                                        log::warn!("Can't tune because price is {} for {}", price, &pair);
+                                        log::warn!(
+                                            "Can't tune because price is {} for {}",
+                                            price,
+                                            &pair
+                                        );
                                         None
                                     }
                                 } else {
                                     None
                                 }
                             } else {
-                                log::warn!("Can't tune because we have no matching_ohlcv for {}", &pair);
+                                log::warn!(
+                                    "Can't tune because we have no matching_ohlcv for {}",
+                                    &pair
+                                );
                                 None
                             }
                         };
@@ -1133,10 +1099,17 @@ impl ZoneSniperApp {
 
                             engine.set_price_horizon_override(pair.clone(), pair_config);
                             #[cfg(debug_assertions)]
-                            log::info!("For pair {} setting ph during tuning phase to: {}", &pair, ph);
+                            log::info!(
+                                "For pair {} setting ph during tuning phase to: {}",
+                                &pair,
+                                ph
+                            );
                             if Some(&pair) == self.selected_pair.as_ref() {
                                 #[cfg(debug_assertions)]
-                                log::info!("And because pair {} is selected, also setting self.app_config.price_horizon.threshold pct for some reason as well", &pair);
+                                log::info!(
+                                    "And because pair {} is selected, also setting self.app_config.price_horizon.threshold pct for some reason as well",
+                                    &pair
+                                );
                                 self.app_config.price_horizon.threshold_pct = ph;
                             }
                         }

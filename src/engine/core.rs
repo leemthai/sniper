@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, RwLock};
@@ -14,15 +13,13 @@ use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::models::ledger::OpportunityLedger;
 use crate::models::timeseries::{LiveCandle, find_matching_ohlcv};
-use crate::models::trading_view::{
-    LiveOpportunity, TradeDirection, TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel,
+use crate::models::trading_view::{TradeDirection, TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel,
 };
 
 use crate::utils::TimeUtils;
-use crate::utils::maths_utils::calculate_percent_diff;
 use crate::utils::time_utils::AppInstant;
 
-use super::messages::{JobRequest, JobResult};
+use super::messages::{JobMode, JobRequest, JobResult};
 use super::state::PairState;
 use super::worker;
 
@@ -51,7 +48,7 @@ pub struct SniperEngine {
     result_tx: Sender<JobResult>,
 
     /// Queue Logic: (PairName, OptionalPriceOverride)
-    pub queue: VecDeque<(String, Option<f64>)>,
+    pub queue: VecDeque<(String, Option<f64>, JobMode)>,
     /// The Live Configuration State
     pub current_config: AnalysisConfig,
     pub price_horizon_config_overrides: HashMap<String, PriceHorizonConfig>,
@@ -150,6 +147,29 @@ impl SniperEngine {
         }
     }
 
+    /// INTENT: The User clicked a Pair or Station.
+    /// Action: Run Auto-Tune (internally via worker if we moved it, or assume config is already updated) -> Run Full Analysis.
+    pub fn request_market_scan(&mut self, pair: String) {
+        // Assume App has already updated 'self.current_config' via 'update_config'
+        // Just trigger the work.
+        self.force_recalc(&pair, None, JobMode::FullAnalysis, "MARKET SCAN");
+    }
+
+    /// INTENT: The User clicked a specific Trade Opportunity.
+    /// Action: Calculate CVA Zones for this specific PH so the chart looks right,
+    /// but DO NOT re-run simulations (preserve the trade list).
+    pub fn request_trade_context(&mut self, pair: String, target_ph: f64) {
+        // 1. Create a specific config for this job
+        let mut trade_config = self.current_config.clone();
+        trade_config.price_horizon.threshold_pct = target_ph;
+
+        // 2. Set Override (so the worker picks it up)
+        self.set_price_horizon_override(pair.clone(), trade_config.price_horizon);
+
+        // 3. Dispatch Context-Only Job
+        self.force_recalc(&pair, None, JobMode::ContextOnly, "TRADE CONTEXT");
+    }
+
     /// Process incoming live candles
     pub fn process_live_data(&mut self) {
         // 1. Check if we have data
@@ -187,6 +207,7 @@ impl SniperEngine {
                         self.force_recalc(
                             &candle.symbol,
                             Some(candle.close),
+                            JobMode::FullAnalysis,
                             "CANDLE CLOSE TRIGGER",
                         );
                     }
@@ -381,36 +402,13 @@ impl SniperEngine {
                 if total_ops > 0 {
                     // Create a ROW for EACH Opportunity
                     for op in valid_ops {
-                        #[cfg(debug_assertions)]
-                        if pair == "PAXGUSDT" {
-                            let live_val = op.live_roi(current_price);
-                            let static_val = op.expected_roi();
-                            if (live_val - static_val).abs() > 1. {
-                                log::warn!(
-                                    "🕵️ ROI MISMATCH AUDIT [{}]: Static: {:.2}% | Live: {:.2}% | Diff: {:.2}%",
-                                    op.id,
-                                    static_val,
-                                    live_val,
-                                    static_val - live_val
-                                );
-                            }
-                        }
-                        let live_opp = LiveOpportunity {
-                            opportunity: op.clone(),
-                            current_price,
-                            live_roi: op.live_roi(current_price),
-                            annualized_roi: op.live_annualized_roi(current_price),
-                            risk_pct: calculate_percent_diff(op.stop_price, current_price),
-                            reward_pct: calculate_percent_diff(op.target_price, current_price),
-                            max_duration_ms: op.max_duration_ms,
-                        };
-
                         rows.push(TradeFinderRow {
                             pair_name: pair.clone(),
                             quote_volume_24h: vol_24h,
                             market_state: Some(op.market_state),
                             opportunity_count_total: total_ops,
-                            opportunity: Some(live_opp),
+                            opportunity: Some(op.clone()),
+                            current_price,
                         });
                     }
                 } else {
@@ -421,6 +419,7 @@ impl SniperEngine {
                         market_state: None,
                         opportunity_count_total: 0,
                         opportunity: None,
+                        current_price,
                     });
                 }
             }
@@ -428,67 +427,10 @@ impl SniperEngine {
         })
     }
 
-    /// Aggregates opportunities.
-    /// overrides: If provided, uses these prices instead of live stream (For Simulation).
-    pub fn get_all_live_opportunities(
-        &self,
-        overrides: Option<&HashMap<String, f64>>,
-    ) -> Vec<LiveOpportunity> {
-        let mut results = Vec::new();
-
-        for (pair, state) in &self.pairs {
-            let model_opt = &state.model;
-
-            // PRIORITY: Check Override -> Then check Stream
-            let current_price_opt = if let Some(map) = overrides {
-                map.get(pair)
-                    .copied()
-                    .or_else(|| self.price_stream.get_price(pair))
-            } else {
-                self.price_stream.get_price(pair)
-            };
-
-            if let (Some(model), Some(price)) = (model_opt, current_price_opt) {
-                for opp in &model.opportunities {
-                    // ... (Calculate Live Stats using 'price') ...
-                    let live_roi = opp.live_roi(price);
-                    let annualized_roi = opp.live_annualized_roi(price);
-
-                    let risk_pct = calculate_percent_diff(opp.stop_price, price);
-                    let reward_pct = calculate_percent_diff(opp.target_price, price);
-
-                    results.push(LiveOpportunity {
-                        opportunity: opp.clone(),
-                        current_price: price,
-                        live_roi,
-                        annualized_roi,
-                        risk_pct,
-                        reward_pct,
-                        max_duration_ms: opp.max_duration_ms,
-                    });
-                }
-            }
-        }
-
-        // Sort by ROI descending (Standard)
-        results.sort_by(|a, b| {
-            b.live_roi
-                .partial_cmp(&a.live_roi)
-                .unwrap_or(Ordering::Equal)
-        });
-
-        results
-    }
-
     // NEW: Helper to set an override
     pub fn set_price_horizon_override(&mut self, pair: String, config: PriceHorizonConfig) {
         self.price_horizon_config_overrides.insert(pair, config);
     }
-
-    // // NEW: Helper to bulk update (for startup sync)
-    // pub fn set_all_overrides(&mut self, overrides: HashMap<String, PriceHorizonConfig>) {
-    //     self.config_overrides = overrides;
-    // }
 
     /// THE GAME LOOP.
     pub fn update(&mut self, _protected_id: Option<&str>) {
@@ -509,12 +451,14 @@ impl SniperEngine {
 
         // Maintenance loop - checks for drifting trades that have overlapped and merges them.
         let journey_settings = &self.current_config.journey; // Access journey settings
-        
-        if t1.duration_since(self.last_ledger_maintenance).as_secs() >= journey_settings.optimization.prune_interval_sec {
+
+        if t1.duration_since(self.last_ledger_maintenance).as_secs()
+            >= journey_settings.optimization.prune_interval_sec
+        {
             // Pass the Tolerance AND the Profile (Strategy)
             self.ledger.prune_collisions(
                 journey_settings.optimization.fuzzy_match_tolerance,
-                &journey_settings.profile
+                &journey_settings.profile,
             );
             self.last_ledger_maintenance = t1;
         }
@@ -617,16 +561,16 @@ impl SniperEngine {
                 all_pairs.remove(pos);
             }
             // Use None for price override (Global recalc uses live price)
-            self.queue.push_back((vip, None));
+            self.queue.push_back((vip, None, JobMode::FullAnalysis));
         }
 
         for pair in all_pairs {
-            self.queue.push_back((pair, None));
+            self.queue.push_back((pair, None, JobMode::FullAnalysis));
         }
     }
 
     /// Force a single recalc with optional price override
-    pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, _reason: &str) {
+    pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, mode: JobMode, _reason: &str) {
         // Check if calculating
         let is_calculating = self
             .pairs
@@ -636,14 +580,12 @@ impl SniperEngine {
 
         // Check if already in queue (by Name)
         // We use a manual iterator check because contains() fails on tuples
-        let in_queue = self.queue.iter().any(|(p, _)| p == pair);
+        let in_queue = self.queue.iter().any(|(p, _, _)| p == pair);
 
         if !is_calculating && !in_queue {
-            self.queue.push_front((pair.to_string(), price_override));
+            self.queue.push_front((pair.to_string(), price_override, mode));
         }
     }
-
-    // --- INTERNAL LOGIC ---
 
     fn handle_job_result(&mut self, result: JobResult) {
         if let Some(state) = self.pairs.get_mut(&result.pair_name) {
@@ -697,19 +639,15 @@ impl SniperEngine {
             .unwrap_or(0)
     }
 
-    // pub fn get_profile(&self, pair: &str) -> Option<HorizonProfile> {
-    //     self.pairs.get(pair).and_then(|state| state.profile.clone())
-    // }
-
     fn check_automatic_triggers(&mut self) {
+
         let pairs: Vec<String> = self.pairs.keys().cloned().collect();
-        // Use cva settings for threshold
         let threshold = self.current_config.cva.price_recalc_threshold_pct;
 
         for pair in pairs {
             if let Some(current_price) = self.price_stream.get_price(&pair) {
                 if let Some(state) = self.pairs.get_mut(&pair) {
-                    let in_queue = self.queue.iter().any(|(p, _)| p == &pair);
+                    let in_queue = self.queue.iter().any(|(p, _, _)| p == &pair);
 
                     if !state.is_calculating && !in_queue {
                         // FIX: Handle Startup Case (0.0)
@@ -732,7 +670,7 @@ impl SniperEngine {
                                 threshold,
                             );
 
-                            self.dispatch_job(pair.clone(), None);
+                            self.dispatch_job(pair.clone(), None, JobMode::FullAnalysis);
                         }
                     }
                 }
@@ -745,23 +683,22 @@ impl SniperEngine {
             return;
         }
 
-        // Peek at front
-        if let Some((pair, _)) = self.queue.front() {
-            // Race check: is it calculating now?
+        // Peek at front (tuple index 0 is pair name)
+        if let Some((pair, _, _)) = self.queue.front() {
             if let Some(state) = self.pairs.get(pair) {
                 if state.is_calculating {
-                    // It's busy. Wait.
-                    return;
+                    return; // Busy
                 }
             }
         }
 
-        if let Some((pair, price_opt)) = self.queue.pop_front() {
-            self.dispatch_job(pair, price_opt);
+        // Pop tuple: (Pair, Price, Mode)
+        if let Some((pair, price_opt, mode)) = self.queue.pop_front() {
+            self.dispatch_job(pair, price_opt, mode);
         }
     }
 
-    fn dispatch_job(&mut self, pair: String, price_override: Option<f64>) {
+    fn dispatch_job(&mut self, pair: String, price_override: Option<f64>, mode: JobMode) {
         if let Some(state) = self.pairs.get_mut(&pair) {
             // 1. Resolve Price
             // Priority: Override -> Live Stream -> None (Worker will fetch from DB)
@@ -796,6 +733,7 @@ impl SniperEngine {
                 current_price: final_price_opt, // Pass Option<f64>
                 config,                         // Use the local 'config' with overrides applied
                 timeseries: self.timeseries.clone(),
+                mode: mode,
                 existing_profile, // Pass cached profile
             };
 

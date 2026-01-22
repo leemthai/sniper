@@ -9,12 +9,12 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
-use crate::analysis::adaptive::AdaptiveParameters;
-
 use crate::config::plot::PLOT_CONFIG;
 use crate::config::{ANALYSIS, OptimizationGoal, TICKER};
 
 use crate::domain::pair_interval::PairInterval;
+
+use crate::engine::messages::JobMode;
 
 use crate::models::cva::ScoreType;
 use crate::models::trading_view::{
@@ -63,12 +63,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.opportunity.target_price)
+                        .map(|o| o.target_price)
                         .unwrap_or(0.0);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.opportunity.target_price)
+                        .map(|o| o.target_price)
                         .unwrap_or(0.0);
                     val_a
                         .total_cmp(&val_b)
@@ -113,12 +113,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.live_roi)
+                        .map(|o| o.live_roi(a.current_price))
                         .unwrap_or(f64::NEG_INFINITY);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.live_roi)
+                        .map(|o| o.live_roi(b.current_price))
                         .unwrap_or(f64::NEG_INFINITY);
                     val_a
                         .total_cmp(&val_b)
@@ -128,12 +128,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.annualized_roi)
+                        .map(|o| o.live_annualized_roi(a.current_price))
                         .unwrap_or(f64::NEG_INFINITY);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.annualized_roi)
+                        .map(|o| o.live_annualized_roi(b.current_price))
                         .unwrap_or(f64::NEG_INFINITY);
                     val_a
                         .total_cmp(&val_b)
@@ -143,12 +143,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.opportunity.avg_duration_ms)
+                        .map(|o| o.avg_duration_ms)
                         .unwrap_or(i64::MAX);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.opportunity.avg_duration_ms)
+                        .map(|o| o.avg_duration_ms)
                         .unwrap_or(i64::MAX);
                     val_b
                         .cmp(&val_a)
@@ -160,12 +160,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.opportunity.calculate_quality_score(profile))
+                        .map(|o| o.calculate_quality_score(profile))
                         .unwrap_or(f64::NEG_INFINITY);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.opportunity.calculate_quality_score(profile))
+                        .map(|o| o.calculate_quality_score(profile))
                         .unwrap_or(f64::NEG_INFINITY);
 
                     val_a
@@ -176,12 +176,12 @@ impl ZoneSniperApp {
                     let va = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.opportunity.variant_count())
+                        .map(|o| o.variant_count())
                         .unwrap_or(0);
                     let vb = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.opportunity.variant_count())
+                        .map(|o| o.variant_count())
                         .unwrap_or(0);
                     va.cmp(&vb).then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
@@ -200,353 +200,331 @@ impl ZoneSniperApp {
             return;
         }
 
-        // 2. Get Data (Thread-safe)
-        let Some(pair) = self.selected_pair.clone() else {
+        // 2. Get Data (Directly from Selected Opportunity)
+        let Some(op) = self.selected_opportunity.clone() else {
             return;
         };
-        let Some(model) = self.engine.as_ref().and_then(|e| e.get_model(&pair)) else {
-            return;
-        };
-        let current_price = self.get_display_price(&pair).unwrap_or(0.0);
 
-        let target_op = self
-            .selected_opportunity
-            .clone()
-            .filter(|op| op.pair_name == pair);
+        // Get live context
+        let current_price = self.get_display_price(&op.pair_name).unwrap_or(0.0);
+        let calc_price = if current_price > f64::EPSILON {
+            current_price
+        } else {
+            op.start_price
+        };
 
         // 4. Render Window
-        Window::new(format!("Opportunity Explainer: {}", pair))
+        Window::new(format!("Opportunity Explainer: {}", op.pair_name))
             .collapsible(false)
             .resizable(false)
             .order(Order::Tooltip)
             .open(&mut self.show_opportunity_details)
             .default_width(600.)
             .show(ctx, |ui| {
-                if let Some(op) = target_op {
-                    let calc_price = if current_price > f64::EPSILON {
-                        current_price
-                    } else {
-                        op.start_price
-                    };
-                    let sim = &op.simulation;
+                let sim = &op.simulation;
+                let state = &op.market_state;
+                let target_str = format_price(op.target_price);
+                ui.heading(format!("{}: {}", UI_TEXT.opp_exp_current_opp, target_str));
 
-                    let target_str = format_price(op.target_price);
-                    ui.heading(format!("{}: {}", UI_TEXT.opp_exp_current_opp, target_str));
-                    // "Setup Type: LONG" (with encoded color)
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.label_subdued(format!("{}", UI_TEXT.opp_exp_setup_type));
-                        ui.label(
-                            RichText::new(op.direction.to_string().to_uppercase())
-                                .strong()
-                                .color(op.direction.color()),
-                        );
-                    });
-                    ui.separator();
-
-                    // --- CALCULATIONS ---
-                    // Get PH %
-                    let ph_pct = self.app_config.price_horizon.threshold_pct;
-
-                    // Calculate Actual Lookback used (using new Adaptive logic)
-                    let lookback_candles =
-                        AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
-                    let interval_ms = model.cva.interval_ms;
-                    let lookback_ms = lookback_candles as i64 * interval_ms;
-                    let lookback_str = TimeUtils::format_duration(lookback_ms);
-
-                    // Get Dynamic Duration from the Opportunity itself
-                    let max_time_ms = op.max_duration_ms;
-                    let max_time_str = TimeUtils::format_duration(max_time_ms);
-                    let max_candles = if interval_ms > 0 {
-                        max_time_ms / interval_ms
-                    } else {
-                        0
-                    };
-
-                    // SECTION 1: THE MATH
-                    ui.label_subheader(&UI_TEXT.opp_exp_expectancy);
-                    let roi = op.live_roi(calc_price);
-                    let ann_roi = op.live_annualized_roi(calc_price);
-                    let roi_color = get_outcome_color(roi);
-
-                    ui.metric(
-                        &format!("{}", UI_TEXT.label_roi),
-                        &format!("{:+.2}%", roi),
-                        roi_color,
+                // "Setup Type: LONG" (with encoded color)
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.label_subdued(format!("{}", UI_TEXT.opp_exp_setup_type));
+                    ui.label(
+                        RichText::new(op.direction.to_string().to_uppercase())
+                            .strong()
+                            .color(op.direction.color()),
                     );
-                    ui.metric(
-                        &UI_TEXT.label_aroi_long,
-                        &format!("{:+.0}%", ann_roi),
-                        roi_color,
-                    );
+                });
+                ui.separator();
 
-                    ui.metric(
-                        &UI_TEXT.label_avg_duration,
-                        &TimeUtils::format_duration(op.avg_duration_ms),
-                        PLOT_CONFIG.color_text_neutral,
-                    );
+                // --- CALCULATIONS ---
+                // We use the data captured in the opportunity, not the global config
+                let ph_pct = op.source_ph;
+                let max_time_ms = op.max_duration_ms;
+                let max_time_str = TimeUtils::format_duration(max_time_ms);
+                
+                // For interval display, we use the global config as a fallback if not in state
+                // (Assuming 5m candles usually)
+                let interval_ms = self.app_config.interval_width_ms; 
+                let max_candles = if interval_ms > 0 { max_time_ms / interval_ms } else { 0 };
 
-                    ui.metric(
-                        &UI_TEXT.label_success_rate,
-                        &format!("{:.1}%", sim.success_rate * 100.0),
-                        PLOT_CONFIG.color_text_primary,
-                    );
-                    ui.metric(
-                        &UI_TEXT.label_risk_reward,
-                        &format!("1:{:.0}", sim.risk_reward_ratio),
-                        PLOT_CONFIG.color_text_primary,
-                    );
+                // SECTION 1: THE MATH
+                ui.label_subheader(&UI_TEXT.opp_exp_expectancy);
+                let roi = op.live_roi(calc_price);
+                let ann_roi = op.live_annualized_roi(calc_price);
+                let roi_color = get_outcome_color(roi);
 
-                    ui.add_space(10.0);
+                ui.metric(
+                    &format!("{}", UI_TEXT.label_roi),
+                    &format!("{:+.2}%", roi),
+                    roi_color,
+                );
+                ui.metric(
+                    &UI_TEXT.label_aroi_long,
+                    &format!("{:+.0}%", ann_roi),
+                    roi_color,
+                );
 
-                    // SECTION 2: MARKET CONTEXT (INLINE STYLE)
-                    ui.label_subheader(&UI_TEXT.opp_exp_market_context);
-                    let state = &sim.market_state;
+                ui.metric(
+                    &UI_TEXT.label_avg_duration,
+                    &TimeUtils::format_duration(op.avg_duration_ms),
+                    PLOT_CONFIG.color_text_neutral,
+                );
 
-                    // Volatility
-                    ui.metric(
-                        &UI_TEXT.label_volatility,
-                        &format!("{:.2}%", state.volatility_pct * 100.0),
-                        PLOT_CONFIG.color_info,
-                    );
+                ui.metric(
+                    &UI_TEXT.label_success_rate,
+                    &format!("{:.1}%", sim.success_rate * 100.0),
+                    PLOT_CONFIG.color_text_primary,
+                );
+                ui.metric(
+                    &UI_TEXT.label_risk_reward,
+                    &format!("1:{:.0}", sim.risk_reward_ratio),
+                    PLOT_CONFIG.color_text_primary,
+                );
 
-                    // Momentum
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(
-                            RichText::new(UI_TEXT.label_momentum.to_string() + ":")
-                                .small()
-                                .color(PLOT_CONFIG.color_text_subdued),
-                        );
-                        ui.label(
-                            RichText::new(format!("{:+.2}%", state.momentum_pct * 100.0))
-                                .small()
-                                .color(get_momentum_color(state.momentum_pct)),
-                        );
+                ui.add_space(10.0);
 
-                        ui.label(
-                            RichText::new(format!(
-                                " ({} {}. {} {:.2}%)",
-                                UI_TEXT.opp_exp_trend_measured,
-                                lookback_str,
-                                UI_TEXT.opp_exp_trend_length,
-                                ph_pct * 100.0,
-                            ))
+                // SECTION 2: MARKET CONTEXT (INLINE STYLE)
+                ui.label_subheader(&UI_TEXT.opp_exp_market_context);
+
+                // Volatility
+                ui.metric(
+                    &UI_TEXT.label_volatility,
+                    &format!("{:.2}%", state.volatility_pct * 100.0),
+                    PLOT_CONFIG.color_info,
+                );
+
+                // Momentum
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.label(
+                        RichText::new(UI_TEXT.label_momentum.to_string() + ":")
                             .small()
                             .color(PLOT_CONFIG.color_text_subdued),
-                        );
-                    });
-
-                    // Relative Volume
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(
-                            RichText::new(UI_TEXT.opp_exp_relative_volume.to_string() + ":")
-                                .small()
-                                .color(PLOT_CONFIG.color_text_subdued),
-                        );
-                        let vol_color = if state.relative_volume > 1.0 {
-                            PLOT_CONFIG.color_warning
-                        } else {
-                            PLOT_CONFIG.color_text_subdued
-                        };
-                        ui.label(
-                            RichText::new(format!("{:.2}x", state.relative_volume))
-                                .small()
-                                .color(vol_color),
-                        );
-                        ui.label(
-                            RichText::new(UI_TEXT.opp_exp_relative_volume_explainer.to_string())
-                                .small()
-                                .color(PLOT_CONFIG.color_text_subdued),
-                        );
-                    });
-
-                    ui.add_space(10.0);
-
-                    // TRADE SETUP
-                    ui.label_subheader(&UI_TEXT.opp_exp_trade_setup);
-
-                    // Entry / Target can stay standard
-                    ui.metric(
-                        &UI_TEXT.opp_exp_trade_entry,
-                        &format_price(calc_price),
-                        PLOT_CONFIG.color_text_neutral,
                     );
-                    let target_dist = calculate_percent_diff(op.target_price, calc_price);
-                    let stop_dist = calculate_percent_diff(op.stop_price, calc_price);
+                    ui.label(
+                        RichText::new(format!("{:+.2}%", state.momentum_pct * 100.0))
+                            .small()
+                            .color(get_momentum_color(state.momentum_pct)),
+                    );
 
-                    // TARGET ROW
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.label(
-                            RichText::new(UI_TEXT.label_target_text.to_string() + ":")
-                                .small()
-                                .color(PLOT_CONFIG.color_text_subdued),
-                        );
-                        ui.label(
-                            RichText::new(format_price(op.target_price))
-                                .small()
-                                .color(PLOT_CONFIG.color_profit),
-                        );
-                        ui.label(
-                            RichText::new(format!("(+{:.2}%)", target_dist))
-                                .small()
-                                .color(PLOT_CONFIG.color_profit),
-                        );
-                    });
+                    ui.label(
+                        RichText::new(format!(
+                            " ({} {:.2}%)",
+                            UI_TEXT.opp_exp_trend_length,
+                            ph_pct * 100.0,
+                        ))
+                        .small()
+                        .color(PLOT_CONFIG.color_text_subdued),
+                    );
+                });
 
-                    // Stop Loss Row + Variants
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(
-                            RichText::new(format!("{}:", UI_TEXT.label_stop_loss))
-                                .small()
-                                .color(PLOT_CONFIG.color_text_subdued),
-                        );
-                        ui.label(
-                            RichText::new(format_price(op.stop_price))
-                                .small()
-                                .color(PLOT_CONFIG.color_stop_loss),
-                        );
-                        ui.label(
-                            RichText::new(format!(
-                                "({} {:.2}% / {} {:.2}%)",
-                                UI_TEXT.label_target_text,
-                                target_dist,
-                                UI_TEXT.label_stop_loss_short,
-                                stop_dist
-                            ))
+                // Relative Volume
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.label(
+                        RichText::new(UI_TEXT.opp_exp_relative_volume.to_string() + ":")
                             .small()
                             .color(PLOT_CONFIG.color_text_subdued),
-                        );
+                    );
+                    let vol_color = if state.relative_volume > 1.0 {
+                        PLOT_CONFIG.color_warning
+                    } else {
+                        PLOT_CONFIG.color_text_subdued
+                    };
+                    ui.label(
+                        RichText::new(format!("{:.2}x", state.relative_volume))
+                            .small()
+                            .color(vol_color),
+                    );
+                    ui.label(
+                        RichText::new(UI_TEXT.opp_exp_relative_volume_explainer.to_string())
+                            .small()
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
+                });
 
-                        // Variants Info
-                        if op.variant_count() > 1 {
-                            ui.label(
-                                RichText::new(format!(
-                                    " ({} {})",
-                                    op.variant_count(),
-                                    UI_TEXT.label_sl_variants
-                                ))
-                                .small()
-                                .italics()
-                                .color(PLOT_CONFIG.color_text_subdued),
-                            );
-                        }
-                    });
+                ui.add_space(10.0);
 
-                    // Time Limit Block
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(
-                            RichText::new(format!("{}:", UI_TEXT.opp_exp_order_time_limit))
-                                .small()
-                                .color(PLOT_CONFIG.color_text_subdued),
-                        );
-                        ui.label(
-                            RichText::new(&max_time_str)
-                                .small()
-                                .color(PLOT_CONFIG.color_info),
-                        );
-                        ui.label(
-                            RichText::new(format!("(~{} {})", max_candles, UI_TEXT.label_candle))
-                                .small()
-                                .color(PLOT_CONFIG.color_text_subdued),
-                        );
-                    });
+                // TRADE SETUP
+                ui.label_subheader(&UI_TEXT.opp_exp_trade_setup);
 
-                    ui.add_space(15.0);
-                    ui.separator();
-                    ui.add_space(5.0);
+                // Entry / Target can stay standard
+                ui.metric(
+                    &UI_TEXT.opp_exp_trade_entry,
+                    &format_price(calc_price),
+                    PLOT_CONFIG.color_text_neutral,
+                );
+                let target_dist = calculate_percent_diff(op.target_price, calc_price);
+                let stop_dist = calculate_percent_diff(op.stop_price, calc_price);
 
-                    // THE STORY
-                    ui.label_subheader(&UI_TEXT.opp_exp_how_this_works);
-                    ui.vertical(|ui| {
-                        ui.style_mut().spacing.item_spacing.y = 4.0;
-                        let story_color = PLOT_CONFIG.color_text_neutral;
+                // TARGET ROW
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.label(
+                        RichText::new(UI_TEXT.label_target_text.to_string() + ":")
+                            .small()
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
+                    ui.label(
+                        RichText::new(format_price(op.target_price))
+                            .small()
+                            .color(PLOT_CONFIG.color_profit),
+                    );
+                    ui.label(
+                        RichText::new(format!("(+{:.2}%)", target_dist))
+                            .small()
+                            .color(PLOT_CONFIG.color_profit),
+                    );
+                });
 
+                // Stop Loss Row + Variants
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.label(
+                        RichText::new(format!("{}:", UI_TEXT.label_stop_loss))
+                            .small()
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
+                    ui.label(
+                        RichText::new(format_price(op.stop_price))
+                            .small()
+                            .color(PLOT_CONFIG.color_stop_loss),
+                    );
+                    ui.label(
+                        RichText::new(format!(
+                            "({} {:.2}% / {} {:.2}%)",
+                            UI_TEXT.label_target_text,
+                            target_dist,
+                            UI_TEXT.label_stop_loss_short,
+                            stop_dist
+                        ))
+                        .small()
+                        .color(PLOT_CONFIG.color_text_subdued),
+                    );
+
+                    // Variants Info
+                    if op.variant_count() > 1 {
                         ui.label(
                             RichText::new(format!(
-                                "{} ({} = {:.2}%, {} = {:+.2}%, {} = {:.2}x)",
-                                UI_TEXT.opp_expr_we_fingerprinted,
-                                UI_TEXT.label_volatility,
-                                state.volatility_pct * 100.0,
-                                UI_TEXT.label_momentum,
-                                state.momentum_pct * 100.0,
-                                UI_TEXT.opp_exp_relative_volume,
-                                state.relative_volume
+                                " ({} {})",
+                                op.variant_count(),
+                                UI_TEXT.label_sl_variants
                             ))
+                            .small()
+                            .italics()
+                            .color(PLOT_CONFIG.color_text_subdued),
+                        );
+                    }
+                });
+
+                // Time Limit Block
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.label(
+                        RichText::new(format!("{}:", UI_TEXT.opp_exp_order_time_limit))
+                            .small()
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
+                    ui.label(
+                        RichText::new(&max_time_str)
+                            .small()
+                            .color(PLOT_CONFIG.color_info),
+                    );
+                    ui.label(
+                        RichText::new(format!("(~{} {})", max_candles, UI_TEXT.label_candle))
+                            .small()
+                            .color(PLOT_CONFIG.color_text_subdued),
+                    );
+                });
+
+                ui.add_space(15.0);
+                ui.separator();
+                ui.add_space(5.0);
+
+                // THE STORY
+                ui.label_subheader(&UI_TEXT.opp_exp_how_this_works);
+                ui.vertical(|ui| {
+                    ui.style_mut().spacing.item_spacing.y = 4.0;
+                    let story_color = PLOT_CONFIG.color_text_neutral;
+
+                    ui.label(
+                        RichText::new(format!(
+                            "{} ({} = {:.2}%, {} = {:+.2}%, {} = {:.2}x)",
+                            UI_TEXT.opp_expr_we_fingerprinted,
+                            UI_TEXT.label_volatility,
+                            state.volatility_pct * 100.0,
+                            UI_TEXT.label_momentum,
+                            state.momentum_pct * 100.0,
+                            UI_TEXT.opp_exp_relative_volume,
+                            state.relative_volume
+                        ))
+                        .small()
+                        .color(story_color)
+                        .italics(),
+                    );
+
+                    let match_text = if sim.sample_size < 50 {
+                        format!(
+                            "{} {} {}",
+                            UI_TEXT.opp_exp_scanned_history_one,
+                            sim.sample_size,
+                            UI_TEXT.opp_exp_scanned_history_two
+                        )
+                    } else {
+                        format!(
+                            "{} {} {}",
+                            UI_TEXT.opp_exp_scanned_history_three,
+                            sim.sample_size,
+                            UI_TEXT.opp_exp_scanned_history_four
+                        )
+                    };
+                    ui.label(
+                        RichText::new(match_text)
                             .small()
                             .color(story_color)
                             .italics(),
-                        );
+                    );
+                    ui.label(
+                        RichText::new(format!(
+                            "{} {} {} {}, the {}, the {} ({}: {}).",
+                            UI_TEXT.opp_exp_simulate_one,
+                            sim.sample_size,
+                            UI_TEXT.opp_exp_simulate_two,
+                            UI_TEXT.label_target_text,
+                            UI_TEXT.label_stop_loss,
+                            UI_TEXT.opp_exp_out_of_time,
+                            UI_TEXT.label_limit,
+                            max_time_str
+                        ))
+                        .small()
+                        .color(story_color)
+                        .italics(),
+                    );
 
-                        let match_text = if sim.sample_size < 50 {
-                            format!(
-                                "{} {} {}",
-                                UI_TEXT.opp_exp_scanned_history_one,
-                                sim.sample_size,
-                                UI_TEXT.opp_exp_scanned_history_two
-                            )
-                        } else {
-                            format!(
-                                "{} {} {}",
-                                UI_TEXT.opp_exp_scanned_history_three,
-                                sim.sample_size,
-                                UI_TEXT.opp_exp_scanned_history_four
-                            )
-                        };
-                        ui.label(
-                            RichText::new(match_text)
-                                .small()
-                                .color(story_color)
-                                .italics(),
-                        );
-                        ui.label(
-                            RichText::new(format!(
-                                "{} {} {} {}, the {}, the {} ({}: {}).",
-                                UI_TEXT.opp_exp_simulate_one,
-                                sim.sample_size,
-                                UI_TEXT.opp_exp_simulate_two,
-                                UI_TEXT.label_target_text,
-                                UI_TEXT.label_stop_loss,
-                                UI_TEXT.opp_exp_out_of_time,
-                                UI_TEXT.label_limit,
-                                max_time_str
-                            ))
-                            .small()
-                            .color(story_color)
-                            .italics(),
-                        );
+                    let win_count = (sim.success_rate * sim.sample_size as f64).round() as usize;
+                    let win_pct = sim.success_rate * 100.0;
 
-                        let win_count =
-                            (sim.success_rate * sim.sample_size as f64).round() as usize;
-                        let win_pct = sim.success_rate * 100.0;
-
-                        ui.label(
-                            RichText::new(format!(
-                                "{} {} {} {} {} {} {} {:.1}% {} {}",
-                                UI_TEXT.opp_exp_cases_one,
-                                win_count,
-                                UI_TEXT.opp_exp_cases_two,
-                                sim.sample_size,
-                                UI_TEXT.opp_exp_cases_three,
-                                UI_TEXT.label_target_text,
-                                UI_TEXT.opp_exp_cases_four,
-                                win_pct,
-                                UI_TEXT.label_success_rate,
-                                UI_TEXT.opp_exp_cases_five,
-                            ))
-                            .small()
-                            .color(story_color)
-                            .italics(),
-                        );
-                    });
-                } else {
-                    ui.label(&UI_TEXT.label_no_opps);
-                }
+                    ui.label(
+                        RichText::new(format!(
+                            "{} {} {} {} {} {} {} {:.1}% {} {}",
+                            UI_TEXT.opp_exp_cases_one,
+                            win_count,
+                            UI_TEXT.opp_exp_cases_two,
+                            sim.sample_size,
+                            UI_TEXT.opp_exp_cases_three,
+                            UI_TEXT.label_target_text,
+                            UI_TEXT.opp_exp_cases_four,
+                            win_pct,
+                            UI_TEXT.label_success_rate,
+                            UI_TEXT.opp_exp_cases_five,
+                        ))
+                        .small()
+                        .color(story_color)
+                        .italics(),
+                    );
+                });
             });
     }
 
@@ -744,11 +722,9 @@ impl ZoneSniperApp {
         // If the specific selected trade ID is no longer in the list (filtered out or expired),
         // we drop to Market View (None). We do NOT hunt for a replacement.
         if let Some(sel) = &self.selected_opportunity {
-            let exists = rows.iter().any(|r| {
-                r.opportunity
-                    .as_ref()
-                    .map_or(false, |op| op.opportunity.id == sel.id)
-            });
+            let exists = rows
+                .iter()
+                .any(|r| r.opportunity.as_ref().map_or(false, |op| op.id == sel.id));
             if !exists {
                 self.selected_opportunity = None;
             }
@@ -771,9 +747,7 @@ impl ZoneSniperApp {
                     // Case A: Hunting a specific Trade (UUID)
                     NavigationTarget::Opportunity(id) => {
                         // log::info!("render_trade_finder_content() case A hunting id: {} ", id);
-                        r.opportunity
-                            .as_ref()
-                            .map_or(false, |op| op.opportunity.id == *id)
+                        r.opportunity.as_ref().map_or(false, |op| op.id == *id)
                     }
                     // Case B: Hunting a Pair (Market View)
                     NavigationTarget::Pair(name) => {
@@ -938,7 +912,8 @@ impl ZoneSniperApp {
         // Selection Logic
         let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
             && match (&self.selected_opportunity, &row.opportunity) {
-                (Some(sel), Some(live_op)) => sel.id == live_op.opportunity.id,
+                // Comparison: Match IDs directly
+                (Some(sel), Some(op)) => sel.id == op.id,
                 (None, None) => true,
                 _ => false,
             };
@@ -959,8 +934,8 @@ impl ZoneSniperApp {
 
         // // 4. INTERACTION
         if response.clicked() {
-            if let Some(live_op) = &row.opportunity {
-                self.select_specific_opportunity(live_op.opportunity.clone(), ScrollBehavior::None);
+            if let Some(op) = &row.opportunity {
+                self.select_specific_opportunity(op.clone(), ScrollBehavior::None);
             } else {
                 self.handle_pair_selection(row.pair_name.clone());
                 self.selected_opportunity = None;
@@ -1020,8 +995,8 @@ impl ZoneSniperApp {
                     // }
 
                     // Direction Icon
-                    if let Some(live_op) = &row.opportunity {
-                        let op = &live_op.opportunity;
+                    if let Some(op) = &row.opportunity {
+                        // let op = &live_op.opportunity;
                         let dir_color = op.direction.color();
                         let arrow = match op.direction {
                             TradeDirection::Long => &UI_TEXT.icon_long,
@@ -1039,11 +1014,11 @@ impl ZoneSniperApp {
                     }
                 });
 
-                if let Some(live_op) = &row.opportunity {
+                if let Some(op) = &row.opportunity {
                     ui.horizontal(|ui| {
                         // Left: Target Price
                         // Use truncation/small font to fit
-                        let target_str = format_price(live_op.opportunity.target_price);
+                        let target_str = format_price(op.target_price);
                         ui.label(
                             RichText::new(format!("T: {}", target_str))
                                 .size(10.0)
@@ -1053,7 +1028,7 @@ impl ZoneSniperApp {
                         // Right: Age (Pushed to edge)
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             let now = TimeUtils::now_timestamp_ms();
-                            let age_ms = now.saturating_sub(live_op.opportunity.created_at);
+                            let age_ms = now.saturating_sub(op.created_at);
                             let age_str = if age_ms < 60_000 {
                                 "New".to_string()
                             } else {
@@ -1071,7 +1046,7 @@ impl ZoneSniperApp {
                     #[cfg(debug_assertions)]
                     {
                         // Show first 8 chars of UUID
-                        let uuid = &live_op.opportunity.id;
+                        let uuid = &op.id;
                         let short_id = if uuid.len() > 8 { &uuid[..8] } else { uuid };
                         ui.label(
                             RichText::new(format!("ID: {}", short_id))
@@ -1086,9 +1061,10 @@ impl ZoneSniperApp {
 
     fn col_strategy_metrics(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         table_row.col(|ui| {
-            if let Some(live_op) = &row.opportunity {
-                let op = &live_op.opportunity;
-                let roi_color = get_outcome_color(live_op.live_roi);
+            if let Some(op) = &row.opportunity {
+                let roi = op.live_roi(row.current_price);
+                let aroi = op.live_annualized_roi(row.current_price);
+                let roi_color = get_outcome_color(roi);
 
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
@@ -1098,7 +1074,7 @@ impl ZoneSniperApp {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(RichText::new(&UI_TEXT.icon_strategy_roi).size(10.0)); // Mountain
                         ui.label(
-                            RichText::new(format!("{:+.2}%", live_op.live_roi))
+                            RichText::new(format!("{:+.2}%", roi))
                                 .strong()
                                 .color(roi_color),
                         );
@@ -1109,7 +1085,7 @@ impl ZoneSniperApp {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(RichText::new(&UI_TEXT.icon_strategy_aroi).size(10.0)); // Lightning
                         ui.label(
-                            RichText::new(format!("{:+.0}%", live_op.annualized_roi))
+                            RichText::new(format!("{:+.0}%", aroi))
                                 .size(10.0)
                                 .color(roi_color.linear_multiply(0.7)),
                         );
@@ -1165,16 +1141,14 @@ impl ZoneSniperApp {
 
     fn col_time(&self, table_row: &mut TableRow, row: &TradeFinderRow) {
         table_row.col(|ui| {
-            if let Some(live_op) = &row.opportunity {
+            if let Some(op) = &row.opportunity {
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
                     // Avg Duration Only
                     ui.label(
-                        RichText::new(TimeUtils::format_duration(
-                            live_op.opportunity.avg_duration_ms,
-                        ))
-                        .small()
-                        .color(PLOT_CONFIG.color_text_neutral),
+                        RichText::new(TimeUtils::format_duration(op.avg_duration_ms))
+                            .small()
+                            .color(PLOT_CONFIG.color_text_neutral),
                     );
                 });
             } else {
@@ -1200,9 +1174,7 @@ impl ZoneSniperApp {
     fn col_sl_variants(&mut self, table_row: &mut TableRow, row: &TradeFinderRow) {
         table_row.col(|ui| {
             ui.vertical(|ui| {
-                // self.down_from_top(ui);
-                if let Some(live_op) = &row.opportunity {
-                    let op = &live_op.opportunity;
+                if let Some(op) = &row.opportunity {
                     self.render_card_variants(ui, op);
                 } else {
                     self.display_no_data(ui);
@@ -1263,7 +1235,7 @@ impl ZoneSniperApp {
             rows.retain(|r| {
                 if let Some(op) = &r.opportunity {
                     // Rule A: Protection (Selected Op always stays)
-                    if selected_op_id == Some(&op.opportunity.id) {
+                    if selected_op_id == Some(&op.id) {
                         return true;
                     }
                     // Rule B: MWT (Must be worthwhile)
@@ -1287,6 +1259,7 @@ impl ZoneSniperApp {
                     market_state: sample.market_state,
                     opportunity_count_total: 0,
                     opportunity: None,
+                    current_price: sample.current_price,
                 });
             }
         }
@@ -1512,12 +1485,15 @@ impl ZoneSniperApp {
                             // Update global context & Fire
                             engine.update_config(self.app_config.clone());
                             // FIX: Use force_recalc to update ONLY this pair
-                            engine.force_recalc(&pair_name, None, "USER TUNE TIME BUTTON");
+                            engine.force_recalc(
+                                &pair_name,
+                                None,
+                                JobMode::FullAnalysis,
+                                "USER TUNE TIME BUTTON",
+                            );
                         }
                     }
-                }
-                else {
-
+                } else {
                 }
             }
             time_tuner::TunerAction::ConfigureTuner => {

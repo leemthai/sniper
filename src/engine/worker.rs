@@ -9,7 +9,7 @@ use std::thread;
 
 use uuid::Uuid;
 
-use super::messages::{JobRequest, JobResult};
+use super::messages::{JobRequest, JobResult, JobMode};
 
 use crate::analysis::adaptive::AdaptiveParameters;
 use crate::analysis::market_state::MarketState;
@@ -25,7 +25,7 @@ use crate::domain::price_horizon;
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::CVACore;
 use crate::models::timeseries::find_matching_ohlcv;
-use crate::models::trading_view::{TradeDirection, TradeOpportunity, TradeVariant};
+use crate::models::trading_view::{TradeDirection, TradeOpportunity, TradeVariant, VisualFluff};
 
 use crate::TradingModel;
 
@@ -70,7 +70,6 @@ pub fn tune_to_station(
     base_config: &AnalysisConfig,
     station: &TunerStation,
 ) -> Option<f64> {
-
     let _strategy = base_config.journey.profile.goal;
     let _t_start = AppInstant::now();
 
@@ -109,7 +108,7 @@ pub fn tune_to_station(
         config.price_horizon.threshold_pct = ph;
 
         // Run the Optimized Pathfinder
-        let result = run_pathfinder_simulations(ohlcv, current_price, &config);
+        let result = run_pathfinder_simulations(ohlcv, current_price, &config, None);
 
         let count = result.opportunities.len();
         if count > 0 {
@@ -244,6 +243,12 @@ fn simulate_target(
             let unique_string = format!("{}_{}_{}", ctx.pair_name, source_id_suffix, direction);
             let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, unique_string.as_bytes()).to_string();
 
+            // SAFE EXTRACTION:
+            // If we have CVA data, clone the profile. If not, visuals are None.
+            let visuals = ctx.cva.map(|core| VisualFluff {
+                volume_profile: core.candle_bodies_vw.clone(),
+            });
+
             let opp = TradeOpportunity {
                 id: uuid,
                 created_at: TimeUtils::now_timestamp_ms(),
@@ -258,6 +263,7 @@ fn simulate_target(
                 strategy: profile.goal,
                 station_id: ctx.config.tuner.active_station_id,
                 market_state: ctx.current_state,
+                visuals,
                 simulation: result,
                 variants,
             };
@@ -418,7 +424,8 @@ fn apply_diversity_filter(
 struct PathfinderContext<'a> {
     pair_name: &'a str,
     ohlcv: &'a OhlcvTimeSeries,
-    matches: Vec<(usize, f64)>, // Ownership moved here for convenience or reference
+    cva: Option<&'a CVACore>, // Optional because it is used only to produce VisualFluff
+    matches: Vec<(usize, f64)>,
     current_state: MarketState,
     current_price: f64,
     config: &'a AnalysisConfig,
@@ -729,6 +736,7 @@ pub fn run_pathfinder_simulations(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
     config: &AnalysisConfig,
+    cva_opt: Option<&CVACore>,
 ) -> PathfinderResult {
     if current_price <= 0.0 {
         return PathfinderResult {
@@ -783,6 +791,7 @@ pub fn run_pathfinder_simulations(
     let ctx = PathfinderContext {
         pair_name: ohlcv.pair_interval.name(),
         ohlcv,
+        cva: cva_opt,
         matches,
         current_state: _current_state,
         current_price,
@@ -1050,24 +1059,37 @@ fn perform_standard_analysis(
             pair_analysis_pure(req.pair_name.clone(), ts_collection, price, &req.config)
         });
 
-        // // 4. Profiler
-        // let profile = crate::trace_time!(&format!("3. Profiler [{}]", full_label), 2_000, {
-        //     get_or_generate_profile(req, ts_collection, price)
-        // });
-
         let elapsed = start.elapsed().as_millis();
 
         // 5. Result Construction
+        // 5. Result Construction
         let response = match result_cva {
             Ok(cva) => {
-                build_success_result(req, ts_collection, cva, price, count, elapsed)
+                // BRANCH: Check Mode
+                if req.mode == JobMode::ContextOnly {
+                    // Fast Return: No Simulations
+                    JobResult {
+                        pair_name: req.pair_name.clone(),
+                        duration_ms: elapsed,
+                        // Return the Model with CVA, but EMPTY opportunities
+                        result: Ok(Arc::new(TradingModel::from_cva(
+                            Arc::new(cva), 
+                            find_matching_ohlcv(&ts_collection.series_data, &req.pair_name, req.config.interval_width_ms).unwrap(), 
+                            &req.config
+                        ))),
+                        cva: None, // Legacy field (optional)
+                        candle_count: count,
+                    }
+                } else {
+                    // Full Analysis: Pass CVA to Pathfinder
+                    build_success_result(req, ts_collection, cva, price, count, elapsed)
+                }
             }
             Err(e) => JobResult {
                 pair_name: req.pair_name.clone(),
                 duration_ms: elapsed,
                 result: Err(e.to_string()),
                 cva: None,
-                // profile: Some(profile),
                 candle_count: count,
             },
         };
@@ -1138,11 +1160,11 @@ fn build_success_result(
     req: &JobRequest,
     ts_collection: &TimeSeriesCollection,
     cva: CVACore,
-    // profile: HorizonProfile,
     price: f64,
     count: usize,
     elapsed: u128,
 ) -> JobResult {
+
     let cva_arc = Arc::new(cva);
 
     let ohlcv = find_matching_ohlcv(
@@ -1155,7 +1177,7 @@ fn build_success_result(
     let mut model = TradingModel::from_cva(cva_arc.clone(), ohlcv, &req.config);
 
     // Run Pathfinder
-    let pf_result = run_pathfinder_simulations(ohlcv, price, &req.config);
+    let pf_result = run_pathfinder_simulations(ohlcv, price, &req.config, Some(&cva_arc));
 
     model.opportunities = pf_result.opportunities;
 

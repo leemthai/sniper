@@ -50,13 +50,6 @@ pub struct TradeProfile {
 pub struct PriceHorizonConfig {
     /// Percentage threshold for price relevancy (e.g. 0.15 = 15%)
     pub threshold_pct: f64,
-
-    // UI Bounds
-    // pub min_threshold_pct: f64,
-    // pub max_threshold_pct: f64,
-
-    // Configurable Resolution
-    // pub profiler_steps: usize,
 }
 
 /// Settings for CVA (Cumulative Volume Analysis)

@@ -104,11 +104,12 @@ fn run_single_simulation(
     if cva_res.is_err() {
         return;
     }
+
     let cva = cva_res.unwrap();
     let ph_candles = cva.relevant_candle_count;
 
     // 2. Pathfinder (Scout + Drill)
-    let pf_result = worker::run_pathfinder_simulations(ohlcv, price, &config);
+    let pf_result = worker::run_pathfinder_simulations(ohlcv, price, &config, Some(&cva));
     let elapsed = start_time.elapsed().as_millis();
     let opportunities = pf_result.opportunities;
     let trend_k = pf_result.trend_lookback; // Truth from the engine
