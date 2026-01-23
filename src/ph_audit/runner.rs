@@ -3,8 +3,8 @@ use strum::IntoEnumIterator;
 
 use crate::analysis::pair_analysis;
 
-use crate::config::AnalysisConfig;
-use crate::config::OptimizationGoal;
+use crate::config::AppConstants;
+use crate::config::{OptimizationGoal, StationId};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -17,7 +17,7 @@ use super::{config, reporter::AuditReporter};
 
 pub fn execute_audit(
     ts_collection: &TimeSeriesCollection,
-    base_config: &AnalysisConfig,
+    base_config: &AppConstants,
     current_prices: &HashMap<String, f64>, // NEW: Live prices from Ticker
 ) {
     println!("=== STARTING MULTI-STRATEGY SPECTRUM AUDIT ===");
@@ -80,24 +80,24 @@ fn run_single_simulation(
     strategy: &OptimizationGoal,
     ph_pct: f64,
     ts_collection: &TimeSeriesCollection,
-    base_config: &AnalysisConfig,
+    base_config: &AppConstants,
     reporter: &mut AuditReporter,
 ) {
-    let mut config = base_config.clone();
+    let config = base_config.clone();
     // Apply Context
-    config.price_horizon.threshold_pct = ph_pct;
-    config.journey.profile.goal = strategy.clone();
+    // config.price_horizon.threshold_pct = ph_pct;
+    // config.journey.profile.goal = strategy.clone();
 
-    let interval = config.interval_width_ms;
+    let interval_ms = base_config.interval_width_ms;
     // Unwrap is safe here because we checked existence in the main loop
-    let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, interval).unwrap();
+    let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, interval_ms).unwrap();
 
     let start_time = AppInstant::now();
 
     // C. Run Pipeline (Using worker internals)
     // 1. CVA
     let cva_res =
-        pair_analysis::pair_analysis_pure(pair.to_string(), ts_collection, price, &config);
+        pair_analysis::pair_analysis_pure(pair.to_string(), ts_collection, price, ph_pct, &config);
 
     let strat_name = format!("{:?}", strategy);
 
@@ -109,7 +109,7 @@ fn run_single_simulation(
     let ph_candles = cva.relevant_candle_count;
 
     // 2. Pathfinder (Scout + Drill)
-    let pf_result = worker::run_pathfinder_simulations(ohlcv, price, &config, Some(&cva));
+    let pf_result = worker::run_pathfinder_simulations(ohlcv, price, &config, ph_pct, *strategy, StationId::default(), Some(&cva));
     let elapsed = start_time.elapsed().as_millis();
     let opportunities = pf_result.opportunities;
     let trend_k = pf_result.trend_lookback; // Truth from the engine

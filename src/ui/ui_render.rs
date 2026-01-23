@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{ANALYSIS, OptimizationGoal, TICKER};
+use crate::config::{OptimizationGoal, TICKER};
 
 use crate::domain::pair_interval::PairInterval;
 
@@ -156,7 +156,7 @@ impl ZoneSniperApp {
                 }
                 // Sort by Strategy Score (Balanced/ROI/AROI)
                 SortColumn::Score => {
-                    let profile = &self.app_config.journey.profile;
+                    let profile = &self.app_constants.journey.profile;
                     let val_a = a
                         .opportunity
                         .as_ref()
@@ -246,7 +246,7 @@ impl ZoneSniperApp {
                 
                 // For interval display, we use the global config as a fallback if not in state
                 // (Assuming 5m candles usually)
-                let interval_ms = self.app_config.interval_width_ms; 
+                let interval_ms = self.app_constants.interval_width_ms; 
                 let max_candles = if interval_ms > 0 { max_time_ms / interval_ms } else { 0 };
 
                 // SECTION 1: THE MATH
@@ -1097,7 +1097,7 @@ impl ZoneSniperApp {
                         || op.strategy == OptimizationGoal::Balanced;
 
                     if show_score {
-                        let profile = &self.app_config.journey.profile;
+                        let profile = &self.app_constants.journey.profile;
                         let score = op.calculate_quality_score(profile);
 
                         ui.label(
@@ -1190,7 +1190,7 @@ impl ZoneSniperApp {
             vec![]
         };
 
-        let profile = &ANALYSIS.journey.profile;
+        let profile = &self.app_constants.journey.profile;
         let selected_op_id = self.selected_opportunity.as_ref().map(|o| &o.id);
 
         // Scope Helper
@@ -1454,7 +1454,7 @@ impl ZoneSniperApp {
         match action {
             time_tuner::TunerAction::StationSelected(station_id) => {
                 // A. Update Active ID (Global Config)
-                self.app_config.tuner.active_station_id = station_id;
+                self.active_station_id = station_id;
 
                 // B. Run Auto-Tune for the Active Pair
                 if let Some(pair) = &self.selected_pair {
@@ -1473,21 +1473,22 @@ impl ZoneSniperApp {
                         );
 
                         // C. Apply Result to Config
-                        self.app_config.price_horizon.threshold_pct = best_ph;
+                        self.active_ph_pct = best_ph;
 
                         // D. Update Engine
                         if let Some(engine) = &mut self.engine {
                             // Create specific config for this pair's override
-                            let mut new_conf = self.app_config.price_horizon.clone();
-                            new_conf.threshold_pct = best_ph;
-                            engine.set_price_horizon_override(pair_name.clone(), new_conf);
+                            engine.set_price_horizon_override(pair_name.clone(), best_ph);
 
                             // Update global context & Fire
-                            engine.update_config(self.app_config.clone());
+                            // engine.update_config(self.app_config.clone());
                             // FIX: Use force_recalc to update ONLY this pair
                             engine.force_recalc(
                                 &pair_name,
                                 None,
+                                best_ph,
+                                self.saved_strategy,
+                                station_id,
                                 JobMode::FullAnalysis,
                                 "USER TUNE TIME BUTTON",
                             );
@@ -1512,7 +1513,7 @@ impl ZoneSniperApp {
             .frame(frame)
             .show(ctx, |ui| {
                 // 1. TIME TUNER
-                if let Some(action) = time_tuner::render(ui, &self.app_config.tuner) {
+                if let Some(action) = time_tuner::render(ui, &self.global_tuner_config, self.active_station_id) {
                     self.handle_tuner_action(action);
                 }
 
@@ -1557,8 +1558,7 @@ impl ZoneSniperApp {
                     // OPTIMIZATION GOAL SELECTOR
                     // ui.label(format!("{}:", UI_TEXT.label_goal));
                     ui.label(format!("{} {}", UI_TEXT.label_goal, UI_TEXT.icon_strategy));
-                    let current_goal = self.app_config.journey.profile.goal;
-                    // FIX: Format the selected text to include the icon so it is visible when closed
+                    let current_goal = self.saved_strategy;
                     let selected_text = format!("{} {}", current_goal.icon(), current_goal);
 
                     ComboBox::from_id_salt("opt_goal_selector")
@@ -1569,7 +1569,7 @@ impl ZoneSniperApp {
                                 let item_text = format!("{} {}", goal.icon(), goal);
                                 if ui
                                     .selectable_value(
-                                        &mut self.app_config.journey.profile.goal,
+                                        &mut self.saved_strategy,
                                         goal,
                                         item_text,
                                     )
@@ -2154,38 +2154,6 @@ impl ZoneSniperApp {
             });
     }
 
-    //     fn data_generation_panel(&mut self, ui: &mut Ui) -> Vec<DataGenerationEventChanged> {
-    //         // 1. Get Data from Engine
-    //         let (_, profile, actual_count) = if let Some(engine) = &self.engine {
-    //             let pairs = engine.get_all_pair_names();
-
-    //             let (prof, count) = if let Some(pair) = &self.selected_pair {
-    //                 (engine.get_profile(pair), engine.get_candle_count(pair))
-    //             } else {
-    //                 (None, 0)
-    //             };
-
-    //             (pairs, prof, count)
-    //         } else {
-    //             (Vec::new(), None, 0)
-    //         };
-
-    //         // 2. Render Panel
-    //         let mut panel = DataGenerationPanel::new(
-    //             &self.app_config.price_horizon,
-    //             profile.as_ref(),
-    //             actual_count,
-    //             self.app_config.interval_width_ms,
-    //         );
-
-    //         let events = panel.render(ui, &mut self.show_ph_help);
-
-    //         // Render the window (it handles its own "if open" check internally via .open())
-    //         if self.show_ph_help {
-    //             DataGenerationPanel::render_ph_help_window(ui.ctx(), &mut self.show_ph_help);
-    //         }
-    //         events
-    //     }
 }
 
 fn render_fullscreen_message(ui: &mut Ui, title: &str, subtitle: &str, is_error: bool) {

@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 #[cfg(not(target_arch = "wasm32"))]
 use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::Runtime};
 
-use crate::config::{ANALYSIS, AnalysisConfig, PriceHorizonConfig};
+use crate::config::{AppConstants, OptimizationGoal, StationId};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
@@ -47,11 +47,14 @@ pub struct SniperEngine {
     #[cfg(target_arch = "wasm32")]
     result_tx: Sender<JobResult>,
 
-    /// Queue Logic: (PairName, OptionalPriceOverride)
-    pub queue: VecDeque<(String, Option<f64>, JobMode)>,
+    /// Queue Logic: (Pair, Price, PH, Strategy, StationId, Mode)
+    // Update the VecDeque type to hold the runtime variables
+    pub queue: VecDeque<(String, Option<f64>, f64, OptimizationGoal, StationId, JobMode)>,
     /// The Live Configuration State
-    pub current_config: AnalysisConfig,
-    pub price_horizon_config_overrides: HashMap<String, PriceHorizonConfig>,
+    pub app_constants: AppConstants,
+    pub price_horizon_overrides: HashMap<String, f64>,
+    pub current_strategy: OptimizationGoal,
+    pub station_overrides: HashMap<String, StationId>,
     pub ledger: OpportunityLedger,
     pub results_repo: Arc<dyn ResultsRepositoryTrait>,
 
@@ -139,35 +142,36 @@ impl SniperEngine {
             #[cfg(target_arch = "wasm32")]
             result_tx,
             queue: VecDeque::new(),
-            current_config: ANALYSIS.clone(),
-            price_horizon_config_overrides: HashMap::new(),
+            app_constants: AppConstants::default(),
+            price_horizon_overrides: HashMap::new(),
             ledger: OpportunityLedger::new(),
             results_repo: Arc::new(repo),
             last_ledger_maintenance: AppInstant::now(),
+            current_strategy: OptimizationGoal::default(),
+            station_overrides: HashMap::new(),
         }
     }
 
-    /// INTENT: The User clicked a Pair or Station.
-    /// Action: Run Auto-Tune (internally via worker if we moved it, or assume config is already updated) -> Run Full Analysis.
-    pub fn request_market_scan(&mut self, pair: String) {
-        // Assume App has already updated 'self.current_config' via 'update_config'
-        // Just trigger the work.
-        self.force_recalc(&pair, None, JobMode::FullAnalysis, "MARKET SCAN");
-    }
+    // INTENT: The User clicked a Pair or Station.
+    // pub fn request_market_scan(&mut self, pair: String) {
+    //     // Just trigger the work.
+    //     self.force_recalc(&pair, None, JobMode::FullAnalysis, "MARKET SCAN");
+    // }
 
     /// INTENT: The User clicked a specific Trade Opportunity.
     /// Action: Calculate CVA Zones for this specific PH so the chart looks right,
     /// but DO NOT re-run simulations (preserve the trade list).
     pub fn request_trade_context(&mut self, pair: String, target_ph: f64) {
-        // 1. Create a specific config for this job
-        let mut trade_config = self.current_config.clone();
-        trade_config.price_horizon.threshold_pct = target_ph;
 
         // 2. Set Override (so the worker picks it up)
-        self.set_price_horizon_override(pair.clone(), trade_config.price_horizon);
+        self.set_price_horizon_override(pair.clone(), target_ph);
 
         // 3. Dispatch Context-Only Job
-        self.force_recalc(&pair, None, JobMode::ContextOnly, "TRADE CONTEXT");
+        // Lee's only code to grab the station id out of station_overrides lol
+        if let Some(station_id) = self.station_overrides.get(&pair).copied() {
+            self.force_recalc(&pair, None, target_ph, self.current_strategy, station_id, JobMode::ContextOnly, "TRADE CONTEXT");
+
+        }
     }
 
     /// Process incoming live candles
@@ -203,13 +207,23 @@ impl SniperEngine {
                         );
 
                         // 3. Trigger Recalc
+                        let pair_name = candle.symbol;
                         // This is now allowed because 'ts_collection' borrows 'ts_lock', not 'self'.
+                        if let Some(ph_pct) = self.price_horizon_overrides.get(&pair_name) {
+                            if let Some(station_id) = self.station_overrides.get(&pair_name) {
                         self.force_recalc(
-                            &candle.symbol,
+                            &pair_name,
                             Some(candle.close),
+                            *ph_pct,
+                            self.current_strategy,
+                            *station_id,
                             JobMode::FullAnalysis,
                             "CANDLE CLOSE TRIGGER",
                         );
+                            }
+
+                        }
+
                     }
                 }
             }
@@ -233,7 +247,7 @@ impl SniperEngine {
         for (id, op) in &self.ledger.opportunities {
             // A. Get Data context
             let pair = &op.pair_name;
-            let interval_ms = self.current_config.interval_width_ms;
+            let interval_ms = self.app_constants.interval_width_ms;
 
             if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, pair, interval_ms) {
                 let current_price = series.close_prices.last().copied().unwrap_or(0.0);
@@ -427,9 +441,17 @@ impl SniperEngine {
         })
     }
 
-    // NEW: Helper to set an override
-    pub fn set_price_horizon_override(&mut self, pair: String, config: PriceHorizonConfig) {
-        self.price_horizon_config_overrides.insert(pair, config);
+    // Helper functions to ensure the UI can update the Engine's status
+    pub fn set_price_horizon_override(&mut self, pair: String, ph_pct: f64) {
+        self.price_horizon_overrides.insert(pair, ph_pct);
+    }
+
+    pub fn set_strategy(&mut self, strategy: OptimizationGoal) {
+        self.current_strategy = strategy;
+    }
+
+    pub fn set_station_override(&mut self, pair: String, station: StationId) {
+        self.station_overrides.insert(pair, station);
     }
 
     /// THE GAME LOOP.
@@ -450,7 +472,7 @@ impl SniperEngine {
         }
 
         // Maintenance loop - checks for drifting trades that have overlapped and merges them.
-        let journey_settings = &self.current_config.journey; // Access journey settings
+        let journey_settings = &self.app_constants.journey; // Access journey settings
 
         if t1.duration_since(self.last_ledger_maintenance).as_secs()
             >= journey_settings.optimization.prune_interval_sec
@@ -546,31 +568,48 @@ impl SniperEngine {
         }
     }
 
-    pub fn update_config(&mut self, new_config: AnalysisConfig) {
-        self.current_config = new_config;
-    }
-
-    /// Smart Global Invalidation
-    pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
+pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
         self.queue.clear();
 
         let mut all_pairs = self.get_all_pair_names();
+        
+        // Helper to push with CORRECT context
+        // We capture 'self' features (maps/strategy) to use inside the loop
+        let strat = self.current_strategy;
+        
+        // We can't use a closure easily due to borrow checker rules with self, 
+        // so we just iterate logic directly.
+        let push_pair = |pair: String, target_queue: &mut VecDeque<_>, ph_map: &HashMap<String, f64>, st_map: &HashMap<String, StationId>| {
+            // 1. Lookup PH (Specific to pair)
+            let ph = *ph_map.get(&pair).unwrap_or(&0.15);
+            
+            // 2. Lookup Station (Specific to pair)
+            let station = *st_map.get(&pair).unwrap_or(&StationId::default());
+
+            target_queue.push_back((
+                pair, 
+                None, // Live Price
+                ph, 
+                strat,   // Respects User Choice
+                station, // Respects User Choice
+                JobMode::FullAnalysis
+            ));
+        };
 
         if let Some(vip) = priority_pair {
             if let Some(pos) = all_pairs.iter().position(|p| p == &vip) {
                 all_pairs.remove(pos);
             }
-            // Use None for price override (Global recalc uses live price)
-            self.queue.push_back((vip, None, JobMode::FullAnalysis));
+            push_pair(vip, &mut self.queue, &self.price_horizon_overrides, &self.station_overrides);
         }
 
         for pair in all_pairs {
-            self.queue.push_back((pair, None, JobMode::FullAnalysis));
+            push_pair(pair, &mut self.queue, &self.price_horizon_overrides, &self.station_overrides);
         }
     }
 
     /// Force a single recalc with optional price override
-    pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, mode: JobMode, _reason: &str) {
+    pub fn force_recalc(&mut self, pair: &str, price_override: Option<f64>, ph_pct: f64, strategy: OptimizationGoal, station_id: StationId, mode: JobMode, _reason: &str) {
         // Check if calculating
         let is_calculating = self
             .pairs
@@ -580,10 +619,10 @@ impl SniperEngine {
 
         // Check if already in queue (by Name)
         // We use a manual iterator check because contains() fails on tuples
-        let in_queue = self.queue.iter().any(|(p, _, _)| p == pair);
+        let in_queue = self.queue.iter().any(|(p, _, _, _, _, _,)| p == pair);
 
         if !is_calculating && !in_queue {
-            self.queue.push_front((pair.to_string(), price_override, mode));
+            self.queue.push_front((pair.to_string(), price_override, ph_pct, strategy, station_id, mode));
         }
     }
 
@@ -601,7 +640,7 @@ impl SniperEngine {
                 Ok(model) => {
                     // Sync to Ledger ---
                     let fuzzy_tolerance = self
-                        .current_config
+                        .app_constants
                         .journey
                         .optimization
                         .fuzzy_match_tolerance;
@@ -642,12 +681,12 @@ impl SniperEngine {
     fn check_automatic_triggers(&mut self) {
 
         let pairs: Vec<String> = self.pairs.keys().cloned().collect();
-        let threshold = self.current_config.cva.price_recalc_threshold_pct;
+        let threshold = self.app_constants.cva.price_recalc_threshold_pct;
 
         for pair in pairs {
             if let Some(current_price) = self.price_stream.get_price(&pair) {
                 if let Some(state) = self.pairs.get_mut(&pair) {
-                    let in_queue = self.queue.iter().any(|(p, _, _)| p == &pair);
+                    let in_queue = self.queue.iter().any(|(p, _, _, _, _, _)| p == &pair);
 
                     if !state.is_calculating && !in_queue {
                         // FIX: Handle Startup Case (0.0)
@@ -670,7 +709,11 @@ impl SniperEngine {
                                 threshold,
                             );
 
-                            self.dispatch_job(pair.clone(), None, JobMode::FullAnalysis);
+                           if let Some(ph_pct) = self.price_horizon_overrides.get(&pair) {
+                             if let Some(station_id) = self.station_overrides.get(&pair) {
+                                self.dispatch_job(pair.clone(), None, *ph_pct, self.current_strategy, *station_id, JobMode::FullAnalysis);
+                           }
+                        }
                         }
                     }
                 }
@@ -684,7 +727,7 @@ impl SniperEngine {
         }
 
         // Peek at front (tuple index 0 is pair name)
-        if let Some((pair, _, _)) = self.queue.front() {
+        if let Some((pair, _, _, _, _, _)) = self.queue.front() {
             if let Some(state) = self.pairs.get(pair) {
                 if state.is_calculating {
                     return; // Busy
@@ -692,13 +735,13 @@ impl SniperEngine {
             }
         }
 
-        // Pop tuple: (Pair, Price, Mode)
-        if let Some((pair, price_opt, mode)) = self.queue.pop_front() {
-            self.dispatch_job(pair, price_opt, mode);
+        if let Some((pair, price_opt, ph_pct, strategy, station_id, mode)) = self.queue.pop_front() {
+            self.dispatch_job(pair, price_opt, ph_pct, strategy, station_id, mode);
         }
     }
 
-    fn dispatch_job(&mut self, pair: String, price_override: Option<f64>, mode: JobMode) {
+    fn dispatch_job(&mut self, pair: String, price_override: Option<f64>, ph_pct: f64, strategy: OptimizationGoal, station_id: StationId, mode: JobMode) {
+
         if let Some(state) = self.pairs.get_mut(&pair) {
             // 1. Resolve Price
             // Priority: Override -> Live Stream -> None (Worker will fetch from DB)
@@ -714,27 +757,17 @@ impl SniperEngine {
             // 2. Capture Cache (Smart Profiling Optimization)
             let existing_profile = state.profile.clone();
 
-            // 3. Prepare Config
-            let mut config = self.current_config.clone();
-
-            // APPLY OVERRIDE i.e. use per-pair setting, not global default
-            let pair_upper = pair.to_uppercase();
-            if let Some(horizon) = self.price_horizon_config_overrides.get(&pair_upper) {
-                config.price_horizon = horizon.clone();
-            } else {
-                if let Some(horizon) = self.price_horizon_config_overrides.get(&pair) {
-                    config.price_horizon = horizon.clone();
-                }
-            }
-
             // 4. Send Request
             let req = JobRequest {
                 pair_name: pair,
-                current_price: final_price_opt, // Pass Option<f64>
-                config,                         // Use the local 'config' with overrides applied
+                current_price: final_price_opt,
+                config: self.app_constants.clone(),
                 timeseries: self.timeseries.clone(),
+                existing_profile,
+                ph_pct,
+                strategy,
+                station_id,
                 mode: mode,
-                existing_profile, // Pass cached profile
             };
 
             let _ = self.job_tx.send(req);

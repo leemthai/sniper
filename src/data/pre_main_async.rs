@@ -10,7 +10,7 @@ use {crate::config::DEMO, crate::data::timeseries::wasm_demo::WasmDemoData};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::ANALYSIS,
+    crate::config::CONSTANTS,
     crate::config::BINANCE,
     crate::data::provider::{BinanceProvider, MarketDataProvider},
     crate::data::rate_limiter::GlobalRateLimiter,
@@ -40,6 +40,7 @@ async fn sync_pair(
     storage: Arc<SqliteStorage>,
     provider: Arc<BinanceProvider>,
 ) -> Result<(OhlcvTimeSeries, usize)> {
+    
     let interval_str = TimeUtils::interval_to_string(interval_ms);
 
     // 1. Check DB for last candle
@@ -171,7 +172,7 @@ pub async fn fetch_pair_data(
         }
 
         // 3. Run in Parallel
-        let interval = ANALYSIS.interval_width_ms;
+        let interval = CONSTANTS.interval_width_ms;
 
         let results = stream::iter(supply_pairs)
             .enumerate()

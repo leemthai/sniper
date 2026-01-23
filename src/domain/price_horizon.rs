@@ -1,5 +1,3 @@
-use crate::config::PriceHorizonConfig;
-
 use crate::models::OhlcvTimeSeries;
 
 /// Automatically select discontinuous slice ranges based on price relevancy.
@@ -7,10 +5,10 @@ use crate::models::OhlcvTimeSeries;
 pub fn auto_select_ranges(
     timeseries: &OhlcvTimeSeries,
     current_price: f64,
-    config: &PriceHorizonConfig,
+    ph_pct: f64,
 ) -> (Vec<(usize, usize)>, (f64, f64)) {
     // 1. Calculate the user-defined price range
-    let (price_min, price_max) = calculate_price_range(current_price, config.threshold_pct);
+    let (price_min, price_max) = calculate_price_range(current_price, ph_pct);
 
     // 2. Find all ranges where price is relevant
     let ranges = crate::trace_time!("Scan All Candles", 3_000, {
@@ -74,19 +72,19 @@ fn find_relevant_ranges(
     ranges
 }
 
-/// Calculate the earliest timestamp (in ms since epoch) where relevant data begins
-pub fn calculate_relevant_start_timestamp(
-    timeseries: &OhlcvTimeSeries,
-    current_price: f64,
-    config: &PriceHorizonConfig,
-) -> i64 {
-    let (ranges, _) = auto_select_ranges(timeseries, current_price, config);
+// Calculate the earliest timestamp (in ms since epoch) where relevant data begins
+// pub fn calculate_relevant_start_timestamp(
+//     timeseries: &OhlcvTimeSeries,
+//     current_price: f64,
+//     ph_pct: f64,
+// ) -> i64 {
+//     let (ranges, _) = auto_select_ranges(timeseries, current_price, ph_pct);
 
-    if let Some((start_idx, _)) = ranges.first() {
-        // Calculate timestamp based on index and interval
-        let start_offset = *start_idx as i64 * timeseries.pair_interval.interval_ms;
-        timeseries.first_kline_timestamp_ms + start_offset
-    } else {
-        0
-    }
-}
+//     if let Some((start_idx, _)) = ranges.first() {
+//         // Calculate timestamp based on index and interval
+//         let start_offset = *start_idx as i64 * timeseries.pair_interval.interval_ms;
+//         timeseries.first_kline_timestamp_ms + start_offset
+//     } else {
+//         0
+//     }
+// }

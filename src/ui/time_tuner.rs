@@ -10,6 +10,7 @@ pub enum TunerAction {
 pub fn render(
     ui: &mut Ui,
     config: &TimeTunerConfig,
+    active_station_id: StationId,
 ) -> Option<TunerAction> {
     let mut action = None;
 
@@ -24,7 +25,7 @@ pub fn render(
 
             for station in &config.stations {
                 // Active check (StationId is mandatory now, simple equality)
-                let is_active = config.active_station_id == station.id;
+                let is_active = active_station_id == station.id;
                 
                 let btn = if is_active {
                     Button::new(&station.name)

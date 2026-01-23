@@ -112,8 +112,8 @@ impl OpportunityLedger {
 
                 if a.pair_name == b.pair_name && a.direction == b.direction {
                     // SEGREGATION: Different strategies = Different trades.
-                    // Keep both (e.g. Keep the Scalp AND the Swing).
                     if a.strategy != b.strategy { continue; }
+                    if a.station_id != b.station_id { continue; }
 
                     let diff = calculate_percent_diff(a.target_price, b.target_price);
                     
@@ -122,7 +122,8 @@ impl OpportunityLedger {
                         // Create a profile context for this specific strategy to judge them.
                         // We use the global weights, but force the goal to match the trade's strategy.
                         let mut judge_profile = global_profile.clone();
-                        judge_profile.goal = a.strategy;
+                        // judge_profile.goal = a.strategy;
+                        todo!("Note: this line 'judge_profile.goal = a.strategy;' has been removed coz i don't nderstand what it shoudl be");
 
                         let score_a = a.calculate_quality_score(&judge_profile);
                         let score_b = b.calculate_quality_score(&judge_profile);

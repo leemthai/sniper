@@ -8,7 +8,7 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{ANALYSIS, AnalysisConfig, TradeProfile, ZoneParams, OptimizationGoal, StationId};
+use crate::config::{AppConstants, TradeProfile, ZoneParams, OptimizationGoal, StationId, ZoneClassificationConfig};
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
@@ -180,7 +180,7 @@ impl TradeOpportunity {
     /// Calculates a composite Quality Score (0.0 to 100.0+)
     /// Used for "Auto-Tuning" and finding the best setups.
     pub fn calculate_quality_score(&self, profile: &TradeProfile) -> f64 {
-        profile.goal.calculate_score(
+        self.strategy.calculate_score(
             self.expected_roi(), 
             self.avg_duration_ms as f64, 
             profile.weight_roi, 
@@ -429,9 +429,9 @@ impl TradingModel {
         cva: Arc<CVACore>,
         // profile: HorizonProfile,
         ohlcv: &OhlcvTimeSeries,
-        config: &AnalysisConfig,
+        config: &AppConstants,
     ) -> Self {
-        let (classified, stats) = Self::classify_zones(&cva);
+        let (classified, stats) = Self::classify_zones(&cva, &config.zones);
 
         let bounds = cva.price_range.min_max();
         let merge_ms = config.cva.segment_merge_tolerance_ms;
@@ -449,7 +449,7 @@ impl TradingModel {
         }
     }
 
-    fn classify_zones(cva: &CVACore) -> (ClassifiedZones, ZoneCoverageStats) {
+    fn classify_zones(cva: &CVACore, config: &ZoneClassificationConfig) -> (ClassifiedZones, ZoneCoverageStats) {
         let (price_min, price_max) = cva.price_range.min_max();
         let zone_count = cva.zone_count;
         let total_candles = cva.total_candles as f64;
@@ -557,7 +557,7 @@ impl TradingModel {
 
             let (sticky, sticky_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::FullCandleTVW),
-                ANALYSIS.zones.sticky,
+                config.sticky,
                 total_volume,
                 "STICKY",
             );
@@ -569,7 +569,7 @@ impl TradingModel {
             // 1. Low Wicks
             let (low_wicks, low_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::LowWickCount),
-                ANALYSIS.zones.reversal,
+                config.reversal,
                 total_candles,
                 "LOW WICKS",
             );
@@ -577,7 +577,7 @@ impl TradingModel {
             // 2. High Wicks
             let (high_wicks, high_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::HighWickCount),
-                ANALYSIS.zones.reversal,
+                config.reversal,
                 total_candles,
                 "HIGH WICKS",
             );

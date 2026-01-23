@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::utils::maths_utils::remap; // We will ensure remap is available
-use crate::config::ANALYSIS;
+use crate::config::JourneySettings;
 
 pub struct AdaptiveParameters;
 
@@ -9,7 +9,7 @@ impl AdaptiveParameters {
 
     /// Calculates Max Duration using Diffusive Market Physics (Random Walk).
     /// Formula: Candles = (Ratio + Bias)^2
-    pub fn calculate_dynamic_journey_duration(ph_pct: f64, avg_volatility_pct: f64, interval_ms: i64) -> Duration {
+    pub fn calculate_dynamic_journey_duration(ph_pct: f64, avg_volatility_pct: f64, interval_ms: i64, journey: &JourneySettings) -> Duration {
         // 1. Safety
         let vol = avg_volatility_pct.max(0.0001); 
         
@@ -27,8 +27,8 @@ impl AdaptiveParameters {
         let total_ms = candles * interval_ms as f64;
         
         Duration::from_millis(total_ms as u64).clamp(
-            ANALYSIS.journey.min_journey_duration, 
-            ANALYSIS.journey.max_journey_time
+            journey.min_journey_duration, 
+            journey.max_journey_time
         )
     }
 

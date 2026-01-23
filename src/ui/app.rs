@@ -18,15 +18,12 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{
-    ANALYSIS, AnalysisConfig, DEBUG_FLAGS, OptimizationGoal, StationId, TimeTunerConfig,
-};
+use crate::config::{AppConstants, CONSTANTS, DEBUG_FLAGS, OptimizationGoal, StationId, TimeTunerConfig};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::engine::SniperEngine;
-use crate::engine::messages::JobMode;
 use crate::engine::worker;
 
 use crate::models::ledger::OpportunityLedger;
@@ -186,7 +183,6 @@ impl CandleResolution {
 #[serde(default)]
 pub struct ZoneSniperApp {
     pub selected_pair: Option<String>,
-    // pub global_price_horizon: PriceHorizonConfig,
     pub global_tuner_config: TimeTunerConfig,
     pub station_overrides: HashMap<String, StationId>,
     pub plot_visibility: PlotVisibility,
@@ -201,16 +197,18 @@ pub struct ZoneSniperApp {
     pub tf_sort_col: SortColumn,
     pub tf_sort_dir: SortDirection,
 
-    // PERSISTENCE: Holds trades between sessions
     pub saved_ledger: OpportunityLedger,
     pub last_selected_opp_id: Option<String>,
-    // And trading strategy
     pub saved_strategy: OptimizationGoal,
 
     #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>,
     #[serde(skip)]
-    pub app_config: AnalysisConfig,
+    pub app_constants: AppConstants,
+    #[serde(skip)]
+    pub active_station_id: StationId,
+    #[serde(skip)]
+    pub active_ph_pct: f64,
     #[serde(skip)]
     pub scroll_target: Option<NavigationTarget>,
     #[serde(skip)]
@@ -243,17 +241,17 @@ pub struct ZoneSniperApp {
 
 impl Default for ZoneSniperApp {
     fn default() -> Self {
+        let constants = AppConstants::default();
         let tuner_defaults = TimeTunerConfig::standard_defaults();
-        let mut app_config = ANALYSIS.clone();
-        app_config.tuner = tuner_defaults.clone();
 
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
             global_tuner_config: tuner_defaults,
             station_overrides: HashMap::new(),
-            app_config: ANALYSIS.clone(),
+            app_constants: constants,
+            active_station_id: StationId::default(), // NEW
+            active_ph_pct: 0.15,                     // NEW
             startup_tune_done: false,
-            // global_price_horizon: ANALYSIS.price_horizon.clone(),
             plot_visibility: PlotVisibility::default(),
             show_debug_help: false,
             show_ph_help: false,
@@ -279,7 +277,7 @@ impl Default for ZoneSniperApp {
             tf_sort_dir: SortDirection::Descending, // Highest first
             saved_ledger: OpportunityLedger::default(),
             last_selected_opp_id: None,
-            saved_strategy: OptimizationGoal::MaxROI,
+            saved_strategy: OptimizationGoal::default(),
         }
     }
 }
@@ -300,19 +298,21 @@ impl ZoneSniperApp {
         // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
         // app.app_config.price_horizon = app.global_price_horizon.clone();
 
-        // Restore Tuner Buttons (Scalp/Swing definitions) from disk to the Engine Config
-        app.app_config.tuner = app.global_tuner_config.clone();
-        #[cfg(debug_assertions)]
-        log::info!(
-            "🔧 TUNER INIT: Loaded {} global station definitions.",
-            app.app_config.tuner.stations.len()
-        );
+        app.app_constants = AppConstants::default();
+
+        // // Restore Tuner Buttons (Scalp/Swing definitions) from disk to the Engine Config
+        // app.app_constan.tuner = app.global_tuner_config.clone();
+        // #[cfg(debug_assertions)]
+        // log::info!(
+        //     "🔧 TUNER INIT: Loaded {} global station definitions.",
+        //     app.app_config.tuner.stations.len()
+        // );
 
         // Restore Active Station for the specific startup pair
         if let Some(pair) = &app.selected_pair {
             // Use .copied() to turn &StationId into StationId
             if let Some(saved_station) = app.station_overrides.get(pair).copied() {
-                app.app_config.tuner.active_station_id = saved_station;
+                app.active_station_id = saved_station;
 
                 #[cfg(debug_assertions)]
                 log::info!(
@@ -321,17 +321,17 @@ impl ZoneSniperApp {
                     pair
                 );
             } else {
+                // Default if no override exists
+                app.active_station_id = StationId::default();
                 #[cfg(debug_assertions)]
                 log::info!(
-                    "🔧 TUNER INIT: No save found for [{}]. Using default '{:?}'",
-                    pair,
-                    app.app_config.tuner.active_station_id
+                    "🔧 TUNER INIT: No save found for [{}]. Using default 'Swing'",
+                    pair
                 );
             }
+        } else {
+            app.active_station_id = StationId::default();
         }
-        // APPLY SAVED STRATEGY TO CONFIG
-        // This ensures the engine starts with the user's last choice
-        app.app_config.journey.profile.goal = app.saved_strategy;
 
         app.plot_view = PlotView::new();
         app.simulated_prices = HashMap::new();
@@ -372,14 +372,11 @@ impl ZoneSniperApp {
     /// Handles a change in global strategy (Optimization Goal).
     pub fn handle_strategy_change(&mut self) {
         // 1. Guard: Check if the strategy ACTUALLY changed.
-        // We borrow engine immutably first to compare configs.
-        let is_real_change = if let Some(engine) = &self.engine {
-            engine.current_config.journey.profile.goal != self.app_config.journey.profile.goal
-        } else {
-            false
-        };
-
-        if !is_real_change {
+        if self
+            .engine
+            .as_ref()
+            .map_or(false, |e| e.current_strategy != self.saved_strategy)
+        {
             return;
         }
 
@@ -392,9 +389,7 @@ impl ZoneSniperApp {
         // 3. Execute Update
         if let Some(engine) = &mut self.engine {
             // A. Update the config in the engine
-            engine.update_config(self.app_config.clone());
-
-            self.saved_strategy = self.app_config.journey.profile.goal;
+            // self.saved_strategy = self.app_constants.journey.profile.goal; // TEMP do we still need this?
 
             // B. Global Invalidation
             // Since the "Rules of the Game" changed, every pair needs to be re-judged.
@@ -409,8 +404,7 @@ impl ZoneSniperApp {
         if let Some(engine) = &self.engine {
             // 1. Get Config for the requested Station
             let station = self
-                .app_config
-                .tuner
+                .global_tuner_config
                 .stations
                 .iter()
                 .find(|s| s.id == station_id)?;
@@ -423,12 +417,12 @@ impl ZoneSniperApp {
             let ohlcv = find_matching_ohlcv(
                 &ts_guard.series_data,
                 pair,
-                self.app_config.interval_width_ms,
+                self.app_constants.interval_width_ms,
             )
             .ok()?;
 
             // 4. Run Worker Logic
-            return worker::tune_to_station(ohlcv, price, &self.app_config, station);
+            return worker::tune_to_station(ohlcv, price, &self.app_constants, station, self.saved_strategy);
         }
         None
     }
@@ -440,7 +434,7 @@ impl ZoneSniperApp {
         // We only remember which Station (Button) the user was on.
         if let Some(old_pair) = &self.selected_pair {
             // Default to Swing if for some reason nothing is set (Safety)
-            let current_station = self.app_config.tuner.active_station_id;
+            let current_station = self.active_station_id;
 
             self.station_overrides
                 .insert(old_pair.clone(), current_station);
@@ -465,26 +459,25 @@ impl ZoneSniperApp {
             .copied() // Converts &StationId to StationId
             .unwrap_or_default();
         // Apply it to the config
-        self.app_config.tuner.active_station_id = target_station;
+        self.active_station_id = target_station;
     }
 
-    pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
-        if let Some(pair) = self.selected_pair.clone() {
-            // log::info!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
+    // pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
+    //     if let Some(pair) = self.selected_pair.clone() {
+    //         // log::info!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
 
-            let price = self.get_display_price(&pair);
+    //         let price = self.get_display_price(&pair);
 
-            if let Some(engine) = &mut self.engine {
-                engine.update_config(self.app_config.clone());
-                engine.force_recalc(
-                    &pair,
-                    price,
-                    JobMode::FullAnalysis,
-                    "INVALIDATE ALL PAIRS -> PRICE HORIZON CHANGED",
-                );
-            }
-        }
-    }
+    //         if let Some(engine) = &mut self.engine {
+    //             engine.force_recalc(
+    //                 &pair,
+    //                 price,
+    //                 JobMode::FullAnalysis,
+    //                 "INVALIDATE ALL PAIRS -> PRICE HORIZON CHANGED",
+    //             );
+    //         }
+    //     }
+    // }
 
     /// Sets the scroll target based on the current selection state.
     /// Logic: Prefer Opportunity ID -> Fallback to Pair Name.
@@ -496,7 +489,7 @@ impl ZoneSniperApp {
         };
     }
 
-/// Smart navigation via Name Click (Ticker, Lists, Startup).
+    /// Smart navigation via Name Click (Ticker, Lists, Startup).
     /// - Checks Ledger for best Op.
     /// - If found: Selects that specific Op.
     /// - If not: Selects the Pair (Market View).
@@ -535,36 +528,37 @@ impl ZoneSniperApp {
         self.update_scroll_to_selection();
     }
 
-    /// Selects a specific opportunity and TUNES the engine to view it correctly.
-    pub fn select_specific_opportunity(
-        &mut self,
-        op: TradeOpportunity,
-        scroll: ScrollBehavior,
-    ) {
+    /// Selects a specific opportunity
+    pub fn select_specific_opportunity(&mut self, op: TradeOpportunity, scroll: ScrollBehavior) {
         // 1. Switch State (Pure UI)
         self.handle_pair_selection(op.pair_name.clone());
 
         // 2. OVERRIDE PH
         // We ignore the Station's preference and enforce the Trade's origin PH.
-        self.app_config.price_horizon.threshold_pct = op.source_ph;
+        self.active_ph_pct = op.source_ph;
+
+        // TEMP until given good reason - I am not doing any recalc.....
+        // TEMP why are we forcing a recalc .... coz it is context recalc only. Understood.
+        // But I thought we didn't need *any* context ?????
 
         // 3. Trigger Engine (Context Only)
         // We calculate CVA zones to match the trade, but skip simulations.
-        if let Some(engine) = &mut self.engine {
-            // Override Engine Config for this pair
-            let mut pair_config = self.app_config.price_horizon.clone();
-            pair_config.threshold_pct = op.source_ph;
-            engine.set_price_horizon_override(op.pair_name.clone(), pair_config);
+        if false {
+            // if let Some(engine) = &mut self.engine {
+                // Override Engine Config for this pair
+                // let mut pair_config = self.app_config.price_horizon.clone();
+                // pair_config.threshold_pct = op.source_ph;
+                // engine.set_price_horizon_override(op.pair_name.clone(), pair_config);
 
-            engine.update_config(self.app_config.clone());
-
-            // FIRE! (Fast Mode)
-            engine.force_recalc(
-                &op.pair_name,
-                None,
-                JobMode::ContextOnly,
-                "SELECT SPECIFIC OP",
-            );
+                // FIRE! (Fast Mode)
+                // engine.force_recalc(
+                //     &op.pair_name,
+                //     None,
+                //     ph_pct,
+                //     JobMode::ContextOnly,
+                //     "SELECT SPECIFIC OP SO CONTEXT ONLY JOB",
+                // );
+            // }
         }
 
         // 4. Update Selection
@@ -897,7 +891,7 @@ impl ZoneSniperApp {
                 );
 
                 // Subtitle / Info
-                let interval_str = TimeUtils::interval_to_string(ANALYSIS.interval_width_ms);
+                let interval_str = TimeUtils::interval_to_string(CONSTANTS.interval_width_ms);
                 ui.label(
                     RichText::new(format!(
                         "{} {} {}",
@@ -1049,8 +1043,7 @@ impl ZoneSniperApp {
 
                     // B. Get Station Definition
                     if let Some(station_def) = self
-                        .app_config
-                        .tuner
+                        .global_tuner_config
                         .stations
                         .iter()
                         .find(|s| s.id == station_id)
@@ -1061,16 +1054,16 @@ impl ZoneSniperApp {
                             if let Ok(ohlcv) = find_matching_ohlcv(
                                 &ts_guard.series_data,
                                 &pair,
-                                self.app_config.interval_width_ms,
+                                self.app_constants.interval_width_ms,
                             ) {
-                                // let price = ohlcv.close_prices.last().copied().unwrap_or(0.0);
                                 if let Some(price) = engine.price_stream.get_price(&pair) {
                                     if price > f64::EPSILON {
                                         worker::tune_to_station(
                                             ohlcv,
                                             price,
-                                            &self.app_config,
+                                            &self.app_constants,
                                             station_def,
+                                            self.saved_strategy,
                                         )
                                     } else {
                                         log::warn!(
@@ -1094,10 +1087,10 @@ impl ZoneSniperApp {
 
                         // D. Apply Result
                         if let Some(ph) = best_ph {
-                            let mut pair_config = self.app_config.price_horizon.clone();
-                            pair_config.threshold_pct = ph;
+                            // let mut pair_config = self.active_ph_pct;
+                            // pair_config.threshold_pct = ph;
 
-                            engine.set_price_horizon_override(pair.clone(), pair_config);
+                            engine.set_price_horizon_override(pair.clone(), self.active_ph_pct);
                             #[cfg(debug_assertions)]
                             log::info!(
                                 "For pair {} setting ph during tuning phase to: {}",
@@ -1110,7 +1103,7 @@ impl ZoneSniperApp {
                                     "And because pair {} is selected, also setting self.app_config.price_horizon.threshold pct for some reason as well",
                                     &pair
                                 );
-                                self.app_config.price_horizon.threshold_pct = ph;
+                                self.active_ph_pct = ph;
                             }
                         }
                     }
@@ -1126,7 +1119,7 @@ impl ZoneSniperApp {
             // 1. Ignite the Engine (Run CVA + Pathfinder for ALL pairs with new settings)
             if let Some(engine) = &mut self.engine {
                 println!(">> Global Tuning Complete. Igniting Engine.");
-                engine.update_config(self.app_config.clone());
+                // engine.update_config(self.app_config.clone());
                 engine.trigger_global_recalc(None);
             }
 
@@ -1215,7 +1208,7 @@ impl ZoneSniperApp {
                 }
                 // -------------------------
 
-                engine.update_config(self.app_config.clone());
+                // engine.update_config(self.app_config.clone());
 
                 // Trigger global calc for the VALID pair first
                 // engine.trigger_global_recalc(Some(final_pair.clone()));

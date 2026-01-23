@@ -16,7 +16,7 @@ use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{ANALYSIS, AnalysisConfig, TradeProfile, TunerStation};
+use crate::config::{AppConstants, OptimizationGoal, TradeProfile, TunerStation, StationId};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -67,10 +67,11 @@ struct CandidateResult {
 pub fn tune_to_station(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
-    base_config: &AnalysisConfig,
+    base_config: &AppConstants,
     station: &TunerStation,
+    strategy: OptimizationGoal,
 ) -> Option<f64> {
-    let _strategy = base_config.journey.profile.goal;
+    
     let _t_start = AppInstant::now();
 
     #[cfg(debug_assertions)]
@@ -83,16 +84,17 @@ pub fn tune_to_station(
             station.target_max_hours,
             station.scan_ph_min * 100.0,
             station.scan_ph_max * 100.0,
-            _strategy
+            strategy
         );
     }
 
     // 1. Generate Scan Points (Linear Interpolation)
-    let mut scan_points = Vec::with_capacity(ANALYSIS.tuner_scan_steps);
-    if ANALYSIS.tuner_scan_steps > 1 {
+    let steps = base_config.tuner_scan_steps;
+    let mut scan_points = Vec::with_capacity(steps);
+    if steps > 1 {
         let step_size =
-            (station.scan_ph_max - station.scan_ph_min) / (ANALYSIS.tuner_scan_steps - 1) as f64;
-        for i in 0..ANALYSIS.tuner_scan_steps {
+            (station.scan_ph_max - station.scan_ph_min) / (steps - 1) as f64;
+        for i in 0..steps {
             scan_points.push(station.scan_ph_min + (i as f64 * step_size));
         }
     } else {
@@ -104,11 +106,9 @@ pub fn tune_to_station(
     let mut results: Vec<(f64, f64, f64, usize)> = Vec::new();
 
     for &ph in &scan_points {
-        let mut config = base_config.clone();
-        config.price_horizon.threshold_pct = ph;
 
         // Run the Optimized Pathfinder
-        let result = run_pathfinder_simulations(ohlcv, current_price, &config, None);
+        let result = run_pathfinder_simulations(ohlcv, current_price, &base_config, ph, strategy, station.id, None);
 
         let count = result.opportunities.len();
         if count > 0 {
@@ -124,7 +124,7 @@ pub fn tune_to_station(
 
             // Calculate Representative Score (Top Score)
             let top_score =
-                result.opportunities[0].calculate_quality_score(&config.journey.profile);
+                result.opportunities[0].calculate_quality_score(&base_config.journey.profile);
 
             results.push((ph, top_score, dur_hours, count));
 
@@ -226,6 +226,7 @@ fn simulate_target(
             ctx.duration_candles,
             risk_tests,
             profile,
+            ctx.strategy,
             ctx.config.interval_width_ms,
             limit_samples,
             0,
@@ -233,7 +234,7 @@ fn simulate_target(
 
         if let Some((result, stop_price, variants)) = best_sl_opt {
             let avg_dur_ms = (result.avg_candle_count * ctx.config.interval_width_ms as f64) as i64;
-            let score = profile.goal.calculate_score(
+            let score = ctx.strategy.calculate_score(
                 result.avg_pnl_pct * 100.0,
                 avg_dur_ms as f64,
                 profile.weight_roi,
@@ -260,8 +261,8 @@ fn simulate_target(
                 stop_price,
                 max_duration_ms: ctx.duration_ms as i64,
                 avg_duration_ms: avg_dur_ms,
-                strategy: profile.goal,
-                station_id: ctx.config.tuner.active_station_id,
+                strategy: ctx.strategy,
+                station_id: ctx.station_id,
                 market_state: ctx.current_state,
                 visuals,
                 simulation: result,
@@ -284,11 +285,13 @@ fn simulate_target(
 /// 3. Filters Local Winners against the Global Best Score (Qualifying Round).
 fn apply_diversity_filter(
     candidates: Vec<CandidateResult>,
-    config: &AnalysisConfig,
+    config: &AppConstants,
     _pair_name: &str,
     range_min: f64,
     range_max: f64,
+    _strategy: OptimizationGoal,
 ) -> Vec<TradeOpportunity> {
+
     if candidates.is_empty() {
         return Vec::new();
     }
@@ -300,7 +303,7 @@ fn apply_diversity_filter(
     // --- INSERT START: DEBUG SCOREBOARD ---
     // This creates a temporary view to log the top candidates without consuming the vector
     #[cfg(debug_assertions)]
-    if config.journey.profile.goal == crate::config::OptimizationGoal::Balanced {
+    if _strategy == OptimizationGoal::Balanced {
         // Create vector of references so we can sort them for display only
         let mut debug_view: Vec<&CandidateResult> = candidates.iter().collect();
         debug_view.sort_by(|a, b| {
@@ -428,7 +431,9 @@ struct PathfinderContext<'a> {
     matches: Vec<(usize, f64)>,
     current_state: MarketState,
     current_price: f64,
-    config: &'a AnalysisConfig,
+    config: &'a AppConstants,
+    strategy: OptimizationGoal,
+    station_id: StationId,
     duration_candles: usize,
     duration_ms: u64,
     ph_pct: f64,
@@ -659,7 +664,7 @@ fn run_drill_phase(
         log::info!(
             "⛏️ DRILL PHASE [{}] [Strategy: {}]: Drilling {} distinct scouts",
             ctx.pair_name,
-            ctx.config.journey.profile.goal,
+            ctx.strategy,
             drill_targets.len()
         );
 
@@ -735,9 +740,13 @@ pub struct PathfinderResult {
 pub fn run_pathfinder_simulations(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
-    config: &AnalysisConfig,
+    config: &AppConstants,
+    ph_pct: f64,
+    strategy: OptimizationGoal,
+    station_id: StationId,
     cva_opt: Option<&CVACore>,
 ) -> PathfinderResult {
+
     if current_price <= 0.0 {
         return PathfinderResult {
             opportunities: Vec::new(),
@@ -747,7 +756,7 @@ pub fn run_pathfinder_simulations(
     }
 
     // 1. Setup Context
-    let ph_pct = config.price_horizon.threshold_pct;
+    // let ph_pct = config.price_horizon.threshold_pct;
 
     // Volatility
     let max_idx = ohlcv.klines().saturating_sub(1);
@@ -761,6 +770,7 @@ pub fn run_pathfinder_simulations(
         ph_pct,
         avg_volatility,
         config.interval_width_ms,
+        &config.journey,
     );
     let duration_candles = duration_to_candles(duration, config.interval_width_ms);
 
@@ -796,6 +806,8 @@ pub fn run_pathfinder_simulations(
         current_state: _current_state,
         current_price,
         config,
+        strategy,
+        station_id,
         duration_candles,
         duration_ms: duration.as_millis() as u64,
         ph_pct,
@@ -819,8 +831,8 @@ pub fn run_pathfinder_simulations(
     let drill_results = run_drill_phase(&ctx, scouts);
 
     // 3. Final Filter
-    let final_opps =
-        apply_diversity_filter(drill_results, config, ctx.pair_name, ctx.ph_min, ctx.ph_max);
+    let final_opps: Vec<TradeOpportunity> =
+        apply_diversity_filter(drill_results, config, ctx.pair_name, ctx.ph_min, ctx.ph_max, strategy);
     // Return everything
     PathfinderResult {
         opportunities: final_opps,
@@ -840,6 +852,7 @@ fn run_stop_loss_tournament(
     duration_candles: usize,
     risk_tests: &[f64],
     profile: &TradeProfile,
+    strategy: OptimizationGoal,
     interval_ms: i64,
     limit_samples: usize,
     _zone_idx: usize,
@@ -941,7 +954,7 @@ fn run_stop_loss_tournament(
                     });
 
                     // JUDGE: Calculate Score based on Strategy (using CORRECT Time units)
-                    let score = profile.goal.calculate_score(
+                    let score = strategy.calculate_score(
                         roi,
                         duration_real_ms,
                         profile.weight_roi,
@@ -1003,7 +1016,6 @@ pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
                 duration_ms: 0,
                 result: Err(e),
                 cva: None,
-                // profile: None,
                 candle_count: 0,
             });
             return;
@@ -1038,8 +1050,9 @@ fn perform_standard_analysis(
     ts_collection: &TimeSeriesCollection,
     tx: Sender<JobResult>,
 ) {
-    let ph_pct = req.config.price_horizon.threshold_pct * 100.0;
-    let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct);
+
+    let ph_pct = req.ph_pct;
+    let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct*100.0);
 
     crate::trace_time!(&format!("Total JOB [{}]", base_label), 10_000, {
         let start = AppInstant::now();
@@ -1056,12 +1069,11 @@ fn perform_standard_analysis(
 
         // 3. CVA
         let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 10_000, {
-            pair_analysis_pure(req.pair_name.clone(), ts_collection, price, &req.config)
+            pair_analysis_pure(req.pair_name.clone(), ts_collection, price, ph_pct, &req.config)
         });
 
         let elapsed = start.elapsed().as_millis();
 
-        // 5. Result Construction
         // 5. Result Construction
         let response = match result_cva {
             Ok(cva) => {
@@ -1126,35 +1138,12 @@ fn calculate_exact_candle_count(
 
     if let Ok(ohlcv) = ohlcv_result {
         let (ranges, _) =
-            price_horizon::auto_select_ranges(ohlcv, price, &req.config.price_horizon);
+            price_horizon::auto_select_ranges(ohlcv, price, req.ph_pct);
         ranges.iter().map(|(s, e)| e - s).sum()
     } else {
         0
     }
 }
-
-// fn get_or_generate_profile(
-//     req: &JobRequest,
-//     ts_collection: &TimeSeriesCollection,
-//     price: f64,
-// ) -> HorizonProfile {
-//     // Check existing
-//     if let Some(existing) = &req.existing_profile {
-//         let price_match = (existing.base_price - price).abs() < f64::EPSILON;
-//         // Basic config check (reusing cached profile if valid)
-//         if price_match {
-//             return existing.clone();
-//         }
-//     }
-
-//     // Generate new
-//     horizon_profiler::generate_profile(
-//         &req.pair_name,
-//         ts_collection,
-//         price,
-//         &req.config.price_horizon,
-//     )
-// }
 
 fn build_success_result(
     req: &JobRequest,
@@ -1177,7 +1166,7 @@ fn build_success_result(
     let mut model = TradingModel::from_cva(cva_arc.clone(), ohlcv, &req.config);
 
     // Run Pathfinder
-    let pf_result = run_pathfinder_simulations(ohlcv, price, &req.config, Some(&cva_arc));
+    let pf_result = run_pathfinder_simulations(ohlcv, price, &req.config, req.ph_pct, req.strategy, req.station_id, Some(&cva_arc));
 
     model.opportunities = pf_result.opportunities;
 
@@ -1186,7 +1175,6 @@ fn build_success_result(
         duration_ms: elapsed,
         result: Ok(Arc::new(model)),
         cva: Some(cva_arc),
-        // profile: Some(profile),
         candle_count: count,
     }
 }

@@ -1,5 +1,5 @@
 use std::sync::{Arc, RwLock};
-use crate::config::AnalysisConfig;
+use crate::config::{AppConstants, OptimizationGoal, StationId};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::cva::CVACore;
 use crate::models::horizon_profile::HorizonProfile;
@@ -15,7 +15,6 @@ pub enum JobMode {
     /// Used when clicking an existing trade to restore the chart context.
     ContextOnly,
     
-    // (Delete 'AutoTune' if it still exists here, it is dead)
 }
 
 /// A request to calculate a model for a specific pair
@@ -23,10 +22,13 @@ pub enum JobMode {
 pub struct JobRequest {
     pub pair_name: String,
     pub current_price: Option<f64>,
-    pub config: AnalysisConfig,
+    pub config: AppConstants,
     pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
-    pub mode: JobMode,
     pub existing_profile: Option<HorizonProfile>,
+    pub ph_pct: f64,
+    pub strategy: OptimizationGoal,
+    pub station_id: StationId,
+    pub mode: JobMode,
     
 }
 
