@@ -1058,7 +1058,17 @@ fn perform_standard_analysis(
         let start = AppInstant::now();
 
         // 1. Price
-        let price = resolve_analysis_price(req, ts_collection);
+        let price = req.current_price.unwrap_or_else(|| {
+            if let Ok(ts) = find_matching_ohlcv(
+                &ts_collection.series_data,
+                &req.pair_name,
+                req.config.interval_width_ms,
+            ) {
+                ts.close_prices.last().copied().unwrap_or(0.0)
+            } else {
+                0.0
+            }
+        });
 
         // 2. Count
         let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 4_000, {
@@ -1075,54 +1085,30 @@ fn perform_standard_analysis(
         let elapsed = start.elapsed().as_millis();
 
         // 5. Result Construction
-        let response = match result_cva {
-            Ok(cva) => {
-                // BRANCH: Check Mode
-                if req.mode == JobMode::ContextOnly {
-                    // Fast Return: No Simulations
-                    JobResult {
-                        pair_name: req.pair_name.clone(),
-                        duration_ms: elapsed,
-                        // Return the Model with CVA, but EMPTY opportunities
-                        result: Ok(Arc::new(TradingModel::from_cva(
-                            Arc::new(cva), 
-                            find_matching_ohlcv(&ts_collection.series_data, &req.pair_name, req.config.interval_width_ms).unwrap(), 
-                            &req.config
-                        ))),
-                        cva: None, // Legacy field (optional)
-                        candle_count: count,
-                    }
-                } else {
-                    // Full Analysis: Pass CVA to Pathfinder
-                    build_success_result(req, ts_collection, cva, price, count, elapsed)
+        if let Ok(cva) = result_cva {
+            // BRANCH: Check Mode
+            let response = if req.mode == JobMode::ContextOnly {
+                // Fast Return: No Simulations
+                JobResult {
+                    pair_name: req.pair_name.clone(),
+                    duration_ms: elapsed,
+                    // Return the Model with CVA, but EMPTY opportunities
+                    result: Ok(Arc::new(TradingModel::from_cva(
+                        Arc::new(cva), 
+                        find_matching_ohlcv(&ts_collection.series_data, &req.pair_name, req.config.interval_width_ms).unwrap(), 
+                        &req.config
+                    ))),
+                    cva: None, // Legacy field (optional)
+                    candle_count: count,
                 }
-            }
-            Err(e) => JobResult {
-                pair_name: req.pair_name.clone(),
-                duration_ms: elapsed,
-                result: Err(e.to_string()),
-                cva: None,
-                candle_count: count,
-            },
-        };
+            } else {
+                // Full Analysis: Pass CVA to Pathfinder
+                build_success_result(req, ts_collection, cva, price, count, elapsed)
+            };
 
-        let _ = tx.send(response);
-    });
-}
-
-fn resolve_analysis_price(req: &JobRequest, ts_collection: &TimeSeriesCollection) -> f64 {
-    req.current_price.unwrap_or_else(|| {
-        // FIX: Pass series_data, pair_name, interval_ms (i64)
-        if let Ok(ts) = find_matching_ohlcv(
-            &ts_collection.series_data,
-            &req.pair_name,
-            req.config.interval_width_ms,
-        ) {
-            ts.close_prices.last().copied().unwrap_or(0.0)
-        } else {
-            0.0
+            let _ = tx.send(response);
         }
-    })
+    });
 }
 
 fn calculate_exact_candle_count(
