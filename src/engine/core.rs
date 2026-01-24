@@ -250,12 +250,9 @@ impl SniperEngine {
             let interval_ms = self.app_constants.interval_width_ms;
 
             if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, pair, interval_ms) {
-                let current_price = series.close_prices.last().copied().unwrap_or(0.0);
-                let current_high = series.high_prices.last().copied().unwrap_or(0.0);
-                let current_low = series.low_prices.last().copied().unwrap_or(0.0);
-                if current_price <= f64::EPSILON {
-                    continue;
-                }
+                let Some(current_price) = series.close_prices.last().copied() else { continue };
+                let Some(current_high) = series.high_prices.last().copied() else { continue };
+                let Some(current_low) = series.low_prices.last().copied() else { continue };
 
                 let outcome = op.check_exit_condition(current_high, current_low, now_ms);
                 let mut exit_price = 0.0;

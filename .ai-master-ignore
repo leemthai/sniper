@@ -7,6 +7,15 @@ target/
 *.env
 secret_sauce.md
 
+# Editor files
+zone_sniper.code-workspace
+
+# repomix
+repomix-output.xml
+
+# DBs
+*.sql*
+
 # Block all the ignore files
 ai-master-ignore
 .continueignore

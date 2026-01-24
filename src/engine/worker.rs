@@ -1058,17 +1058,13 @@ fn perform_standard_analysis(
         let start = AppInstant::now();
 
         // 1. Price
-        let price = req.current_price.unwrap_or_else(|| {
-            if let Ok(ts) = find_matching_ohlcv(
-                &ts_collection.series_data,
-                &req.pair_name,
-                req.config.interval_width_ms,
-            ) {
-                ts.close_prices.last().copied().unwrap_or(0.0)
-            } else {
-                0.0
+        let price = match resolve_analysis_price(req, ts_collection) {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = tx.send(build_error_result(req, start.elapsed().as_millis(), e, 0));
+                return;
             }
-        });
+        };
 
         // 2. Count
         let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 4_000, {
@@ -1085,30 +1081,67 @@ fn perform_standard_analysis(
         let elapsed = start.elapsed().as_millis();
 
         // 5. Result Construction
-        if let Ok(cva) = result_cva {
-            // BRANCH: Check Mode
-            let response = if req.mode == JobMode::ContextOnly {
-                // Fast Return: No Simulations
-                JobResult {
-                    pair_name: req.pair_name.clone(),
-                    duration_ms: elapsed,
-                    // Return the Model with CVA, but EMPTY opportunities
-                    result: Ok(Arc::new(TradingModel::from_cva(
-                        Arc::new(cva), 
-                        find_matching_ohlcv(&ts_collection.series_data, &req.pair_name, req.config.interval_width_ms).unwrap(), 
-                        &req.config
-                    ))),
-                    cva: None, // Legacy field (optional)
-                    candle_count: count,
+        let response = match result_cva {
+            Ok(cva) => {
+                // BRANCH: Check Mode
+                if req.mode == JobMode::ContextOnly {
+                    // Fast Return: No Simulations
+                    JobResult {
+                        pair_name: req.pair_name.clone(),
+                        duration_ms: elapsed,
+                        // Return the Model with CVA, but EMPTY opportunities
+                        result: Ok(Arc::new(TradingModel::from_cva(
+                            Arc::new(cva), 
+                            find_matching_ohlcv(&ts_collection.series_data, &req.pair_name, req.config.interval_width_ms).unwrap(), 
+                            &req.config
+                        ))),
+                        cva: None, // Legacy field (optional)
+                        candle_count: count,
+                    }
+                } else {
+                    // Full Analysis: Pass CVA to Pathfinder
+                    build_success_result(req, ts_collection, cva, price, count, elapsed)
                 }
-            } else {
-                // Full Analysis: Pass CVA to Pathfinder
-                build_success_result(req, ts_collection, cva, price, count, elapsed)
-            };
+            }
+            Err(e) => build_error_result(req, elapsed, e.to_string(), count),
+        };
 
-            let _ = tx.send(response);
-        }
+        let _ = tx.send(response);
     });
+}
+
+fn build_error_result(
+    req: &JobRequest,
+    duration_ms: u128,
+    error_msg: String,
+    candle_count: usize,
+) -> JobResult {
+    JobResult {
+        pair_name: req.pair_name.clone(),
+        duration_ms,
+        result: Err(error_msg),
+        cva: None,
+        candle_count,
+    }
+}
+
+fn resolve_analysis_price(req: &JobRequest, ts_collection: &TimeSeriesCollection) -> Result<f64, String> {
+    if let Some(p) = req.current_price {
+        return Ok(p);
+    }
+
+    if let Ok(ts) = find_matching_ohlcv(
+        &ts_collection.series_data,
+        &req.pair_name,
+        req.config.interval_width_ms,
+    ) {
+        ts.close_prices
+            .last()
+            .copied()
+            .ok_or_else(|| "Worker: Data exists but prices are empty".to_string())
+    } else {
+        Err(format!("Worker: No data found for {}", req.pair_name))
+    }
 }
 
 fn calculate_exact_candle_count(
