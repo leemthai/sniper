@@ -115,19 +115,13 @@ impl OpportunityLedger {
                     if a.strategy != b.strategy { continue; }
                     if a.station_id != b.station_id { continue; }
 
+
+                    // Same strategy and stationId so preserve the best one 
                     let diff = calculate_percent_diff(a.target_price, b.target_price);
                     
                     if diff < tolerance_pct {
-                        // COLLISION (Same Strategy, Same Target).
-                        // Create a profile context for this specific strategy to judge them.
-                        // We use the global weights, but force the goal to match the trade's strategy.
-                        let mut judge_profile = global_profile.clone();
-                        // judge_profile.goal = a.strategy;
-                        todo!("Note: this line 'judge_profile.goal = a.strategy;' has been removed coz i don't nderstand what it shoudl be");
-
-                        let score_a = a.calculate_quality_score(&judge_profile);
-                        let score_b = b.calculate_quality_score(&judge_profile);
-
+                        let score_a = a.calculate_quality_score(&global_profile);
+                        let score_b = b.calculate_quality_score(&global_profile);
                         let (_winner, loser) = if score_a >= score_b {
                             (a, b)
                         } else {

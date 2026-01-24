@@ -57,7 +57,7 @@ pub struct PlotConfig {
     pub color_text_primary: Color32, // For the galley tint (Light Gray)
     pub color_text_subdued: Color32,
     /// Explanations/Context (Darker Gray)
-    // --- VISUAL CONSTANTS (Opacity/Dimming) ---
+    // --- VISUAL (Opacity/Dimming) ---
     pub opacity_scope_base: f32, // Main circle intensity
     pub opacity_scope_crosshair: f32, // Crosshair relative to scope
     pub opacity_path_line: f32,       // Path line relative to scope
@@ -175,7 +175,7 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
 
     color_stop_loss: Color32::from_rgb(255, 80, 80),
 
-    // VISUAL CONSTANTS
+    // VISUAL
     opacity_scope_base: 0.8,
     opacity_scope_crosshair: 1.0, // relative to base (0.8 * 1.0)
     opacity_path_line: 0.6,       // relative to base (0.8 * 0.6)
@@ -185,7 +185,7 @@ pub const PLOT_CONFIG: PlotConfig = PlotConfig {
     color_gap_above: Color32::from_rgb(100, 255, 100), // Green (Candles are Above)
     color_gap_below: Color32::from_rgb(255, 100, 100), // Red (Candles are Below)
     color_gap_missing: Color32::from_rgb(180, 100, 255), // Purple
-    // VISUAL CONSTANTS
+    // VISUAL
     opacity_separator: 0.25, // Very subtle (25% opacity)
 
     // HEATMAP LEGEND

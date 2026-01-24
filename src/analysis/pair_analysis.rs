@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 
-use crate::config::{CONSTANTS, AppConstants};
+use crate::config::AppConstants;
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
 use crate::models::cva::CVACore;
@@ -38,7 +38,7 @@ pub fn pair_analysis_pure(
     // 3. Validation
     let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();
 
-    if total_candle_count < CONSTANTS.cva.min_candles_for_analysis {
+    if total_candle_count < config.cva.min_candles_for_analysis {
         let s = if total_candle_count == 1 { "" } else { "s" };
 
         bail!(

@@ -277,10 +277,8 @@ pub const CONSTANTS: AppConstants = AppConstants {
 //Impl Default to hydrate the Vectors
 impl Default for AppConstants {
     fn default() -> Self {
+        log::info!("Initialzing AppConstants via impl Default for AppConstants");
         // Clone the const primitives
         CONSTANTS // TEMP is this how you do it? lol
-        // Hydrate the Tuner Definitions
-        // c.tuner = TimeTunerConfig::standard_defaults();
-        // c
     }
 }

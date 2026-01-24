@@ -298,7 +298,7 @@ impl ZoneSniperApp {
         // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
         // app.app_config.price_horizon = app.global_price_horizon.clone();
 
-        app.app_constants = AppConstants::default();
+        // app.app_constants = AppConstants::default();
 
         // // Restore Tuner Buttons (Scalp/Swing definitions) from disk to the Engine Config
         // app.app_constan.tuner = app.global_tuner_config.clone();
@@ -325,7 +325,7 @@ impl ZoneSniperApp {
                 app.active_station_id = StationId::default();
                 #[cfg(debug_assertions)]
                 log::info!(
-                    "🔧 TUNER INIT: No save found for [{}]. Using default 'Swing'",
+                    "🔧 TUNER INIT: No save found for [{}]. Using StationId::default() instead",
                     pair
                 );
             }
@@ -891,6 +891,8 @@ impl ZoneSniperApp {
                 );
 
                 // Subtitle / Info
+                // Reference CONSTANTS here because this is associate function without access to app.app_constants
+                // log::info!("Accessing CONSTANTS because associate function cannot access app.app_constants");
                 let interval_str = TimeUtils::interval_to_string(CONSTANTS.interval_width_ms);
                 ui.label(
                     RichText::new(format!(
