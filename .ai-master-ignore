@@ -19,3 +19,7 @@ repomix-output.xml
 # Block all the ignore files
 ai-master-ignore
 .geminiignore
+
+# Data files
+.states.json
+.ledger.bin

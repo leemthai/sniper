@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
 #[cfg(not(target_arch = "wasm32"))]
-use {std::thread, tokio::runtime::Runtime};
+use {std::thread, tokio::runtime::Runtime, crate::data::ledger_io};
 
 use crate::Cli;
 
@@ -1168,7 +1168,7 @@ impl ZoneSniperApp {
                 } else {
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        match crate::data::ledger_io::load_ledger() {
+                        match ledger_io::load_ledger() {
                             Ok(l) => {
                                 #[cfg(debug_assertions)]
                                 log::info!("Loaded ledger with {} opportunities", l.opportunities.len());
@@ -1310,9 +1310,9 @@ impl ZoneSniperApp {
 impl eframe::App for ZoneSniperApp {
     fn save(&mut self, storage: &mut dyn Storage) {
         // 1. Snapshot the Engine Ledger
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(engine) = &self.engine {
             // Save active ledger to separate binary file
-            #[cfg(not(target_arch = "wasm32"))]
             if let Err(e) = crate::data::ledger_io::save_ledger(&engine.ledger) {
                 log::error!("Failed to save ledger: {}", e);
             }

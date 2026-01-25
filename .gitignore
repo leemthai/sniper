@@ -2,6 +2,7 @@
 /.idea/
 /dist/
 .states.json
+.ledger.bin
 repomix*.*
 zone_sniper.code-workspace
 fresh_start*
