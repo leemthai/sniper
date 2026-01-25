@@ -1,6 +1,6 @@
 use std::time::Duration;
 use crate::utils::TimeUtils;
-use crate::config::analysis::{JourneySettings, TradeProfile, OptimalSearchSettings, SimilaritySettings, ZoneClassificationConfig, ZoneParams};
+use crate::config::types::{JourneySettings, TradeProfile, OptimalSearchSettings, SimilaritySettings, ZoneClassificationConfig, ZoneParams};
 
 // Top Level Constants
 pub const INTERVAL_WIDTH_MS: i64 = TimeUtils::MS_IN_5_MIN;

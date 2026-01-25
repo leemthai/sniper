@@ -1,32 +1,29 @@
 //! Configuration module for the klines application.
 
-// Can all be private now because we have a public re-export.
-mod analysis;
+// Can all be private now because we have a public re-export. Forces using file to just use crate::config, rather than crate::config::debug or crate::config::binance
+mod types; // Renamed from analysis.rs
 mod binance;
+pub mod constants;
 mod debug;
 mod demo;
 mod persistence;
 mod ticker;
-
-// Public 
-pub mod constants;
+pub mod tuner;
 
 // Can't be private because we don't re-export it
 pub mod plot;
 
 // Re-export commonly used items
-pub use analysis::{
+pub use types::{
     JourneySettings, 
     OptimalSearchSettings, 
     TradeProfile, 
     OptimizationGoal, 
-    TimeTunerConfig, 
-    StationId, 
-    TunerStation,
     ZoneParams,
     SimilaritySettings,
     ZoneClassificationConfig
 };
+pub use tuner::{StationId, TunerStation, TimeTunerConfig};
 pub use binance::{BINANCE, BinanceApiConfig};
 pub use debug::DEBUG_FLAGS;
 pub use demo::DEMO;

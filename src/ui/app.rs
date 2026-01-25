@@ -239,15 +239,12 @@ pub struct ZoneSniperApp {
 
 impl Default for ZoneSniperApp {
     fn default() -> Self {
-        let tuner_defaults = TimeTunerConfig::standard_defaults();
-
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
-            global_tuner_config: tuner_defaults,
+            global_tuner_config: TimeTunerConfig::default(),
             station_overrides: HashMap::new(),
-            // app_constants: constants,
-            active_station_id: StationId::default(), // NEW
-            active_ph_pct: 0.15,                     // NEW
+            active_station_id: StationId::default(), 
+            active_ph_pct: 0.15, 
             startup_tune_done: false,
             plot_visibility: PlotVisibility::default(),
             show_debug_help: false,
