@@ -1,7 +1,7 @@
 // use std::collections::HashMap;
 use eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2};
 
-use crate::config::TICKER;
+use crate::config::{TICKER, constants};
 use crate::engine::SniperEngine;
 
 use crate::ui::utils::format_price;
@@ -9,6 +9,7 @@ use crate::ui::utils::format_price;
 use crate::models::timeseries;
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
+
 
 pub struct TickerItem {
     pub symbol: String,
@@ -99,7 +100,7 @@ impl TickerState {
                     if let Ok(ohlcv) = timeseries::find_matching_ohlcv(
                         &ts_guard.series_data,
                         &pair,
-                        engine.app_constants.interval_width_ms,
+                        constants::INTERVAL_WIDTH_MS,
                     ) {
                         // Find index closest to 24h ago
                         let idx_result = ohlcv.timestamps.binary_search(&day_ago_ms);

@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 #[cfg(not(target_arch = "wasm32"))]
 use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::Runtime};
 
-use crate::config::{AppConstants, OptimizationGoal, StationId};
+use crate::config::{OptimizationGoal, StationId, constants};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
@@ -51,7 +51,6 @@ pub struct SniperEngine {
     // Update the VecDeque type to hold the runtime variables
     pub queue: VecDeque<(String, Option<f64>, f64, OptimizationGoal, StationId, JobMode)>,
     /// The Live Configuration State
-    pub app_constants: AppConstants,
     pub price_horizon_overrides: HashMap<String, f64>,
     pub current_strategy: OptimizationGoal,
     pub station_overrides: HashMap<String, StationId>,
@@ -142,7 +141,6 @@ impl SniperEngine {
             #[cfg(target_arch = "wasm32")]
             result_tx,
             queue: VecDeque::new(),
-            app_constants: AppConstants::default(),
             price_horizon_overrides: HashMap::new(),
             ledger: OpportunityLedger::new(),
             results_repo: Arc::new(repo),
@@ -247,7 +245,7 @@ impl SniperEngine {
         for (id, op) in &self.ledger.opportunities {
             // A. Get Data context
             let pair = &op.pair_name;
-            let interval_ms = self.app_constants.interval_width_ms;
+            let interval_ms = constants::INTERVAL_WIDTH_MS;
 
             if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, pair, interval_ms) {
                 let Some(current_price) = series.close_prices.last().copied() else { continue };
@@ -469,7 +467,7 @@ impl SniperEngine {
         }
 
         // Maintenance loop - checks for drifting trades that have overlapped and merges them.
-        let journey_settings = &self.app_constants.journey; // Access journey settings
+        let journey_settings = &constants::journey::DEFAULT;
 
         if t1.duration_since(self.last_ledger_maintenance).as_secs()
             >= journey_settings.optimization.prune_interval_sec
@@ -477,7 +475,6 @@ impl SniperEngine {
             // Pass the Tolerance AND the Profile (Strategy)
             self.ledger.prune_collisions(
                 journey_settings.optimization.fuzzy_match_tolerance,
-                &journey_settings.profile,
             );
             self.last_ledger_maintenance = t1;
         }
@@ -636,13 +633,9 @@ pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
             match result.result {
                 Ok(model) => {
                     // Sync to Ledger ---
-                    let fuzzy_tolerance = self
-                        .app_constants
-                        .journey
-                        .optimization
-                        .fuzzy_match_tolerance;
+                    // let fuzzy_tolerance = ;
                     for op in &model.opportunities {
-                        self.ledger.evolve(op.clone(), fuzzy_tolerance);
+                        self.ledger.evolve(op.clone(), constants::journey::optimization::FUZZY_MATCH_TOLERANCE);
                     }
 
                     // Success: Update State
@@ -678,7 +671,7 @@ pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
     fn check_automatic_triggers(&mut self) {
 
         let pairs: Vec<String> = self.pairs.keys().cloned().collect();
-        let threshold = self.app_constants.cva.price_recalc_threshold_pct;
+        let threshold = constants::cva::PRICE_RECALC_THRESHOLD_PCT;
 
         for pair in pairs {
             if let Some(current_price) = self.price_stream.get_price(&pair) {
@@ -758,7 +751,7 @@ pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
             let req = JobRequest {
                 pair_name: pair,
                 current_price: final_price_opt,
-                config: self.app_constants.clone(),
+                // config: self.app_constants.clone(),
                 timeseries: self.timeseries.clone(),
                 existing_profile,
                 ph_pct,

@@ -8,7 +8,7 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{AppConstants, TradeProfile, ZoneParams, OptimizationGoal, StationId, ZoneClassificationConfig};
+use crate::config::{OptimizationGoal, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants};
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
@@ -22,7 +22,7 @@ use crate::utils::maths_utils::{
 
 impl OptimizationGoal {
     /// Calculate a score based on the strategy
-    pub fn calculate_score(&self, roi: f64, duration_ms: f64, _weight_roi: f64, _weight_aroi: f64) -> f64 {
+    pub fn calculate_score(&self, roi: f64, duration_ms: f64) -> f64 {
         match self {
             OptimizationGoal::MaxROI => roi,
             OptimizationGoal::MaxAROI => {
@@ -179,12 +179,10 @@ impl TradeOpportunity {
 
     /// Calculates a composite Quality Score (0.0 to 100.0+)
     /// Used for "Auto-Tuning" and finding the best setups.
-    pub fn calculate_quality_score(&self, profile: &TradeProfile) -> f64 {
+    pub fn calculate_quality_score(&self) -> f64 {
         self.strategy.calculate_score(
             self.expected_roi(), 
             self.avg_duration_ms as f64, 
-            profile.weight_roi, 
-            profile.weight_aroi
         )
     }
 
@@ -429,12 +427,11 @@ impl TradingModel {
         cva: Arc<CVACore>,
         // profile: HorizonProfile,
         ohlcv: &OhlcvTimeSeries,
-        config: &AppConstants,
     ) -> Self {
-        let (classified, stats) = Self::classify_zones(&cva, &config.zones);
+        let (classified, stats) = Self::classify_zones(&cva, &constants::zones::DEFAULT);
 
         let bounds = cva.price_range.min_max();
-        let merge_ms = config.cva.segment_merge_tolerance_ms;
+        let merge_ms = constants::cva::SEGMENT_MERGE_TOLERANCE_MS;
 
         let segments = RangeGapFinder::analyze(ohlcv, &cva.included_ranges, bounds, merge_ms);
 

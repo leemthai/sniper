@@ -16,7 +16,7 @@ use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{AppConstants, OptimizationGoal, TradeProfile, TunerStation, StationId};
+use crate::config::{OptimizationGoal, TradeProfile, TunerStation, StationId, constants};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -67,7 +67,6 @@ struct CandidateResult {
 pub fn tune_to_station(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
-    base_config: &AppConstants,
     station: &TunerStation,
     strategy: OptimizationGoal,
 ) -> Option<f64> {
@@ -89,7 +88,7 @@ pub fn tune_to_station(
     }
 
     // 1. Generate Scan Points (Linear Interpolation)
-    let steps = base_config.tuner_scan_steps;
+    let steps = constants::TUNER_SCAN_STEPS;
     let mut scan_points = Vec::with_capacity(steps);
     if steps > 1 {
         let step_size =
@@ -108,7 +107,7 @@ pub fn tune_to_station(
     for &ph in &scan_points {
 
         // Run the Optimized Pathfinder
-        let result = run_pathfinder_simulations(ohlcv, current_price, &base_config, ph, strategy, station.id, None);
+        let result = run_pathfinder_simulations(ohlcv, current_price, ph, strategy, station.id, None);
 
         let count = result.opportunities.len();
         if count > 0 {
@@ -124,7 +123,7 @@ pub fn tune_to_station(
 
             // Calculate Representative Score (Top Score)
             let top_score =
-                result.opportunities[0].calculate_quality_score(&base_config.journey.profile);
+                result.opportunities[0].calculate_quality_score();
 
             results.push((ph, top_score, dur_hours, count));
 
@@ -208,7 +207,7 @@ fn simulate_target(
     limit_samples: usize,
 ) -> Option<CandidateResult> {
     crate::trace_time!("Worker: Simulate Target", 500, {
-        let profile = &ctx.config.journey.profile;
+        // let profile = &ctx.config.journey.profile;
 
         let direction = if target_price > ctx.current_price {
             TradeDirection::Long
@@ -225,20 +224,20 @@ fn simulate_target(
             direction,
             ctx.duration_candles,
             risk_tests,
-            profile,
+            &constants::journey::DEFAULT.profile,
             ctx.strategy,
-            ctx.config.interval_width_ms,
+            constants::INTERVAL_WIDTH_MS,
             limit_samples,
             0,
         );
 
         if let Some((result, stop_price, variants)) = best_sl_opt {
-            let avg_dur_ms = (result.avg_candle_count * ctx.config.interval_width_ms as f64) as i64;
+            let avg_dur_ms = (result.avg_candle_count * constants::INTERVAL_WIDTH_MS as f64) as i64;
             let score = ctx.strategy.calculate_score(
                 result.avg_pnl_pct * 100.0,
                 avg_dur_ms as f64,
-                profile.weight_roi,
-                profile.weight_aroi,
+                // CONSTANTS.journey.profile.weight_roi,
+                // CONSTANTS.journey.profile.weight_aroi,
             );
 
             let unique_string = format!("{}_{}_{}", ctx.pair_name, source_id_suffix, direction);
@@ -285,7 +284,6 @@ fn simulate_target(
 /// 3. Filters Local Winners against the Global Best Score (Qualifying Round).
 fn apply_diversity_filter(
     candidates: Vec<CandidateResult>,
-    config: &AppConstants,
     _pair_name: &str,
     range_min: f64,
     range_max: f64,
@@ -296,9 +294,9 @@ fn apply_diversity_filter(
         return Vec::new();
     }
 
-    let opt_config = &config.journey.optimization;
-    let regions = opt_config.diversity_regions;
-    let cutoff_ratio = opt_config.diversity_cut_off;
+    let regions = constants::journey::optimization::DIVERSITY_REGIONS;
+    let cutoff_ratio = constants::journey::optimization::DIVERSITY_CUT_OFF;
+    let max_results = constants::journey::optimization::MAX_RESULTS;
 
     // --- INSERT START: DEBUG SCOREBOARD ---
     // This creates a temporary view to log the top candidates without consuming the vector
@@ -411,14 +409,14 @@ fn apply_diversity_filter(
         // Recalculate score for sorting or store it?
         // TradeOpportunity doesn't store the raw score, but we can re-calc cheaply or trust the input order.
         // Let's re-calc to be safe and strict sort.
-        let score_a = a.calculate_quality_score(&config.journey.profile);
-        let score_b = b.calculate_quality_score(&config.journey.profile);
+        let score_a = a.calculate_quality_score();
+        let score_b = b.calculate_quality_score();
         score_b.partial_cmp(&score_a).unwrap_or(Ordering::Equal)
     });
 
     // Hard Limit (if configured lower than region count)
-    if final_results.len() > opt_config.max_results {
-        final_results.truncate(opt_config.max_results);
+    if final_results.len() > max_results {
+        final_results.truncate(max_results);
     }
 
     final_results
@@ -431,7 +429,6 @@ struct PathfinderContext<'a> {
     matches: Vec<(usize, f64)>,
     current_state: MarketState,
     current_price: f64,
-    config: &'a AppConstants,
     strategy: OptimizationGoal,
     station_id: StationId,
     duration_candles: usize,
@@ -442,8 +439,8 @@ struct PathfinderContext<'a> {
 }
 
 fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
-    let opt_config = &ctx.config.journey.optimization;
-    let steps = opt_config.scout_steps;
+    let price_buffer_pct = constants::journey::optimization::PRICE_BUFFER_PCT;
+    let steps = constants::journey::optimization::SCOUT_STEPS;
     let scout_risks = [2.5]; // Optimization: 1 variant
 
     // --- OPTIMIZATION #2: DIRECTIONAL BIAS (Pruning) ---
@@ -502,8 +499,8 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
     }
 
     // Pre-calculate ranges and booleans to avoid repeated math in the loop
-    let long_start = ctx.current_price * (1.0 + opt_config.price_buffer_pct);
-    let short_end = ctx.current_price * (1.0 - opt_config.price_buffer_pct);
+    let long_start = ctx.current_price * (1.0 + price_buffer_pct);
+    let short_end = ctx.current_price * (1.0 - price_buffer_pct);
 
     // Combine PH constraints with Bias constraints
     let long_active = (ctx.ph_max > long_start) && bias_long;
@@ -581,8 +578,11 @@ fn run_drill_phase(
         return candidates;
     }
 
-    let opt_config = &ctx.config.journey.optimization;
-    let steps = opt_config.scout_steps;
+    // let opt_config = &constants::journey::OPTIMIZATION;
+    let steps = constants::journey::optimization::SCOUT_STEPS;
+    let drill_offset_factor = constants::journey::optimization::DRILL_OFFSET_FACTOR;
+    let drill_cutoff_pct = constants::journey::optimization::DRILL_CUTOFF_PCT;
+    let drill_top_n = constants::journey::optimization::DRILL_TOP_N;
 
     // Sort Best First
     candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
@@ -608,12 +608,12 @@ fn run_drill_phase(
         let mut drill_targets = Vec::new();
 
         let grid_step_pct = (ctx.ph_max - ctx.ph_min) / ctx.current_price / steps as f64;
-        let drill_offset_pct = grid_step_pct * opt_config.drill_offset_factor;
+        let drill_offset_pct = grid_step_pct * drill_offset_factor;
         let dedup_radius = grid_step_pct * 100.0;
 
         // NEW: Adaptive Cutoff Score
         let best_score = candidates[0].score;
-        let score_threshold = best_score * opt_config.drill_cutoff_pct;
+        let score_threshold = best_score * drill_cutoff_pct;
 
         #[cfg(debug_assertions)]
         log::info!(
@@ -655,7 +655,7 @@ fn run_drill_phase(
                 drill_targets.push(idx);
             }
 
-            if drill_targets.len() >= opt_config.drill_top_n {
+            if drill_targets.len() >= drill_top_n {
                 break;
             }
         }
@@ -669,8 +669,8 @@ fn run_drill_phase(
         );
 
         // 2. Drill Loop (Parallelized)
-        let full_risks = ctx.config.journey.risk_reward_tests;
-        let full_samples = ctx.config.journey.sample_count;
+        let full_risks = constants::journey::RISK_REWARD_TESTS;
+        let full_samples = constants::journey::SAMPLE_COUNT;
 
         // Use Rayon to calculate results in parallel
         let drill_results: Vec<CandidateResult> = drill_targets
@@ -740,7 +740,6 @@ pub struct PathfinderResult {
 pub fn run_pathfinder_simulations(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
-    config: &AppConstants,
     ph_pct: f64,
     strategy: OptimizationGoal,
     station_id: StationId,
@@ -760,7 +759,7 @@ pub fn run_pathfinder_simulations(
 
     // Volatility
     let max_idx = ohlcv.klines().saturating_sub(1);
-    let vol_lookback = config.journey.optimization.volatility_lookback.min(max_idx);
+    let vol_lookback = constants::journey::optimization::VOLATILITY_LOOKBACK.min(max_idx);
     let start_vol = ohlcv.klines().saturating_sub(vol_lookback);
     let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol, ohlcv.klines());
 
@@ -769,17 +768,17 @@ pub fn run_pathfinder_simulations(
     let duration = AdaptiveParameters::calculate_dynamic_journey_duration(
         ph_pct,
         avg_volatility,
-        config.interval_width_ms,
-        &config.journey,
+        constants::INTERVAL_WIDTH_MS,
+        &constants::journey::DEFAULT,
     );
-    let duration_candles = duration_to_candles(duration, config.interval_width_ms);
+    let duration_candles = duration_to_candles(duration, constants::INTERVAL_WIDTH_MS);
 
     let matches_opt = ScenarioSimulator::find_historical_matches(
         ohlcv.pair_interval.name(),
         ohlcv,
         max_idx,
-        &config.similarity,
-        config.journey.sample_count,
+        &constants::similarity::DEFAULT,
+        constants::journey::SAMPLE_COUNT,
         trend_lookback,
         duration_candles,
     );
@@ -805,7 +804,7 @@ pub fn run_pathfinder_simulations(
         matches,
         current_state: _current_state,
         current_price,
-        config,
+        // config,
         strategy,
         station_id,
         duration_candles,
@@ -832,7 +831,7 @@ pub fn run_pathfinder_simulations(
 
     // 3. Final Filter
     let final_opps: Vec<TradeOpportunity> =
-        apply_diversity_filter(drill_results, config, ctx.pair_name, ctx.ph_min, ctx.ph_max, strategy);
+        apply_diversity_filter(drill_results, ctx.pair_name, ctx.ph_min, ctx.ph_max, strategy);
     // Return everything
     PathfinderResult {
         opportunities: final_opps,
@@ -957,8 +956,8 @@ fn run_stop_loss_tournament(
                     let score = strategy.calculate_score(
                         roi,
                         duration_real_ms,
-                        profile.weight_roi,
-                        profile.weight_aroi,
+                        // profile.weight_roi,
+                        // profile.weight_aroi,
                     );
 
                     // Track Best
@@ -1031,7 +1030,7 @@ fn fetch_local_timeseries(req: &JobRequest) -> Result<TimeSeriesCollection, Stri
         .map_err(|_| "Failed to acquire RwLock".to_string())?;
 
     let target_pair = &req.pair_name;
-    let interval = req.config.interval_width_ms;
+    let interval = constants::INTERVAL_WIDTH_MS;
 
     // Find and clone specifically what we need
     if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, target_pair, interval) {
@@ -1075,7 +1074,7 @@ fn perform_standard_analysis(
 
         // 3. CVA
         let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 10_000, {
-            pair_analysis_pure(req.pair_name.clone(), ts_collection, price, ph_pct, &req.config)
+            pair_analysis_pure(req.pair_name.clone(), ts_collection, price, ph_pct)
         });
 
         let elapsed = start.elapsed().as_millis();
@@ -1092,8 +1091,8 @@ fn perform_standard_analysis(
                         // Return the Model with CVA, but EMPTY opportunities
                         result: Ok(Arc::new(TradingModel::from_cva(
                             Arc::new(cva), 
-                            find_matching_ohlcv(&ts_collection.series_data, &req.pair_name, req.config.interval_width_ms).unwrap(), 
-                            &req.config
+                            find_matching_ohlcv(&ts_collection.series_data, &req.pair_name, constants::INTERVAL_WIDTH_MS).unwrap(), 
+                            // &req.config
                         ))),
                         cva: None, // Legacy field (optional)
                         candle_count: count,
@@ -1133,7 +1132,7 @@ fn resolve_analysis_price(req: &JobRequest, ts_collection: &TimeSeriesCollection
     if let Ok(ts) = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        req.config.interval_width_ms,
+        constants::INTERVAL_WIDTH_MS,
     ) {
         ts.close_prices
             .last()
@@ -1152,7 +1151,7 @@ fn calculate_exact_candle_count(
     let ohlcv_result = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        req.config.interval_width_ms,
+        constants::INTERVAL_WIDTH_MS,
     );
 
     if let Ok(ohlcv) = ohlcv_result {
@@ -1178,14 +1177,14 @@ fn build_success_result(
     let ohlcv = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        req.config.interval_width_ms,
+        constants::INTERVAL_WIDTH_MS,
     )
     .expect("OHLCV data missing despite CVA success");
 
-    let mut model = TradingModel::from_cva(cva_arc.clone(), ohlcv, &req.config);
+    let mut model = TradingModel::from_cva(cva_arc.clone(), ohlcv);
 
     // Run Pathfinder
-    let pf_result = run_pathfinder_simulations(ohlcv, price, &req.config, req.ph_pct, req.strategy, req.station_id, Some(&cva_arc));
+    let pf_result = run_pathfinder_simulations(ohlcv, price, req.ph_pct, req.strategy, req.station_id, Some(&cva_arc));
 
     model.opportunities = pf_result.opportunities;
 

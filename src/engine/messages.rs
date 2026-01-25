@@ -1,10 +1,9 @@
 use std::sync::{Arc, RwLock};
-use crate::config::{AppConstants, OptimizationGoal, StationId};
+use crate::config::{OptimizationGoal, StationId};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::cva::CVACore;
 use crate::models::horizon_profile::HorizonProfile;
 use crate::models::trading_view::TradingModel;
-// use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobMode {
@@ -22,7 +21,6 @@ pub enum JobMode {
 pub struct JobRequest {
     pub pair_name: String,
     pub current_price: Option<f64>,
-    pub config: AppConstants,
     pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
     pub existing_profile: Option<HorizonProfile>,
     pub ph_pct: f64,

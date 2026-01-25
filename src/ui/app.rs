@@ -18,7 +18,7 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{AppConstants, CONSTANTS, DEBUG_FLAGS, OptimizationGoal, StationId, TimeTunerConfig};
+use crate::config::{DEBUG_FLAGS, OptimizationGoal, StationId, TimeTunerConfig, constants};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -204,8 +204,6 @@ pub struct ZoneSniperApp {
     #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>,
     #[serde(skip)]
-    pub app_constants: AppConstants,
-    #[serde(skip)]
     pub active_station_id: StationId,
     #[serde(skip)]
     pub active_ph_pct: f64,
@@ -241,14 +239,13 @@ pub struct ZoneSniperApp {
 
 impl Default for ZoneSniperApp {
     fn default() -> Self {
-        let constants = AppConstants::default();
         let tuner_defaults = TimeTunerConfig::standard_defaults();
 
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
             global_tuner_config: tuner_defaults,
             station_overrides: HashMap::new(),
-            app_constants: constants,
+            // app_constants: constants,
             active_station_id: StationId::default(), // NEW
             active_ph_pct: 0.15,                     // NEW
             startup_tune_done: false,
@@ -297,8 +294,6 @@ impl ZoneSniperApp {
         // Overwrite the default config's PH with the saved user preference.
         // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
         // app.app_config.price_horizon = app.global_price_horizon.clone();
-
-        // app.app_constants = AppConstants::default();
 
         // // Restore Tuner Buttons (Scalp/Swing definitions) from disk to the Engine Config
         // app.app_constan.tuner = app.global_tuner_config.clone();
@@ -388,10 +383,7 @@ impl ZoneSniperApp {
 
         // 3. Execute Update
         if let Some(engine) = &mut self.engine {
-            // A. Update the config in the engine
-            // self.saved_strategy = self.app_constants.journey.profile.goal; // TEMP do we still need this?
-
-            // B. Global Invalidation
+            // Global Invalidation
             // Since the "Rules of the Game" changed, every pair needs to be re-judged.
             // We pass the current pair as priority so the user sees the active screen update first.
             engine.trigger_global_recalc(priority_pair);
@@ -417,12 +409,12 @@ impl ZoneSniperApp {
             let ohlcv = find_matching_ohlcv(
                 &ts_guard.series_data,
                 pair,
-                self.app_constants.interval_width_ms,
+                constants::INTERVAL_WIDTH_MS,
             )
             .ok()?;
 
             // 4. Run Worker Logic
-            return worker::tune_to_station(ohlcv, price, &self.app_constants, station, self.saved_strategy);
+            return worker::tune_to_station(ohlcv, price, station, self.saved_strategy);
         }
         None
     }
@@ -891,9 +883,7 @@ impl ZoneSniperApp {
                 );
 
                 // Subtitle / Info
-                // Reference CONSTANTS here because this is associate function without access to app.app_constants
-                // log::info!("Accessing CONSTANTS because associate function cannot access app.app_constants");
-                let interval_str = TimeUtils::interval_to_string(CONSTANTS.interval_width_ms);
+                let interval_str = TimeUtils::interval_to_string(constants::INTERVAL_WIDTH_MS);
                 ui.label(
                     RichText::new(format!(
                         "{} {} {}",
@@ -1056,14 +1046,13 @@ impl ZoneSniperApp {
                             if let Ok(ohlcv) = find_matching_ohlcv(
                                 &ts_guard.series_data,
                                 &pair,
-                                self.app_constants.interval_width_ms,
+                                constants::INTERVAL_WIDTH_MS,
                             ) {
                                 if let Some(price) = engine.price_stream.get_price(&pair) {
                                     if price > f64::EPSILON {
                                         worker::tune_to_station(
                                             ohlcv,
                                             price,
-                                            &self.app_constants,
                                             station_def,
                                             self.saved_strategy,
                                         )
@@ -1265,7 +1254,7 @@ impl ZoneSniperApp {
                 let has_data = find_matching_ohlcv(
                     &ts_guard.series_data,
                     pair,
-                    self.app_config.interval_width_ms,
+                    CONSTANTS.interval_width_ms,
                 )
                 .is_ok();
 

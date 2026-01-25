@@ -3,7 +3,7 @@ use strum::IntoEnumIterator;
 
 use crate::analysis::pair_analysis;
 
-use crate::config::AppConstants;
+use crate::config::constants;
 use crate::config::{OptimizationGoal, StationId};
 
 use crate::data::timeseries::TimeSeriesCollection;
@@ -17,7 +17,6 @@ use super::{config, reporter::AuditReporter};
 
 pub fn execute_audit(
     ts_collection: &TimeSeriesCollection,
-    base_config: &AppConstants,
     current_prices: &HashMap<String, f64>, // NEW: Live prices from Ticker
 ) {
     println!("=== STARTING MULTI-STRATEGY SPECTRUM AUDIT ===");
@@ -30,7 +29,7 @@ pub fn execute_audit(
         if find_matching_ohlcv(
             &ts_collection.series_data,
             pair,
-            base_config.interval_width_ms,
+            constants::INTERVAL_WIDTH_MS,
         )
         .is_err()
         {
@@ -61,7 +60,7 @@ pub fn execute_audit(
                     &strategy,
                     ph_pct,
                     ts_collection,
-                    base_config,
+                    // base_config,
                     &mut reporter,
                 );
             }
@@ -80,15 +79,13 @@ fn run_single_simulation(
     strategy: &OptimizationGoal,
     ph_pct: f64,
     ts_collection: &TimeSeriesCollection,
-    base_config: &AppConstants,
     reporter: &mut AuditReporter,
 ) {
-    let config = base_config.clone();
     // Apply Context
     // config.price_horizon.threshold_pct = ph_pct;
     // config.journey.profile.goal = strategy.clone();
 
-    let interval_ms = base_config.interval_width_ms;
+    let interval_ms = constants::INTERVAL_WIDTH_MS;
     // Unwrap is safe here because we checked existence in the main loop
     let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, interval_ms).unwrap();
 
@@ -97,7 +94,7 @@ fn run_single_simulation(
     // C. Run Pipeline (Using worker internals)
     // 1. CVA
     let cva_res =
-        pair_analysis::pair_analysis_pure(pair.to_string(), ts_collection, price, ph_pct, &config);
+        pair_analysis::pair_analysis_pure(pair.to_string(), ts_collection, price, ph_pct);
 
     let strat_name = format!("{:?}", strategy);
 
@@ -109,7 +106,7 @@ fn run_single_simulation(
     let ph_candles = cva.relevant_candle_count;
 
     // 2. Pathfinder (Scout + Drill)
-    let pf_result = worker::run_pathfinder_simulations(ohlcv, price, &config, ph_pct, *strategy, StationId::default(), Some(&cva));
+    let pf_result = worker::run_pathfinder_simulations(ohlcv, price, ph_pct, *strategy, StationId::default(), Some(&cva));
     let elapsed = start_time.elapsed().as_millis();
     let opportunities = pf_result.opportunities;
     let trend_k = pf_result.trend_lookback; // Truth from the engine
@@ -118,7 +115,7 @@ fn run_single_simulation(
     // D. Extract Stats
     let count = opportunities.len();
 
-    let top_score = opportunities.first().map(|o| o.calculate_quality_score(&config.journey.profile));
+    let top_score = opportunities.first().map(|o| o.calculate_quality_score());
 
     // DISPLAY LOGIC: Convert ms to hours for CSV readability
     let durations_hours: Vec<f64> = opportunities.iter()

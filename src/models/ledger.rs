@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::cmp::Ordering;
 use serde::{Deserialize, Serialize};
 
-use crate::config::TradeProfile;
 use crate::models::trading_view::TradeOpportunity;
 
 use crate::utils::maths_utils::calculate_percent_diff;
@@ -99,7 +98,7 @@ impl OpportunityLedger {
     /// 1. Trades from different strategies (e.g. ROI vs AROI) NEVER merge. They coexist.
     /// 2. Trades from the SAME strategy with overlapping targets are merged.
     /// 3. The winner is decided by the Score of that specific strategy.
-    pub fn prune_collisions(&mut self, tolerance_pct: f64, global_profile: &TradeProfile) {
+    pub fn prune_collisions(&mut self, tolerance_pct: f64) {
         let mut to_remove = Vec::new();
         let ops: Vec<_> = self.opportunities.values().cloned().collect();
 
@@ -120,8 +119,8 @@ impl OpportunityLedger {
                     let diff = calculate_percent_diff(a.target_price, b.target_price);
                     
                     if diff < tolerance_pct {
-                        let score_a = a.calculate_quality_score(&global_profile);
-                        let score_b = b.calculate_quality_score(&global_profile);
+                        let score_a = a.calculate_quality_score();
+                        let score_b = b.calculate_quality_score();
                         let (_winner, loser) = if score_a >= score_b {
                             (a, b)
                         } else {

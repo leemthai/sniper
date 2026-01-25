@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{OptimizationGoal, TICKER};
+use crate::config::{OptimizationGoal, TICKER, constants};
 
 use crate::domain::pair_interval::PairInterval;
 
@@ -156,16 +156,15 @@ impl ZoneSniperApp {
                 }
                 // Sort by Strategy Score (Balanced/ROI/AROI)
                 SortColumn::Score => {
-                    let profile = &self.app_constants.journey.profile;
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.calculate_quality_score(profile))
+                        .map(|o| o.calculate_quality_score())
                         .unwrap_or(f64::NEG_INFINITY);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.calculate_quality_score(profile))
+                        .map(|o| o.calculate_quality_score())
                         .unwrap_or(f64::NEG_INFINITY);
 
                     val_a
@@ -246,7 +245,7 @@ impl ZoneSniperApp {
                 
                 // For interval display, we use the global config as a fallback if not in state
                 // (Assuming 5m candles usually)
-                let interval_ms = self.app_constants.interval_width_ms; 
+                let interval_ms = constants::INTERVAL_WIDTH_MS; 
                 let max_candles = if interval_ms > 0 { max_time_ms / interval_ms } else { 0 };
 
                 // SECTION 1: THE MATH
@@ -1097,8 +1096,7 @@ impl ZoneSniperApp {
                         || op.strategy == OptimizationGoal::Balanced;
 
                     if show_score {
-                        let profile = &self.app_constants.journey.profile;
-                        let score = op.calculate_quality_score(profile);
+                        let score = op.calculate_quality_score();
 
                         ui.label(
                             RichText::new(format!(
@@ -1190,7 +1188,6 @@ impl ZoneSniperApp {
             vec![]
         };
 
-        let profile = &self.app_constants.journey.profile;
         let selected_op_id = self.selected_opportunity.as_ref().map(|o| &o.id);
 
         // Scope Helper
@@ -1239,7 +1236,7 @@ impl ZoneSniperApp {
                         return true;
                     }
                     // Rule B: MWT (Must be worthwhile)
-                    if !op.is_worthwhile(profile) {
+                    if !op.is_worthwhile(&constants::journey::DEFAULT.profile) {
                         return false;
                     }
                     true
