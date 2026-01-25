@@ -15,6 +15,8 @@ pub struct KlinePersistenceConfig {
 pub struct AppPersistenceConfig {
     /// Path for saving/loading application UI state
     pub state_path: &'static str,
+    /// Path for saving/loading the opportunity ledger (binary)
+    pub ledger_path: &'static str,
 }
 
 /// The Master Persistence Configuration
@@ -31,6 +33,7 @@ pub const PERSISTENCE: PersistenceConfig = PersistenceConfig {
     },
     app: AppPersistenceConfig {
         state_path: ".states.json",
+        ledger_path: ".ledger.bin",
     },
 };
 

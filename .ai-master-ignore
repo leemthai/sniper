@@ -18,7 +18,4 @@ repomix-output.xml
 
 # Block all the ignore files
 ai-master-ignore
-.continueignore
 .geminiignore
-.cursorignore
-.copilotignore

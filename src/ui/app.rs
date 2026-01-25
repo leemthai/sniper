@@ -197,8 +197,6 @@ pub struct ZoneSniperApp {
     pub tf_sort_col: SortColumn,
     pub tf_sort_dir: SortDirection,
 
-    pub saved_ledger: OpportunityLedger,
-    pub last_selected_opp_id: Option<String>,
     pub saved_strategy: OptimizationGoal,
 
     #[serde(skip)]
@@ -269,8 +267,7 @@ impl Default for ZoneSniperApp {
             show_candle_range: false,
             tf_sort_col: SortColumn::LiveRoi, // Default to Money
             tf_sort_dir: SortDirection::Descending, // Highest first
-            saved_ledger: OpportunityLedger::default(),
-            last_selected_opp_id: None,
+            // last_selected_opp_id: None,
             saved_strategy: OptimizationGoal::default(),
         }
     }
@@ -287,9 +284,6 @@ impl ZoneSniperApp {
         // --- 1. SETUP FONTS ---
         Self::configure_fonts(&cc.egui_ctx);
 
-        // RESTORE STATE:
-        // Overwrite the default config's PH with the saved user preference.
-        // Everything else in app_config remains as defined in 'const ANALYSIS' (code).
         // app.app_config.price_horizon = app.global_price_horizon.clone();
 
         // // Restore Tuner Buttons (Scalp/Swing definitions) from disk to the Engine Config
@@ -1172,7 +1166,24 @@ impl ZoneSniperApp {
                     log::warn!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
                     engine.ledger = OpportunityLedger::new();
                 } else {
-                    engine.ledger = self.saved_ledger.clone();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        match crate::data::ledger_io::load_ledger() {
+                            Ok(l) => {
+                                #[cfg(debug_assertions)]
+                                log::info!("Loaded ledger with {} opportunities", l.opportunities.len());
+                                engine.ledger = l;
+                            },
+                            Err(e) => {
+                                log::error!("Failed to load ledger (starting fresh): {}", e);
+                                engine.ledger = OpportunityLedger::new();
+                            }
+                        }
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        engine.ledger = OpportunityLedger::new();
+                    }
                 }
 
                 // --- CULL ORPHANS ---
@@ -1300,13 +1311,12 @@ impl eframe::App for ZoneSniperApp {
     fn save(&mut self, storage: &mut dyn Storage) {
         // 1. Snapshot the Engine Ledger
         if let Some(engine) = &self.engine {
-            // Clone the active ledger into the serializable app state
-            self.saved_ledger = engine.ledger.clone();
+            // Save active ledger to separate binary file
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Err(e) = crate::data::ledger_io::save_ledger(&engine.ledger) {
+                log::error!("Failed to save ledger: {}", e);
+            }
         }
-
-        // 2. Snapshot the Selection ID
-        self.last_selected_opp_id = self.selected_opportunity.as_ref().map(|op| op.id.clone());
-
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
