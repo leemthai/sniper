@@ -27,7 +27,7 @@ use {
 
 #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
 use {
-    crate::config::DEBUG_FLAGS,
+    crate::config::DF,
 };
 
 // ----------------------------------------------------------------------------
@@ -146,7 +146,7 @@ pub async fn fetch_pair_data(
         // 2. Debug Limit (from debug.rs)
         #[cfg(debug_assertions)]
         {
-            let debug_limit = DEBUG_FLAGS.max_pairs_load;
+            let debug_limit = DF.max_pairs_load;
             // If the flag is smaller than the current list, truncate it.
             // (If you set debug_limit to 1000, it effectively loads 'all')
             if supply_pairs.len() > debug_limit {

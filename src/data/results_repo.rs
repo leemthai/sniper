@@ -1,24 +1,31 @@
 use anyhow::Result;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    uuid::Uuid,
     anyhow::Context,
     sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous}, 
-    Row},
+        Row,
+        sqlite::{
+            SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions,
+            SqliteSynchronous,
+        },
+    },
     std::str::FromStr,
     std::time::Duration,
+    uuid::Uuid,
 };
 
 use crate::models::trading_view::{TradeDirection, TradeOutcome};
 
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+use crate::config::DF;
+
 /// A finalized trade record ready for persistent storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradeResult {
-    pub trade_id: String,       // Original UUID
+    pub trade_id: String, // Original UUID
     pub pair: String,
     pub direction: TradeDirection,
     pub entry_price: f64,
@@ -66,7 +73,7 @@ impl ResultsRepository {
 
         let repo = Self { pool };
         repo.initialize().await?;
-        
+
         Ok(repo)
     }
 
@@ -85,7 +92,7 @@ impl ResultsRepositoryTrait for ResultsRepository {
             "CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
-            );"
+            );",
         )
         .execute(&self.pool)
         .await
@@ -105,7 +112,7 @@ impl ResultsRepositoryTrait for ResultsRepository {
                 exit_time INTEGER NOT NULL,
                 pnl_pct REAL NOT NULL,
                 model_json TEXT
-            );"
+            );",
         )
         .execute(&self.pool)
         .await
@@ -129,13 +136,15 @@ impl ResultsRepositoryTrait for ResultsRepository {
             // Generate and Insert
             let new_id = Self::generate_new_id();
             #[cfg(debug_assertions)]
-            log::info!("RESULTS DB: Generating new Installation ID: {}", new_id);
+            if DF.log_results_repo {
+                log::info!("RESULTS DB: Generating new Installation ID: {}", new_id);
+            }
 
             sqlx::query("INSERT INTO meta (key, value) VALUES ('installation_id', ?)")
                 .bind(&new_id)
                 .execute(&self.pool)
                 .await?;
-            
+
             Ok(new_id)
         }
     }
@@ -146,13 +155,15 @@ impl ResultsRepositoryTrait for ResultsRepository {
         let outcome_str = result.outcome.to_string();
 
         #[cfg(debug_assertions)]
-        log::info!(
-            "RESULTS DB: Archiving trade [{}] {} PnL: {:.2}% ({})", 
-            result.pair, 
-            result.trade_id, 
-            result.final_pnl_pct,
-            outcome_str
-        );
+        if DF.log_results_repo {
+            log::info!(
+                "RESULTS DB: Archiving trade [{}] {} PnL: {:.2}% ({})",
+                result.pair,
+                result.trade_id,
+                result.final_pnl_pct,
+                outcome_str
+            );
+        }
 
         sqlx::query(
             r#"
@@ -195,10 +206,14 @@ impl ResultsRepository {
 #[cfg(target_arch = "wasm32")]
 #[async_trait::async_trait]
 impl ResultsRepositoryTrait for ResultsRepository {
-    async fn initialize(&self) -> Result<()> { Ok(()) }
-    async fn get_installation_id(&self) -> Result<String> { Ok("wasm-demo-user".to_string()) }
-    async fn record_trade(&self, _result: TradeResult) -> Result<()> { 
+    async fn initialize(&self) -> Result<()> {
+        Ok(())
+    }
+    async fn get_installation_id(&self) -> Result<String> {
+        Ok("wasm-demo-user".to_string())
+    }
+    async fn record_trade(&self, _result: TradeResult) -> Result<()> {
         // In WASM, we just discard the result as per instructions
-        Ok(()) 
+        Ok(())
     }
 }

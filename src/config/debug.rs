@@ -1,32 +1,60 @@
 //! Debugging feature flags.
 
-pub struct DebugFlags {
+pub struct LogFlags {
 
     /// Emit verbose logging for live price stream connections and ticks.
-    pub print_price_stream_updates: bool,
-
+    pub log_price_stream_updates: bool,
     /// Emit simulation-mode state changes (enter/exit, price adjustments, etc.).
-    pub print_simulation_events: bool,
+    pub log_simulation_events: bool,
+    /// Activate trace_time macro (for cool scope-level timing)
+    pub log_performance: bool,
+    /// Log ledger activity
+    pub log_ledger: bool,
+    pub log_results_repo: bool,
+    pub log_engine: bool,
+    /// Includes PH logging e.g active_ph_pct
+    pub log_tuner: bool, 
+    pub log_pathfinder: bool,
+    pub log_zones: bool,
 
-    /// Activate trace_time macro
-    pub enable_perf_logging: bool,
+    /// Anything about handling self.selected_pair
+    pub log_selected_pair: bool,
 
-    // NEW: Limit how many pairs are loaded in Debug mode.
+    /// Anything about self.selected_opportunity
+    pub log_selected_opportunity: bool,
+
+    #[cfg(all(debug_assertions, target_arch = "wasm32"))]
+    pub log_wasm_demo: bool,
+
+    // These two need moving out to somehwere else!!!!!!!!!
+    // Limit how many pairs are loaded in Debug mode.
     pub max_pairs_load: usize,
-
-        // NEW: Nuke button for the Ledger
+    // Nuke button for the Ledger
     pub wipe_ledger_on_startup: bool, 
 
 }
 
-pub const DEBUG_FLAGS: DebugFlags = DebugFlags {
-    print_price_stream_updates: false,
-    print_simulation_events: false,
+pub const DF: LogFlags = LogFlags {
+    log_performance: false,
+    log_price_stream_updates: false,
+    log_simulation_events: false,
+    log_ledger: true,
+    log_results_repo: false,
+    log_engine: false,
+    log_tuner: false,
+    log_pathfinder: false,
+    log_zones: false,
+    log_selected_pair: false,
+    log_selected_opportunity: false,
 
-    enable_perf_logging: false, // Activates trace_time! macro in perf.rs. Turn this back on for cool scope-level timing
+    #[cfg(all(debug_assertions, target_arch = "wasm32"))]
+    log_wasm_demo: false,
 
-    // Default to a small number for quick UI testing.
-    // Change this to 1000 when you want to stress-test the model i.e all pairs.
+    // These two need moving out to somehwere else!!!!!!!!!
+    // Default to a small number for quick UI testing. Change this to 1000 when you want to stress-test the model i.e all pairs.
     max_pairs_load: 12, // 40, // 25, // 60,
-    wipe_ledger_on_startup: true,
+    wipe_ledger_on_startup: false,
 };
+
+// use crate::config::DF
+// if df.log_ledger {}

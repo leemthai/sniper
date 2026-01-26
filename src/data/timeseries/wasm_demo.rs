@@ -1,7 +1,11 @@
-use anyhow::{Context, Result};
 use crate::config::DEMO;
-use crate::data::timeseries::cache_file::CacheFile;
+use anyhow::{Context, Result};
+
+#[cfg(all(debug_assertions, target_arch = "wasm32"))]
+use crate::config::DF;
+
 use crate::data::timeseries::TimeSeriesCollection;
+use crate::data::timeseries::cache_file::CacheFile;
 
 // Embed the demo data binary
 const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(
@@ -17,7 +21,9 @@ pub struct WasmDemoData;
 impl WasmDemoData {
     pub fn load() -> Result<TimeSeriesCollection> {
         #[cfg(debug_assertions)]
-        log::info!("Loading embedded WASM demo cache...");
+        if DF.log_wasm_demo {
+            log::info!("Loading embedded WASM demo cache...");
+        }
 
         let cache: CacheFile = bincode::deserialize(DEMO_CACHE_BYTES)
             .context("Failed to deserialize embedded demo cache")?;

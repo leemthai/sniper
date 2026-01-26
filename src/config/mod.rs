@@ -25,7 +25,7 @@ pub use types::{
 };
 pub use tuner::{StationId, TunerStation, TimeTunerConfig};
 pub use binance::{BINANCE, BinanceApiConfig};
-pub use debug::DEBUG_FLAGS;
+pub use debug::DF;
 pub use demo::DEMO;
 pub use persistence::{PERSISTENCE, kline_cache_filename};
 pub use ticker::TICKER;

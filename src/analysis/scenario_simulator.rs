@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 
 use crate::analysis::market_state::MarketState;
 
-use crate::config::DEBUG_FLAGS;
+use crate::config::DF;
 use crate::config::SimilaritySettings;
 
 use crate::models::OhlcvTimeSeries;
@@ -382,7 +382,7 @@ impl ScenarioSimulator {
         let t_total = t_start.elapsed();
 
         // Manual trace_time logic
-        if DEBUG_FLAGS.enable_perf_logging {
+        if DF.log_performance {
             let t_threshold = 5_000;
             if t_total.as_micros() > t_threshold {
                 log::error!(

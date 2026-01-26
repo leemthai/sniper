@@ -41,7 +41,7 @@ use {serde_json, std::collections::HashMap};
 
 // WASM + debug imports
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
-use crate::config::DEBUG_FLAGS;
+use crate::config::DF;
 
 #[cfg(target_arch = "wasm32")]
 const DEMO_PRICES_JSON: &str = include_str!(concat!(
@@ -120,7 +120,7 @@ impl PriceStreamManager {
     pub fn suspend(&self) {
         *self.suspended.lock().unwrap() = true;
         #[cfg(debug_assertions)]
-        if DEBUG_FLAGS.print_simulation_events {
+        if DF.log_simulation_events {
             log::info!("🔇 WebSocket price updates suspended");
         }
     }
@@ -129,7 +129,7 @@ impl PriceStreamManager {
     pub fn resume(&self) {
         *self.suspended.lock().unwrap() = false;
         #[cfg(debug_assertions)]
-        if DEBUG_FLAGS.print_simulation_events {
+        if DF.log_simulation_events {
             log::info!("🔊 WebSocket price updates resumed");
         }
     }
@@ -360,7 +360,7 @@ async fn run_combined_price_stream(
                                                     .insert(symbol.clone(), price);
 
                                                 #[cfg(debug_assertions)]
-                                                if DEBUG_FLAGS.print_price_stream_updates {
+                                                if DF.log_price_stream_updates {
                                                     log::info!(
                                                         "[kline-tick] {} -> {:.6}",
                                                         symbol,
@@ -487,10 +487,6 @@ fn parse_and_send_kline(data: &serde_json::Value, tx: &Sender<LiveCandle>) {
 
     let symbol = data["s"].as_str().unwrap_or("").to_string();
     let close = k["c"].as_str().unwrap_or("0").parse().unwrap_or(0.0);
-    // #[cfg(debug_assertions)]
-    // if is_closed {
-    //     log::info!("STREAM: {} @ {:.2} (Closed: {})", symbol, close, is_closed);
-    // }
 
     let candle = LiveCandle {
         symbol,

@@ -1,8 +1,11 @@
 // src/models/ledger.rs
 
-use std::collections::HashMap;
-use std::cmp::Ordering;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::collections::HashMap;
+
+#[cfg(debug_assertions)]
+use crate::config::DF;
 
 use crate::models::trading_view::TradeOpportunity;
 
@@ -15,7 +18,6 @@ pub struct OpportunityLedger {
 }
 
 impl OpportunityLedger {
-
     pub fn new() -> Self {
         Self {
             opportunities: HashMap::new(),
@@ -33,7 +35,9 @@ impl OpportunityLedger {
         }
 
         // 2. Try Fuzzy Match (Nearest Neighbor)
-        let closest_match = self.opportunities.values()
+        let closest_match = self
+            .opportunities
+            .values()
             .filter(|op| op.pair_name == new_opp.pair_name && op.direction == new_opp.direction)
             .map(|op| {
                 let diff = calculate_percent_diff(op.target_price, new_opp.target_price);
@@ -44,19 +48,26 @@ impl OpportunityLedger {
         // 3. Evaluate Match using Configured Tolerance
         if let Some((id, diff)) = closest_match {
             if diff < tolerance_pct {
-                 // LOGGING (Drift Detection)
+                // LOGGING (Drift Detection)
                 #[cfg(debug_assertions)]
                 {
-                    if id != new_opp.id {
-                        log::info!("LEDGER FUZZY MATCH [{}]: New ID {} merged into Existing {}. Drift: {:.3}%", 
-                            new_opp.pair_name, 
-                            if new_opp.id.len() > 8 { &new_opp.id[..8] } else { &new_opp.id },
-                            if id.len() > 8 { &id[..8] } else { &id },
-                            diff
-                        );
+                    if DF.log_ledger {
+                        if id != new_opp.id {
+                            log::info!(
+                                "LEDGER FUZZY MATCH [{}]: New ID {} merged into Existing {}. Drift: {:.3}%",
+                                new_opp.pair_name,
+                                if new_opp.id.len() > 8 {
+                                    &new_opp.id[..8]
+                                } else {
+                                    &new_opp.id
+                                },
+                                if id.len() > 8 { &id[..8] } else { &id },
+                                diff
+                            );
+                        }
                     }
                 }
-                
+
                 self.update_existing(&id, new_opp);
                 return (false, id);
             }
@@ -65,12 +76,14 @@ impl OpportunityLedger {
         // 4. No Match? It's a GENESIS (New Trade)
         let id = new_opp.id.clone();
         #[cfg(debug_assertions)]
-        log::info!("LEDGER BIRTH [{}]: New Trade detected. ID: {} (Target: {:.2})", 
-            new_opp.pair_name, 
-            if id.len() > 8 { &id[..8] } else { &id },
-            new_opp.target_price
-        );
-            
+        if DF.log_ledger {
+            log::info!(
+                "LEDGER BIRTH [{}]: New Trade detected. ID: {} (Target: {:.2})",
+                new_opp.pair_name,
+                if id.len() > 8 { &id[..8] } else { &id },
+                new_opp.target_price
+            );
+        }
         self.opportunities.insert(id.clone(), new_opp);
         (true, id)
     }
@@ -84,11 +97,10 @@ impl OpportunityLedger {
         self.opportunities.retain(f);
     }
 
-
     pub fn get_all(&self) -> Vec<&TradeOpportunity> {
         self.opportunities.values().collect()
     }
-    
+
     pub fn remove(&mut self, id: &str) {
         self.opportunities.remove(id);
     }
@@ -106,36 +118,46 @@ impl OpportunityLedger {
             for j in (i + 1)..ops.len() {
                 let a = &ops[i];
                 let b = &ops[j];
-                
-                if to_remove.contains(&a.id) || to_remove.contains(&b.id) { continue; }
+
+                if to_remove.contains(&a.id) || to_remove.contains(&b.id) {
+                    continue;
+                }
 
                 if a.pair_name == b.pair_name && a.direction == b.direction {
                     // SEGREGATION: Different strategies = Different trades.
-                    if a.strategy != b.strategy { continue; }
-                    if a.station_id != b.station_id { continue; }
+                    if a.strategy != b.strategy {
+                        continue;
+                    }
+                    if a.station_id != b.station_id {
+                        continue;
+                    }
 
-
-                    // Same strategy and stationId so preserve the best one 
+                    // Same strategy and stationId so preserve the best one
                     let diff = calculate_percent_diff(a.target_price, b.target_price);
-                    
+
                     if diff < tolerance_pct {
                         let score_a = a.calculate_quality_score();
                         let score_b = b.calculate_quality_score();
-                        let (_winner, loser) = if score_a >= score_b {
-                            (a, b)
-                        } else {
-                            (b, a)
-                        };
+                        let (_winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
 
                         #[cfg(debug_assertions)]
-                        log::info!(
-                            "🧹 LEDGER PRUNE [Strategy: {}]: Merging duplicate trade {} into {}. (Diff {:.3}%)", 
-                            a.strategy, 
-                            if loser.id.len() > 8 { &loser.id[..8] } else { &loser.id },
-                            if _winner.id.len() > 8 { &_winner.id[..8] } else { &_winner.id },
-                            diff
-                        );
-                        
+                        if DF.log_ledger {
+                            log::info!(
+                                "🧹 LEDGER PRUNE [Strategy: {}]: Merging duplicate trade {} into {}. (Diff {:.3}%)",
+                                a.strategy,
+                                if loser.id.len() > 8 {
+                                    &loser.id[..8]
+                                } else {
+                                    &loser.id
+                                },
+                                if _winner.id.len() > 8 {
+                                    &_winner.id[..8]
+                                } else {
+                                    &_winner.id
+                                },
+                                diff
+                            );
+                        }
                         to_remove.push(loser.id.clone());
                     }
                 }
@@ -150,32 +172,36 @@ impl OpportunityLedger {
     /// Helper to update an existing opportunity while preserving its history
     fn update_existing(&mut self, existing_id: &str, mut new_opp: TradeOpportunity) {
         if let Some(existing) = self.opportunities.get(existing_id) {
-             // LOGGING ROI Change
+            // LOGGING  EVOLVE
             #[cfg(debug_assertions)]
-            if (existing.expected_roi() - new_opp.expected_roi()).abs() > 0.1 {
-                log::info!("LEDGER EVOLVE [{}]: ID {} kept. Target: {:.2} -> {:.2} | ROI {:.2}% -> {:.2}% (Win: {:.1}%->{:.1}%) | SL: {:.2} -> {:.2}", 
-                    new_opp.pair_name, 
-                    if existing_id.len() > 8 { &existing_id[..8] } else { existing_id }, 
-                    existing.target_price, // <--- Added Old Target
-                    new_opp.target_price,  // <--- Added New Target
-                    existing.expected_roi(), 
-                    new_opp.expected_roi(),
-                    existing.simulation.success_rate * 100.0,
-                    new_opp.simulation.success_rate * 100.0,
-                    existing.stop_price,
-                    new_opp.stop_price
-                );
+            if DF.log_ledger {
+                if (existing.expected_roi() - new_opp.expected_roi()).abs() > 0.1 {
+                    log::info!(
+                        "LEDGER EVOLVE [{}]: ID {} kept. Target: {:.2} -> {:.2} | ROI {:.2}% -> {:.2}% (Win: {:.1}%->{:.1}%) | SL: {:.2} -> {:.2}",
+                        new_opp.pair_name,
+                        if existing_id.len() > 8 {
+                            &existing_id[..8]
+                        } else {
+                            existing_id
+                        },
+                        existing.target_price, // <--- Added Old Target
+                        new_opp.target_price,  // <--- Added New Target
+                        existing.expected_roi(),
+                        new_opp.expected_roi(),
+                        existing.simulation.success_rate * 100.0,
+                        new_opp.simulation.success_rate * 100.0,
+                        existing.stop_price,
+                        new_opp.stop_price
+                    );
+                }
             }
 
             // CRITICAL: Preserve Identity
-            new_opp.id = existing.id.clone();         // Keep the OLD ID (so UI selection sticks)
+            new_opp.id = existing.id.clone(); // Keep the OLD ID (so UI selection sticks)
             new_opp.created_at = existing.created_at; // Keep Birth Time (Age)
-            
+
             // Insert (Overwrite)
             self.opportunities.insert(existing_id.to_string(), new_opp);
         }
     }
-
-
-
 }

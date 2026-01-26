@@ -10,6 +10,9 @@ use crate::analysis::zone_scoring::find_target_zones;
 
 use crate::config::{OptimizationGoal, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants};
 
+#[cfg(debug_assertions)]
+use crate::config::DF;
+
 use crate::models::OhlcvTimeSeries;
 use crate::models::cva::{CVACore, ScoreType};
 
@@ -162,7 +165,6 @@ pub struct TradeOpportunity {
     pub station_id: StationId,
     pub market_state: MarketState,
 
-    #[serde(default)]
     pub visuals: Option<VisualFluff>,
     
     pub simulation: SimulationResult,
@@ -490,8 +492,8 @@ impl TradingModel {
                 let adaptive_threshold = (mean + (params.sigma * std_dev)).clamp(0.05, 0.95);
 
                 // --- DIAGNOSTIC LOGGING ---
-                // #[cfg(debug_assertions)]
-                if false {
+                #[cfg(debug_assertions)]
+                if DF.log_zones {
                     let count = normalized.len();
                     let above = normalized
                         .iter()

@@ -12,13 +12,13 @@ use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
 #[cfg(not(target_arch = "wasm32"))]
-use {std::thread, tokio::runtime::Runtime, crate::data::ledger_io};
+use {crate::data::ledger_io, std::thread, tokio::runtime::Runtime};
 
 use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{DEBUG_FLAGS, OptimizationGoal, StationId, TimeTunerConfig, constants};
+use crate::config::{DF, OptimizationGoal, StationId, TimeTunerConfig, constants};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -198,6 +198,7 @@ pub struct ZoneSniperApp {
     pub tf_sort_dir: SortDirection,
 
     pub saved_strategy: OptimizationGoal,
+    pub saved_opportunity_id: Option<String>,
 
     #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>,
@@ -237,12 +238,13 @@ pub struct ZoneSniperApp {
 
 impl Default for ZoneSniperApp {
     fn default() -> Self {
+        log::info!("when do we init default ZoneSniperApp?");
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
             global_tuner_config: TimeTunerConfig::default(),
             station_overrides: HashMap::new(),
-            active_station_id: StationId::default(), 
-            active_ph_pct: 0.15, 
+            active_station_id: StationId::default(),
+            active_ph_pct: 0.15,
             startup_tune_done: false,
             plot_visibility: PlotVisibility::default(),
             show_debug_help: false,
@@ -267,8 +269,8 @@ impl Default for ZoneSniperApp {
             show_candle_range: false,
             tf_sort_col: SortColumn::LiveRoi, // Default to Money
             tf_sort_dir: SortDirection::Descending, // Highest first
-            // last_selected_opp_id: None,
             saved_strategy: OptimizationGoal::default(),
+            saved_opportunity_id: None,
         }
     }
 }
@@ -284,16 +286,6 @@ impl ZoneSniperApp {
         // --- 1. SETUP FONTS ---
         Self::configure_fonts(&cc.egui_ctx);
 
-        // app.app_config.price_horizon = app.global_price_horizon.clone();
-
-        // // Restore Tuner Buttons (Scalp/Swing definitions) from disk to the Engine Config
-        // app.app_constan.tuner = app.global_tuner_config.clone();
-        // #[cfg(debug_assertions)]
-        // log::info!(
-        //     "🔧 TUNER INIT: Loaded {} global station definitions.",
-        //     app.app_config.tuner.stations.len()
-        // );
-
         // Restore Active Station for the specific startup pair
         if let Some(pair) = &app.selected_pair {
             // Use .copied() to turn &StationId into StationId
@@ -301,19 +293,23 @@ impl ZoneSniperApp {
                 app.active_station_id = saved_station;
 
                 #[cfg(debug_assertions)]
-                log::info!(
-                    "🔧 TUNER INIT: Restored saved station '{:?}' for [{}]",
-                    saved_station,
-                    pair
-                );
+                if DF.log_tuner {
+                    log::info!(
+                        "🔧 TUNER INIT: Restored saved station '{:?}' for [{}]",
+                        saved_station,
+                        pair
+                    );
+                }
             } else {
                 // Default if no override exists
                 app.active_station_id = StationId::default();
-                #[cfg(debug_assertions)]
-                log::info!(
-                    "🔧 TUNER INIT: No save found for [{}]. Using StationId::default() instead",
-                    pair
-                );
+                if DF.log_tuner {
+                    #[cfg(debug_assertions)]
+                    log::info!(
+                        "🔧 TUNER INIT: No save found for [{}]. Using StationId::default() instead",
+                        pair
+                    );
+                }
             }
         } else {
             app.active_station_id = StationId::default();
@@ -397,12 +393,9 @@ impl ZoneSniperApp {
 
             // 3. Get Data
             let ts_guard = engine.timeseries.read().unwrap();
-            let ohlcv = find_matching_ohlcv(
-                &ts_guard.series_data,
-                pair,
-                constants::INTERVAL_WIDTH_MS,
-            )
-            .ok()?;
+            let ohlcv =
+                find_matching_ohlcv(&ts_guard.series_data, pair, constants::INTERVAL_WIDTH_MS)
+                    .ok()?;
 
             // 4. Run Worker Logic
             return worker::tune_to_station(ohlcv, price, station, self.saved_strategy);
@@ -423,16 +416,22 @@ impl ZoneSniperApp {
                 .insert(old_pair.clone(), current_station);
 
             #[cfg(debug_assertions)]
-            log::info!(
-                "💾 SAVE [{}]: Saved Station '{:?}'",
-                old_pair,
-                current_station
-            );
+            if DF.log_tuner {
+                log::info!(
+                    "💾 TUNER  SAVE [{}]: Saved Station '{:?}'",
+                    old_pair,
+                    current_station
+                );
+            }
         }
 
         // 2. Set New Pair & Reset View Flags
         self.selected_pair = Some(new_pair.clone());
         self.auto_scale_y = true;
+        #[cfg(debug_assertions)]
+        if DF.log_selected_opportunity {
+            log::info!("SELECTED OPPORTUNITY: clear in handle_pair_selection");
+        }
         self.selected_opportunity = None;
 
         // --- 3. LOAD STATE (New Pair) ---
@@ -442,25 +441,12 @@ impl ZoneSniperApp {
             .copied() // Converts &StationId to StationId
             .unwrap_or_default();
         // Apply it to the config
+        #[cfg(debug_assertions)]
+        if DF.log_tuner {
+            log::info!(" TUNER: LOAD station [{:?}]", target_station);
+        }
         self.active_station_id = target_station;
     }
-
-    // pub fn invalidate_all_pairs_for_global_change(&mut self, _reason: &str) {
-    //     if let Some(pair) = self.selected_pair.clone() {
-    //         // log::info!("UI INVALIDATE: Reason '{}'. Requesting scroll to {}", _reason, pair);
-
-    //         let price = self.get_display_price(&pair);
-
-    //         if let Some(engine) = &mut self.engine {
-    //             engine.force_recalc(
-    //                 &pair,
-    //                 price,
-    //                 JobMode::FullAnalysis,
-    //                 "INVALIDATE ALL PAIRS -> PRICE HORIZON CHANGED",
-    //             );
-    //         }
-    //     }
-    // }
 
     /// Sets the scroll target based on the current selection state.
     /// Logic: Prefer Opportunity ID -> Fallback to Pair Name.
@@ -516,38 +502,26 @@ impl ZoneSniperApp {
         // 1. Switch State (Pure UI)
         self.handle_pair_selection(op.pair_name.clone());
 
-        // 2. OVERRIDE PH
-        // We ignore the Station's preference and enforce the Trade's origin PH.
         self.active_ph_pct = op.source_ph;
-
-        // TEMP until given good reason - I am not doing any recalc.....
-        // TEMP why are we forcing a recalc .... coz it is context recalc only. Understood.
-        // But I thought we didn't need *any* context ?????
-
-        // 3. Trigger Engine (Context Only)
-        // We calculate CVA zones to match the trade, but skip simulations.
-        if false {
-            // if let Some(engine) = &mut self.engine {
-                // Override Engine Config for this pair
-                // let mut pair_config = self.app_config.price_horizon.clone();
-                // pair_config.threshold_pct = op.source_ph;
-                // engine.set_price_horizon_override(op.pair_name.clone(), pair_config);
-
-                // FIRE! (Fast Mode)
-                // engine.force_recalc(
-                //     &op.pair_name,
-                //     None,
-                //     ph_pct,
-                //     JobMode::ContextOnly,
-                //     "SELECT SPECIFIC OP SO CONTEXT ONLY JOB",
-                // );
-            // }
+        #[cfg(debug_assertions)]
+        if DF.log_tuner {
+            log::info!(
+                "TUNER OVERRIDE PH: ignore the Station's preference and enforce the Trade's origin PH: {}",
+                self.active_ph_pct
+            );
         }
 
-        // 4. Update Selection
+        // Update Selection
         self.selected_opportunity = Some(op.clone());
+        #[cfg(debug_assertions)]
+        if DF.log_selected_opportunity {
+            log::info!(
+                "SELECTED OPPORTUNITY: set in select_specific_opportunity to {:?}",
+                op
+            );
+        }
 
-        // 5. Scroll
+        // Scroll
         if matches!(scroll, ScrollBehavior::Center) {
             self.scroll_target = Some(NavigationTarget::Opportunity(op.id));
         }
@@ -928,8 +902,7 @@ impl ZoneSniperApp {
 
         let start = AppInstant::now();
         if let Some(engine) = &mut self.engine {
-            let protected_id = self.selected_opportunity.as_ref().map(|op| op.id.as_str());
-            engine.update(protected_id);
+            engine.update();
         }
         let engine_time = start.elapsed().as_micros();
 
@@ -958,19 +931,18 @@ impl ZoneSniperApp {
 
         // LOGGING results. Adjust threshold to catch the slowdown
         if engine_time + left_panel_time + plot_time > 500_000 {
-            log::warn!(
-                "🐢 SLOW FRAME: Engine: {}us | LeftPanel(TF): {}us | Plot: {}us",
-                engine_time,
-                left_panel_time,
-                plot_time
-            );
+            if DF.log_performance {
+                log::warn!(
+                    "🐢 SLOW FRAME: Engine: {}us | LeftPanel(TF): {}us | Plot: {}us",
+                    engine_time,
+                    left_panel_time,
+                    plot_time
+                );
+            }
         }
     }
 
-    fn update_loading_progress(
-        state: &mut crate::ui::app::LoadingState,
-        rx_opt: &Option<Receiver<ProgressEvent>>,
-    ) {
+    fn update_loading_progress(state: &mut LoadingState, rx_opt: &Option<Receiver<ProgressEvent>>) {
         if let Some(rx) = rx_opt {
             while let Ok(event) = rx.try_recv() {
                 // FIX: Insert using Index as Key (usize), and Tuple as Value
@@ -1048,21 +1020,25 @@ impl ZoneSniperApp {
                                             self.saved_strategy,
                                         )
                                     } else {
-                                        log::warn!(
-                                            "Can't tune because price is {} for {}",
-                                            price,
-                                            &pair
-                                        );
+                                        if DF.log_tuner {
+                                            log::warn!(
+                                                "Can't tune because price is {} for {}",
+                                                price,
+                                                &pair
+                                            );
+                                        }
                                         None
                                     }
                                 } else {
                                     None
                                 }
                             } else {
-                                log::warn!(
-                                    "Can't tune because we have no matching_ohlcv for {}",
-                                    &pair
-                                );
+                                if DF.log_tuner {
+                                    log::warn!(
+                                        "Can't tune because we have no matching_ohlcv for {}",
+                                        &pair
+                                    );
+                                }
                                 None
                             }
                         };
@@ -1074,17 +1050,21 @@ impl ZoneSniperApp {
 
                             engine.set_price_horizon_override(pair.clone(), self.active_ph_pct);
                             #[cfg(debug_assertions)]
-                            log::info!(
-                                "For pair {} setting ph during tuning phase to: {}",
-                                &pair,
-                                ph
-                            );
+                            if DF.log_tuner {
+                                log::info!(
+                                    "TUNER: For pair {} setting ph during tuning phase to: {}",
+                                    &pair,
+                                    ph
+                                );
+                            }
                             if Some(&pair) == self.selected_pair.as_ref() {
                                 #[cfg(debug_assertions)]
-                                log::info!(
-                                    "And because pair {} is selected, also setting self.app_config.price_horizon.threshold pct for some reason as well",
-                                    &pair
-                                );
+                                if DF.log_tuner {
+                                    log::info!(
+                                        "TUNER: And because pair {} is selected, also setting self.app_config.price_horizon.threshold pct for some reason as well",
+                                        &pair
+                                    );
+                                }
                                 self.active_ph_pct = ph;
                             }
                         }
@@ -1100,8 +1080,9 @@ impl ZoneSniperApp {
         if state.todo_list.is_empty() {
             // 1. Ignite the Engine (Run CVA + Pathfinder for ALL pairs with new settings)
             if let Some(engine) = &mut self.engine {
-                println!(">> Global Tuning Complete. Igniting Engine.");
-                // engine.update_config(self.app_config.clone());
+                if DF.log_tuner {
+                    log::info!(">> Global Tuning Complete. Igniting Engine.");
+                }
                 engine.trigger_global_recalc(None);
             }
 
@@ -1144,12 +1125,14 @@ impl ZoneSniperApp {
                 } else {
                     // Saved pair is invalid/missing. Fallback to first available.
                     let fallback = available_pairs.first().cloned().unwrap_or_default();
-                    #[cfg(debug_assertions)]
-                    log::warn!(
-                        "STARTUP FIX: Saved pair {:?} not found in loaded data. Falling back to {}.",
-                        self.selected_pair,
-                        fallback
-                    );
+                    if DF.log_selected_pair {
+                        #[cfg(debug_assertions)]
+                        log::warn!(
+                            "STARTUP FIX: Saved pair {:?} not found in loaded data. Falling back to {}.",
+                            self.selected_pair,
+                            fallback
+                        );
+                    }
                     fallback
                 };
 
@@ -1161,9 +1144,9 @@ impl ZoneSniperApp {
 
                 // RESTORE LEDGER
                 // If the Nuke Flag is on, we start fresh. Otherwise, we load persistence.
-                if DEBUG_FLAGS.wipe_ledger_on_startup {
+                if DF.wipe_ledger_on_startup {
                     #[cfg(debug_assertions)]
-                    log::warn!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
+                    log::info!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
                     engine.ledger = OpportunityLedger::new();
                 } else {
                     #[cfg(not(target_arch = "wasm32"))]
@@ -1171,11 +1154,17 @@ impl ZoneSniperApp {
                         match ledger_io::load_ledger() {
                             Ok(l) => {
                                 #[cfg(debug_assertions)]
-                                log::info!("Loaded ledger with {} opportunities", l.opportunities.len());
+                                if DF.log_ledger {
+                                    log::info!(
+                                        "Loaded ledger with {} opportunities",
+                                        l.opportunities.len()
+                                    );
+                                }
                                 engine.ledger = l;
-                            },
-                            Err(e) => {
-                                log::error!("Failed to load ledger (starting fresh): {}", e);
+                            }
+                            Err(_e) => {
+                                #[cfg(debug_assertions)]
+                                log::error!("Failed to load ledger (starting fresh): {}", _e);
                                 engine.ledger = OpportunityLedger::new();
                             }
                         }
@@ -1199,27 +1188,42 @@ impl ZoneSniperApp {
                 {
                     let count_after = engine.ledger.opportunities.len();
                     if count_before != count_after {
-                        log::warn!(
-                            "STARTUP CLEANUP: Culled {} orphan trades (Data not loaded).",
-                            count_before - count_after
-                        );
+                        if DF.log_ledger {
+                            log::warn!(
+                                "STARTUP CLEANUP: Culled {} orphan trades (Data not loaded).",
+                                count_before - count_after
+                            );
+                        }
                     }
                 }
                 // -------------------------
 
-                // engine.update_config(self.app_config.clone());
-
-                // Trigger global calc for the VALID pair first
-                // engine.trigger_global_recalc(Some(final_pair.clone()));
-
-                // 5. WIRE UP THE STREAM
-                // We clone the sender from the engine and give it to the stream manager.
-                // Note: Engine::new() internally sets up the channel, but if we need
-                // to hook anything else up or if previous logic required this step:
-                // Actually, based on previous fixes, Engine::new() now handles the wiring internally
-                // for Native builds.
-
                 self.engine = Some(engine);
+
+                // TEMP this restoration code works but something later appears to overwrite self.selected_opportunity. Not surprising....
+                if let Some(id) = &self.saved_opportunity_id {
+                    if let Some(op) = self
+                        .engine
+                        .as_ref()
+                        .and_then(|e| e.ledger.opportunities.get(id))
+                        .cloned()
+                    {
+                        self.selected_opportunity = Some(op.clone());
+                        #[cfg(debug_assertions)]
+                        if DF.log_selected_opportunity {
+                            log::info!(
+                                "SELECTED OPPORTUNITY: set in check_loading_completion to: {:?}",
+                                op
+                            );
+                        }
+                        self.selected_pair = Some(op.pair_name.clone());
+                        self.active_ph_pct = op.source_ph;
+                        #[cfg(debug_assertions)]
+                        if DF.log_ledger {
+                            log::info!("RE-HYDRATE: Restored selected_opportunity [{}]", id);
+                        }
+                    }
+                }
 
                 // 5. Reset Navigation
                 self.nav_states
@@ -1259,12 +1263,9 @@ impl ZoneSniperApp {
 
             for &pair in crate::ph_audit::config::AUDIT_PAIRS {
                 // Check if we have KLines for this pair
-                let has_data = find_matching_ohlcv(
-                    &ts_guard.series_data,
-                    pair,
-                    CONSTANTS.interval_width_ms,
-                )
-                .is_ok();
+                let has_data =
+                    find_matching_ohlcv(&ts_guard.series_data, pair, CONSTANTS.interval_width_ms)
+                        .is_ok();
 
                 if has_data {
                     // If we have data, we MUST wait for a live price
@@ -1309,11 +1310,22 @@ impl ZoneSniperApp {
 
 impl eframe::App for ZoneSniperApp {
     fn save(&mut self, storage: &mut dyn Storage) {
+        // Update the serializable ID from the runtime "fat" object
+        self.saved_opportunity_id = self.selected_opportunity.as_ref().map(|op| op.id.clone());
+
+        #[cfg(debug_assertions)]
+        if DF.log_selected_opportunity {
+            match &self.saved_opportunity_id {
+                Some(id) => log::info!("💾 SAVE [App]: Persisting Opportunity ID [{}]", id),
+                None => log::info!("💾 SAVE [App]: No opportunity selected (None)"),
+            }
+        }
+
         // 1. Snapshot the Engine Ledger
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
         if let Some(engine) = &self.engine {
             // Save active ledger to separate binary file
-            if let Err(e) = crate::data::ledger_io::save_ledger(&engine.ledger) {
+            if let Err(e) = ledger_io::save_ledger(&engine.ledger) {
                 log::error!("Failed to save ledger: {}", e);
             }
         }

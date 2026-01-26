@@ -12,6 +12,9 @@ use strum::IntoEnumIterator;
 use crate::config::plot::PLOT_CONFIG;
 use crate::config::{OptimizationGoal, TICKER, constants};
 
+#[cfg(debug_assertions)]
+use crate::config::DF;
+
 use crate::domain::pair_interval::PairInterval;
 
 use crate::engine::messages::JobMode;
@@ -242,11 +245,15 @@ impl ZoneSniperApp {
                 let ph_pct = op.source_ph;
                 let max_time_ms = op.max_duration_ms;
                 let max_time_str = TimeUtils::format_duration(max_time_ms);
-                
+
                 // For interval display, we use the global config as a fallback if not in state
                 // (Assuming 5m candles usually)
-                let interval_ms = constants::INTERVAL_WIDTH_MS; 
-                let max_candles = if interval_ms > 0 { max_time_ms / interval_ms } else { 0 };
+                let interval_ms = constants::INTERVAL_WIDTH_MS;
+                let max_candles = if interval_ms > 0 {
+                    max_time_ms / interval_ms
+                } else {
+                    0
+                };
 
                 // SECTION 1: THE MATH
                 ui.label_subheader(&UI_TEXT.opp_exp_expectancy);
@@ -725,6 +732,10 @@ impl ZoneSniperApp {
                 .iter()
                 .any(|r| r.opportunity.as_ref().map_or(false, |op| op.id == sel.id));
             if !exists {
+                #[cfg(debug_assertions)]
+                if DF.log_selected_opportunity {
+                    log::info!("SELECTED OPPORTUNITY Clearing! in render_trade_finder_content (BAD?)");
+                }
                 self.selected_opportunity = None;
             }
         }
@@ -937,6 +948,8 @@ impl ZoneSniperApp {
                 self.select_specific_opportunity(op.clone(), ScrollBehavior::None);
             } else {
                 self.handle_pair_selection(row.pair_name.clone());
+                #[cfg(debug_assertions)]
+                log::info!("clearing selected opportunity in render_tf_table_row");
                 self.selected_opportunity = None;
             }
         }
@@ -1043,6 +1056,7 @@ impl ZoneSniperApp {
                     });
                     // --- LINE 3: DEBUG UUID ---
                     #[cfg(debug_assertions)]
+                    if DF.log_ledger
                     {
                         // Show first 8 chars of UUID
                         let uuid = &op.id;
@@ -1412,6 +1426,7 @@ impl ZoneSniperApp {
                             );
 
                             #[cfg(debug_assertions)]
+                            if DF.log_ledger
                             {
                                 let short_id = if op.id.len() > 8 { &op.id[..8] } else { &op.id };
                                 ui.label(
@@ -1462,12 +1477,14 @@ impl ZoneSniperApp {
 
                     if let Some(best_ph) = self.run_auto_tune_logic(&pair_name, station_id) {
                         #[cfg(debug_assertions)]
+                        if DF.log_tuner {
                         log::info!(
                             "🎛️ BUTTON TUNE [{}] Station: {:?} -> PH {:.2}%",
                             pair_name,
                             station_id,
                             best_ph * 100.0
                         );
+                        }
 
                         // C. Apply Result to Config
                         self.active_ph_pct = best_ph;
@@ -1510,7 +1527,9 @@ impl ZoneSniperApp {
             .frame(frame)
             .show(ctx, |ui| {
                 // 1. TIME TUNER
-                if let Some(action) = time_tuner::render(ui, &self.global_tuner_config, self.active_station_id) {
+                if let Some(action) =
+                    time_tuner::render(ui, &self.global_tuner_config, self.active_station_id)
+                {
                     self.handle_tuner_action(action);
                 }
 
@@ -1565,11 +1584,7 @@ impl ZoneSniperApp {
                             for goal in OptimizationGoal::iter() {
                                 let item_text = format!("{} {}", goal.icon(), goal);
                                 if ui
-                                    .selectable_value(
-                                        &mut self.saved_strategy,
-                                        goal,
-                                        item_text,
-                                    )
+                                    .selectable_value(&mut self.saved_strategy, goal, item_text)
                                     .clicked()
                                 {
                                     self.handle_strategy_change();
@@ -2150,7 +2165,6 @@ impl ZoneSniperApp {
                 ui.add_space(5.0);
             });
     }
-
 }
 
 fn render_fullscreen_message(ui: &mut Ui, title: &str, subtitle: &str, is_error: bool) {

@@ -9,14 +9,14 @@ use std::thread;
 
 use uuid::Uuid;
 
-use super::messages::{JobRequest, JobResult, JobMode};
+use super::messages::{JobMode, JobRequest, JobResult};
 
 use crate::analysis::adaptive::AdaptiveParameters;
 use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{OptimizationGoal, TradeProfile, TunerStation, StationId, constants};
+use crate::config::{DF, OptimizationGoal, StationId, TradeProfile, TunerStation, constants};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -70,29 +70,29 @@ pub fn tune_to_station(
     station: &TunerStation,
     strategy: OptimizationGoal,
 ) -> Option<f64> {
-    
     let _t_start = AppInstant::now();
 
     #[cfg(debug_assertions)]
     {
-        log::info!(
-            "📻 TUNER START [{}]: Station '{}' (Target: {:.1}-{:.1}h) | Scan Range: {:.1}%-{:.1}% | Strategy: {}",
-            ohlcv.pair_interval.name(),
-            station.name,
-            station.target_min_hours,
-            station.target_max_hours,
-            station.scan_ph_min * 100.0,
-            station.scan_ph_max * 100.0,
-            strategy
-        );
+        if DF.log_tuner {
+            log::info!(
+                "📻 TUNER START [{}]: Station '{}' (Target: {:.1}-{:.1}h) | Scan Range: {:.1}%-{:.1}% | Strategy: {}",
+                ohlcv.pair_interval.name(),
+                station.name,
+                station.target_min_hours,
+                station.target_max_hours,
+                station.scan_ph_min * 100.0,
+                station.scan_ph_max * 100.0,
+                strategy
+            );
+        }
     }
 
     // 1. Generate Scan Points (Linear Interpolation)
     let steps = constants::TUNER_SCAN_STEPS;
     let mut scan_points = Vec::with_capacity(steps);
     if steps > 1 {
-        let step_size =
-            (station.scan_ph_max - station.scan_ph_min) / (steps - 1) as f64;
+        let step_size = (station.scan_ph_max - station.scan_ph_min) / (steps - 1) as f64;
         for i in 0..steps {
             scan_points.push(station.scan_ph_min + (i as f64 * step_size));
         }
@@ -105,9 +105,9 @@ pub fn tune_to_station(
     let mut results: Vec<(f64, f64, f64, usize)> = Vec::new();
 
     for &ph in &scan_points {
-
         // Run the Optimized Pathfinder
-        let result = run_pathfinder_simulations(ohlcv, current_price, ph, strategy, station.id, None);
+        let result =
+            run_pathfinder_simulations(ohlcv, current_price, ph, strategy, station.id, None);
 
         let count = result.opportunities.len();
         if count > 0 {
@@ -122,25 +122,28 @@ pub fn tune_to_station(
             let dur_hours = avg_dur_ms / 3_600_000.0;
 
             // Calculate Representative Score (Top Score)
-            let top_score =
-                result.opportunities[0].calculate_quality_score();
+            let top_score = result.opportunities[0].calculate_quality_score();
 
             results.push((ph, top_score, dur_hours, count));
 
             #[cfg(debug_assertions)]
-            log::info!(
-                "   📡 PROBE {:.2}%: Found {} ops | Top Score {:.2} | Avg Dur {:.1}h",
-                ph * 100.0,
-                count,
-                top_score,
-                dur_hours
-            );
+            if DF.log_tuner {
+                log::info!(
+                    "   📡 TUNER PROBE {:.2}%: Found {} ops | Top Score {:.2} | Avg Dur {:.1}h",
+                    ph * 100.0,
+                    count,
+                    top_score,
+                    dur_hours
+                );
+            }
         } else {
             #[cfg(debug_assertions)]
-            log::warn!(
-                "   📡 PROBE {:.2}%: No signals found (0 candidates).",
-                ph * 100.0
-            );
+            if DF.log_tuner {
+                log::info!(
+                    "   📡 TUNER PROBE {:.2}%: No signals found (0 candidates).",
+                    ph * 100.0
+                );
+            }
         }
     }
 
@@ -169,8 +172,9 @@ pub fn tune_to_station(
         // Fallback: Nothing fit the time window perfectly.
         // Pick the result closest to the target duration range (Center point).
         #[cfg(debug_assertions)]
-        log::warn!("   ⚠️ No perfect time fit. Falling back to closest duration.");
-
+        if DF.log_tuner {
+            log::warn!("   ⚠️ No perfect time fit. Falling back to closest duration.");
+        }
         let target_center = (station.target_min_hours + station.target_max_hours) / 2.0;
 
         results
@@ -186,13 +190,15 @@ pub fn tune_to_station(
     #[cfg(debug_assertions)]
     {
         let elapsed = _t_start.elapsed();
-        log::info!(
-            "✅ TUNER LOCKED: {:.2}% (Score {:.2}, Duration {:.1}h) | Took {:?}",
-            best_match.0 * 100.0,
-            best_match.1,
-            best_match.2,
-            elapsed
-        );
+        if DF.log_tuner {
+            log::info!(
+                "✅ TUNER LOCKED: {:.2}% (Score {:.2}, Duration {:.1}h) | Took {:?}",
+                best_match.0 * 100.0,
+                best_match.1,
+                best_match.2,
+                elapsed
+            );
+        }
     }
 
     Some(best_match.0)
@@ -289,7 +295,6 @@ fn apply_diversity_filter(
     range_max: f64,
     _strategy: OptimizationGoal,
 ) -> Vec<TradeOpportunity> {
-
     if candidates.is_empty() {
         return Vec::new();
     }
@@ -301,35 +306,36 @@ fn apply_diversity_filter(
     // --- INSERT START: DEBUG SCOREBOARD ---
     // This creates a temporary view to log the top candidates without consuming the vector
     #[cfg(debug_assertions)]
-    if _strategy == OptimizationGoal::Balanced {
-        // Create vector of references so we can sort them for display only
-        let mut debug_view: Vec<&CandidateResult> = candidates.iter().collect();
-        debug_view.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+    if DF.log_pathfinder {
+        if _strategy == OptimizationGoal::Balanced {
+            // Create vector of references so we can sort them for display only
+            let mut debug_view: Vec<&CandidateResult> = candidates.iter().collect();
+            debug_view.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
-        log::info!("⚖️ BALANCED SCOREBOARD [{}] (Top 5 Inputs):", _pair_name);
-        for (i, c) in debug_view.iter().take(5).enumerate() {
-            let roi = c.opportunity.expected_roi();
-            let dur_ms = c.opportunity.avg_duration_ms;
-            let dur_str = TimeUtils::format_duration(dur_ms);
-            let aroi = calculate_annualized_roi(roi, dur_ms as f64);
+            log::info!("⚖️ BALANCED SCOREBOARD [{}] (Top 5 Inputs):", _pair_name);
+            for (i, c) in debug_view.iter().take(5).enumerate() {
+                let roi = c.opportunity.expected_roi();
+                let dur_ms = c.opportunity.avg_duration_ms;
+                let dur_str = TimeUtils::format_duration(dur_ms);
+                let aroi = calculate_annualized_roi(roi, dur_ms as f64);
 
-            log::info!(
-                "   #{}: Score {:.1} | ROI {:.2}% | AROI {:.0}% | Time {}",
-                i + 1,
-                c.score,
-                roi,
-                aroi,
-                dur_str
-            );
+                log::info!(
+                    "   #{}: Score {:.1} | ROI {:.2}% | AROI {:.0}% | Time {}",
+                    i + 1,
+                    c.score,
+                    roi,
+                    aroi,
+                    dur_str
+                );
+            }
         }
     }
 
-    // 1. Identify Global Max Score (The Gold Standard)
-    // We need this to determine the qualifying time.
+    // Identify Global Max Score (The Gold Standard). We need this to determine the qualifying time.
     let global_best_score = candidates
         .iter()
         .map(|c| c.score)
@@ -338,14 +344,16 @@ fn apply_diversity_filter(
     let qualifying_score = global_best_score * cutoff_ratio;
 
     #[cfg(debug_assertions)]
-    log::info!(
-        "🏆 REGIONAL CHAMPIONSHIP [{}]: {} Candidates. Global Best: {:.2} | Qualifying: {:.2} ({:.0}%)",
-        _pair_name,
-        candidates.len(),
-        global_best_score,
-        qualifying_score,
-        cutoff_ratio * 100.0
-    );
+    if DF.log_pathfinder {
+        log::info!(
+            "🏆 REGIONAL CHAMPIONSHIP [{}]: {} Candidates. Global Best: {:.2} | Qualifying: {:.2} ({:.0}%)",
+            _pair_name,
+            candidates.len(),
+            global_best_score,
+            qualifying_score,
+            cutoff_ratio * 100.0
+        );
+    }
 
     // 2. Hold Local Tournaments
     // Vector of Options to hold the winner of each region
@@ -382,24 +390,28 @@ fn apply_diversity_filter(
         if let Some(winner) = winner_opt {
             // Check if they beat the qualifying time
             if winner.score >= qualifying_score {
-                #[cfg(debug_assertions)]
-                log::info!(
-                    "   ✅ Region #{} Winner [{}]: Score {:.2} | Target ${:.2} (Qualified)",
-                    _i,
-                    winner.source_desc,
-                    winner.score,
-                    winner.opportunity.target_price
-                );
+                if DF.log_pathfinder {
+                    #[cfg(debug_assertions)]
+                    log::info!(
+                        "   ✅ Region #{} Winner [{}]: Score {:.2} | Target ${:.2} (Qualified)",
+                        _i,
+                        winner.source_desc,
+                        winner.score,
+                        winner.opportunity.target_price
+                    );
+                }
                 final_results.push(winner.opportunity);
             } else {
                 #[cfg(debug_assertions)]
-                log::info!(
-                    "   ❌ Region #{} Winner [{}]: Score {:.2} (Failed Qualifier < {:.2})",
-                    _i,
-                    winner.source_desc,
-                    winner.score,
-                    qualifying_score
-                );
+                if DF.log_pathfinder {
+                    log::info!(
+                        "   ❌ Region #{} Winner [{}]: Score {:.2} (Failed Qualifier < {:.2})",
+                        _i,
+                        winner.source_desc,
+                        winner.score,
+                        qualifying_score
+                    );
+                }
             }
         }
     }
@@ -481,19 +493,23 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
             if up_ratio >= threshold {
                 bias_short = false; // Market is STRONGLY BULLISH -> Skip Shorts
                 #[cfg(debug_assertions)]
-                log::info!(
-                    "🌊 DIRECTIONAL BIAS [{}]: Bullish Consensus ({:.0}%). Pruning SHORT Scouts.",
-                    ctx.pair_name,
-                    up_ratio * 100.0
-                );
+                if DF.log_pathfinder {
+                    log::info!(
+                        "🌊 DIRECTIONAL BIAS [{}]: Bullish Consensus ({:.0}%). Pruning SHORT Scouts.",
+                        ctx.pair_name,
+                        up_ratio * 100.0
+                    );
+                }
             } else if down_ratio >= threshold {
                 bias_long = false; // Market is STRONGLY BEARISH -> Skip Longs
                 #[cfg(debug_assertions)]
-                log::info!(
-                    "🌊 DIRECTIONAL BIAS [{}]: Bearish Consensus ({:.0}%). Pruning LONG Scouts.",
-                    ctx.pair_name,
-                    down_ratio * 100.0
-                );
+                if DF.log_pathfinder {
+                    log::info!(
+                        "🌊 DIRECTIONAL BIAS [{}]: Bearish Consensus ({:.0}%). Pruning LONG Scouts.",
+                        ctx.pair_name,
+                        down_ratio * 100.0
+                    );
+                }
             }
         }
     }
@@ -560,11 +576,13 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
             .collect();
 
         #[cfg(debug_assertions)]
-        log::info!(
-            "🔍 SCOUT PHASE [{}]: Found {} viable candidates (Parallel).",
-            ctx.pair_name,
-            results.len()
-        );
+        if DF.log_pathfinder {
+            log::info!(
+                "🔍 SCOUT PHASE [{}]: Found {} viable candidates (Parallel).",
+                ctx.pair_name,
+                results.len()
+            );
+        }
 
         results
     })
@@ -589,18 +607,20 @@ fn run_drill_phase(
 
     #[cfg(debug_assertions)]
     {
-        log::info!(
-            "🔍 SCOUT PHASE COMPLETE [{}]. Top 5 Candidates:",
-            ctx.pair_name
-        );
-        for (i, c) in candidates.iter().take(5).enumerate() {
+        if DF.log_pathfinder {
             log::info!(
-                "   #{}: [{}] Target ${:.4} | Score {:.2}",
-                i + 1,
-                c.source_desc,
-                c.opportunity.target_price,
-                c.score
+                "🔍 SCOUT PHASE COMPLETE [{}]. Top 5 Candidates:",
+                ctx.pair_name
             );
+            for (i, c) in candidates.iter().take(5).enumerate() {
+                log::info!(
+                    "   #{}: [{}] Target ${:.4} | Score {:.2}",
+                    i + 1,
+                    c.source_desc,
+                    c.opportunity.target_price,
+                    c.score
+                );
+            }
         }
     }
 
@@ -616,22 +636,26 @@ fn run_drill_phase(
         let score_threshold = best_score * drill_cutoff_pct;
 
         #[cfg(debug_assertions)]
-        log::info!(
-            "🔍 PHASE B: Drill Selection (Radius: {:.3}%, Cutoff Score: {:.2})",
-            dedup_radius,
-            score_threshold
-        );
+        if DF.log_pathfinder {
+            log::info!(
+                "🔍 PHASE B: Drill Selection (Radius: {:.3}%, Cutoff Score: {:.2})",
+                dedup_radius,
+                score_threshold
+            );
+        }
 
         // 1. Smart Selection (Dedup + Cutoff)
         for (idx, candidate) in candidates.iter().enumerate() {
             // Optimization #4: Adaptive Cutoff
             if candidate.score < score_threshold {
                 #[cfg(debug_assertions)]
-                log::info!(
-                    "   🛑 Cutting off Scout [{}]: Score {:.2} < Threshold",
-                    candidate.source_desc,
-                    candidate.score
-                );
+                if DF.log_pathfinder {
+                    log::info!(
+                        "   🛑 Cutting off Scout [{}]: Score {:.2} < Threshold",
+                        candidate.source_desc,
+                        candidate.score
+                    );
+                }
                 break;
             }
 
@@ -661,12 +685,14 @@ fn run_drill_phase(
         }
 
         #[cfg(debug_assertions)]
-        log::info!(
-            "⛏️ DRILL PHASE [{}] [Strategy: {}]: Drilling {} distinct scouts",
-            ctx.pair_name,
-            ctx.strategy,
-            drill_targets.len()
-        );
+        if DF.log_pathfinder {
+            log::info!(
+                "⛏️ DRILL PHASE [{}] [Strategy: {}]: Drilling {} distinct scouts",
+                ctx.pair_name,
+                ctx.strategy,
+                drill_targets.len()
+            );
+        }
 
         // 2. Drill Loop (Parallelized)
         let full_risks = constants::journey::RISK_REWARD_TESTS;
@@ -717,12 +743,14 @@ fn run_drill_phase(
             .collect();
 
         if !drill_results.is_empty() {
-            #[cfg(debug_assertions)]
-            log::info!(
-                "   -> [{}] Drill generated {} refined candidates.",
-                ctx.pair_name,
-                drill_results.len()
-            );
+            if DF.log_pathfinder {
+                #[cfg(debug_assertions)]
+                log::info!(
+                    "   -> [{}] Drill generated {} refined candidates.",
+                    ctx.pair_name,
+                    drill_results.len()
+                );
+            }
             candidates.extend(drill_results);
         }
     });
@@ -745,7 +773,6 @@ pub fn run_pathfinder_simulations(
     station_id: StationId,
     cva_opt: Option<&CVACore>,
 ) -> PathfinderResult {
-
     if current_price <= 0.0 {
         return PathfinderResult {
             opportunities: Vec::new(),
@@ -753,9 +780,6 @@ pub fn run_pathfinder_simulations(
             sim_duration: 0,
         };
     }
-
-    // 1. Setup Context
-    // let ph_pct = config.price_horizon.threshold_pct;
 
     // Volatility
     let max_idx = ohlcv.klines().saturating_sub(1);
@@ -804,7 +828,6 @@ pub fn run_pathfinder_simulations(
         matches,
         current_state: _current_state,
         current_price,
-        // config,
         strategy,
         station_id,
         duration_candles,
@@ -815,23 +838,30 @@ pub fn run_pathfinder_simulations(
     };
 
     #[cfg(debug_assertions)]
-    log::info!(
-        "🎯 PATHFINDER START [{}] Price: ${:.4} | PH Range: ${:.4} - ${:.4} ({:.2}%) | Vol: {:.3}%",
-        ctx.pair_name,
-        ctx.current_price,
-        ctx.ph_min,
-        ctx.ph_max,
-        ctx.ph_pct * 100.0,
-        avg_volatility * 100.0
-    );
+    if DF.log_pathfinder {
+        log::info!(
+            "🎯 PATHFINDER START [{}] Price: ${:.4} | PH Range: ${:.4} - ${:.4} ({:.2}%) | Vol: {:.3}%",
+            ctx.pair_name,
+            ctx.current_price,
+            ctx.ph_min,
+            ctx.ph_max,
+            ctx.ph_pct * 100.0,
+            avg_volatility * 100.0
+        );
+    }
 
     // 2. Run Pipeline
     let scouts = run_scout_phase(&ctx);
     let drill_results = run_drill_phase(&ctx, scouts);
 
     // 3. Final Filter
-    let final_opps: Vec<TradeOpportunity> =
-        apply_diversity_filter(drill_results, ctx.pair_name, ctx.ph_min, ctx.ph_max, strategy);
+    let final_opps: Vec<TradeOpportunity> = apply_diversity_filter(
+        drill_results,
+        ctx.pair_name,
+        ctx.ph_min,
+        ctx.ph_max,
+        strategy,
+    );
     // Return everything
     PathfinderResult {
         opportunities: final_opps,
@@ -856,6 +886,7 @@ fn run_stop_loss_tournament(
     limit_samples: usize,
     _zone_idx: usize,
 ) -> Option<(SimulationResult, f64, Vec<TradeVariant>)> {
+    
     crate::trace_time!("Worker: SL Tournament", 1500, {
         let mut best_score = f64::NEG_INFINITY; // Track Score, not just ROI
         let mut best_result: Option<(SimulationResult, f64, f64)> = None; // (Result, Stop, Ratio)
@@ -869,9 +900,7 @@ fn run_stop_loss_tournament(
 
         // Logging setup
         #[cfg(debug_assertions)]
-        let debug = false;
-        #[cfg(debug_assertions)]
-        if debug {
+        if DF.log_pathfinder {
             log::info!(
                 "🔍 Analyzing Zone {} ({}): Testing {} SL candidates. Volatility Floor: {:.2}% (${:.4})",
                 _zone_idx,
@@ -895,7 +924,7 @@ fn run_stop_loss_tournament(
 
             if stop_dist < min_stop_dist {
                 #[cfg(debug_assertions)]
-                if debug {
+                if DF.log_pathfinder {
                     log::info!(
                         "   [R:R {:.1}] 🛑 SKIPPED: Stop distance {:.4} < Volatility Floor {:.4}",
                         ratio,
@@ -968,7 +997,7 @@ fn run_stop_loss_tournament(
                 }
 
                 #[cfg(debug_assertions)]
-                if debug {
+                if DF.log_pathfinder {
                     let risk_pct = calculate_percent_diff(candidate_stop, current_price);
                     let status_icon = if is_worthwhile { "✅" } else { "🔻" };
                     log::info!(
@@ -990,7 +1019,7 @@ fn run_stop_loss_tournament(
         // Return Winner + Count
         if let Some((res, stop, _ratio)) = best_result {
             #[cfg(debug_assertions)]
-            if debug {
+            if DF.log_pathfinder {
                 log::info!(
                     "   🏆 WINNER: R:R {:.1} with Score {:.2} ({:?} variants)",
                     _ratio,
@@ -1049,9 +1078,8 @@ fn perform_standard_analysis(
     ts_collection: &TimeSeriesCollection,
     tx: Sender<JobResult>,
 ) {
-
     let ph_pct = req.ph_pct;
-    let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct*100.0);
+    let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct * 100.0);
 
     crate::trace_time!(&format!("Total JOB [{}]", base_label), 10_000, {
         let start = AppInstant::now();
@@ -1090,8 +1118,13 @@ fn perform_standard_analysis(
                         duration_ms: elapsed,
                         // Return the Model with CVA, but EMPTY opportunities
                         result: Ok(Arc::new(TradingModel::from_cva(
-                            Arc::new(cva), 
-                            find_matching_ohlcv(&ts_collection.series_data, &req.pair_name, constants::INTERVAL_WIDTH_MS).unwrap(), 
+                            Arc::new(cva),
+                            find_matching_ohlcv(
+                                &ts_collection.series_data,
+                                &req.pair_name,
+                                constants::INTERVAL_WIDTH_MS,
+                            )
+                            .unwrap(),
                             // &req.config
                         ))),
                         cva: None, // Legacy field (optional)
@@ -1124,7 +1157,10 @@ fn build_error_result(
     }
 }
 
-fn resolve_analysis_price(req: &JobRequest, ts_collection: &TimeSeriesCollection) -> Result<f64, String> {
+fn resolve_analysis_price(
+    req: &JobRequest,
+    ts_collection: &TimeSeriesCollection,
+) -> Result<f64, String> {
     if let Some(p) = req.current_price {
         return Ok(p);
     }
@@ -1155,8 +1191,7 @@ fn calculate_exact_candle_count(
     );
 
     if let Ok(ohlcv) = ohlcv_result {
-        let (ranges, _) =
-            price_horizon::auto_select_ranges(ohlcv, price, req.ph_pct);
+        let (ranges, _) = price_horizon::auto_select_ranges(ohlcv, price, req.ph_pct);
         ranges.iter().map(|(s, e)| e - s).sum()
     } else {
         0
@@ -1171,7 +1206,6 @@ fn build_success_result(
     count: usize,
     elapsed: u128,
 ) -> JobResult {
-
     let cva_arc = Arc::new(cva);
 
     let ohlcv = find_matching_ohlcv(
@@ -1184,7 +1218,14 @@ fn build_success_result(
     let mut model = TradingModel::from_cva(cva_arc.clone(), ohlcv);
 
     // Run Pathfinder
-    let pf_result = run_pathfinder_simulations(ohlcv, price, req.ph_pct, req.strategy, req.station_id, Some(&cva_arc));
+    let pf_result = run_pathfinder_simulations(
+        ohlcv,
+        price,
+        req.ph_pct,
+        req.strategy,
+        req.station_id,
+        Some(&cva_arc),
+    );
 
     model.opportunities = pf_result.opportunities;
 
