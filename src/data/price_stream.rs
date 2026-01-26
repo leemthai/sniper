@@ -9,12 +9,9 @@ use std::thread;
 use tokio::runtime::Runtime;
 
 #[cfg(not(target_arch = "wasm32"))]
-use tokio::time::sleep;
-#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
-
-
-
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::time::sleep;
 
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]
@@ -79,8 +76,7 @@ pub struct PriceStreamManager {
 fn build_combined_stream_url(symbols: &[String]) -> String {
     use crate::config::constants;
 
-    let interval =
-        crate::utils::TimeUtils::interval_to_string(constants::INTERVAL_WIDTH_MS);
+    let interval = crate::utils::TimeUtils::interval_to_string(constants::INTERVAL_WIDTH_MS);
 
     // CHANGE: Only subscribe to kline
     let streams: Vec<String> = symbols
@@ -268,8 +264,10 @@ async fn run_combined_price_stream_with_reconnect(
             }
         }
 
-        log::info!("Attempting connection to Binance Stream...");
-
+        #[cfg(debug_assertions)]
+        if DF.log_price_stream_updates {
+            log::info!("Attempting connection to Binance Stream...");
+        }
         match run_combined_price_stream(
             symbols,
             &url,
@@ -397,8 +395,10 @@ async fn run_combined_price_stream(
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &[String]) {
-    log::info!(">>> PriceStream: Warming up price cache via REST API...");
-
+    #[cfg(debug_assertions)]
+    if DF.log_price_stream_updates {
+        log::info!(">>> PriceStream: Warming up price cache via REST API...");
+    }
     let config = BinanceApiConfig::default();
 
     let rest_conf = ConfigurationRestApi::builder()
@@ -426,7 +426,7 @@ async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &
                         // 3. Match the Vector Variant
                         TickerPriceResponse::TickerPriceResponse2(all_tickers) => {
                             let mut p_lock = prices_arc.lock().unwrap();
-                            let mut updated_count = 0;
+                            let mut _updated_count = 0;
 
                             let wanted_set: HashSet<String> =
                                 symbols.iter().map(|s| s.to_lowercase()).collect();
@@ -440,16 +440,19 @@ async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &
                                         let price = p.parse::<f64>().unwrap_or(0.0);
                                         if price > 0.0 {
                                             p_lock.insert(symbol_lower, price);
-                                            updated_count += 1;
+                                            _updated_count += 1;
                                         }
                                     }
                                 }
                             }
-                            log::info!(
-                                ">>> PriceStream: Warmup complete. Updated {}/{} pairs.",
-                                updated_count,
-                                symbols.len()
-                            );
+                            #[cfg(debug_assertions)]
+                            if DF.log_price_stream_updates {
+                                log::info!(
+                                    ">>> PriceStream: Warmup complete. Updated {}/{} pairs.",
+                                    _updated_count,
+                                    symbols.len()
+                                );
+                            }
                         }
                         TickerPriceResponse::TickerPriceResponse1(_) => {
                             log::warn!(

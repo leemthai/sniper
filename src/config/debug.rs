@@ -28,6 +28,9 @@ pub struct LogFlags {
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
     pub log_wasm_demo: bool,
 
+    /// Verify SIMD produces near-same results as scalar version
+    pub log_simd: bool,
+
     // These two need moving out to somehwere else!!!!!!!!!
     // Limit how many pairs are loaded in Debug mode.
     pub max_pairs_load: usize,
@@ -40,14 +43,15 @@ pub const DF: LogFlags = LogFlags {
     log_performance: false,
     log_price_stream_updates: false,
     log_simulation_events: false,
-    log_ledger: true,
+    log_ledger: false,
     log_results_repo: false,
     log_engine: false,
     log_tuner: false,
     log_pathfinder: false,
     log_zones: false,
-    log_selected_pair: false,
+    log_selected_pair: true,
     log_selected_opportunity: true,
+    log_simd: false,
 
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
     log_wasm_demo: false,

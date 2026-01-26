@@ -101,6 +101,13 @@ impl OpportunityLedger {
         self.opportunities.values().collect()
     }
 
+    pub fn find_first_for_pair(&self, pair_name: Option<String>) -> Option<&TradeOpportunity> {
+        let name = pair_name?;
+        self.opportunities
+            .values()
+            .find(|op| op.pair_name == name)
+    }
+
     pub fn remove(&mut self, id: &str) {
         self.opportunities.remove(id);
     }

@@ -548,106 +548,112 @@ impl ScenarioSimulator {
 
         // 2. DEBUG VERIFICATION
         #[cfg(debug_assertions)]
-        {
-            let scalar_result = Self::replay_path_scalar(
-                ts,
-                start_idx,
-                current_price_ref,
-                target,
-                stop,
-                duration,
-                direction,
-            );
-
-            let mismatch = match (&result, &scalar_result) {
-                (Outcome::TargetHit(i1), Outcome::TargetHit(i2)) => i1.abs_diff(*i2) > 1,
-                (Outcome::StopHit(i1), Outcome::StopHit(i2)) => i1.abs_diff(*i2) > 1,
-                (Outcome::TimedOut(p1), Outcome::TimedOut(p2)) => (p1 - p2).abs() > 0.0000001,
-                _ => true,
-            };
-            if mismatch {
-                // --- FORENSIC LOGGING ---
-                let start_candle = ts.get_candle(start_idx);
-                let hist_entry = start_candle.close_price;
-
-                let stop_dist = (stop - current_price_ref) / current_price_ref;
-                let scale = hist_entry / current_price_ref;
-                let hist_stop = stop * scale;
-
-                log::error!("--- SIMD vs SCALAR MISMATCH FORENSICS ---");
-                log::error!(
-                    "Pair context: Entry(Live): {}, Entry(Hist): {}, Scale: {}",
+        if DF.log_simd {
+            {
+                let scalar_result = Self::replay_path_scalar(
+                    ts,
+                    start_idx,
                     current_price_ref,
-                    hist_entry,
-                    scale
-                );
-                log::error!(
-                    "Stop(Live): {} ({:.4}%), Stop(Hist_Abs): {}",
+                    target,
                     stop,
-                    stop_dist * 100.0,
-                    hist_stop
+                    duration,
+                    direction,
                 );
 
-                if let Outcome::StopHit(simd_idx) = result {
-                    let abs_idx = start_idx + simd_idx;
-                    let c = ts.get_candle(abs_idx);
+                let mismatch = match (&result, &scalar_result) {
+                    (Outcome::TargetHit(i1), Outcome::TargetHit(i2)) => i1.abs_diff(*i2) > 1,
+                    (Outcome::StopHit(i1), Outcome::StopHit(i2)) => i1.abs_diff(*i2) > 1,
+                    (Outcome::TimedOut(p1), Outcome::TimedOut(p2)) => (p1 - p2).abs() > 0.0000001,
+                    _ => true,
+                };
+                if mismatch {
+                    // --- FORENSIC LOGGING ---
+                    let start_candle = ts.get_candle(start_idx);
+                    let hist_entry = start_candle.close_price;
 
-                    // DYNAMIC FORENSICS BASED ON DIRECTION
-                    match direction {
-                        TradeDirection::Long => {
-                            let low_change = (c.low_price - hist_entry) / hist_entry;
-                            let scalar_hit = low_change <= stop_dist; // stop_dist is usually negative for Long
-                            let simd_hit = c.low_price <= hist_stop;
+                    let stop_dist = (stop - current_price_ref) / current_price_ref;
+                    let scale = hist_entry / current_price_ref;
+                    let hist_stop = stop * scale;
 
-                            log::error!("At Index {} (SIMD Stop): Low = {}", simd_idx, c.low_price);
-                            log::error!(
-                                "   Scalar (LONG): (Low-Entry)/Entry = {:.10} <= {:.10}? -> {}",
-                                low_change,
-                                stop_dist,
-                                scalar_hit
-                            );
-                            log::error!(
-                                "   SIMD   (LONG): Low <= HistStop   = {:.10} <= {:.10}? -> {}",
-                                c.low_price,
-                                hist_stop,
-                                simd_hit
-                            );
-                        }
-                        TradeDirection::Short => {
-                            let high_change = (c.high_price - hist_entry) / hist_entry;
-                            let scalar_hit = high_change >= stop_dist; // stop_dist is positive for Short
-                            let simd_hit = c.high_price >= hist_stop;
+                    log::error!("--- SIMD vs SCALAR MISMATCH FORENSICS ---");
+                    log::error!(
+                        "Pair context: Entry(Live): {}, Entry(Hist): {}, Scale: {}",
+                        current_price_ref,
+                        hist_entry,
+                        scale
+                    );
+                    log::error!(
+                        "Stop(Live): {} ({:.4}%), Stop(Hist_Abs): {}",
+                        stop,
+                        stop_dist * 100.0,
+                        hist_stop
+                    );
 
-                            log::error!(
-                                "At Index {} (SIMD Stop): High = {}",
-                                simd_idx,
-                                c.high_price
-                            );
-                            log::error!(
-                                "   Scalar (SHORT): (High-Entry)/Entry = {:.10} >= {:.10}? -> {}",
-                                high_change,
-                                stop_dist,
-                                scalar_hit
-                            );
-                            log::error!(
-                                "   SIMD   (SHORT): High >= HistStop   = {:.10} >= {:.10}? -> {}",
-                                c.high_price,
-                                hist_stop,
-                                simd_hit
-                            );
+                    if let Outcome::StopHit(simd_idx) = result {
+                        let abs_idx = start_idx + simd_idx;
+                        let c = ts.get_candle(abs_idx);
+
+                        // DYNAMIC FORENSICS BASED ON DIRECTION
+                        match direction {
+                            TradeDirection::Long => {
+                                let low_change = (c.low_price - hist_entry) / hist_entry;
+                                let scalar_hit = low_change <= stop_dist; // stop_dist is usually negative for Long
+                                let simd_hit = c.low_price <= hist_stop;
+
+                                log::error!(
+                                    "At Index {} (SIMD Stop): Low = {}",
+                                    simd_idx,
+                                    c.low_price
+                                );
+                                log::error!(
+                                    "   Scalar (LONG): (Low-Entry)/Entry = {:.10} <= {:.10}? -> {}",
+                                    low_change,
+                                    stop_dist,
+                                    scalar_hit
+                                );
+                                log::error!(
+                                    "   SIMD   (LONG): Low <= HistStop   = {:.10} <= {:.10}? -> {}",
+                                    c.low_price,
+                                    hist_stop,
+                                    simd_hit
+                                );
+                            }
+                            TradeDirection::Short => {
+                                let high_change = (c.high_price - hist_entry) / hist_entry;
+                                let scalar_hit = high_change >= stop_dist; // stop_dist is positive for Short
+                                let simd_hit = c.high_price >= hist_stop;
+
+                                log::error!(
+                                    "At Index {} (SIMD Stop): High = {}",
+                                    simd_idx,
+                                    c.high_price
+                                );
+                                log::error!(
+                                    "   Scalar (SHORT): (High-Entry)/Entry = {:.10} >= {:.10}? -> {}",
+                                    high_change,
+                                    stop_dist,
+                                    scalar_hit
+                                );
+                                log::error!(
+                                    "   SIMD   (SHORT): High >= HistStop   = {:.10} >= {:.10}? -> {}",
+                                    c.high_price,
+                                    hist_stop,
+                                    simd_hit
+                                );
+                            }
                         }
                     }
-                }
-                // ------------------------
+                    // ------------------------
 
-                log::error!(
-                    "SIMD REPLAY MISMATCH [Dir: {}]: SIMD {:?} vs SCALAR {:?}",
-                    direction,
-                    result,
-                    scalar_result
-                );
-                // This is not a panic situation. Just "maths done different depending on whether SIMD or SCALAR"
-                // panic!("CRITICAL: SIMD Simulation diverged significantly from Scalar Logic.");
+                    log::error!(
+                        "SIMD REPLAY MISMATCH [Dir: {}]: SIMD {:?} vs SCALAR {:?}",
+                        direction,
+                        result,
+                        scalar_result
+                    );
+                    // This is not a panic situation. Just "maths done different depending on whether SIMD or SCALAR"
+                    // panic!("CRITICAL: SIMD Simulation diverged significantly from Scalar Logic.");
+                }
             }
         }
 

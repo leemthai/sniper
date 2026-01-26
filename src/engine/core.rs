@@ -5,9 +5,9 @@ use std::sync::{Arc, RwLock};
 #[cfg(not(target_arch = "wasm32"))]
 use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::Runtime};
 
-use crate::config::{OptimizationGoal, StationId, constants};
 #[cfg(debug_assertions)]
 use crate::config::DF;
+use crate::config::{OptimizationGoal, StationId, constants};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
@@ -344,7 +344,9 @@ impl SniperEngine {
                     rt.block_on(async {
                         for trade in trades {
                             if let Err(e) = repo.record_trade(trade).await {
-                                log::error!("Failed to archive trade: {}", e);
+                                if DF.log_results_repo {
+                                    log::error!("Failed to archive trade: {}", e);
+                                }
                             }
                         }
                     });

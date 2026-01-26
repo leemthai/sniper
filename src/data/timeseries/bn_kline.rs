@@ -13,11 +13,13 @@ use binance_sdk::spot::{
     rest_api::{KlinesIntervalEnum, KlinesItemInner, KlinesParams, RestApi},
 };
 use binance_sdk::{errors, errors::ConnectorError as connection_error};
-// use tokio::time::{Duration, sleep};
 
 // Local crates
 use crate::config::{BINANCE, BinanceApiConfig};
-use crate::data::rate_limiter::GlobalRateLimiter; // Import
+#[cfg(debug_assertions)]
+use crate::config::DF;
+
+use crate::data::rate_limiter::GlobalRateLimiter;
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 use crate::utils::TimeUtils;
@@ -240,10 +242,13 @@ fn process_new_klines(
     bn_klines.pop();
     if bn_klines.is_empty() {
         // Rare case: the batch had a single item prior to duplicate removal.
-        log::warn!(
+        #[cfg(debug_assertions)]
+        if DF.log_price_stream_updates {
+        log::info!(
             "Rare case where new klines was single item before duplicate removal for {}.",
             pair_interval
         );
+        }
         // We return true to indicate "batch caused immediate completion"
         all_klines.splice(0..0, Vec::<BNKline>::new());
         return Ok((end_time, true));

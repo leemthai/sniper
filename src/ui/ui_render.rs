@@ -734,9 +734,14 @@ impl ZoneSniperApp {
             if !exists {
                 #[cfg(debug_assertions)]
                 if DF.log_selected_opportunity {
-                    log::info!("SELECTED OPPORTUNITY Clearing! in render_trade_finder_content (BAD?)");
+                    log::info!("SELECTED OPPORTUNITY CLEARed in render_trade_finder_content because apparently no longer exists. THIS NEEDS INVESTIGATING TO FIND OUT WHY.");
                 }
                 self.selected_opportunity = None;
+            }
+        } else {
+            #[cfg(debug_assertions)]
+            if DF.log_selected_opportunity {
+                log::info!("FAILED TO FIND the currently selected OPPPORTUNITY {:?} in TF because it is blank. Weird?", &self.selected_opportunity);
             }
         }
 
@@ -945,7 +950,7 @@ impl ZoneSniperApp {
         // // 4. INTERACTION
         if response.clicked() {
             if let Some(op) = &row.opportunity {
-                self.select_specific_opportunity(op.clone(), ScrollBehavior::None);
+                self.select_specific_opportunity(op.clone(), ScrollBehavior::None, "clicked in render_tf_table_row");
             } else {
                 self.handle_pair_selection(row.pair_name.clone());
                 #[cfg(debug_assertions)]
@@ -1056,7 +1061,6 @@ impl ZoneSniperApp {
                     });
                     // --- LINE 3: DEBUG UUID ---
                     #[cfg(debug_assertions)]
-                    if DF.log_ledger
                     {
                         // Show first 8 chars of UUID
                         let uuid = &op.id;
@@ -1426,7 +1430,6 @@ impl ZoneSniperApp {
                             );
 
                             #[cfg(debug_assertions)]
-                            if DF.log_ledger
                             {
                                 let short_id = if op.id.len() > 8 { &op.id[..8] } else { &op.id };
                                 ui.label(
@@ -1725,7 +1728,7 @@ impl ZoneSniperApp {
                         new_selected.simulation = variant.simulation.clone();
 
                         // 2. Use the Helper
-                        self.select_specific_opportunity(new_selected, ScrollBehavior::None);
+                        self.select_specific_opportunity(new_selected, ScrollBehavior::None, "render_card_variants");
 
                         should_close = true;
                     }

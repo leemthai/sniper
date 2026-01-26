@@ -182,7 +182,6 @@ impl CandleResolution {
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct ZoneSniperApp {
-    pub selected_pair: Option<String>,
     pub global_tuner_config: TimeTunerConfig,
     pub station_overrides: HashMap<String, StationId>,
     pub plot_visibility: PlotVisibility,
@@ -199,6 +198,7 @@ pub struct ZoneSniperApp {
 
     pub saved_strategy: OptimizationGoal,
     pub saved_opportunity_id: Option<String>,
+    pub selected_pair: Option<String>,
 
     #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>,
@@ -238,7 +238,6 @@ pub struct ZoneSniperApp {
 
 impl Default for ZoneSniperApp {
     fn default() -> Self {
-        log::info!("when do we init default ZoneSniperApp?");
         #[cfg(debug_assertions)]
         if DF.log_selected_pair {
             log::info!("SELECTED PAIR Init to BTCUSDT");
@@ -411,6 +410,13 @@ impl ZoneSniperApp {
     /// Standard Pair Switch (Manual or programmatic).
     /// Updates Global State to point to this pair, but does NOT auto-select a trade.
     pub fn handle_pair_selection(&mut self, new_pair: String) {
+
+        // This should *NOT* update self.opportunity_selection at all!
+
+        #[cfg(debug_assertions)]
+        if DF.log_selected_pair {
+            log::info!("Top of handle_pair_selection");
+        }
         // --- 1. SAVE STATE (Old Pair) ---
         // We only remember which Station (Button) the user was on.
         if let Some(old_pair) = &self.selected_pair {
@@ -439,12 +445,6 @@ impl ZoneSniperApp {
                 "SELECTED PAIR: set in handle_pair_selection to {}",
                 new_pair
             );
-        }
-
-        self.selected_opportunity = None;
-        #[cfg(debug_assertions)]
-        if DF.log_selected_opportunity {
-            log::info!("SELECTED OPPORTUNITY: clear in handle_pair_selection");
         }
 
         // LOAD STATE for new pair
@@ -498,7 +498,7 @@ impl ZoneSniperApp {
         if let Some(op) = best_op {
             // PATH A: Specific Opportunity
             // Delegate to the sniper function to handle context override + highlighting
-            self.select_specific_opportunity(op, ScrollBehavior::Center);
+            self.select_specific_opportunity(op, ScrollBehavior::Center, "jump to pair");
         } else {
             // PATH B: Market View
             // Just switch the UI context to this pair.
@@ -511,7 +511,16 @@ impl ZoneSniperApp {
     }
 
     /// Selects a specific opportunity
-    pub fn select_specific_opportunity(&mut self, op: TradeOpportunity, scroll: ScrollBehavior) {
+    pub fn select_specific_opportunity(
+        &mut self,
+        op: TradeOpportunity,
+        scroll: ScrollBehavior,
+        reason: &str,
+    ) {
+        #[cfg(debug_assertions)]
+        if DF.log_selected_opportunity {
+            log::info!("Call select_specific_opportunity because {}", reason);
+        }
         // 1. Switch State (Pure UI)
         self.handle_pair_selection(op.pair_name.clone());
 
@@ -529,7 +538,7 @@ impl ZoneSniperApp {
         #[cfg(debug_assertions)]
         if DF.log_selected_opportunity {
             log::info!(
-                "SELECTED OPPORTUNITY: set in select_specific_opportunity to {:?}",
+                "SELECTED OPPORTUNITY: SET to {} in select_specific_opportunity",
                 op
             );
         }
@@ -1099,16 +1108,12 @@ impl ZoneSniperApp {
                 engine.trigger_global_recalc(None);
             }
 
-            // 2. EXECUTE SMART SELECTION (Restored Logic)
-            // We retrieve the startup pair we stored in check_loading_completion
+            // 2. EXECUTE SMART SELECTION (don't know what that means anymore)
             if let Some(target_pair) = self.selected_pair.clone() {
-                // Force a "New Switch" by clearing selection first (even though we just set it above,
-                // this ensures jump_to_pair treats it as a fresh navigation event).
                 #[cfg(debug_assertions)]
                 if DF.log_selected_pair {
-                    log::info!("SELECTED PAIR CLEARing: handle_tuning_phase");
+                    log::info!("Weird code in handle_tuning_phase.  now just does jump_to_pair() which might be right. Before it did self.selected_pair = None");
                 }
-                self.selected_pair = None;
                 self.jump_to_pair(target_pair);
             }
             AppState::Running
@@ -1129,7 +1134,7 @@ impl ZoneSniperApp {
                 let available_pairs = timeseries.unique_pair_names();
                 let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
 
-                // 2. Resolve Startup Pair
+                // 2. Resolve Startup Pair - because pair is KIN!
                 // Check if the saved 'selected_pair' actually exists in the loaded data.
                 let valid_startup_pair = self
                     .selected_pair
@@ -1156,9 +1161,12 @@ impl ZoneSniperApp {
                 // 3. FORCE UPDATE STATE
                 #[cfg(debug_assertions)]
                 if DF.log_selected_pair {
-                    log::info!("SELECTED PAIR: set to [{:?}] in check_loading_completion", final_pair);
+                    log::info!(
+                        "SELECTED PAIR: set to [{:?}] in check_loading_completion",
+                        final_pair
+                    );
                 }
-                self.selected_pair = Some(final_pair.clone());
+                self.selected_pair = Some(final_pair.clone()); // So guaranteed to have a selected_pair after this, right?
 
                 // 4. Initialize Engine
                 let mut engine = SniperEngine::new(timeseries);
@@ -1221,7 +1229,6 @@ impl ZoneSniperApp {
 
                 self.engine = Some(engine);
 
-                // TEMP this restoration code works but something later appears to overwrite self.selected_opportunity. Not surprising....
                 if let Some(id) = &self.saved_opportunity_id {
                     if let Some(op) = self
                         .engine
@@ -1229,25 +1236,76 @@ impl ZoneSniperApp {
                         .and_then(|e| e.ledger.opportunities.get(id))
                         .cloned()
                     {
-                        self.selected_opportunity = Some(op.clone());
-                        #[cfg(debug_assertions)]
-                        if DF.log_selected_opportunity {
-                            log::info!(
-                                "SELECTED OPPORTUNITY: set to {:?} in check_loading_completion",
-                                op
-                            );
-                        }
-                        self.selected_pair = Some(op.pair_name.clone());
-                        #[cfg(debug_assertions)]
-                        if DF.log_selected_pair {
-                            log::info!("SELECTED PAIR: set to {:?} in check_loading_completion ", op.pair_name);
+                        // We have found the saved opportunity. However, since selected_pair is king, we must decide if this preserved opportunity is from this pair or not.
+
+                        // So first thing decide is this opportunity from selected pair........
+                        if self.selected_pair.as_deref() == Some(&op.pair_name) {
+                            // Saved opportunity IS from self.selected_pair, we can just slot it in.
+                            self.selected_opportunity = Some(op.clone());
+                            #[cfg(debug_assertions)]
+                            if DF.log_selected_opportunity {
+                                log::info!(
+                                    "SELECTED OPPORTUNITY SET to {} in check_loading_completion as start-up value because pair_name in opportunity matches selected_pair so straight rehydration is possible.",
+                                    op
+                                );
+                            }
+                        } else {
+                            #[cfg(debug_assertions)]
+                            if DF.log_selected_opportunity {
+                                log::info!(
+                                    "CAN'T RESTORE OPPORTUNITY FROM STATE because pair name mismatch. Gonna have to pick best opportunity from selected_pair instead (TODO)"
+                                );
+                            }
+                            // If, however, saved opportunity IS NOT from self.selected_pair, we must instead find a new opportunity from self.selected_pair
+                            // How to find best opportunity in ledger ? TEMP for start, just pick one quick ..... this code is very rare anyway.
+                            if let Some(real_engine) = self.engine.as_ref() {
+                                self.selected_opportunity = real_engine
+                                    .ledger
+                                    .find_first_for_pair(self.selected_pair.clone())
+                                    .cloned();
+                                #[cfg(debug_assertions)]
+                                if DF.log_selected_opportunity {
+                                    log::info!(
+                                        "SELECTED_OPPORTUNIY SET to {} in check_loading_completion as start-up value because we must always get a opportunity that matches self.selected_pair which is {:?}",
+                                        self.selected_opportunity
+                                            .as_ref()
+                                            .map(|op| op.id.as_str())
+                                            .unwrap_or("None"),
+                                        &self.selected_pair
+                                    );
+                                }
+                            }
                         }
 
+                        // TEMP no idea what to do with this shitcode yet.
                         self.active_ph_pct = op.source_ph;
                         #[cfg(debug_assertions)]
                         if DF.log_tuner {
-                            log::info!("TUNER: set self.active_ph_pct to {:?} in check_loading_completion", op.source_ph);
-                        }                        
+                            log::info!(
+                                "TUNER: set self.active_ph_pct to {:?} in check_loading_completion as start-up value",
+                                op.source_ph
+                            );
+                        }
+                    }
+                } else {
+                    // Saved_opportunity_id is None. So again, just find best op in ledger, similar to above?
+                    if let Some(real_engine) = self.engine.as_ref() {
+                        self.selected_opportunity = real_engine
+                            .ledger
+                            .find_first_for_pair(self.selected_pair.clone())
+                            .cloned();
+                        #[cfg(debug_assertions)]
+                        if DF.log_selected_opportunity {
+                            log::info!(
+                                "SELECTED_OPPORTUNIY SET to {} in check_loading_completion as start-up value because saved_opportunity_id is ({:?}). Therefore we must get an opportunity that matches self.selected_pair which is {:?}",
+                                self.selected_opportunity
+                                    .as_ref()
+                                    .map(|op| op.id.as_str())
+                                    .unwrap_or("None"),
+                                self.saved_opportunity_id,
+                                &self.selected_pair
+                            );
+                        }
                     }
                 }
 

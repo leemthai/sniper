@@ -177,6 +177,12 @@ pub enum NavigationTarget {
     Pair(String),        // Fallback (Market View / No Op)
 }
 
+impl fmt::Display for TradeOpportunity {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ID {} (pair: {})", self.id, self.pair_name)
+    }
+}
+
 impl TradeOpportunity {
 
     /// Calculates a composite Quality Score (0.0 to 100.0+)
