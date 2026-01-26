@@ -239,6 +239,11 @@ pub struct ZoneSniperApp {
 impl Default for ZoneSniperApp {
     fn default() -> Self {
         log::info!("when do we init default ZoneSniperApp?");
+        #[cfg(debug_assertions)]
+        if DF.log_selected_pair {
+            log::info!("SELECTED PAIR Init to BTCUSDT");
+        }
+
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
             global_tuner_config: TimeTunerConfig::default(),
@@ -425,16 +430,24 @@ impl ZoneSniperApp {
             }
         }
 
-        // 2. Set New Pair & Reset View Flags
-        self.selected_pair = Some(new_pair.clone());
         self.auto_scale_y = true;
+
+        self.selected_pair = Some(new_pair.clone());
+        #[cfg(debug_assertions)]
+        if DF.log_selected_pair {
+            log::info!(
+                "SELECTED PAIR: set in handle_pair_selection to {}",
+                new_pair
+            );
+        }
+
+        self.selected_opportunity = None;
         #[cfg(debug_assertions)]
         if DF.log_selected_opportunity {
             log::info!("SELECTED OPPORTUNITY: clear in handle_pair_selection");
         }
-        self.selected_opportunity = None;
 
-        // --- 3. LOAD STATE (New Pair) ---
+        // LOAD STATE for new pair
         let target_station = self
             .station_overrides
             .get(&new_pair)
@@ -1091,6 +1104,10 @@ impl ZoneSniperApp {
             if let Some(target_pair) = self.selected_pair.clone() {
                 // Force a "New Switch" by clearing selection first (even though we just set it above,
                 // this ensures jump_to_pair treats it as a fresh navigation event).
+                #[cfg(debug_assertions)]
+                if DF.log_selected_pair {
+                    log::info!("SELECTED PAIR CLEARing: handle_tuning_phase");
+                }
                 self.selected_pair = None;
                 self.jump_to_pair(target_pair);
             }
@@ -1137,6 +1154,10 @@ impl ZoneSniperApp {
                 };
 
                 // 3. FORCE UPDATE STATE
+                #[cfg(debug_assertions)]
+                if DF.log_selected_pair {
+                    log::info!("SELECTED PAIR: set to [{:?}] in check_loading_completion", final_pair);
+                }
                 self.selected_pair = Some(final_pair.clone());
 
                 // 4. Initialize Engine
@@ -1212,16 +1233,21 @@ impl ZoneSniperApp {
                         #[cfg(debug_assertions)]
                         if DF.log_selected_opportunity {
                             log::info!(
-                                "SELECTED OPPORTUNITY: set in check_loading_completion to: {:?}",
+                                "SELECTED OPPORTUNITY: set to {:?} in check_loading_completion",
                                 op
                             );
                         }
                         self.selected_pair = Some(op.pair_name.clone());
+                        #[cfg(debug_assertions)]
+                        if DF.log_selected_pair {
+                            log::info!("SELECTED PAIR: set to {:?} in check_loading_completion ", op.pair_name);
+                        }
+
                         self.active_ph_pct = op.source_ph;
                         #[cfg(debug_assertions)]
-                        if DF.log_ledger {
-                            log::info!("RE-HYDRATE: Restored selected_opportunity [{}]", id);
-                        }
+                        if DF.log_tuner {
+                            log::info!("TUNER: set self.active_ph_pct to {:?} in check_loading_completion", op.source_ph);
+                        }                        
                     }
                 }
 

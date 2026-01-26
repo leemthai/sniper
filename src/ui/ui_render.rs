@@ -949,7 +949,7 @@ impl ZoneSniperApp {
             } else {
                 self.handle_pair_selection(row.pair_name.clone());
                 #[cfg(debug_assertions)]
-                log::info!("clearing selected opportunity in render_tf_table_row");
+                log::info!("SELECTED OPPORTUNITY CLEARing! in render_tf_table_row");
                 self.selected_opportunity = None;
             }
         }

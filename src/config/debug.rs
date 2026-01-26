@@ -12,8 +12,10 @@ pub struct LogFlags {
     pub log_ledger: bool,
     pub log_results_repo: bool,
     pub log_engine: bool,
+
     /// Includes PH logging e.g active_ph_pct
     pub log_tuner: bool, 
+    
     pub log_pathfinder: bool,
     pub log_zones: bool,
 
@@ -45,7 +47,7 @@ pub const DF: LogFlags = LogFlags {
     log_pathfinder: false,
     log_zones: false,
     log_selected_pair: false,
-    log_selected_opportunity: false,
+    log_selected_opportunity: true,
 
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
     log_wasm_demo: false,
