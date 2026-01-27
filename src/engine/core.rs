@@ -166,11 +166,7 @@ impl SniperEngine {
     pub fn request_trade_context(&mut self, pair: String, target_ph: f64) {
         // 2. Set Override (so the worker picks it up)
         self.set_ph_override(pair.clone(), target_ph);
-        let station_id = self
-            .station_overrides
-            .get(&pair)
-            .copied()
-            .unwrap(); // Will crash if None
+        let station_id = self.station_overrides.get(&pair).copied().unwrap(); // Will crash if None
         #[cfg(debug_assertions)]
         if DF.log_active_station_id {
             log::info!(
@@ -231,7 +227,11 @@ impl SniperEngine {
                         if let Some(ph_pct) = self.ph_overrides.get(&pair_name) {
                             #[cfg(debug_assertions)]
                             if DF.log_ph_vals {
-                                log::info!("READING ph_pct value of {} from self.ph_overrides for pair {}", ph_pct, pair_name);
+                                log::info!(
+                                    "READING ph_pct value of {} from self.ph_overrides for pair {}",
+                                    ph_pct,
+                                    pair_name
+                                );
                             }
                             // TEMP why is this producing station_id of "Swing" for all pairs..... ?????????? hmmm...dunno. intersting
                             // i.e why does this fail sometimes.... ??????
@@ -241,6 +241,7 @@ impl SniperEngine {
                                 .get(&pair_name)
                                 .copied()
                                 .expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in station_overrides {:?}", pair_name, ph_pct, self.station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
+                            #[cfg(debug_assertions)]
                             if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
                                 log::info!(
                                     "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in process_live_data() and the full station_overrides is {:?}",
@@ -262,7 +263,10 @@ impl SniperEngine {
                         } else {
                             #[cfg(debug_assertions)]
                             if DF.log_ph_vals {
-                                log::info!("FAILED to READ ph_pct from self.ph_overrides for pair {}. Therefore not updating this pair", pair_name);
+                                log::info!(
+                                    "FAILED to READ ph_pct from self.ph_overrides for pair {}. Therefore not updating this pair",
+                                    pair_name
+                                );
                             }
                         }
                     }
