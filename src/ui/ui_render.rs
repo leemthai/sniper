@@ -27,7 +27,7 @@ use crate::models::trading_view::{
 use crate::ui::app::{CandleResolution, ScrollBehavior};
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color};
-use crate::ui::time_tuner;
+use crate::ui::{time_tuner, time_tuner::TunerAction};
 use crate::ui::ui_panels::CandleRangePanel;
 use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
@@ -1008,7 +1008,7 @@ impl ZoneSniperApp {
                     //     #[cfg(debug_assertions)]
                     //     0.15
                     //     // // Fallback: Check overrides -> Global Config
-                    //     // self.price_horizon_overrides
+                    //     // self.ph_overrides
                     //     //     .get(&row.pair_name)
                     //     //     .map(|c| c.threshold_pct)
                     //     //     .unwrap_or(self.app_config.price_horizon.threshold_pct)
@@ -1477,10 +1477,11 @@ impl ZoneSniperApp {
     }
 
     /// Handles events from the Time Tuner UI (Left Panel).
-    pub fn handle_tuner_action(&mut self, action: time_tuner::TunerAction) {
+    pub fn handle_tuner_action(&mut self, action: TunerAction) {
+
         match action {
-            time_tuner::TunerAction::StationSelected(station_id) => {
-                // A. Update Active ID (Global Config)
+            TunerAction::StationSelected(station_id) => {
+
                 self.active_station_id = station_id;
                 #[cfg(debug_assertions)]
                 if DF.log_active_station_id {
@@ -1523,7 +1524,7 @@ impl ZoneSniperApp {
                         // D. Update Engine
                         if let Some(engine) = &mut self.engine {
                             // Create specific config for this pair's override
-                            engine.set_price_horizon_override(pair_name.clone(), best_ph);
+                            engine.set_ph_override(pair_name.clone(), best_ph);
 
                             // Update global context & Fire
                             // engine.update_config(self.app_config.clone());
@@ -1542,7 +1543,7 @@ impl ZoneSniperApp {
                 } else {
                 }
             }
-            time_tuner::TunerAction::ConfigureTuner => {
+            TunerAction::ConfigureTuner => {
                 #[cfg(debug_assertions)]
                 log::info!("TODO: Open Config Modal for Time Tuner");
             }
@@ -1558,9 +1559,12 @@ impl ZoneSniperApp {
             .frame(frame)
             .show(ctx, |ui| {
                 // 1. TIME TUNER
-                if let Some(action) =
-                    time_tuner::render(ui, &self.global_tuner_config, self.active_station_id, self.selected_pair.clone())
-                {
+                if let Some(action) = time_tuner::render(
+                    ui,
+                    &constants::tuner::CONFIG,
+                    self.active_station_id,
+                    self.selected_pair.clone(),
+                ) {
                     self.handle_tuner_action(action);
                 }
 

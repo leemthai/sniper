@@ -18,7 +18,7 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{DF, OptimizationGoal, StationId, TimeTunerConfig, constants};
+use crate::config::{DF, OptimizationGoal, StationId, constants};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -182,7 +182,7 @@ impl CandleResolution {
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct ZoneSniperApp {
-    pub global_tuner_config: TimeTunerConfig,
+    pub selected_pair: Option<String>,
     pub station_overrides: HashMap<String, StationId>,
     pub plot_visibility: PlotVisibility,
     pub show_debug_help: bool,
@@ -198,7 +198,6 @@ pub struct ZoneSniperApp {
 
     pub saved_strategy: OptimizationGoal,
     pub saved_opportunity_id: Option<String>,
-    pub selected_pair: Option<String>,
 
     #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>,
@@ -245,7 +244,6 @@ impl Default for ZoneSniperApp {
 
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
-            global_tuner_config: TimeTunerConfig::default(),
             station_overrides: HashMap::new(),
             active_station_id: StationId::default(),
             active_ph_pct: 0.15,
@@ -357,8 +355,7 @@ impl ZoneSniperApp {
     pub fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<f64> {
         if let Some(engine) = &self.engine {
             // 1. Get Config for the requested Station
-            let station = self
-                .global_tuner_config
+            let station = constants::tuner::CONFIG
                 .stations
                 .iter()
                 .find(|s| s.id == station_id)?;
@@ -381,24 +378,7 @@ impl ZoneSniperApp {
     /// Updates Global State to point to this pair, but does NOT auto-select a trade opportunity
     pub fn handle_pair_selection(&mut self, new_pair_name: String) {
         // This does *NOT* update self.opportunity_selection at all!
-
-        // --- 1. SAVE STATE (Old Pair) ---
-        // We only remember which Station (Button) the user was on.
-        // No idea why we need do this station stuff. Figure it out next....
-        // if let Some(old_pair) = &self.selected_pair {
-        //     let current_station = self.active_station_id;
-        //     self.station_overrides
-        //         .insert(old_pair.clone(), current_station);
-
-        //     #[cfg(debug_assertions)]
-        //     if DF.log_station_overrides {
-        //         log::info!(
-        //             "💾 STATION_OVERRIDE SAVE [{}]: Saved Station '{:?}'",
-        //             old_pair,
-        //             current_station
-        //         );
-        //     }
-        // }
+        // What it does do: (1) update self.selected_pair (2) update self.active_station_id
 
         self.auto_scale_y = true; // TEMP completely the wrong place for plot code.
 
@@ -414,11 +394,7 @@ impl ZoneSniperApp {
             }
         }
 
-        self.active_station_id = self
-            .station_overrides
-            .get(&new_pair_name)
-            .copied()
-            .unwrap_or_default();
+        self.active_station_id = self.station_overrides.get(&new_pair_name).copied().unwrap(); // Will crash if None. Deliberate choice
         #[cfg(debug_assertions)]
         if DF.log_active_station_id {
             log::info!(
@@ -886,10 +862,12 @@ impl ZoneSniperApp {
     }
 
     fn render_running_state(&mut self, ctx: &Context) {
-        // Recently added logging to see which panes are slow.
-
         let start = AppInstant::now();
         if let Some(engine) = &mut self.engine {
+            #[cfg(debug_assertions)]
+            if DF.log_station_overrides {
+                log::info!("station overrides status: {:?}", engine.station_overrides);
+            }
             engine.update();
         }
         let engine_time = start.elapsed().as_micros();
@@ -978,6 +956,7 @@ impl ZoneSniperApp {
             while processed < chunk_size && !state.todo_list.is_empty() {
                 if let Some(pair) = state.todo_list.pop() {
                     // A. Determine Station (and use default if we don't have one.....)
+
                     let station_id = self
                         .station_overrides
                         .get(&pair)
@@ -992,8 +971,7 @@ impl ZoneSniperApp {
                         );
                     }
                     // B. Get Station Definition
-                    if let Some(station_def) = self
-                        .global_tuner_config
+                    if let Some(station_def) = constants::tuner::CONFIG
                         .stations
                         .iter()
                         .find(|s| s.id == station_id)
@@ -1015,7 +993,7 @@ impl ZoneSniperApp {
                                             self.saved_strategy,
                                         )
                                     } else {
-                                        if DF.log_tuner {
+                                        if DF.log_ph_vals {
                                             log::warn!(
                                                 "Can't tune because price is {} for {}",
                                                 price,
@@ -1025,10 +1003,14 @@ impl ZoneSniperApp {
                                         None
                                     }
                                 } else {
+                                    log::warn!(
+                                        "Can't tune {} because we don't have a price for it ",
+                                        pair
+                                    );
                                     None
                                 }
                             } else {
-                                if DF.log_tuner {
+                                if DF.log_ph_vals {
                                     log::warn!(
                                         "Can't tune because we have no matching_ohlcv for {}",
                                         &pair
@@ -1040,37 +1022,55 @@ impl ZoneSniperApp {
 
                         // D. Apply Result
                         if let Some(ph) = best_ph {
-                            // let mut pair_config = self.active_ph_pct;
-                            // pair_config.threshold_pct = ph;
-
-                            engine.set_price_horizon_override(pair.clone(), self.active_ph_pct);
+                            engine.set_ph_override(pair.clone(), self.active_ph_pct);
                             #[cfg(debug_assertions)]
-                            if DF.log_tuner {
+                            if DF.log_ph_vals {
                                 log::info!(
-                                    "TUNER: For pair {} setting ph during tuning phase to: {}",
+                                    "PH VALS: For pair {} setting engine.ph_overrides during tuning phase to: {}",
                                     &pair,
                                     ph
                                 );
                             }
                             if Some(&pair) == self.selected_pair.as_ref() {
                                 #[cfg(debug_assertions)]
-                                if DF.log_tuner {
+                                if DF.log_ph_vals {
                                     log::info!(
-                                        "TUNER: And because pair {} is selected, also setting self.app_config.price_horizon.threshold pct for some reason as well",
-                                        &pair
+                                        "PH VALS: And because pair {} is selected, also set self.active_ph_pct to {}",
+                                        &pair,
+                                        ph,
                                     );
                                 }
                                 self.active_ph_pct = ph;
+                            }
+                        } else {
+                            #[cfg(debug_assertions)]
+                            if DF.log_ph_vals {
+                                log::info!(
+                                    "There is no ph value set for {} so can't apply result in handle_tuning_phase. But why?",
+                                    pair
+                                )
                             }
                         }
                     }
                     processed += 1;
                 }
             }
+        } else {
+            log::warn!("No engine. Not good");
         }
 
         // 3. Update State or Finish
         state.completed += processed;
+
+        #[cfg(debug_assertions)]
+        if let Some(engine) = &self.engine {
+            if DF.log_ph_vals {
+                log::info!(
+                    "Near bottom of handle_tuning_phase we have ph_overrides of {:?}",
+                    engine.ph_overrides
+                );
+            }
+        }
 
         if state.todo_list.is_empty() {
             // 1. Ignite the Engine (Run CVA + Pathfinder for ALL pairs with new settings)
@@ -1105,17 +1105,37 @@ impl ZoneSniperApp {
         if let Some(rx) = &self.data_rx {
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
-                // 1. Get List of ACTUAL loaded pairs
+                // Get List of ACTUAL loaded pairs
                 let available_pairs = timeseries.unique_pair_names();
                 let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
 
-                // 2. Resolve Startup Pair - because pair is KIN!
-                // Check if the saved 'selected_pair' actually exists in the loaded data.
+                // Resolve Startup Pair - and check if the saved 'selected_pair' actually exists in the loaded data.
                 let valid_startup_pair = self
                     .selected_pair
                     .as_ref()
                     .filter(|p| valid_set.contains(*p))
                     .cloned();
+
+                // Ensure self.station_overrides is setup with at least default value for all valid pairs.
+                #[cfg(debug_assertions)]
+                if DF.log_station_overrides {
+                    log::info!(
+                        "Pre intiialization self.station_overrides was {:?}",
+                        self.station_overrides
+                    );
+                }
+                for pair in available_pairs.clone() {
+                    self.station_overrides
+                        .entry(pair)
+                        .or_insert(StationId::default());
+                }
+                #[cfg(debug_assertions)]
+                if DF.log_station_overrides {
+                    log::info!(
+                        "Post intiialization self.station_overrides is {:?}",
+                        self.station_overrides
+                    );
+                }
 
                 let final_pair = if let Some(p) = valid_startup_pair {
                     p // Saved pair is valid

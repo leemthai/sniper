@@ -16,13 +16,15 @@ pub struct LogFlags {
     pub log_tuner: bool,
     pub log_station_overrides: bool, 
     pub log_active_station_id: bool,
-    pub log_active_ph_pct: bool,
+    pub log_ph_vals: bool,
     
     pub log_pathfinder: bool,
     pub log_zones: bool,
 
     /// Anything about handling self.selected_pair
     pub log_selected_pair: bool,
+
+    pub log_candle_update: bool,
 
     /// Anything about self.selected_opportunity
     pub log_selected_opportunity: bool,
@@ -41,16 +43,18 @@ pub struct LogFlags {
 }
 
 pub const DF: LogFlags = LogFlags {
+    log_tuner: false,
+    log_station_overrides: true,
+    log_active_station_id: true,
+    log_candle_update: true,
+    log_ph_vals: true,
+
     log_performance: false,
     log_price_stream_updates: false,
     log_simulation_events: false,
     log_ledger: false,
     log_results_repo: false,
     log_engine: false,
-    log_tuner: true,
-    log_active_station_id: true,
-    log_station_overrides: true,
-    log_active_ph_pct: false,
     log_pathfinder: false,
     log_zones: false,
     log_selected_pair: false,

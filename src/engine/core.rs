@@ -61,7 +61,7 @@ pub struct SniperEngine {
         JobMode,
     )>,
     /// The Live Configuration State
-    pub price_horizon_overrides: HashMap<String, f64>,
+    pub ph_overrides: HashMap<String, f64>,
     pub current_strategy: OptimizationGoal,
     pub station_overrides: HashMap<String, StationId>,
     pub ledger: OpportunityLedger,
@@ -151,7 +151,7 @@ impl SniperEngine {
             #[cfg(target_arch = "wasm32")]
             result_tx,
             queue: VecDeque::new(),
-            price_horizon_overrides: HashMap::new(),
+            ph_overrides: HashMap::new(),
             ledger: OpportunityLedger::new(),
             results_repo: Arc::new(repo),
             last_ledger_maintenance: AppInstant::now(),
@@ -165,12 +165,12 @@ impl SniperEngine {
     /// but DO NOT re-run simulations (preserve the trade list).
     pub fn request_trade_context(&mut self, pair: String, target_ph: f64) {
         // 2. Set Override (so the worker picks it up)
-        self.set_price_horizon_override(pair.clone(), target_ph);
+        self.set_ph_override(pair.clone(), target_ph);
         let station_id = self
             .station_overrides
             .get(&pair)
             .copied()
-            .unwrap_or_default();
+            .unwrap(); // Will crash if None
         #[cfg(debug_assertions)]
         if DF.log_active_station_id {
             log::info!(
@@ -192,7 +192,7 @@ impl SniperEngine {
         // }
     }
 
-    /// Process incoming live candles
+    /// Process incoming live candles every 5 mins
     pub fn process_live_data(&mut self) {
         // 1. Check if we have data
         // We use a loop to drain the channel so we don't lag behind
@@ -219,27 +219,34 @@ impl SniperEngine {
 
                     if candle.is_closed {
                         #[cfg(debug_assertions)]
-                        if DF.log_engine {
+                        if DF.log_candle_update {
                             log::info!(
-                                "ENGINE: Candle Closed for {}. Triggering Recalc.",
+                                "ENGINE: Candle Closed for {}. Triggering Recalc. in process_live_data()",
                                 candle.symbol
                             );
                         }
 
                         // 3. Trigger Recalc
                         let pair_name = candle.symbol;
-                        if let Some(ph_pct) = self.price_horizon_overrides.get(&pair_name) {
+                        if let Some(ph_pct) = self.ph_overrides.get(&pair_name) {
+                            #[cfg(debug_assertions)]
+                            if DF.log_ph_vals {
+                                log::info!("READING ph_pct value of {} from self.ph_overrides for pair {}", ph_pct, pair_name);
+                            }
+                            // TEMP why is this producing station_id of "Swing" for all pairs..... ?????????? hmmm...dunno. intersting
+                            // i.e why does this fail sometimes.... ??????
+                            // Must mean the pair_name is not in the hashmap right? But I thought it was guaranteed full.... ??????
                             let station_id = self
                                 .station_overrides
                                 .get(&pair_name)
                                 .copied()
-                                .unwrap_or_default();
-                            #[cfg(debug_assertions)]
-                            if DF.log_active_station_id {
+                                .expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in station_overrides {:?}", pair_name, ph_pct, self.station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
+                            if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
                                 log::info!(
-                                    "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in process_live_data()",
+                                    "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in process_live_data() and the full station_overrides is {:?}",
                                     station_id,
                                     &pair_name,
+                                    self.station_overrides,
                                 );
                             }
                             self.force_recalc(
@@ -252,6 +259,11 @@ impl SniperEngine {
                                 "CANDLE CLOSE TRIGGER",
                             );
                             // }
+                        } else {
+                            #[cfg(debug_assertions)]
+                            if DF.log_ph_vals {
+                                log::info!("FAILED to READ ph_pct from self.ph_overrides for pair {}. Therefore not updating this pair", pair_name);
+                            }
                         }
                     }
                 }
@@ -478,8 +490,8 @@ impl SniperEngine {
     }
 
     // Helper functions to ensure the UI can update the Engine's status
-    pub fn set_price_horizon_override(&mut self, pair: String, ph_pct: f64) {
-        self.price_horizon_overrides.insert(pair, ph_pct);
+    pub fn set_ph_override(&mut self, pair: String, ph_pct: f64) {
+        self.ph_overrides.insert(pair, ph_pct);
     }
 
     pub fn set_strategy(&mut self, strategy: OptimizationGoal) {
@@ -636,7 +648,7 @@ impl SniperEngine {
             push_pair(
                 vip,
                 &mut self.queue,
-                &self.price_horizon_overrides,
+                &self.ph_overrides,
                 &self.station_overrides,
             );
         }
@@ -645,7 +657,7 @@ impl SniperEngine {
             push_pair(
                 pair,
                 &mut self.queue,
-                &self.price_horizon_overrides,
+                &self.ph_overrides,
                 &self.station_overrides,
             );
         }
@@ -768,12 +780,12 @@ impl SniperEngine {
                                 );
                             }
 
-                            if let Some(ph_pct) = self.price_horizon_overrides.get(&pair) {
+                            if let Some(ph_pct) = self.ph_overrides.get(&pair) {
                                 let station_id = self
                                     .station_overrides
                                     .get(&pair)
                                     .copied()
-                                    .unwrap_or_default();
+                                .   expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in station_overrides {:?}", pair, ph_pct, self.station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
                                 #[cfg(debug_assertions)]
                                 if DF.log_active_station_id {
                                     log::info!(

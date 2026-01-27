@@ -9,7 +9,7 @@ pub enum TunerAction {
 
 pub fn render(
     ui: &mut Ui,
-    config: &TimeTunerConfig,
+    time_tuner_config: &TimeTunerConfig,
     active_station_id: StationId,
     pair: Option<String>,
 ) -> Option<TunerAction> {
@@ -26,16 +26,16 @@ pub fn render(
                 // Tighter spacing for button group feel
                 ui.style_mut().spacing.item_spacing.x = 2.0;
 
-                for station in &config.stations {
+                for station in time_tuner_config.stations {
                     // Active check (StationId is mandatory now, simple equality)
                     let is_active = active_station_id == station.id;
 
                     let btn = if is_active {
-                        Button::new(&station.name)
+                        Button::new(station.name)
                             .fill(ui.visuals().selection.bg_fill)
                             .stroke(ui.visuals().selection.stroke)
                     } else {
-                        Button::new(&station.name)
+                        Button::new(station.name)
                     };
 
                     if ui.add(btn).clicked() {
