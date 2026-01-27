@@ -402,14 +402,16 @@ impl ZoneSniperApp {
 
         self.auto_scale_y = true; // TEMP completely the wrong place for plot code.
 
-        let old_pair_name = self.selected_pair.replace(new_pair_name.clone());
         #[cfg(debug_assertions)]
-        if DF.log_selected_pair {
-            log::info!(
-                "SELECTED PAIR: set in handle_pair_selection to {} (from {}) ",
-                new_pair_name,
-                old_pair_name.as_deref().unwrap_or("None"),
-            );
+        {
+            let old_pair_name = self.selected_pair.replace(new_pair_name.clone());
+            if DF.log_selected_pair {
+                log::info!(
+                    "SELECTED PAIR: set in handle_pair_selection to {} (from {}) ",
+                    new_pair_name,
+                    old_pair_name.as_deref().unwrap_or("None"),
+                );
+            }
         }
 
         self.active_station_id = self

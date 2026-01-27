@@ -1559,7 +1559,7 @@ impl ZoneSniperApp {
             .show(ctx, |ui| {
                 // 1. TIME TUNER
                 if let Some(action) =
-                    time_tuner::render(ui, &self.global_tuner_config, self.active_station_id)
+                    time_tuner::render(ui, &self.global_tuner_config, self.active_station_id, self.selected_pair.clone())
                 {
                     self.handle_tuner_action(action);
                 }
