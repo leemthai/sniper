@@ -290,35 +290,6 @@ impl ZoneSniperApp {
         // --- 1. SETUP FONTS ---
         Self::configure_fonts(&cc.egui_ctx);
 
-        // Restore Active Station for the specific startup pair
-        if let Some(pair) = &app.selected_pair {
-            // Use .copied() to turn &StationId into StationId
-            if let Some(saved_station) = app.station_overrides.get(pair).copied() {
-                app.active_station_id = saved_station;
-
-                #[cfg(debug_assertions)]
-                if DF.log_tuner {
-                    log::info!(
-                        "🔧 TUNER INIT: Restored saved station '{:?}' for [{}]",
-                        saved_station,
-                        pair
-                    );
-                }
-            } else {
-                // Default if no override exists
-                app.active_station_id = StationId::default();
-                if DF.log_tuner {
-                    #[cfg(debug_assertions)]
-                    log::info!(
-                        "🔧 TUNER INIT: No save found for [{}]. Using StationId::default() instead",
-                        pair
-                    );
-                }
-            }
-        } else {
-            app.active_station_id = StationId::default();
-        }
-
         app.plot_view = PlotView::new();
         app.simulated_prices = HashMap::new();
         app.state = AppState::Loading(LoadingState::default());
@@ -407,58 +378,53 @@ impl ZoneSniperApp {
         None
     }
 
-    /// Standard Pair Switch (Manual or programmatic).
-    /// Updates Global State to point to this pair, but does NOT auto-select a trade.
-    pub fn handle_pair_selection(&mut self, new_pair: String) {
+    /// Updates Global State to point to this pair, but does NOT auto-select a trade opportunity
+    pub fn handle_pair_selection(&mut self, new_pair_name: String) {
+        // This does *NOT* update self.opportunity_selection at all!
 
-        // This should *NOT* update self.opportunity_selection at all!
-
-        #[cfg(debug_assertions)]
-        if DF.log_selected_pair {
-            log::info!("Top of handle_pair_selection");
-        }
         // --- 1. SAVE STATE (Old Pair) ---
         // We only remember which Station (Button) the user was on.
-        if let Some(old_pair) = &self.selected_pair {
-            // Default to Swing if for some reason nothing is set (Safety)
-            let current_station = self.active_station_id;
+        // No idea why we need do this station stuff. Figure it out next....
+        // if let Some(old_pair) = &self.selected_pair {
+        //     let current_station = self.active_station_id;
+        //     self.station_overrides
+        //         .insert(old_pair.clone(), current_station);
 
-            self.station_overrides
-                .insert(old_pair.clone(), current_station);
+        //     #[cfg(debug_assertions)]
+        //     if DF.log_station_overrides {
+        //         log::info!(
+        //             "💾 STATION_OVERRIDE SAVE [{}]: Saved Station '{:?}'",
+        //             old_pair,
+        //             current_station
+        //         );
+        //     }
+        // }
 
-            #[cfg(debug_assertions)]
-            if DF.log_tuner {
-                log::info!(
-                    "💾 TUNER  SAVE [{}]: Saved Station '{:?}'",
-                    old_pair,
-                    current_station
-                );
-            }
-        }
+        self.auto_scale_y = true; // TEMP completely the wrong place for plot code.
 
-        self.auto_scale_y = true;
-
-        self.selected_pair = Some(new_pair.clone());
+        let old_pair_name = self.selected_pair.replace(new_pair_name.clone());
         #[cfg(debug_assertions)]
         if DF.log_selected_pair {
             log::info!(
-                "SELECTED PAIR: set in handle_pair_selection to {}",
-                new_pair
+                "SELECTED PAIR: set in handle_pair_selection to {} (from {}) ",
+                new_pair_name,
+                old_pair_name.as_deref().unwrap_or("None"),
             );
         }
 
-        // LOAD STATE for new pair
-        let target_station = self
+        self.active_station_id = self
             .station_overrides
-            .get(&new_pair)
-            .copied() // Converts &StationId to StationId
+            .get(&new_pair_name)
+            .copied()
             .unwrap_or_default();
-        // Apply it to the config
         #[cfg(debug_assertions)]
-        if DF.log_tuner {
-            log::info!(" TUNER: LOAD station [{:?}]", target_station);
+        if DF.log_active_station_id {
+            log::info!(
+                "🔧 ACTIVE STATION ID SET FROM OVERRIDES: '{:?}' for [{}] in handle_pair_selection",
+                self.active_station_id,
+                &new_pair_name,
+            );
         }
-        self.active_station_id = target_station;
     }
 
     /// Sets the scroll target based on the current selection state.
@@ -494,15 +460,13 @@ impl ZoneSniperApp {
             }
         }
 
-        // 3. Routing (The Fork)
+        // If we have found an opportunity for this pair, go to it. Otherwise just switchto the pair
         if let Some(op) = best_op {
             // PATH A: Specific Opportunity
             // Delegate to the sniper function to handle context override + highlighting
             self.select_specific_opportunity(op, ScrollBehavior::Center, "jump to pair");
         } else {
-            // PATH B: Market View
-            // Just switch the UI context to this pair.
-            // We assume the Engine is already running/tuned for this pair via Startup/Background loop.
+            // Path B: No opportunity for this pair. So just switch the UI context to this pair.
             self.handle_pair_selection(pair);
         }
 
@@ -515,11 +479,11 @@ impl ZoneSniperApp {
         &mut self,
         op: TradeOpportunity,
         scroll: ScrollBehavior,
-        reason: &str,
+        _reason: &str,
     ) {
         #[cfg(debug_assertions)]
         if DF.log_selected_opportunity {
-            log::info!("Call select_specific_opportunity because {}", reason);
+            log::info!("Call select_specific_opportunity because {}", _reason);
         }
         // 1. Switch State (Pure UI)
         self.handle_pair_selection(op.pair_name.clone());
@@ -1011,13 +975,20 @@ impl ZoneSniperApp {
         if let Some(engine) = &mut self.engine {
             while processed < chunk_size && !state.todo_list.is_empty() {
                 if let Some(pair) = state.todo_list.pop() {
-                    // A. Determine Station
+                    // A. Determine Station (and use default if we don't have one.....)
                     let station_id = self
                         .station_overrides
                         .get(&pair)
                         .copied()
                         .unwrap_or_default();
-
+                    #[cfg(debug_assertions)]
+                    if DF.log_active_station_id {
+                        log::info!(
+                            "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in handle_tuning_phase()",
+                            station_id,
+                            &pair,
+                        );
+                    }
                     // B. Get Station Definition
                     if let Some(station_def) = self
                         .global_tuner_config
@@ -1112,7 +1083,9 @@ impl ZoneSniperApp {
             if let Some(target_pair) = self.selected_pair.clone() {
                 #[cfg(debug_assertions)]
                 if DF.log_selected_pair {
-                    log::info!("Weird code in handle_tuning_phase.  now just does jump_to_pair() which might be right. Before it did self.selected_pair = None");
+                    log::info!(
+                        "Weird code in handle_tuning_phase.  now just does jump_to_pair() which might be right. Before it did self.selected_pair = None"
+                    );
                 }
                 self.jump_to_pair(target_pair);
             }
@@ -1166,7 +1139,22 @@ impl ZoneSniperApp {
                         final_pair
                     );
                 }
-                self.selected_pair = Some(final_pair.clone()); // So guaranteed to have a selected_pair after this, right?
+                self.selected_pair = Some(final_pair.clone()); // So guaranteed to have a selected_pair after this
+
+                // Restore active station for the specific startup pair
+                self.active_station_id = self
+                    .station_overrides
+                    .get(&final_pair.clone())
+                    .copied()
+                    .unwrap_or_default();
+                #[cfg(debug_assertions)]
+                if DF.log_active_station_id {
+                    log::info!(
+                        "🔧 STATION INIT: Restoring saved station for selected pair '{:?}' for [{}]",
+                        self.active_station_id,
+                        final_pair,
+                    );
+                }
 
                 // 4. Initialize Engine
                 let mut engine = SniperEngine::new(timeseries);

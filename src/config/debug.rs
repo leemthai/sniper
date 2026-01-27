@@ -13,8 +13,10 @@ pub struct LogFlags {
     pub log_results_repo: bool,
     pub log_engine: bool,
 
-    /// Includes PH logging e.g active_ph_pct
-    pub log_tuner: bool, 
+    pub log_tuner: bool,
+    pub log_station_overrides: bool, 
+    pub log_active_station_id: bool,
+    pub log_active_ph_pct: bool,
     
     pub log_pathfinder: bool,
     pub log_zones: bool,
@@ -36,7 +38,6 @@ pub struct LogFlags {
     pub max_pairs_load: usize,
     // Nuke button for the Ledger
     pub wipe_ledger_on_startup: bool, 
-
 }
 
 pub const DF: LogFlags = LogFlags {
@@ -46,11 +47,14 @@ pub const DF: LogFlags = LogFlags {
     log_ledger: false,
     log_results_repo: false,
     log_engine: false,
-    log_tuner: false,
+    log_tuner: true,
+    log_active_station_id: true,
+    log_station_overrides: true,
+    log_active_ph_pct: false,
     log_pathfinder: false,
     log_zones: false,
-    log_selected_pair: true,
-    log_selected_opportunity: true,
+    log_selected_pair: false,
+    log_selected_opportunity: false,
     log_simd: false,
 
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]

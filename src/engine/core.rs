@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 #[cfg(not(target_arch = "wasm32"))]
 use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::Runtime};
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
 use crate::config::{OptimizationGoal, StationId, constants};
 
@@ -160,32 +160,36 @@ impl SniperEngine {
         }
     }
 
-    // INTENT: The User clicked a Pair or Station.
-    // pub fn request_market_scan(&mut self, pair: String) {
-    //     // Just trigger the work.
-    //     self.force_recalc(&pair, None, JobMode::FullAnalysis, "MARKET SCAN");
-    // }
-
     /// INTENT: The User clicked a specific Trade Opportunity.
     /// Action: Calculate CVA Zones for this specific PH so the chart looks right,
     /// but DO NOT re-run simulations (preserve the trade list).
     pub fn request_trade_context(&mut self, pair: String, target_ph: f64) {
         // 2. Set Override (so the worker picks it up)
         self.set_price_horizon_override(pair.clone(), target_ph);
-
-        // 3. Dispatch Context-Only Job
-        // Lee's only code to grab the station id out of station_overrides lol
-        if let Some(station_id) = self.station_overrides.get(&pair).copied() {
-            self.force_recalc(
-                &pair,
-                None,
-                target_ph,
-                self.current_strategy,
+        let station_id = self
+            .station_overrides
+            .get(&pair)
+            .copied()
+            .unwrap_or_default();
+        #[cfg(debug_assertions)]
+        if DF.log_active_station_id {
+            log::info!(
+                "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in request_trade_context",
                 station_id,
-                JobMode::ContextOnly,
-                "TRADE CONTEXT",
+                &pair,
             );
         }
+        // 3. Dispatch Context-Only Job
+        self.force_recalc(
+            &pair,
+            None,
+            target_ph,
+            self.current_strategy,
+            station_id,
+            JobMode::ContextOnly,
+            "TRADE CONTEXT",
+        )
+        // }
     }
 
     /// Process incoming live candles
@@ -224,19 +228,30 @@ impl SniperEngine {
 
                         // 3. Trigger Recalc
                         let pair_name = candle.symbol;
-                        // This is now allowed because 'ts_collection' borrows 'ts_lock', not 'self'.
                         if let Some(ph_pct) = self.price_horizon_overrides.get(&pair_name) {
-                            if let Some(station_id) = self.station_overrides.get(&pair_name) {
-                                self.force_recalc(
+                            let station_id = self
+                                .station_overrides
+                                .get(&pair_name)
+                                .copied()
+                                .unwrap_or_default();
+                            #[cfg(debug_assertions)]
+                            if DF.log_active_station_id {
+                                log::info!(
+                                    "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in process_live_data()",
+                                    station_id,
                                     &pair_name,
-                                    Some(candle.close),
-                                    *ph_pct,
-                                    self.current_strategy,
-                                    *station_id,
-                                    JobMode::FullAnalysis,
-                                    "CANDLE CLOSE TRIGGER",
                                 );
                             }
+                            self.force_recalc(
+                                &pair_name,
+                                Some(candle.close),
+                                *ph_pct,
+                                self.current_strategy,
+                                station_id,
+                                JobMode::FullAnalysis,
+                                "CANDLE CLOSE TRIGGER",
+                            );
+                            // }
                         }
                     }
                 }
@@ -471,10 +486,6 @@ impl SniperEngine {
         self.current_strategy = strategy;
     }
 
-    pub fn set_station_override(&mut self, pair: String, station: StationId) {
-        self.station_overrides.insert(pair, station);
-    }
-
     /// THE GAME LOOP.
     pub fn update(&mut self) {
         // Ingest Live Data (The Heartbeat)
@@ -603,7 +614,7 @@ impl SniperEngine {
                          ph_map: &HashMap<String, f64>,
                          st_map: &HashMap<String, StationId>| {
             // 1. Lookup PH (Specific to pair)
-            let ph = *ph_map.get(&pair).unwrap_or(&0.15);
+            let ph = *ph_map.get(&pair).unwrap_or(&0.15); // TEMP this is shitcode. We cannot default to 0.15!!!!!!
 
             // 2. Lookup Station (Specific to pair)
             let station = *st_map.get(&pair).unwrap_or(&StationId::default());
@@ -758,16 +769,28 @@ impl SniperEngine {
                             }
 
                             if let Some(ph_pct) = self.price_horizon_overrides.get(&pair) {
-                                if let Some(station_id) = self.station_overrides.get(&pair) {
-                                    self.dispatch_job(
-                                        pair.clone(),
-                                        None,
-                                        *ph_pct,
-                                        self.current_strategy,
-                                        *station_id,
-                                        JobMode::FullAnalysis,
+                                let station_id = self
+                                    .station_overrides
+                                    .get(&pair)
+                                    .copied()
+                                    .unwrap_or_default();
+                                #[cfg(debug_assertions)]
+                                if DF.log_active_station_id {
+                                    log::info!(
+                                        "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in check_automatic_triggers()",
+                                        station_id,
+                                        &pair,
                                     );
                                 }
+                                self.dispatch_job(
+                                    pair.clone(),
+                                    None,
+                                    *ph_pct,
+                                    self.current_strategy,
+                                    station_id,
+                                    JobMode::FullAnalysis,
+                                );
+                                // }
                             }
                         }
                     }

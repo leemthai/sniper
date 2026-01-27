@@ -734,14 +734,19 @@ impl ZoneSniperApp {
             if !exists {
                 #[cfg(debug_assertions)]
                 if DF.log_selected_opportunity {
-                    log::info!("SELECTED OPPORTUNITY CLEARed in render_trade_finder_content because apparently no longer exists. THIS NEEDS INVESTIGATING TO FIND OUT WHY.");
+                    log::info!(
+                        "ANTI-HEALER: SELECTED OPPORTUNITY CLEARed in render_trade_finder_content because apparently no longer exists. THIS NEEDS INVESTIGATING TO FIND OUT WHY."
+                    );
                 }
                 self.selected_opportunity = None;
             }
         } else {
             #[cfg(debug_assertions)]
             if DF.log_selected_opportunity {
-                log::info!("FAILED TO FIND the currently selected OPPPORTUNITY {:?} in TF because it is blank. Weird?", &self.selected_opportunity);
+                log::info!(
+                    "ANTI-HEALER: FAILED TO FIND the currently selected OPPPORTUNITY {:?} in TF because it is blank. Weird?",
+                    &self.selected_opportunity
+                );
             }
         }
 
@@ -950,12 +955,19 @@ impl ZoneSniperApp {
         // // 4. INTERACTION
         if response.clicked() {
             if let Some(op) = &row.opportunity {
-                self.select_specific_opportunity(op.clone(), ScrollBehavior::None, "clicked in render_tf_table_row");
+                self.select_specific_opportunity(
+                    op.clone(),
+                    ScrollBehavior::None,
+                    "clicked in render_tf_table_row",
+                );
             } else {
+                // This clicked row has no opportunity attached
                 self.handle_pair_selection(row.pair_name.clone());
                 #[cfg(debug_assertions)]
-                log::info!("SELECTED OPPORTUNITY CLEARing! in render_tf_table_row");
-                self.selected_opportunity = None;
+                log::info!(
+                    "SELECTED OPPORTUNITY CLEARing! in render_tf_table_row because this this row has no opportunity i.e. row.opportunity is None"
+                );
+                // self.selected_opportunity = None;
             }
         }
     }
@@ -1470,6 +1482,14 @@ impl ZoneSniperApp {
             time_tuner::TunerAction::StationSelected(station_id) => {
                 // A. Update Active ID (Global Config)
                 self.active_station_id = station_id;
+                #[cfg(debug_assertions)]
+                if DF.log_active_station_id {
+                    log::info!(
+                        "🔧 ACTIVE STATION SET '{:?}' for ID [{:?}]",
+                        self.active_station_id,
+                        station_id,
+                    );
+                }
 
                 // B. Run Auto-Tune for the Active Pair
                 if let Some(pair) = &self.selected_pair {
@@ -1477,16 +1497,24 @@ impl ZoneSniperApp {
 
                     // Save the preference immediately
                     self.station_overrides.insert(pair_name.clone(), station_id);
+                    #[cfg(debug_assertions)]
+                    if DF.log_station_overrides {
+                        log::info!(
+                            "🔧 STATION OVERRIDE SET: '{:?}' for [{}] in handle_tuner_action()",
+                            station_id,
+                            &pair_name,
+                        );
+                    }
 
                     if let Some(best_ph) = self.run_auto_tune_logic(&pair_name, station_id) {
                         #[cfg(debug_assertions)]
                         if DF.log_tuner {
-                        log::info!(
-                            "🎛️ BUTTON TUNE [{}] Station: {:?} -> PH {:.2}%",
-                            pair_name,
-                            station_id,
-                            best_ph * 100.0
-                        );
+                            log::info!(
+                                "🎛️ BUTTON TUNE [{}] Station: {:?} -> PH {:.2}%",
+                                pair_name,
+                                station_id,
+                                best_ph * 100.0
+                            );
                         }
 
                         // C. Apply Result to Config
@@ -1728,7 +1756,11 @@ impl ZoneSniperApp {
                         new_selected.simulation = variant.simulation.clone();
 
                         // 2. Use the Helper
-                        self.select_specific_opportunity(new_selected, ScrollBehavior::None, "render_card_variants");
+                        self.select_specific_opportunity(
+                            new_selected,
+                            ScrollBehavior::None,
+                            "render_card_variants",
+                        );
 
                         should_close = true;
                     }
