@@ -330,7 +330,7 @@ impl ZoneSniperApp {
         if self
             .engine
             .as_ref()
-            .map_or(false, |e| e.current_strategy != self.saved_strategy)
+            .map_or(false, |e| e.engine_strategy != self.saved_strategy)
         {
             return;
         }
@@ -342,18 +342,18 @@ impl ZoneSniperApp {
         let priority_pair = self.selected_pair.clone();
 
         // 3. Execute Update
-        if let Some(engine) = &mut self.engine {
+        if let Some(e) = &mut self.engine {
             // Global Invalidation
             // Since the "Rules of the Game" changed, every pair needs to be re-judged.
             // We pass the current pair as priority so the user sees the active screen update first.
-            engine.trigger_global_recalc(priority_pair);
+            e.trigger_global_recalc(priority_pair);
         }
     }
 
     /// Helper: Runs the Auto-Tune algorithm for a specific pair and station.
     /// Returns Some(new_ph) if successful. Returns None if data/price is missing.
     pub fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<f64> {
-        if let Some(engine) = &self.engine {
+        if let Some(e) = &self.engine {
             // 1. Get Config for the requested Station
             let station = constants::tuner::CONFIG
                 .stations
@@ -361,10 +361,10 @@ impl ZoneSniperApp {
                 .find(|s| s.id == station_id)?;
 
             // 2. Get Price (Strict Check - must be live)
-            let price = engine.price_stream.get_price(pair)?;
+            let price = e.price_stream.get_price(pair)?;
 
             // 3. Get Data
-            let ts_guard = engine.timeseries.read().unwrap();
+            let ts_guard = e.timeseries.read().unwrap();
             let ohlcv =
                 find_matching_ohlcv(&ts_guard.series_data, pair, constants::INTERVAL_WIDTH_MS)
                     .ok()?;
@@ -429,8 +429,8 @@ impl ZoneSniperApp {
         // 2. Find Best Op (Smart Lookup)
         // We look for an existing opportunity in the engine's current data
         let mut best_op = None;
-        if let Some(eng) = &self.engine {
-            let rows = eng.get_trade_finder_rows(Some(&self.simulated_prices));
+        if let Some(e) = &self.engine {
+            let rows = e.get_trade_finder_rows(Some(&self.simulated_prices));
             if let Some(row) = rows.into_iter().find(|r| r.pair_name == pair) {
                 if let Some(op) = row.opportunity {
                     best_op = Some(op);
@@ -547,8 +547,8 @@ impl ZoneSniperApp {
         return true;
 
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(engine) = &self.engine {
-            engine.price_stream.is_suspended()
+        if let Some(e) = &self.engine {
+            e.price_stream.is_suspended()
         } else {
             false
         }
@@ -560,22 +560,22 @@ impl ZoneSniperApp {
         if let Some(sim_price) = self.simulated_prices.get(pair) {
             return Some(*sim_price);
         }
-        if let Some(engine) = &self.engine {
-            return engine.get_price(pair);
+        if let Some(e) = &self.engine {
+            return e.get_price(pair);
         }
         None
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn toggle_simulation_mode(&mut self) {
-        if let Some(engine) = &self.engine {
-            let is_sim = !engine.price_stream.is_suspended();
-            engine.set_stream_suspended(is_sim);
+        if let Some(e) = &self.engine {
+            let is_sim = !e.price_stream.is_suspended();
+            e.set_stream_suspended(is_sim);
 
             if is_sim {
-                let all_pairs = engine.get_all_pair_names();
+                let all_pairs = e.get_all_pair_names();
                 for pair in all_pairs {
-                    if let Some(live_price) = engine.get_price(&pair) {
+                    if let Some(live_price) = e.get_price(&pair) {
                         self.simulated_prices.insert(pair, live_price);
                     }
                 }
@@ -601,12 +601,12 @@ impl ZoneSniperApp {
     }
 
     pub(super) fn jump_to_next_zone(&mut self, zone_type: &str) {
-        if let Some(engine) = &self.engine {
+        if let Some(e) = &self.engine {
             let Some(pair) = self.selected_pair.clone() else {
                 return;
             };
             let current_price = self.get_display_price(&pair).unwrap_or(0.0);
-            let Some(model) = engine.get_model(&pair) else {
+            let Some(model) = e.get_model(&pair) else {
                 return;
             };
 
@@ -863,12 +863,12 @@ impl ZoneSniperApp {
 
     fn render_running_state(&mut self, ctx: &Context) {
         let start = AppInstant::now();
-        if let Some(engine) = &mut self.engine {
+        if let Some(e) = &mut self.engine {
             #[cfg(debug_assertions)]
             if DF.log_station_overrides {
-                log::info!("station overrides status: {:?}", engine.station_overrides);
+                log::info!("station overrides status: {:?}", e.engine_station_overrides);
             }
-            engine.update();
+            e.update();
         }
         let engine_time = start.elapsed().as_micros();
 
@@ -952,7 +952,7 @@ impl ZoneSniperApp {
         let chunk_size = 5;
         let mut processed = 0;
 
-        if let Some(engine) = &mut self.engine {
+        if let Some(e) = &mut self.engine {
             while processed < chunk_size && !state.todo_list.is_empty() {
                 if let Some(pair) = state.todo_list.pop() {
                     // A. Determine Station (and use default if we don't have one.....)
@@ -978,13 +978,13 @@ impl ZoneSniperApp {
                     {
                         // C. Tune it
                         let best_ph = {
-                            let ts_guard = engine.timeseries.read().unwrap();
+                            let ts_guard = e.timeseries.read().unwrap();
                             if let Ok(ohlcv) = find_matching_ohlcv(
                                 &ts_guard.series_data,
                                 &pair,
                                 constants::INTERVAL_WIDTH_MS,
                             ) {
-                                if let Some(price) = engine.price_stream.get_price(&pair) {
+                                if let Some(price) = e.price_stream.get_price(&pair) {
                                     if price > f64::EPSILON {
                                         worker::tune_to_station(
                                             ohlcv,
@@ -1022,11 +1022,11 @@ impl ZoneSniperApp {
 
                         // D. Apply Result
                         if let Some(ph) = best_ph {
-                            engine.set_ph_override(pair.clone(), self.active_ph_pct);
+                            e.set_ph_override(pair.clone(), self.active_ph_pct);
                             #[cfg(debug_assertions)]
                             if DF.log_ph_vals {
                                 log::info!(
-                                    "PH VALS: For pair {} setting engine.ph_overrides during tuning phase to: {}",
+                                    "PH VALS: For pair {} setting engine_ph_overrides during tuning phase to: {}",
                                     &pair,
                                     ph
                                 );
@@ -1063,22 +1063,22 @@ impl ZoneSniperApp {
         state.completed += processed;
 
         #[cfg(debug_assertions)]
-        if let Some(engine) = &self.engine {
+        if let Some(e) = &self.engine {
             if DF.log_ph_vals {
                 log::info!(
-                    "Near bottom of handle_tuning_phase we have ph_overrides of {:?}",
-                    engine.ph_overrides
+                    "Near bottom of handle_tuning_phase we have engine_ph_overrides of {:?}",
+                    e.engine_ph_overrides
                 );
             }
         }
 
         if state.todo_list.is_empty() {
             // 1. Ignite the Engine (Run CVA + Pathfinder for ALL pairs with new settings)
-            if let Some(engine) = &mut self.engine {
+            if let Some(e) = &mut self.engine {
                 if DF.log_tuner {
                     log::info!(">> Global Tuning Complete. Igniting Engine.");
                 }
-                engine.trigger_global_recalc(None);
+                e.trigger_global_recalc(None);
             }
 
             // 2. EXECUTE SMART SELECTION (don't know what that means anymore)
@@ -1179,14 +1179,14 @@ impl ZoneSniperApp {
                 }
 
                 // 4. Initialize Engine
-                let mut engine = SniperEngine::new(timeseries);
+                let mut e = SniperEngine::new(timeseries);
 
                 // RESTORE LEDGER
                 // If the Nuke Flag is on, we start fresh. Otherwise, we load persistence.
                 if DF.wipe_ledger_on_startup {
                     #[cfg(debug_assertions)]
                     log::info!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
-                    engine.ledger = OpportunityLedger::new();
+                    e.engine_ledger = OpportunityLedger::new();
                 } else {
                     #[cfg(not(target_arch = "wasm32"))]
                     {
@@ -1199,33 +1199,31 @@ impl ZoneSniperApp {
                                         l.opportunities.len()
                                     );
                                 }
-                                engine.ledger = l;
+                                e.engine_ledger = l;
                             }
                             Err(_e) => {
                                 #[cfg(debug_assertions)]
                                 log::error!("Failed to load ledger (starting fresh): {}", _e);
-                                engine.ledger = OpportunityLedger::new();
+                                e.engine_ledger = OpportunityLedger::new();
                             }
                         }
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
-                        engine.ledger = OpportunityLedger::new();
+                        e.engine_ledger = OpportunityLedger::new();
                     }
                 }
 
                 // --- CULL ORPHANS ---
                 // Remove opportunities for pairs that were not loaded in this session.
                 #[cfg(debug_assertions)]
-                let count_before = engine.ledger.opportunities.len();
+                let count_before = e.engine_ledger.opportunities.len();
 
-                engine
-                    .ledger
-                    .retain(|_id, op| valid_set.contains(&op.pair_name));
+                e.engine_ledger.retain(|_id, op| valid_set.contains(&op.pair_name));
 
                 #[cfg(debug_assertions)]
                 {
-                    let count_after = engine.ledger.opportunities.len();
+                    let count_after = e.engine_ledger.opportunities.len();
                     if count_before != count_after {
                         if DF.log_ledger {
                             log::warn!(
@@ -1237,13 +1235,13 @@ impl ZoneSniperApp {
                 }
                 // -------------------------
 
-                self.engine = Some(engine);
+                self.engine = Some(e);
 
                 if let Some(id) = &self.saved_opportunity_id {
                     if let Some(op) = self
                         .engine
                         .as_ref()
-                        .and_then(|e| e.ledger.opportunities.get(id))
+                        .and_then(|e| e.engine_ledger.opportunities.get(id))
                         .cloned()
                     {
                         // We have found the saved opportunity. However, since selected_pair is king, we must decide if this preserved opportunity is from this pair or not.
@@ -1268,9 +1266,9 @@ impl ZoneSniperApp {
                             }
                             // If, however, saved opportunity IS NOT from self.selected_pair, we must instead find a new opportunity from self.selected_pair
                             // How to find best opportunity in ledger ? TEMP for start, just pick one quick ..... this code is very rare anyway.
-                            if let Some(real_engine) = self.engine.as_ref() {
-                                self.selected_opportunity = real_engine
-                                    .ledger
+                            if let Some(e) = self.engine.as_ref() {
+                                self.selected_opportunity = e
+                                    .engine_ledger
                                     .find_first_for_pair(self.selected_pair.clone())
                                     .cloned();
                                 #[cfg(debug_assertions)]
@@ -1299,9 +1297,9 @@ impl ZoneSniperApp {
                     }
                 } else {
                     // Saved_opportunity_id is None. So again, just find best op in ledger, similar to above?
-                    if let Some(real_engine) = self.engine.as_ref() {
-                        self.selected_opportunity = real_engine
-                            .ledger
+                    if let Some(e) = self.engine.as_ref() {
+                        self.selected_opportunity = e
+                            .engine_ledger
                             .find_first_for_pair(self.selected_pair.clone())
                             .cloned();
                         #[cfg(debug_assertions)]
@@ -1340,10 +1338,10 @@ impl ZoneSniperApp {
     // --- AUDIT HELPER ---
     #[cfg(feature = "ph_audit")]
     fn try_run_audit(&self, ctx: &Context) {
-        if let Some(engine) = &self.engine {
+        if let Some(e) = &self.engine {
             // 1. ACCESS DATA FIRST
             // We need to know what pairs we actually HAVE before we decide what to wait for.
-            let ts_guard = engine.timeseries.read().unwrap();
+            let ts_guard = e.timeseries.read().unwrap();
 
             // If data hasn't loaded yet, keep waiting.
             if ts_guard.series_data.is_empty() {
@@ -1363,7 +1361,7 @@ impl ZoneSniperApp {
 
                 if has_data {
                     // If we have data, we MUST wait for a live price
-                    if engine.price_stream.get_price(pair).is_none() {
+                    if e.price_stream.get_price(pair).is_none() {
                         waiting_for_price = true;
                         break;
                     }
@@ -1386,18 +1384,19 @@ impl ZoneSniperApp {
             // Gather Live Prices (Only for the ones we found)
             let mut live_prices = std::collections::HashMap::new();
             for &pair in crate::ph_audit::config::AUDIT_PAIRS {
-                if let Some(p) = engine.price_stream.get_price(pair) {
+                if let Some(p) = e.price_stream.get_price(pair) {
                     live_prices.insert(pair.to_string(), p);
                 }
             }
 
             let config = self.app_config.clone();
-            let ts = engine.timeseries.read().unwrap();
+            let ts = e.timeseries.read().unwrap();
 
             // Run & Exit
             crate::ph_audit::runner::execute_audit(&ts, &config, &live_prices);
         } else {
             // Engine not initialized yet
+            log::warn!("Engine not init yet in try_run_audit");
         }
     }
 }
@@ -1417,9 +1416,9 @@ impl eframe::App for ZoneSniperApp {
 
         // 1. Snapshot the Engine Ledger
         #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
-        if let Some(engine) = &self.engine {
+        if let Some(e) = &self.engine {
             // Save active ledger to separate binary file
-            if let Err(e) = ledger_io::save_ledger(&engine.ledger) {
+            if let Err(e) = ledger_io::save_ledger(&e.engine_ledger) {
                 log::error!("Failed to save ledger: {}", e);
             }
         }

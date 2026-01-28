@@ -27,8 +27,19 @@ use super::state::PairState;
 use super::worker;
 
 pub struct SniperEngine {
+
     /// Registry of all pairs
-    pub pairs: HashMap<String, PairState>,
+    pub engine_pairs: HashMap<String, PairState>,
+
+    /// The Live Configuration State
+    pub engine_ph_overrides: HashMap<String, f64>,
+    pub engine_strategy: OptimizationGoal,
+    pub engine_station_overrides: HashMap<String, StationId>,
+    
+    pub engine_ledger: OpportunityLedger,
+    // Maintenance Timer (Runs in Release & Debug)
+    pub last_ledger_maintenance: AppInstant,
+    pub results_repo: Arc<dyn ResultsRepositoryTrait>,
 
     /// Shared immutable data
     pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
@@ -60,15 +71,8 @@ pub struct SniperEngine {
         StationId,
         JobMode,
     )>,
-    /// The Live Configuration State
-    pub ph_overrides: HashMap<String, f64>,
-    pub current_strategy: OptimizationGoal,
-    pub station_overrides: HashMap<String, StationId>,
-    pub ledger: OpportunityLedger,
-    pub results_repo: Arc<dyn ResultsRepositoryTrait>,
 
-    // Maintenance Timer (Runs in Release & Debug)
-    pub last_ledger_maintenance: AppInstant,
+
 }
 
 impl SniperEngine {
@@ -138,7 +142,11 @@ impl SniperEngine {
         let repo = ResultsRepository::new("").unwrap();
         // 5. Construct Engine
         Self {
-            pairs,
+            engine_pairs: pairs,
+            engine_ph_overrides: HashMap::new(),
+            engine_strategy: OptimizationGoal::default(),
+            engine_station_overrides: HashMap::new(),
+            engine_ledger: OpportunityLedger::new(),
             timeseries: timeseries_arc, // Pass the Arc<RwLock> we created
             price_stream,
             candle_rx,
@@ -151,12 +159,8 @@ impl SniperEngine {
             #[cfg(target_arch = "wasm32")]
             result_tx,
             queue: VecDeque::new(),
-            ph_overrides: HashMap::new(),
-            ledger: OpportunityLedger::new(),
             results_repo: Arc::new(repo),
             last_ledger_maintenance: AppInstant::now(),
-            current_strategy: OptimizationGoal::default(),
-            station_overrides: HashMap::new(),
         }
     }
 
@@ -166,7 +170,7 @@ impl SniperEngine {
     pub fn request_trade_context(&mut self, pair: String, target_ph: f64) {
         // 2. Set Override (so the worker picks it up)
         self.set_ph_override(pair.clone(), target_ph);
-        let station_id = self.station_overrides.get(&pair).copied().unwrap(); // Will crash if None
+        let station_id = self.engine_station_overrides.get(&pair).copied().unwrap(); // Will crash if None
         #[cfg(debug_assertions)]
         if DF.log_active_station_id {
             log::info!(
@@ -180,7 +184,7 @@ impl SniperEngine {
             &pair,
             None,
             target_ph,
-            self.current_strategy,
+            self.engine_strategy,
             station_id,
             JobMode::ContextOnly,
             "TRADE CONTEXT",
@@ -224,11 +228,11 @@ impl SniperEngine {
 
                         // 3. Trigger Recalc
                         let pair_name = candle.symbol;
-                        if let Some(ph_pct) = self.ph_overrides.get(&pair_name) {
+                        if let Some(ph_pct) = self.engine_ph_overrides.get(&pair_name) {
                             #[cfg(debug_assertions)]
                             if DF.log_ph_vals {
                                 log::info!(
-                                    "READING ph_pct value of {} from self.ph_overrides for pair {}",
+                                    "READING ph_pct value of {} from self.engine_ph_overrides for pair {}",
                                     ph_pct,
                                     pair_name
                                 );
@@ -237,24 +241,24 @@ impl SniperEngine {
                             // i.e why does this fail sometimes.... ??????
                             // Must mean the pair_name is not in the hashmap right? But I thought it was guaranteed full.... ??????
                             let station_id = self
-                                .station_overrides
+                                .engine_station_overrides
                                 .get(&pair_name)
                                 .copied()
-                                .expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in station_overrides {:?}", pair_name, ph_pct, self.station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
+                                .expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in engine_station_overrides {:?}", pair_name, ph_pct, self.engine_station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
                             #[cfg(debug_assertions)]
                             if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
                                 log::info!(
                                     "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in process_live_data() and the full station_overrides is {:?}",
                                     station_id,
                                     &pair_name,
-                                    self.station_overrides,
+                                    self.engine_station_overrides,
                                 );
                             }
                             self.force_recalc(
                                 &pair_name,
                                 Some(candle.close),
                                 *ph_pct,
-                                self.current_strategy,
+                                self.engine_strategy,
                                 station_id,
                                 JobMode::FullAnalysis,
                                 "CANDLE CLOSE TRIGGER",
@@ -264,7 +268,7 @@ impl SniperEngine {
                             #[cfg(debug_assertions)]
                             if DF.log_ph_vals {
                                 log::info!(
-                                    "FAILED to READ ph_pct from self.ph_overrides for pair {}. Therefore not updating this pair",
+                                    "FAILED to READ ph_pct from self.engine_ph_overrides for pair {}. Therefore not updating this pair",
                                     pair_name
                                 );
                             }
@@ -289,7 +293,7 @@ impl SniperEngine {
         let ts_guard = self.timeseries.read().unwrap();
 
         // 1. Scan Ledger
-        for (id, op) in &self.ledger.opportunities {
+        for (id, op) in &self.engine_ledger.opportunities {
             // A. Get Data context
             let pair = &op.pair_name;
             let interval_ms = constants::INTERVAL_WIDTH_MS;
@@ -387,7 +391,7 @@ impl SniperEngine {
 
         // 3. Update Ledger
         for id in ids_to_remove {
-            self.ledger.remove(&id);
+            self.engine_ledger.remove(&id);
         }
     }
 
@@ -404,7 +408,7 @@ impl SniperEngine {
 
             // 1. Group Ledger Opportunities by Pair for fast lookup
             let mut ops_by_pair: HashMap<String, Vec<&TradeOpportunity>> = HashMap::new();
-            for op in self.ledger.get_all() {
+            for op in self.engine_ledger.get_all() {
                 ops_by_pair
                     .entry(op.pair_name.clone())
                     .or_default()
@@ -413,7 +417,7 @@ impl SniperEngine {
 
             let ts_guard = self.timeseries.read().unwrap();
 
-            for (pair, _state) in &self.pairs {
+            for (pair, _state) in &self.engine_pairs {
                 // 2. Get Context (Price)
                 // STRICT MODE: Do not default to 0.0. If no price, skip the pair.
                 let price_opt = if let Some(map) = overrides {
@@ -495,11 +499,11 @@ impl SniperEngine {
 
     // Helper functions to ensure the UI can update the Engine's status
     pub fn set_ph_override(&mut self, pair: String, ph_pct: f64) {
-        self.ph_overrides.insert(pair, ph_pct);
+        self.engine_ph_overrides.insert(pair, ph_pct);
     }
 
     pub fn set_strategy(&mut self, strategy: OptimizationGoal) {
-        self.current_strategy = strategy;
+        self.engine_strategy = strategy;
     }
 
     /// THE GAME LOOP.
@@ -526,7 +530,7 @@ impl SniperEngine {
             >= journey_settings.optimization.prune_interval_sec
         {
             // Pass the Tolerance AND the Profile (Strategy)
-            self.ledger
+            self.engine_ledger
                 .prune_collisions(journey_settings.optimization.fuzzy_match_tolerance);
             self.last_ledger_maintenance = t1;
         }
@@ -563,7 +567,7 @@ impl SniperEngine {
 
     /// Accessor for UI
     pub fn get_model(&self, pair: &str) -> Option<Arc<TradingModel>> {
-        self.pairs.get(pair).and_then(|state| state.model.clone())
+        self.engine_pairs.get(pair).and_then(|state| state.model.clone())
     }
 
     pub fn get_price(&self, pair: &str) -> Option<f64> {
@@ -588,7 +592,7 @@ impl SniperEngine {
 
     pub fn get_worker_status_msg(&self) -> Option<String> {
         let calculating_pair = self
-            .pairs
+            .engine_pairs
             .iter()
             .find(|(_, state)| state.is_calculating)
             .map(|(name, _)| name.clone());
@@ -603,11 +607,11 @@ impl SniperEngine {
     }
 
     pub fn get_active_pair_count(&self) -> usize {
-        self.pairs.len()
+        self.engine_pairs.len()
     }
 
     pub fn get_pair_status(&self, pair: &str) -> (bool, Option<String>) {
-        if let Some(state) = self.pairs.get(pair) {
+        if let Some(state) = self.engine_pairs.get(pair) {
             (state.is_calculating, state.last_error.clone())
         } else {
             (false, None)
@@ -621,7 +625,7 @@ impl SniperEngine {
 
         // Helper to push with CORRECT context
         // We capture 'self' features (maps/strategy) to use inside the loop
-        let strat = self.current_strategy;
+        let strat = self.engine_strategy;
 
         // We can't use a closure easily due to borrow checker rules with self,
         // so we just iterate logic directly.
@@ -652,8 +656,8 @@ impl SniperEngine {
             push_pair(
                 vip,
                 &mut self.queue,
-                &self.ph_overrides,
-                &self.station_overrides,
+                &self.engine_ph_overrides,
+                &self.engine_station_overrides,
             );
         }
 
@@ -661,8 +665,8 @@ impl SniperEngine {
             push_pair(
                 pair,
                 &mut self.queue,
-                &self.ph_overrides,
-                &self.station_overrides,
+                &self.engine_ph_overrides,
+                &self.engine_station_overrides,
             );
         }
     }
@@ -680,7 +684,7 @@ impl SniperEngine {
     ) {
         // Check if calculating
         let is_calculating = self
-            .pairs
+            .engine_pairs
             .get(pair)
             .map(|s| s.is_calculating)
             .unwrap_or(false);
@@ -702,7 +706,7 @@ impl SniperEngine {
     }
 
     fn handle_job_result(&mut self, result: JobResult) {
-        if let Some(state) = self.pairs.get_mut(&result.pair_name) {
+        if let Some(state) = self.engine_pairs.get_mut(&result.pair_name) {
             // 1. Always update profile if present (Success OR Failure)
             // if let Some(p) = result.profile {
             //     state.profile = Some(p);
@@ -716,7 +720,7 @@ impl SniperEngine {
                     // Sync to Ledger ---
                     // let fuzzy_tolerance = ;
                     for op in &model.opportunities {
-                        self.ledger.evolve(
+                        self.engine_ledger.evolve(
                             op.clone(),
                             constants::journey::optimization::FUZZY_MATCH_TOLERANCE,
                         );
@@ -746,19 +750,19 @@ impl SniperEngine {
 
     // Add Accessor
     pub fn get_candle_count(&self, pair: &str) -> usize {
-        self.pairs
+        self.engine_pairs
             .get(pair)
             .map(|s| s.last_candle_count)
             .unwrap_or(0)
     }
 
     fn check_automatic_triggers(&mut self) {
-        let pairs: Vec<String> = self.pairs.keys().cloned().collect();
+        let pairs: Vec<String> = self.engine_pairs.keys().cloned().collect();
         let threshold = constants::cva::PRICE_RECALC_THRESHOLD_PCT;
 
         for pair in pairs {
             if let Some(current_price) = self.price_stream.get_price(&pair) {
-                if let Some(state) = self.pairs.get_mut(&pair) {
+                if let Some(state) = self.engine_pairs.get_mut(&pair) {
                     let in_queue = self.queue.iter().any(|(p, _, _, _, _, _)| p == &pair);
 
                     if !state.is_calculating && !in_queue {
@@ -784,12 +788,12 @@ impl SniperEngine {
                                 );
                             }
 
-                            if let Some(ph_pct) = self.ph_overrides.get(&pair) {
+                            if let Some(ph_pct) = self.engine_ph_overrides.get(&pair) {
                                 let station_id = self
-                                    .station_overrides
+                                    .engine_station_overrides
                                     .get(&pair)
                                     .copied()
-                                .   expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in station_overrides {:?}", pair, ph_pct, self.station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
+                                .   expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in station_overrides {:?}", pair, ph_pct, self.engine_station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
                                 #[cfg(debug_assertions)]
                                 if DF.log_active_station_id {
                                     log::info!(
@@ -802,7 +806,7 @@ impl SniperEngine {
                                     pair.clone(),
                                     None,
                                     *ph_pct,
-                                    self.current_strategy,
+                                    self.engine_strategy,
                                     station_id,
                                     JobMode::FullAnalysis,
                                 );
@@ -822,7 +826,7 @@ impl SniperEngine {
 
         // Peek at front (tuple index 0 is pair name)
         if let Some((pair, _, _, _, _, _)) = self.queue.front() {
-            if let Some(state) = self.pairs.get(pair) {
+            if let Some(state) = self.engine_pairs.get(pair) {
                 if state.is_calculating {
                     return; // Busy
                 }
@@ -844,7 +848,7 @@ impl SniperEngine {
         station_id: StationId,
         mode: JobMode,
     ) {
-        if let Some(state) = self.pairs.get_mut(&pair) {
+        if let Some(state) = self.engine_pairs.get_mut(&pair) {
             // 1. Resolve Price
             // Priority: Override -> Live Stream -> None (Worker will fetch from DB)
             let live_price = self.price_stream.get_price(&pair);
