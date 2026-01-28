@@ -18,7 +18,7 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{DF, OptimizationGoal, StationId, constants};
+use crate::config::{DF, OptimizationStrategy, StationId, constants};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -196,7 +196,7 @@ pub struct ZoneSniperApp {
     pub tf_sort_col: SortColumn,
     pub tf_sort_dir: SortDirection,
 
-    pub saved_strategy: OptimizationGoal,
+    pub saved_strategy: OptimizationStrategy,
     pub saved_opportunity_id: Option<String>,
 
     #[serde(skip)]
@@ -271,7 +271,7 @@ impl Default for ZoneSniperApp {
             show_candle_range: false,
             tf_sort_col: SortColumn::LiveRoi, // Default to Money
             tf_sort_dir: SortDirection::Descending, // Highest first
-            saved_strategy: OptimizationGoal::default(),
+            saved_strategy: OptimizationStrategy::default(),
             saved_opportunity_id: None,
         }
     }
@@ -866,7 +866,7 @@ impl ZoneSniperApp {
         if let Some(e) = &mut self.engine {
             #[cfg(debug_assertions)]
             if DF.log_station_overrides {
-                log::info!("station overrides status: {:?}", e.engine_station_overrides);
+                log::info!("engine_station_overrides status in render_running_state: {:?}", e.engine_station_overrides);
             }
             e.update();
         }
@@ -965,7 +965,7 @@ impl ZoneSniperApp {
                     #[cfg(debug_assertions)]
                     if DF.log_active_station_id {
                         log::info!(
-                            "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in handle_tuning_phase()",
+                            "🔧 Reading station_id from app.station_overrides '{:?}' for [{}] in handle_tuning_phase()",
                             station_id,
                             &pair,
                         );
@@ -1098,6 +1098,9 @@ impl ZoneSniperApp {
         }
     }
 
+
+
+    
     /// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
     fn check_loading_completion(&mut self) -> Option<AppState> {
@@ -1105,63 +1108,8 @@ impl ZoneSniperApp {
         if let Some(rx) = &self.data_rx {
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
-                // Get List of ACTUAL loaded pairs
-                let available_pairs = timeseries.unique_pair_names();
-                let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
-
-                // Resolve Startup Pair - and check if the saved 'selected_pair' actually exists in the loaded data.
-                let valid_startup_pair = self
-                    .selected_pair
-                    .as_ref()
-                    .filter(|p| valid_set.contains(*p))
-                    .cloned();
-
-                // Ensure self.station_overrides is setup with at least default value for all valid pairs.
-                #[cfg(debug_assertions)]
-                if DF.log_station_overrides {
-                    log::info!(
-                        "Pre intiialization self.station_overrides was {:?}",
-                        self.station_overrides
-                    );
-                }
-                for pair in available_pairs.clone() {
-                    self.station_overrides
-                        .entry(pair)
-                        .or_insert(StationId::default());
-                }
-                #[cfg(debug_assertions)]
-                if DF.log_station_overrides {
-                    log::info!(
-                        "Post intiialization self.station_overrides is {:?}",
-                        self.station_overrides
-                    );
-                }
-
-                let final_pair = if let Some(p) = valid_startup_pair {
-                    p // Saved pair is valid
-                } else {
-                    // Saved pair is invalid/missing. Fallback to first available.
-                    let fallback = available_pairs.first().cloned().unwrap_or_default();
-                    if DF.log_selected_pair {
-                        #[cfg(debug_assertions)]
-                        log::warn!(
-                            "STARTUP FIX: Saved pair {:?} not found in loaded data. Falling back to {}.",
-                            self.selected_pair,
-                            fallback
-                        );
-                    }
-                    fallback
-                };
-
-                // 3. FORCE UPDATE STATE
-                #[cfg(debug_assertions)]
-                if DF.log_selected_pair {
-                    log::info!(
-                        "SELECTED PAIR: set to [{:?}] in check_loading_completion",
-                        final_pair
-                    );
-                }
-                self.selected_pair = Some(final_pair.clone()); // So guaranteed to have a selected_pair after this
+                let (available_pairs, valid_set, final_pair) =
+                    self.resolve_startup_state(&timeseries);
 
                 // Restore active station for the specific startup pair
                 self.active_station_id = self
@@ -1172,7 +1120,7 @@ impl ZoneSniperApp {
                 #[cfg(debug_assertions)]
                 if DF.log_active_station_id {
                     log::info!(
-                        "🔧 STATION INIT: Restoring saved station for selected pair '{:?}' for [{}]",
+                        "🔧 SETTING app.active_station_id to '{:?}' for [{}] in check_loading_completion()",
                         self.active_station_id,
                         final_pair,
                     );
@@ -1214,21 +1162,19 @@ impl ZoneSniperApp {
                     }
                 }
 
-                // --- CULL ORPHANS ---
-                // Remove opportunities for pairs that were not loaded in this session.
-                #[cfg(debug_assertions)]
-                let count_before = e.engine_ledger.opportunities.len();
+                // Remove all opportunities for pairs that were not loaded in this session.
+                let _count_before = e.engine_ledger.opportunities.len();
 
                 e.engine_ledger.retain(|_id, op| valid_set.contains(&op.pair_name));
 
                 #[cfg(debug_assertions)]
                 {
                     let count_after = e.engine_ledger.opportunities.len();
-                    if count_before != count_after {
+                    if _count_before != count_after {
                         if DF.log_ledger {
                             log::warn!(
                                 "STARTUP CLEANUP: Culled {} orphan trades (Data not loaded).",
-                                count_before - count_after
+                                _count_before - count_after
                             );
                         }
                     }
@@ -1335,6 +1281,73 @@ impl ZoneSniperApp {
         None
     }
 
+    /// Helper: Resolves the startup pair and initializes station overrides.
+    fn resolve_startup_state(
+        &mut self,
+        timeseries: &TimeSeriesCollection,
+    ) -> (Vec<String>, HashSet<String>, String) {
+        // Get List of ACTUAL loaded pairs
+        let available_pairs = timeseries.unique_pair_names();
+        let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
+
+        // Resolve Startup Pair - and check if the saved 'selected_pair' actually exists in the loaded data.
+        let valid_startup_pair = self
+            .selected_pair
+            .as_ref()
+            .filter(|p| valid_set.contains(*p))
+            .cloned();
+
+        // Ensure self.station_overrides is setup with at least default value for all valid pairs.
+        #[cfg(debug_assertions)]
+        if DF.log_station_overrides {
+            log::info!(
+                "Pre initialization of app.station_overrides was {:?}",
+                self.station_overrides
+            );
+        }
+        for pair in available_pairs.clone() {
+            self.station_overrides
+                .entry(pair)
+                .or_insert(StationId::default());
+        }
+        #[cfg(debug_assertions)]
+        if DF.log_station_overrides {
+            log::info!(
+                "Post intiialization app.station_overrides is {:?}",
+                self.station_overrides
+            );
+        }
+        let final_pair = if let Some(p) = valid_startup_pair {
+            p // Saved pair is valid
+        } else {
+            // Saved pair is invalid/missing. Fallback to first available.
+            let fallback = available_pairs
+                .first()
+                .cloned()
+                .expect("Can't run app without at least one asset");
+            if DF.log_selected_pair {
+                #[cfg(debug_assertions)]
+                log::warn!(
+                    "STARTUP FIX: Saved pair {:?} not found in loaded data. Falling back to {}.",
+                    self.selected_pair,
+                    fallback
+                );
+            }
+            fallback
+        };
+        #[cfg(debug_assertions)]
+        if DF.log_selected_pair {
+            log::info!(
+                "SELECTED PAIR: set to [{:?}] in check_loading_completion",
+                final_pair
+            );
+        }
+        self.selected_pair = Some(final_pair.clone()); // Guaranteed to have a selected_pair after this
+
+        (available_pairs, valid_set, final_pair)
+    }
+
+    
     // --- AUDIT HELPER ---
     #[cfg(feature = "ph_audit")]
     fn try_run_audit(&self, ctx: &Context) {

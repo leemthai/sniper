@@ -18,7 +18,7 @@ pub use types::{
     JourneySettings, 
     OptimalSearchSettings, 
     TradeProfile, 
-    OptimizationGoal, 
+    OptimizationStrategy, 
     ZoneParams,
     SimilaritySettings,
     ZoneClassificationConfig

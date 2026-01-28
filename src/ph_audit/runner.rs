@@ -4,7 +4,7 @@ use strum::IntoEnumIterator;
 use crate::analysis::pair_analysis;
 
 use crate::config::constants;
-use crate::config::{OptimizationGoal, StationId};
+use crate::config::{OptimizationStrategy, StationId};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -51,7 +51,7 @@ pub fn execute_audit(
         println!(">> Scanning {} @ ${:.4}...", pair, live_price);
 
         // 3. Loop Strategies
-        for strategy in OptimizationGoal::iter() {
+        for strategy in OptimizationStrategy::iter() {
             // 4. Loop PH Levels
             for &ph_pct in config::PH_LEVELS {
                 run_single_simulation(
@@ -76,7 +76,7 @@ pub fn execute_audit(
 fn run_single_simulation(
     pair: &str,
     price: f64,
-    strategy: &OptimizationGoal,
+    strategy: &OptimizationStrategy,
     ph_pct: f64,
     ts_collection: &TimeSeriesCollection,
     reporter: &mut AuditReporter,

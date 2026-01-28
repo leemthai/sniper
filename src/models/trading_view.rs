@@ -8,7 +8,7 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{OptimizationGoal, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants};
+use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -23,16 +23,16 @@ use crate::utils::maths_utils::{
     smooth_data, is_opportunity_worthwhile,
 };
 
-impl OptimizationGoal {
+impl OptimizationStrategy {
     /// Calculate a score based on the strategy
     pub fn calculate_score(&self, roi: f64, duration_ms: f64) -> f64 {
         match self {
-            OptimizationGoal::MaxROI => roi,
-            OptimizationGoal::MaxAROI => {
+            OptimizationStrategy::MaxROI => roi,
+            OptimizationStrategy::MaxAROI => {
                 // ROI acts as a hard filter (via Gatekeeper), but we maximize speed here
                 calculate_annualized_roi(roi, duration_ms)
             },
-            OptimizationGoal::Balanced => {
+            OptimizationStrategy::Balanced => {
 
                 // GEOMETRIC MEAN (Efficiency Score)
                 let aroi = calculate_annualized_roi(roi, duration_ms);
@@ -161,7 +161,7 @@ pub struct TradeOpportunity {
     pub max_duration_ms: i64,
     pub avg_duration_ms: i64,
 
-    pub strategy: OptimizationGoal,
+    pub strategy: OptimizationStrategy,
     pub station_id: StationId,
     pub market_state: MarketState,
 

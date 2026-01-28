@@ -7,7 +7,7 @@ use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::R
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
-use crate::config::{OptimizationGoal, StationId, constants};
+use crate::config::{OptimizationStrategy, StationId, constants};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
@@ -27,15 +27,15 @@ use super::state::PairState;
 use super::worker;
 
 pub struct SniperEngine {
-
-    /// Registry of all pairs
+    /// Pair registry
     pub engine_pairs: HashMap<String, PairState>,
 
     /// The Live Configuration State
     pub engine_ph_overrides: HashMap<String, f64>,
-    pub engine_strategy: OptimizationGoal,
     pub engine_station_overrides: HashMap<String, StationId>,
-    
+    pub engine_strategy: OptimizationStrategy,
+
+    // The ledger
     pub engine_ledger: OpportunityLedger,
     // Maintenance Timer (Runs in Release & Debug)
     pub last_ledger_maintenance: AppInstant,
@@ -61,18 +61,17 @@ pub struct SniperEngine {
     #[cfg(target_arch = "wasm32")]
     result_tx: Sender<JobResult>,
 
-    /// Queue Logic: (Pair, Price, PH, Strategy, StationId, Mode)
+    /// This is job queue runtime variables
+    /// Logic: (Pair, Price, PH, Strategy, StationId, Mode)
     // Update the VecDeque type to hold the runtime variables
     pub queue: VecDeque<(
-        String,
-        Option<f64>,
-        f64,
-        OptimizationGoal,
-        StationId,
-        JobMode,
+        String, // pair_name
+        Option<f64>, // price
+        f64, // ph_pct
+        OptimizationStrategy, // strategy
+        StationId, // StationId
+        JobMode, // Mode
     )>,
-
-
 }
 
 impl SniperEngine {
@@ -144,7 +143,7 @@ impl SniperEngine {
         Self {
             engine_pairs: pairs,
             engine_ph_overrides: HashMap::new(),
-            engine_strategy: OptimizationGoal::default(),
+            engine_strategy: OptimizationStrategy::default(),
             engine_station_overrides: HashMap::new(),
             engine_ledger: OpportunityLedger::new(),
             timeseries: timeseries_arc, // Pass the Arc<RwLock> we created
@@ -167,21 +166,29 @@ impl SniperEngine {
     /// INTENT: The User clicked a specific Trade Opportunity.
     /// Action: Calculate CVA Zones for this specific PH so the chart looks right,
     /// but DO NOT re-run simulations (preserve the trade list).
-    pub fn request_trade_context(&mut self, pair: String, target_ph: f64) {
+    pub fn request_trade_context(&mut self, pair_name: String, target_ph: f64) {
         // 2. Set Override (so the worker picks it up)
-        self.set_ph_override(pair.clone(), target_ph);
-        let station_id = self.engine_station_overrides.get(&pair).copied().unwrap(); // Will crash if None
+        self.set_ph_override(pair_name.clone(), target_ph);
+        let station_id = self
+            .engine_station_overrides
+            .get(&pair_name)
+            .copied()
+            .expect(&format!(
+                "PAIR {} with ph_pct {} UNEXPECTEDLY not found in engine_station_overrides {:?}",
+                pair_name, target_ph, self.engine_station_overrides
+            )); // This should now crash if None is encountered. Better than reverting to default I think
         #[cfg(debug_assertions)]
-        if DF.log_active_station_id {
+        if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
             log::info!(
-                "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in request_trade_context",
+                "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in request_trade_context() and the full station_overrides is {:?}",
                 station_id,
-                &pair,
+                &pair_name,
+                self.engine_station_overrides,
             );
         }
         // 3. Dispatch Context-Only Job
         self.force_recalc(
-            &pair,
+            &pair_name,
             None,
             target_ph,
             self.engine_strategy,
@@ -498,12 +505,8 @@ impl SniperEngine {
     }
 
     // Helper functions to ensure the UI can update the Engine's status
-    pub fn set_ph_override(&mut self, pair: String, ph_pct: f64) {
-        self.engine_ph_overrides.insert(pair, ph_pct);
-    }
-
-    pub fn set_strategy(&mut self, strategy: OptimizationGoal) {
-        self.engine_strategy = strategy;
+    pub fn set_ph_override(&mut self, pair_name: String, ph_pct: f64) {
+        self.engine_ph_overrides.insert(pair_name, ph_pct);
     }
 
     /// THE GAME LOOP.
@@ -567,7 +570,9 @@ impl SniperEngine {
 
     /// Accessor for UI
     pub fn get_model(&self, pair: &str) -> Option<Arc<TradingModel>> {
-        self.engine_pairs.get(pair).and_then(|state| state.model.clone())
+        self.engine_pairs
+            .get(pair)
+            .and_then(|state| state.model.clone())
     }
 
     pub fn get_price(&self, pair: &str) -> Option<f64> {
@@ -634,15 +639,15 @@ impl SniperEngine {
                          ph_map: &HashMap<String, f64>,
                          st_map: &HashMap<String, StationId>| {
             // 1. Lookup PH (Specific to pair)
-            let ph = *ph_map.get(&pair).unwrap_or(&0.15); // TEMP this is shitcode. We cannot default to 0.15!!!!!!
+            let ph_pct = *ph_map.get(&pair).expect("We *must* be able tro read a ph_value from ph_map. None is not an option");
 
             // 2. Lookup Station (Specific to pair)
-            let station = *st_map.get(&pair).unwrap_or(&StationId::default());
+            let station = *st_map.get(&pair).expect("We *must* be able to read a stationId value from station. None is not an option");
 
             target_queue.push_back((
                 pair,
                 None, // Live Price
-                ph,
+                ph_pct,
                 strat,   // Respects User Choice
                 station, // Respects User Choice
                 JobMode::FullAnalysis,
@@ -677,7 +682,7 @@ impl SniperEngine {
         pair: &str,
         price_override: Option<f64>,
         ph_pct: f64,
-        strategy: OptimizationGoal,
+        strategy: OptimizationStrategy,
         station_id: StationId,
         mode: JobMode,
         _reason: &str,
@@ -760,10 +765,10 @@ impl SniperEngine {
         let pairs: Vec<String> = self.engine_pairs.keys().cloned().collect();
         let threshold = constants::cva::PRICE_RECALC_THRESHOLD_PCT;
 
-        for pair in pairs {
-            if let Some(current_price) = self.price_stream.get_price(&pair) {
-                if let Some(state) = self.engine_pairs.get_mut(&pair) {
-                    let in_queue = self.queue.iter().any(|(p, _, _, _, _, _)| p == &pair);
+        for pair_name in pairs {
+            if let Some(current_price) = self.price_stream.get_price(&pair_name) {
+                if let Some(state) = self.engine_pairs.get_mut(&pair_name) {
+                    let in_queue = self.queue.iter().any(|(p, _, _, _, _, _)| p == &pair_name);
 
                     if !state.is_calculating && !in_queue {
                         // FIX: Handle Startup Case (0.0)
@@ -782,28 +787,32 @@ impl SniperEngine {
                             if DF.log_engine {
                                 log::info!(
                                     "ENGINE AUTO: [{}] moved {:.4}% with threshold {}. Triggering Recalc.",
-                                    pair,
+                                    pair_name,
                                     pct_diff * 100.0,
                                     threshold,
                                 );
                             }
 
-                            if let Some(ph_pct) = self.engine_ph_overrides.get(&pair) {
+                            if let Some(ph_pct) = self.engine_ph_overrides.get(&pair_name) {
                                 let station_id = self
                                     .engine_station_overrides
-                                    .get(&pair)
+                                    .get(&pair_name)
                                     .copied()
-                                .   expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in station_overrides {:?}", pair, ph_pct, self.engine_station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
+                                .   expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in station_overrides {:?}", pair_name, ph_pct, self.engine_station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
                                 #[cfg(debug_assertions)]
-                                if DF.log_active_station_id {
+                                if DF.log_active_station_id
+                                    || DF.log_candle_update
+                                    || DF.log_ph_vals
+                                {
                                     log::info!(
-                                        "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in check_automatic_triggers()",
+                                        "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in check_automatic_triggers() and the full station_overrides is {:?}",
                                         station_id,
-                                        &pair,
+                                        &pair_name,
+                                        self.engine_station_overrides,
                                     );
                                 }
                                 self.dispatch_job(
-                                    pair.clone(),
+                                    pair_name.clone(),
                                     None,
                                     *ph_pct,
                                     self.engine_strategy,
@@ -844,7 +853,7 @@ impl SniperEngine {
         pair: String,
         price_override: Option<f64>,
         ph_pct: f64,
-        strategy: OptimizationGoal,
+        strategy: OptimizationStrategy,
         station_id: StationId,
         mode: JobMode,
     ) {

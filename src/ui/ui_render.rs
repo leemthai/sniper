@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{OptimizationGoal, TICKER, constants};
+use crate::config::{OptimizationStrategy, TICKER, constants};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -654,16 +654,16 @@ impl ZoneSniperApp {
     }
 
     fn render_strategy_header_grid(&mut self, ui: &mut Ui, sort_changed: &mut bool) {
-        let goals: Vec<_> = OptimizationGoal::iter().collect();
+        let goals: Vec<_> = OptimizationStrategy::iter().collect();
         let count = goals.len();
 
         // Helper closure to render a specific goal by index
         let mut render_btn = |ui: &mut Ui, idx: usize| {
             if let Some(goal) = goals.get(idx) {
                 let col = match goal {
-                    OptimizationGoal::MaxROI => SortColumn::LiveRoi,
-                    OptimizationGoal::MaxAROI => SortColumn::AnnualizedRoi,
-                    OptimizationGoal::Balanced => SortColumn::Score,
+                    &OptimizationStrategy::MaxROI => SortColumn::LiveRoi,
+                    &OptimizationStrategy::MaxAROI => SortColumn::AnnualizedRoi,
+                    &OptimizationStrategy::Balanced => SortColumn::Score,
                 };
                 if self.render_sort_icon_button(ui, col, &goal.icon()) {
                     *sort_changed = true;
@@ -1123,7 +1123,7 @@ impl ZoneSniperApp {
                     // 3. Score (Conditional)
                     // Show if sorting by Score OR if the trade was born from Balance strategy
                     let show_score = self.tf_sort_col == SortColumn::Score
-                        || op.strategy == OptimizationGoal::Balanced;
+                        || op.strategy == OptimizationStrategy::Balanced;
 
                     if show_score {
                         let score = op.calculate_quality_score();
@@ -1616,7 +1616,7 @@ impl ZoneSniperApp {
                         .selected_text(selected_text)
                         .width(100.0)
                         .show_ui(ui, |ui| {
-                            for goal in OptimizationGoal::iter() {
+                            for goal in OptimizationStrategy::iter() {
                                 let item_text = format!("{} {}", goal.icon(), goal);
                                 if ui
                                     .selectable_value(&mut self.saved_strategy, goal, item_text)

@@ -9,7 +9,7 @@ use crate::ui::config::UI_TEXT;
 // --- ENUMS (Definitions) ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter)]
-pub enum OptimizationGoal {
+pub enum OptimizationStrategy {
     #[strum(to_string = "Max ROI")]
     MaxROI,
     #[strum(to_string = "Max AROI")]
@@ -18,18 +18,18 @@ pub enum OptimizationGoal {
     Balanced,
 }
 
-impl Default for OptimizationGoal {
+impl Default for OptimizationStrategy {
     fn default() -> Self {
         Self::Balanced // The sensible middle ground
     }
 }
 
-impl OptimizationGoal {
+impl OptimizationStrategy {
     pub fn icon(&self) -> String {
         match self {
-            OptimizationGoal::MaxROI => UI_TEXT.icon_strategy_roi.to_string(),
-            OptimizationGoal::MaxAROI => UI_TEXT.icon_strategy_aroi.to_string(),
-            OptimizationGoal::Balanced => UI_TEXT.icon_strategy_balanced.to_string(),
+            OptimizationStrategy::MaxROI => UI_TEXT.icon_strategy_roi.to_string(),
+            OptimizationStrategy::MaxAROI => UI_TEXT.icon_strategy_aroi.to_string(),
+            OptimizationStrategy::Balanced => UI_TEXT.icon_strategy_balanced.to_string(),
         }
     }
 }

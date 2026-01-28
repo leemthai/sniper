@@ -16,7 +16,7 @@ use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{DF, OptimizationGoal, StationId, TradeProfile, TunerStation, constants};
+use crate::config::{DF, OptimizationStrategy, StationId, TradeProfile, TunerStation, constants};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -68,7 +68,7 @@ pub fn tune_to_station(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
     station: &TunerStation,
-    strategy: OptimizationGoal,
+    strategy: OptimizationStrategy,
 ) -> Option<f64> {
     let _t_start = AppInstant::now();
 
@@ -293,7 +293,7 @@ fn apply_diversity_filter(
     _pair_name: &str,
     range_min: f64,
     range_max: f64,
-    _strategy: OptimizationGoal,
+    _strategy: OptimizationStrategy,
 ) -> Vec<TradeOpportunity> {
     if candidates.is_empty() {
         return Vec::new();
@@ -307,7 +307,7 @@ fn apply_diversity_filter(
     // This creates a temporary view to log the top candidates without consuming the vector
     #[cfg(debug_assertions)]
     if DF.log_pathfinder {
-        if _strategy == OptimizationGoal::Balanced {
+        if _strategy == OptimizationStrategy::Balanced {
             // Create vector of references so we can sort them for display only
             let mut debug_view: Vec<&CandidateResult> = candidates.iter().collect();
             debug_view.sort_by(|a, b| {
@@ -441,7 +441,7 @@ struct PathfinderContext<'a> {
     matches: Vec<(usize, f64)>,
     current_state: MarketState,
     current_price: f64,
-    strategy: OptimizationGoal,
+    strategy: OptimizationStrategy,
     station_id: StationId,
     duration_candles: usize,
     duration_ms: u64,
@@ -769,7 +769,7 @@ pub fn run_pathfinder_simulations(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
     ph_pct: f64,
-    strategy: OptimizationGoal,
+    strategy: OptimizationStrategy,
     station_id: StationId,
     cva_opt: Option<&CVACore>,
 ) -> PathfinderResult {
@@ -881,7 +881,7 @@ fn run_stop_loss_tournament(
     duration_candles: usize,
     risk_tests: &[f64],
     profile: &TradeProfile,
-    strategy: OptimizationGoal,
+    strategy: OptimizationStrategy,
     interval_ms: i64,
     limit_samples: usize,
     _zone_idx: usize,

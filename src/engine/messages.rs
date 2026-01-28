@@ -1,5 +1,5 @@
 use std::sync::{Arc, RwLock};
-use crate::config::{OptimizationGoal, StationId};
+use crate::config::{OptimizationStrategy, StationId};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::cva::CVACore;
 use crate::models::horizon_profile::HorizonProfile;
@@ -24,25 +24,18 @@ pub struct JobRequest {
     pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
     pub existing_profile: Option<HorizonProfile>,
     pub ph_pct: f64,
-    pub strategy: OptimizationGoal,
+    pub strategy: OptimizationStrategy,
     pub station_id: StationId,
     pub mode: JobMode,
     
 }
-
 
 /// The result returned by the worker
 #[derive(Debug, Clone)]
 pub struct JobResult {
     pub pair_name: String,
     pub duration_ms: u128,
-    
     pub result: Result<Arc<TradingModel>, String>,
-    
     pub cva: Option<Arc<CVACore>>,
-    
-    // This is the Output (New or Reused profile)
-    // pub profile: Option<HorizonProfile>,
-    
     pub candle_count: usize,
 }
