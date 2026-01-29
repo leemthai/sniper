@@ -30,7 +30,7 @@ use crate::models::ledger::OpportunityLedger;
 use crate::models::trading_view::{NavigationTarget, SortColumn, SortDirection, TradeOpportunity};
 use crate::models::{ProgressEvent, SyncStatus, find_matching_ohlcv};
 
-use crate::shared::SharedStationMap;
+use crate::shared::SharedConfiguration;
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
 use crate::ui::config::UI_TEXT;
@@ -185,7 +185,7 @@ impl CandleResolution {
 #[serde(default)]
 pub struct ZoneSniperApp {
     pub selected_pair: Option<String>,
-    pub station_overrides: SharedStationMap,
+    pub shared_config: SharedConfiguration,
     pub plot_visibility: PlotVisibility,
     pub show_debug_help: bool,
     pub show_ph_help: bool,
@@ -246,7 +246,7 @@ impl Default for ZoneSniperApp {
 
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
-            station_overrides: SharedStationMap::new(),
+            shared_config: SharedConfiguration::new(),
             active_station_id: StationId::default(),
             active_ph_pct: 0.15,
             startup_tune_done: false,
@@ -396,7 +396,7 @@ impl ZoneSniperApp {
             }
         }
 
-        self.active_station_id = self.station_overrides.get(&new_pair_name).unwrap(); // Will crash if None. Deliberate choice
+        self.active_station_id = self.shared_config.get_station(&new_pair_name).unwrap(); // Will crash if None. Deliberate choice
         #[cfg(debug_assertions)]
         if DF.log_active_station_id {
             log::info!(
@@ -866,10 +866,10 @@ impl ZoneSniperApp {
     fn render_running_state(&mut self, ctx: &Context) {
         let start = AppInstant::now();
         if let Some(e) = &mut self.engine {
-            #[cfg(debug_assertions)]
-            if DF.log_station_overrides {
-                log::info!("engine_station_overrides status in render_running_state: {:?}", e.engine_station_overrides);
-            }
+            // #[cfg(debug_assertions)]
+            // if DF.log_station_overrides {
+            //     log::info!("engine_station_overrides status in render_running_state: {:?}", self.shared_config.get_all_stations());
+            // }
             e.update();
         }
         let engine_time = start.elapsed().as_micros();
@@ -960,13 +960,13 @@ impl ZoneSniperApp {
                     // A. Determine Station (and use default if we don't have one.....)
 
                     let station_id = self
-                        .station_overrides
-                        .get(&pair)
+                        .shared_config
+                        .get_station(&pair)
                         .unwrap_or_default();
                     #[cfg(debug_assertions)]
                     if DF.log_active_station_id {
                         log::info!(
-                            "🔧 Reading station_id from app.station_overrides '{:?}' for [{}] in handle_tuning_phase()",
+                            "🔧 Reading station_id from app.shared_config '{:?}' for [{}] in handle_tuning_phase()",
                             station_id,
                             &pair,
                         );
@@ -1023,11 +1023,11 @@ impl ZoneSniperApp {
 
                         // D. Apply Result
                         if let Some(ph) = best_ph {
-                            e.set_ph_override(pair.clone(), self.active_ph_pct);
+                            e.shared_config.insert_ph(pair.clone(), ph);
                             #[cfg(debug_assertions)]
                             if DF.log_ph_vals {
                                 log::info!(
-                                    "PH VALS: For pair {} setting engine_ph_overrides during tuning phase to: {}",
+                                    "PH VALS: For pair {} setting shared_config PH during tuning phase to: {}",
                                     &pair,
                                     ph
                                 );
@@ -1067,8 +1067,8 @@ impl ZoneSniperApp {
         if let Some(e) = &self.engine {
             if DF.log_ph_vals {
                 log::info!(
-                    "Near bottom of handle_tuning_phase we have engine_ph_overrides of {:?}",
-                    e.engine_ph_overrides
+                    "Near bottom of handle_tuning_phase we have shared_config PH overrides of {:?}",
+                    e.shared_config.get_all_phs()
                 );
             }
         }
@@ -1112,8 +1112,8 @@ impl ZoneSniperApp {
 
                 // Restore active station for the specific startup pair
                 self.active_station_id = self
-                    .station_overrides
-                    .get(&final_pair.clone())
+                    .shared_config
+                    .get_station(&final_pair.clone())
                     .unwrap_or_default();
                 #[cfg(debug_assertions)]
                 if DF.log_active_station_id {
@@ -1124,14 +1124,8 @@ impl ZoneSniperApp {
                     );
                 }
 
-                // 4. Initialize Engine
-                let mut e = SniperEngine::new(timeseries);
-
-                // 2. LINK THE MAPS! 
-                // This is the magic moment. We overwrite the engine's empty map with the App's populated map.
-                // Now they point to the exact same memory.
-                e.engine_station_overrides = self.station_overrides.clone();
-  
+                // 4. Initialize Engine with (pointer to) EXACTLY same SharedConfiguration as we have here. Just two pointers to shared memory.
+                let mut e = SniperEngine::new(timeseries, self.shared_config.clone());
 
                 // RESTORE LEDGER
                 // If the Nuke Flag is on, we start fresh. Otherwise, we load persistence.
@@ -1294,6 +1288,9 @@ impl ZoneSniperApp {
         let available_pairs = timeseries.unique_pair_names();
         let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
 
+        // 1. Register pairs in shared config
+        self.shared_config.register_pairs(available_pairs.clone());
+
         // Resolve Startup Pair - and check if the saved 'selected_pair' actually exists in the loaded data.
         let valid_startup_pair = self
             .selected_pair
@@ -1305,18 +1302,18 @@ impl ZoneSniperApp {
         #[cfg(debug_assertions)]
         if DF.log_station_overrides {
             log::info!(
-                "Pre initialization of app.station_overrides was {:?}",
-                self.station_overrides
+                "Pre initialization of app.shared_config was {:?}",
+                self.shared_config
             );
         }
         for pair in available_pairs.clone() {
-            self.station_overrides.ensure_default(pair);
+            self.shared_config.ensure_station_default(pair);
         }
         #[cfg(debug_assertions)]
         if DF.log_station_overrides {
             log::info!(
-                "Post intiialization app.station_overrides is {:?}",
-                self.station_overrides
+                "Post intiialization app.shared_config is {:?}",
+                self.shared_config
             );
         }
         let final_pair = if let Some(p) = valid_startup_pair {

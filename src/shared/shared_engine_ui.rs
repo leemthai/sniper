@@ -1,63 +1,104 @@
 use crate::config::StationId;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
-#[derive(Debug, Clone, Default)]
-pub struct SharedStationMap {
-    // Arc lets us share ownership. RwLock lets us read/write safely.
-    inner: Arc<RwLock<HashMap<String, StationId>>>,
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UIEngineSharedData {
+    pub pairs: HashSet<String>,
+    pub station_overrides: HashMap<String, StationId>,
+    pub ph_overrides: HashMap<String, f64>,
+    // Add other shared configurations here as needed in the future
 }
 
-impl SharedStationMap {
+#[derive(Debug, Clone, Default)]
+pub struct SharedConfiguration {
+    inner: Arc<RwLock<UIEngineSharedData>>,
+}
+
+impl SharedConfiguration {
     pub fn new() -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(HashMap::new())),
+        Self { inner: Arc::new(RwLock::new(UIEngineSharedData::default())) }
+    }
+
+    // --- Pair Registry ---
+    pub fn register_pairs(&self, pairs: Vec<String>) {
+        let mut lock = self.inner.write().unwrap();
+        for p in pairs {
+            lock.pairs.insert(p);
         }
     }
 
-    // Helper to get a value without manually locking everywhere
-    pub fn get(&self, key: &str) -> Option<StationId> {
-        self.inner.read().unwrap().get(key).copied()
+    pub fn get_pair_count(&self) -> usize {
+        self.inner.read().unwrap().pairs.len()
     }
 
-    // Helper to write
-    pub fn insert(&self, key: String, value: StationId) {
-        self.inner.write().unwrap().insert(key, value);
+    pub fn get_all_pairs(&self) -> Vec<String> {
+        self.inner.read().unwrap().pairs.iter().cloned().collect()
     }
 
-    // For the loop logic you asked about earlier
-    pub fn ensure_default(&self, key: String) {
+    // --- Read Accessors ---
+    pub fn get_station(&self, key: &str) -> Option<StationId> {
+        self.inner.read().unwrap().station_overrides.get(key).copied()
+    }
+
+    pub fn get_ph(&self, key: &str) -> Option<f64> {
+        self.inner.read().unwrap().ph_overrides.get(key).copied()
+    }
+
+    // --- Write Accessors ---
+    pub fn insert_station(&self, key: String, value: StationId) {
+        self.inner.write().unwrap().station_overrides.insert(key, value);
+    }
+
+    pub fn insert_ph(&self, key: String, value: f64) {
+        self.inner.write().unwrap().ph_overrides.insert(key, value);
+    }
+
+    // Ensure default for station
+    pub fn ensure_station_default(&self, key: String) {
         self.inner
             .write()
             .unwrap()
+            .station_overrides
             .entry(key)
             .or_insert(StationId::default());
+    }
+    
+    // Ensure default PH if needed
+    pub fn ensure_ph_default(&self, key: String, default_value: f64) {
+        self.inner.write().unwrap().ph_overrides.entry(key).or_insert(default_value);
+    }
+    
+    // Utility to get all station overrides
+    pub fn get_all_stations(&self) -> HashMap<String, StationId> {
+        self.inner.read().unwrap().station_overrides.clone()
+    }
+    
+    // Utility to get all PH overrides
+    pub fn get_all_phs(&self) -> HashMap<String, f64> {
+        self.inner.read().unwrap().ph_overrides.clone()
     }
 }
 
 // --- SERDE MAGIC ---
-// This makes the Arc<RwLock> invisible to the save file.
-// It saves as a plain HashMap.
-impl Serialize for SharedStationMap {
+impl Serialize for SharedConfiguration {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        // Lock for reading, then serialize the inner map directly
         self.inner.read().unwrap().serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for SharedStationMap {
+impl<'de> Deserialize<'de> for SharedConfiguration {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        // Deserialize into a plain HashMap, then wrap it
-        let map = HashMap::<String, StationId>::deserialize(deserializer)?;
+        let data = UIEngineSharedData::deserialize(deserializer)?;
         Ok(Self {
-            inner: Arc::new(RwLock::new(map)),
+            inner: Arc::new(RwLock::new(data)),
         })
     }
 }

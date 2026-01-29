@@ -1497,7 +1497,7 @@ impl ZoneSniperApp {
                     let pair_name = pair.clone();
 
                     // Save the preference immediately
-                    self.station_overrides.insert(pair_name.clone(), station_id);
+                    self.shared_config.insert_station(pair_name.clone(), station_id);
                     #[cfg(debug_assertions)]
                     if DF.log_station_overrides {
                         log::info!(
@@ -1524,7 +1524,7 @@ impl ZoneSniperApp {
                         // D. Update Engine
                         if let Some(engine) = &mut self.engine {
                             // Create specific config for this pair's override
-                            engine.set_ph_override(pair_name.clone(), best_ph);
+                            engine.shared_config.insert_ph(pair_name.clone(), best_ph);
 
                             // Update global context & Fire
                             // engine.update_config(self.app_config.clone());

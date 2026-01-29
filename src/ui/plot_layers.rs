@@ -120,16 +120,16 @@ impl PlotLayer for OpportunityLayer {
                 painter.circle_filled(target_pos_screen, 3.0, scope_color);
             }
             Some(_) => {
-                // (Probably can't happen .....) --- CASE B: MISMATCH ---
-                // User has an Op selected, but it's for a DIFFERENT pair (e.g. ETH selected, viewing BTC).
-                // We draw NOTHING.
-                panic!("Can't happen in theory");
+                // CASE B: MISMATCH --- User has an Op selected, but it's for a DIFFERENT pair (e.g. ETH selected, viewing BTC).
+                // So We draw NOTHING.
+                log::warn!("This has failed for some reason: if &op.pair_name == current_pair .... so needs debugging. Not unexpected because I have disengaged from plot code a bit.");
             }
 
             None => {
                 // --- CASE C: NO SELECTION ---
                 // User has no active trade selected (maybe none available for this pair)
                 // We draw NOTHING.
+                log::warn!("No active trade selected - means no available for this pair. Can only occur if ctx.selected_opportunity is None");
             }
         }
     }

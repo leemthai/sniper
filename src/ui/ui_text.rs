@@ -458,9 +458,9 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         error_no_pair_selected: "No pair selected.".to_string(),
         error_insufficient_data: "Insufficient data".to_string(),
         error_insufficient_data_body:
-            "The current Price Horizon does not capture enough price history for the pair in question.\n\n".to_string()
+            "The current Time Tuner selection does enough price history for the pair in question.\n\n".to_string()
                 + ICON_POINT_RIGHT
-                + " Drag the Price Horizon slider to the right.",
+                + " Select a more inclusive button on the Time Tuner i.e. click a button to the right of currently selected Time Tuner button.",
 
         // --- Candle Range (Time Machine) NAVIGATOR ---
         cr_title_1: "Time Machine".to_string(),
