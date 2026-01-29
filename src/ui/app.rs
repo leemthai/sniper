@@ -30,6 +30,8 @@ use crate::models::ledger::OpportunityLedger;
 use crate::models::trading_view::{NavigationTarget, SortColumn, SortDirection, TradeOpportunity};
 use crate::models::{ProgressEvent, SyncStatus, find_matching_ohlcv};
 
+use crate::shared::SharedStationMap;
+
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
 use crate::ui::config::UI_TEXT;
 use crate::ui::ticker::TickerState;
@@ -183,7 +185,7 @@ impl CandleResolution {
 #[serde(default)]
 pub struct ZoneSniperApp {
     pub selected_pair: Option<String>,
-    pub station_overrides: HashMap<String, StationId>,
+    pub station_overrides: SharedStationMap,
     pub plot_visibility: PlotVisibility,
     pub show_debug_help: bool,
     pub show_ph_help: bool,
@@ -244,7 +246,7 @@ impl Default for ZoneSniperApp {
 
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
-            station_overrides: HashMap::new(),
+            station_overrides: SharedStationMap::new(),
             active_station_id: StationId::default(),
             active_ph_pct: 0.15,
             startup_tune_done: false,
@@ -394,7 +396,7 @@ impl ZoneSniperApp {
             }
         }
 
-        self.active_station_id = self.station_overrides.get(&new_pair_name).copied().unwrap(); // Will crash if None. Deliberate choice
+        self.active_station_id = self.station_overrides.get(&new_pair_name).unwrap(); // Will crash if None. Deliberate choice
         #[cfg(debug_assertions)]
         if DF.log_active_station_id {
             log::info!(
@@ -960,7 +962,6 @@ impl ZoneSniperApp {
                     let station_id = self
                         .station_overrides
                         .get(&pair)
-                        .copied()
                         .unwrap_or_default();
                     #[cfg(debug_assertions)]
                     if DF.log_active_station_id {
@@ -1098,8 +1099,6 @@ impl ZoneSniperApp {
         }
     }
 
-
-
     
     /// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
@@ -1115,7 +1114,6 @@ impl ZoneSniperApp {
                 self.active_station_id = self
                     .station_overrides
                     .get(&final_pair.clone())
-                    .copied()
                     .unwrap_or_default();
                 #[cfg(debug_assertions)]
                 if DF.log_active_station_id {
@@ -1128,6 +1126,12 @@ impl ZoneSniperApp {
 
                 // 4. Initialize Engine
                 let mut e = SniperEngine::new(timeseries);
+
+                // 2. LINK THE MAPS! 
+                // This is the magic moment. We overwrite the engine's empty map with the App's populated map.
+                // Now they point to the exact same memory.
+                e.engine_station_overrides = self.station_overrides.clone();
+  
 
                 // RESTORE LEDGER
                 // If the Nuke Flag is on, we start fresh. Otherwise, we load persistence.
@@ -1306,9 +1310,7 @@ impl ZoneSniperApp {
             );
         }
         for pair in available_pairs.clone() {
-            self.station_overrides
-                .entry(pair)
-                .or_insert(StationId::default());
+            self.station_overrides.ensure_default(pair);
         }
         #[cfg(debug_assertions)]
         if DF.log_station_overrides {

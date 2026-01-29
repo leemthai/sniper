@@ -13,6 +13,7 @@ pub mod ui;
 pub mod utils;
 pub mod engine;
 pub mod ph_audit;
+mod shared;
 
 // Re-export commonly used types
 pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};

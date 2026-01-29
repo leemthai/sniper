@@ -19,6 +19,7 @@ use crate::models::trading_view::{
     TradeDirection, TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel,
 };
 
+use crate::shared::SharedStationMap;
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 
@@ -32,7 +33,7 @@ pub struct SniperEngine {
 
     /// The Live Configuration State
     pub engine_ph_overrides: HashMap<String, f64>,
-    pub engine_station_overrides: HashMap<String, StationId>,
+    pub engine_station_overrides: SharedStationMap,
     pub engine_strategy: OptimizationStrategy,
 
     // The ledger
@@ -144,7 +145,7 @@ impl SniperEngine {
             engine_pairs: pairs,
             engine_ph_overrides: HashMap::new(),
             engine_strategy: OptimizationStrategy::default(),
-            engine_station_overrides: HashMap::new(),
+            engine_station_overrides: SharedStationMap::new(),
             engine_ledger: OpportunityLedger::new(),
             timeseries: timeseries_arc, // Pass the Arc<RwLock> we created
             price_stream,
@@ -172,7 +173,6 @@ impl SniperEngine {
         let station_id = self
             .engine_station_overrides
             .get(&pair_name)
-            .copied()
             .expect(&format!(
                 "PAIR {} with ph_pct {} UNEXPECTEDLY not found in engine_station_overrides {:?}",
                 pair_name, target_ph, self.engine_station_overrides
@@ -250,7 +250,6 @@ impl SniperEngine {
                             let station_id = self
                                 .engine_station_overrides
                                 .get(&pair_name)
-                                .copied()
                                 .expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in engine_station_overrides {:?}", pair_name, ph_pct, self.engine_station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
                             #[cfg(debug_assertions)]
                             if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
@@ -623,13 +622,15 @@ impl SniperEngine {
         }
     }
 
+    /// The trigger_global_recalc function is a "Reset Button" for the engine's work queue. Its purpose is to cancel any
+    /// pending jobs and immediately schedule a fresh analysis for every single pair using the current global settings.
     pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
+
         self.queue.clear();
 
         let mut all_pairs = self.get_all_pair_names();
 
-        // Helper to push with CORRECT context
-        // We capture 'self' features (maps/strategy) to use inside the loop
+        // Snapshot: Takes a snapshot of self.engine_strategy so the loop uses a consistent strategy
         let strat = self.engine_strategy;
 
         // We can't use a closure easily due to borrow checker rules with self,
@@ -637,12 +638,17 @@ impl SniperEngine {
         let push_pair = |pair: String,
                          target_queue: &mut VecDeque<_>,
                          ph_map: &HashMap<String, f64>,
-                         st_map: &HashMap<String, StationId>| {
+                         st_map: &SharedStationMap| {
+
             // 1. Lookup PH (Specific to pair)
-            let ph_pct = *ph_map.get(&pair).expect("We *must* be able tro read a ph_value from ph_map. None is not an option");
+            // let ph_pct = *ph_map.get(&pair).expect("We *must* be able tro read a ph_value from ph_map. None is not an option");
+            // VERY TEMP code to ensure a  default value is always available
+            let ph_pct = *ph_map.get(&pair).unwrap_or(&0.15);
 
             // 2. Lookup Station (Specific to pair)
-            let station = *st_map.get(&pair).expect("We *must* be able to read a stationId value from station. None is not an option");
+            // let station = *st_map.get(&pair).expect("We *must* be able to read a stationId value from station. None is not an option");
+            // VERY TEMP code to ensure a  default value is always available
+            let station = st_map.get(&pair).unwrap_or_default();
 
             target_queue.push_back((
                 pair,
@@ -797,7 +803,6 @@ impl SniperEngine {
                                 let station_id = self
                                     .engine_station_overrides
                                     .get(&pair_name)
-                                    .copied()
                                 .   expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in station_overrides {:?}", pair_name, ph_pct, self.engine_station_overrides)); // This should now crash if None is encountered. Better than reverting to default I think
                                 #[cfg(debug_assertions)]
                                 if DF.log_active_station_id
