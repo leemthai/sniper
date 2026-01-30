@@ -18,10 +18,7 @@ use crate::models::cva::{CVACore, ScoreType};
 
 use crate::ui::config::UI_TEXT;
 
-use crate::utils::maths_utils::{
-    calculate_annualized_roi, calculate_stats, normalize_max,
-    smooth_data, is_opportunity_worthwhile,
-};
+use crate::utils::maths_utils::{calculate_stats, normalize_max, smooth_data};
 
 impl OptimizationStrategy {
     /// Calculate a score based on the strategy
@@ -30,12 +27,12 @@ impl OptimizationStrategy {
             OptimizationStrategy::MaxROI => *roi_pct,
             OptimizationStrategy::MaxAROI => {
                 // ROI acts as a hard filter (via Gatekeeper), but we maximize speed here
-                *calculate_annualized_roi(roi_pct, duration_ms)
+                *TradeProfile::calculate_annualized_roi(roi_pct, duration_ms)
             },
             OptimizationStrategy::Balanced => {
 
                 // GEOMETRIC MEAN (Efficiency Score)
-                let aroi_pct = calculate_annualized_roi(roi_pct, duration_ms);
+                let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, duration_ms);
                 
                 // If trade is losing, score is negative.
                 if *roi_pct <= 0.0 {
@@ -239,8 +236,8 @@ impl TradeOpportunity {
     /// Checks if the SNAPSHOT (Creation) status was worthwhile.
     pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
         let roi = self.expected_roi();
-        let aroi = calculate_annualized_roi(roi, self.avg_duration_ms as f64);
-        is_opportunity_worthwhile(roi, aroi, profile.min_roi_pct, profile.min_aroi_pct)
+        let aroi = TradeProfile::calculate_annualized_roi(roi, self.avg_duration_ms as f64);
+        profile.is_worthwhile(roi, aroi)
     }
 
 /// Calculates the Expected ROI % per trade for this specific opportunity.
@@ -270,7 +267,7 @@ impl TradeOpportunity {
     /// Calculates Annualized ROI based on LIVE price and AVERAGE duration.
     pub fn live_annualized_roi(&self, current_price: f64) -> AroiPct {
         let roi = self.live_roi(current_price);
-        calculate_annualized_roi(roi, self.avg_duration_ms as f64)
+        TradeProfile::calculate_annualized_roi(roi, self.avg_duration_ms as f64)
     }
 }
 

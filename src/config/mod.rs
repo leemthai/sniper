@@ -26,7 +26,8 @@ pub use types::{
     VolatilityPct,
     MomentumPct,
     RoiPct,
-    AroiPct
+    AroiPct,
+    Prob
 };
 pub use tuner::{StationId, TunerStation, TimeTunerConfig};
 pub use binance::{BINANCE, BinanceApiConfig};

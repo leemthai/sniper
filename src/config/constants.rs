@@ -45,8 +45,8 @@ pub mod journey {
         min_journey_duration: MIN_JOURNEY_DURATION,
         max_journey_time: MAX_JOURNEY_TIME,
         profile: TradeProfile {
-            min_roi_pct: profile::MIN_ROI,
-            min_aroi_pct: profile::MIN_AROI,
+            min_roi_pct: self::profile::MIN_ROI,
+            min_aroi_pct: self::profile::MIN_AROI,
         },
         optimization: OptimalSearchSettings {
             scout_steps: optimization::SCOUT_STEPS,

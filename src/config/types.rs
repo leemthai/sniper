@@ -159,6 +159,36 @@ impl std::fmt::Display for AroiPct {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct Prob(f64);
+
+impl Prob {
+    pub const fn new(val: f64) -> Self {
+        let v = if val < 0.0 {
+            0.0
+        } else if val > 1.0 {
+            1.0
+        } else {
+            val
+        };
+        Self(v)
+    }
+}
+
+impl Deref for Prob {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Prob {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.1}%", self.0 * 100.0)
+    }
+}
+
 // --- ENUMS (Definitions) ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter)]
@@ -215,6 +245,24 @@ pub struct ZoneClassificationConfig {
 pub struct TradeProfile {
     pub min_roi_pct: RoiPct,  
     pub min_aroi_pct: AroiPct, 
+}
+
+impl TradeProfile {
+    
+    pub const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
+
+    pub fn calculate_annualized_roi(roi: RoiPct, duration_ms: f64) -> AroiPct {
+        if duration_ms < 1000.0 {
+                return AroiPct::new(0.0);
+            }
+            let factors_per_year = Self::MS_IN_YEAR / duration_ms;
+            AroiPct::new(*roi * factors_per_year)
+        }
+    /// Returns true if both ROI and AROI meet the minimum thresholds defined in this profile.
+    pub fn is_worthwhile(&self, roi_pct: RoiPct, aroi_pct: AroiPct) -> bool {
+        *roi_pct >= *self.min_roi_pct && *aroi_pct >= *self.min_aroi_pct
+    }
+
 }
 
 #[derive(Clone, Debug)]

@@ -280,7 +280,7 @@ impl ZoneSniperApp {
 
                 ui.metric(
                     &UI_TEXT.label_success_rate,
-                    &format!("{:.1}%", sim.success_rate * 100.0),
+                    &format!("{}", sim.success_rate),
                     PLOT_CONFIG.color_text_primary,
                 );
                 ui.metric(
@@ -509,8 +509,7 @@ impl ZoneSniperApp {
                         .italics(),
                     );
 
-                    let win_count = (sim.success_rate * sim.sample_size as f64).round() as usize;
-                    let win_pct = sim.success_rate * 100.0;
+                    let win_count = (*sim.success_rate * sim.sample_size as f64).round() as usize;
 
                     ui.label(
                         RichText::new(format!(
@@ -522,7 +521,7 @@ impl ZoneSniperApp {
                             UI_TEXT.opp_exp_cases_three,
                             UI_TEXT.label_target_text,
                             UI_TEXT.opp_exp_cases_four,
-                            win_pct,
+                            sim.success_rate,
                             UI_TEXT.label_success_rate,
                             UI_TEXT.opp_exp_cases_five,
                         ))
@@ -1738,10 +1737,10 @@ impl ZoneSniperApp {
 
                 for (i, variant) in op.variants.iter().enumerate() {
                     let risk_pct = calculate_percent_diff(variant.stop_price, op.start_price);
-                    let win_rate = variant.simulation.success_rate * 100.0;
+                    let win_rate = variant.simulation.success_rate;
 
                     let text = format!(
-                        "{}. {} {}   {} {:.0}%   {} -{:.2}%",
+                        "{}. {} {}   {} {}   {} -{:.2}%",
                         i + 1,
                         UI_TEXT.label_roi,
                         variant.roi_pct,

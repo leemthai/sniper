@@ -32,9 +32,7 @@ use crate::TradingModel;
 use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::{AppInstant, TimeUtils};
 
-use crate::utils::maths_utils::{
-    calculate_annualized_roi, calculate_percent_diff, is_opportunity_worthwhile,
-};
+use crate::utils::maths_utils::{calculate_percent_diff};
 #[cfg(debug_assertions)]
 use {crate::ui::ui_text::UI_TEXT};
 
@@ -320,7 +318,7 @@ fn apply_diversity_filter(
                 let roi = c.opportunity.expected_roi();
                 let dur_ms = c.opportunity.avg_duration_ms;
                 let dur_str = TimeUtils::format_duration(dur_ms);
-                let aroi = calculate_annualized_roi(roi, dur_ms as f64);
+                let aroi = TradeProfile::calculate_annualized_roi(roi, dur_ms as f64);
 
                 log::info!(
                     "   #{}: Score {:.1} | ROI {:.2}% | AROI {:.0}% | Time {}",
@@ -958,11 +956,11 @@ fn run_stop_loss_tournament(
                 let duration_real_ms = result.avg_candle_count * interval_ms as f64;
 
                 // Calculate AROI for the Gatekeeper & Judge
-                let aroi_pct = calculate_annualized_roi(roi_pct, duration_real_ms);
+                let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, duration_real_ms);
 
                 // GATEKEEPER: Check both ROI and AROI against profile
                 let is_worthwhile =
-                    is_opportunity_worthwhile(roi_pct, aroi_pct, profile.min_roi_pct, profile.min_aroi_pct);
+                    profile.is_worthwhile(roi_pct, aroi_pct);
 
                 if is_worthwhile {
                     // Store this variant
@@ -991,12 +989,12 @@ fn run_stop_loss_tournament(
                     let risk_pct = calculate_percent_diff(candidate_stop, current_price);
                     let status_icon = if is_worthwhile { "✅" } else { "🔻" };
                     log::info!(
-                        "   [R:R {:.1}] {} Stop: {:.4} | {}: {:.1}% | ROI: {} | AROI: {} | Risk: {:.2}%",
+                        "   [R:R {:.1}] {} Stop: {:.4} | {}: {} | ROI: {} | AROI: {} | Risk: {:.2}%",
                         ratio,
                         status_icon,
                         candidate_stop,
                         UI_TEXT.label_success_rate,
-                        result.success_rate * 100.0,
+                        result.success_rate,
                         roi_pct,
                         aroi_pct,
                         risk_pct,

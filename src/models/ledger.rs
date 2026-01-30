@@ -184,19 +184,19 @@ impl OpportunityLedger {
             if DF.log_ledger {
                 if (*existing.expected_roi() - *new_opp.expected_roi()).abs() > 0.1 {
                     log::info!(
-                        "LEDGER EVOLVE [{}]: ID {} kept. Target: {:.2} -> {:.2} | ROI {:.2}% -> {:.2}% (Win: {:.1}%->{:.1}%) | SL: {:.2} -> {:.2}",
+                        "LEDGER EVOLVE [{}]: ID {} kept. Target: {:.2} -> {:.2} | ROI {} -> {} (Win: {}->{}) | SL: {:.2} -> {:.2}",
                         new_opp.pair_name,
                         if existing_id.len() > 8 {
                             &existing_id[..8]
                         } else {
                             existing_id
                         },
-                        existing.target_price, // <--- Added Old Target
-                        new_opp.target_price,  // <--- Added New Target
+                        existing.target_price,
+                        new_opp.target_price,
                         existing.expected_roi(),
                         new_opp.expected_roi(),
-                        existing.simulation.success_rate * 100.0,
-                        new_opp.simulation.success_rate * 100.0,
+                        existing.simulation.success_rate,
+                        new_opp.simulation.success_rate,
                         existing.stop_price,
                         new_opp.stop_price
                     );

@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 
 use crate::analysis::market_state::MarketState;
 
-use crate::config::{DF,SimilaritySettings, RoiPct};
+use crate::config::{DF,SimilaritySettings, RoiPct, Prob};
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::trading_view::TradeDirection;
@@ -268,7 +268,7 @@ pub enum Outcome {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationResult {
-    pub success_rate: f64,      // 0.0 to 1.0
+    pub success_rate: Prob,      // 0.0 to 1.0
     pub avg_candle_count: f64,  // Average candles to result
     pub risk_reward_ratio: f64, // Based on historical outcomes
     pub sample_size: usize,     // How many similar scenarios we found
@@ -469,7 +469,7 @@ impl ScenarioSimulator {
             }
 
             // Calculate Stats
-            let success_rate = wins as f64 / valid_samples as f64;
+            let success_rate = Prob::new(wins as f64 / valid_samples as f64);
 
             // Calculate Average Candle Count
             let avg_candle_count = accumulated_candle_count / valid_samples as f64;
@@ -728,7 +728,7 @@ impl ScenarioSimulator {
 
         let len = ts.high_prices.len();
         if start_idx >= len {
-            return Outcome::TimedOut(0.0);
+            return Outcome::TimedOut(RoiPct::new(0.0));
         }
 
         let start_candle = ts.get_candle(start_idx);
@@ -743,7 +743,7 @@ impl ScenarioSimulator {
         let search_len = search_end.saturating_sub(offset_start);
 
         if search_len == 0 {
-            return Outcome::TimedOut(0.0);
+            return Outcome::TimedOut(RoiPct::new(0.0));
         }
 
         let stride = 8;
