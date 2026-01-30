@@ -7,7 +7,6 @@ pub const INTERVAL_WIDTH_MS: i64 = TimeUtils::MS_IN_5_MIN;
 pub const ZONE_COUNT: usize = 256;
 pub const TIME_DECAY_FACTOR: f64 = 1.5;
 pub const TUNER_SCAN_STEPS: usize = 4;
-// pub const PH_DEFAULT: f64 = 0.15;
 
 pub mod journey {
     use super::*;
@@ -19,10 +18,9 @@ pub mod journey {
     pub const MIN_JOURNEY_DURATION: Duration = Duration::from_secs(3600);
 
     pub mod profile {
-        pub const MIN_ROI: f64 = 0.10;
-        pub const MIN_AROI: f64 = 20.0;
-        pub const WEIGHT_ROI: f64 = 1.0;
-        pub const WEIGHT_AROI: f64 = 0.002;
+        use crate::config::{RoiPct, AroiPct};
+        pub const MIN_ROI: RoiPct = RoiPct::new(0.001); // 0.10%
+        pub const MIN_AROI: AroiPct = AroiPct::new(0.20); // 20%
     }
 
     pub mod optimization {
@@ -47,10 +45,8 @@ pub mod journey {
         min_journey_duration: MIN_JOURNEY_DURATION,
         max_journey_time: MAX_JOURNEY_TIME,
         profile: TradeProfile {
-            min_roi: profile::MIN_ROI,
-            min_aroi: profile::MIN_AROI,
-            weight_roi: profile::WEIGHT_ROI,
-            weight_aroi: profile::WEIGHT_AROI,
+            min_roi_pct: profile::MIN_ROI,
+            min_aroi_pct: profile::MIN_AROI,
         },
         optimization: OptimalSearchSettings {
             scout_steps: optimization::SCOUT_STEPS,
@@ -132,32 +128,32 @@ pub mod tuner {
             name: "⚡ SCALP",
             target_min_hours: 1.0,
             target_max_hours: 6.0,
-            scan_ph_min: PhPct(0.01),
-            scan_ph_max: PhPct(0.04),
+            scan_ph_min: PhPct::new(0.01),
+            scan_ph_max: PhPct::new(0.04),
         },
         TunerStation {
             id: StationId::Day,
             name: "☀️ DAY",
             target_min_hours: 6.0,
             target_max_hours: 24.0,
-            scan_ph_min: PhPct(0.03),
-            scan_ph_max: PhPct(0.08),
+            scan_ph_min: PhPct::new(0.03),
+            scan_ph_max: PhPct::new(0.08),
         },
         TunerStation {
             id: StationId::Swing,
             name: "🌊 SWING",
             target_min_hours: 24.0,
             target_max_hours: 120.0,
-            scan_ph_min: PhPct(0.05),
-            scan_ph_max: PhPct(0.15),
+            scan_ph_min: PhPct::new(0.05),
+            scan_ph_max: PhPct::new(0.15),
         },
         TunerStation {
             id: StationId::Macro,
             name: "🏔️ MACRO",
             target_min_hours: 336.0,
             target_max_hours: 2160.0,
-            scan_ph_min: PhPct(0.15),
-            scan_ph_max: PhPct(0.60),
+            scan_ph_min: PhPct::new(0.15),
+            scan_ph_max: PhPct::new(0.60),
         },
     ];
 

@@ -24,7 +24,9 @@ pub use types::{
     ZoneClassificationConfig,
     PhPct,
     VolatilityPct,
-    MomentumPct
+    MomentumPct,
+    RoiPct,
+    AroiPct
 };
 pub use tuner::{StationId, TunerStation, TimeTunerConfig};
 pub use binance::{BINANCE, BinanceApiConfig};

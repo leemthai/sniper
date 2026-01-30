@@ -462,7 +462,7 @@ impl SniperEngine {
                 // Filter worthwhile trades (Static ROI check)
                 let valid_ops: Vec<&TradeOpportunity> = raw_ops
                     .iter()
-                    .filter(|&&op| op.expected_roi() > 0.0)
+                    .filter(|&&op| op.expected_roi().is_positive())
                     .map(|&op| op)
                     .collect();
 

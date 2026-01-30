@@ -64,8 +64,8 @@ impl MarketState {
         let rel_vol = ts.relative_volumes.get(idx).copied().unwrap_or(1.0);
 
         Some(Self {
-            volatility_pct: VolatilityPct(volatility),
-            momentum_pct: MomentumPct(momentum),
+            volatility_pct: VolatilityPct::new(volatility),
+            momentum_pct: MomentumPct::new(momentum),
             relative_volume: rel_vol,
         })
     }

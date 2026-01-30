@@ -32,18 +32,18 @@ impl AdaptiveParameters {
 
     /// Maps Price Horizon % -> Time Decay Factor.
     /// Continuous curve, no steps.
-    pub fn calculate_time_decay(ph_threshold: PhPct) -> f64 {
-        if *ph_threshold < 0.05 {
-            // Sniper Zone (0% -> 5%): Decay 5.0 -> 2.0
-            remap(*ph_threshold, 0.0, 0.05, 5.0, 2.0)
-        } else if *ph_threshold < 0.15 {
-            // Aggressive Zone (5% -> 15%): Decay 2.0 -> 1.5
-            remap(*ph_threshold, 0.05, 0.15, 2.0, 1.5)
-        } else {
-            // Macro Zone (15% -> 50%): Decay 1.5 -> 1.0
-            remap(*ph_threshold, 0.15, 0.50, 1.5, 1.0).max(1.0)
-        }
-    }
+    // pub fn calculate_time_decay(ph_threshold: PhPct) -> f64 {
+    //     if *ph_threshold < 0.05 {
+    //         // Sniper Zone (0% -> 5%): Decay 5.0 -> 2.0
+    //         remap(*ph_threshold, 0.0, 0.05, 5.0, 2.0)
+    //     } else if *ph_threshold < 0.15 {
+    //         // Aggressive Zone (5% -> 15%): Decay 2.0 -> 1.5
+    //         remap(*ph_threshold, 0.05, 0.15, 2.0, 1.5)
+    //     } else {
+    //         // Macro Zone (15% -> 50%): Decay 1.5 -> 1.0
+    //         remap(*ph_threshold, 0.15, 0.50, 1.5, 1.0).max(1.0)
+    //     }
+    // }
 
     /// Maps Price Horizon % -> Trend Lookback (Candles).
     pub fn calculate_trend_lookback_candles(ph_threshold: PhPct) -> usize {

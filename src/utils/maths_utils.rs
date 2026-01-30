@@ -3,6 +3,8 @@ use std::cmp::{max, min};
 use std::f64;
 use std::time::Duration; // Ensure this import exists
 
+use crate::config::{AroiPct, RoiPct};
+
 pub const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
 
 /// Calculates the span of time (in days) covered by a timestamp range.
@@ -29,9 +31,9 @@ pub fn calculate_density_pct(evidence_days: f64, history_days: f64) -> f64 {
 /// Centralized logic for Minimum Worthwhile Trade (MWT).
 /// Returns true if both ROI and AROI meet their respective thresholds.
 #[inline]
-pub fn is_opportunity_worthwhile(roi: f64, aroi: f64, min_roi: f64, min_aroi: f64) -> bool {
-    if roi < min_roi { return false; }
-    if aroi < min_aroi { return false; }
+pub fn is_opportunity_worthwhile(roi_pct: RoiPct, aroi_pct: AroiPct, min_roi_pct: RoiPct, min_aroi_pct: AroiPct,) -> bool {
+    if *roi_pct < *min_roi_pct { return false; }
+    if *aroi_pct < *min_aroi_pct { return false; }
     true
 }
 
@@ -132,10 +134,10 @@ pub fn format_volume_compact(val: f64) -> String {
 /// Calculates Annualized ROI % (Simple Projection).
 /// Formula: ROI * (Year / Duration)
 #[inline]
-pub fn calculate_annualized_roi(roi_pct: f64, duration_ms: f64) -> f64 {
-    if duration_ms < 1000.0 { return 0.0; } // Avoid weirdness for <1s trades
+pub fn calculate_annualized_roi(roi_pct: RoiPct, duration_ms: f64) -> AroiPct {
+    if duration_ms < 1000.0 { return AroiPct::new(0.0); } // Avoid weirdness for <1s trades
     let factors_per_year = MS_IN_YEAR / duration_ms;
-    roi_pct * factors_per_year
+    AroiPct::new(*roi_pct * factors_per_year)
 }
 
 
@@ -332,27 +334,27 @@ pub fn calculate_stats(data: &[f64]) -> (f64, f64) {
 /// 
 /// Formula: (WinRate * Reward%) - (LossRate * Risk%)
 /// Returns: The expected percentage change to your capital per trade.
-#[inline]
-pub fn calculate_expected_roi_pct(
-    current_price: f64,
-    target_price: f64,
-    stop_price: f64,
-    win_rate: f64
-) -> f64 {
-    // Avoid division by zero
-    if current_price < f64::EPSILON { return 0.0; }
+// #[inline]
+// pub fn calculate_expected_roi_pct(
+//     current_price: f64,
+//     target_price: f64,
+//     stop_price: f64,
+//     win_rate: f64
+// ) -> f64 {
+//     // Avoid division by zero
+//     if current_price < f64::EPSILON { return 0.0; }
 
-    let risk_pct = (current_price - stop_price).abs() / current_price;
-    let reward_pct = (target_price - current_price).abs() / current_price;
+//     let risk_pct = (current_price - stop_price).abs() / current_price;
+//     let reward_pct = (target_price - current_price).abs() / current_price;
     
-    let loss_rate = 1.0 - win_rate;
+//     let loss_rate = 1.0 - win_rate;
     
-    // Yield per trade (decimal)
-    let ev_yield = (win_rate * reward_pct) - (loss_rate * risk_pct);
+//     // Yield per trade (decimal)
+//     let ev_yield = (win_rate * reward_pct) - (loss_rate * risk_pct);
     
-    // Convert decimal to percentage (0.01 -> 1.0%)
-    ev_yield * 100.0
-}
+//     // Convert decimal to percentage (0.01 -> 1.0%)
+//     ev_yield * 100.0
+// }
 
 /// Calculates the absolute percentage difference between two values relative to a reference.
 /// Returns 0.0 to 100.0+

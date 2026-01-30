@@ -9,16 +9,22 @@ use crate::ui::config::UI_TEXT;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct PhPct(pub f64);
+pub struct PhPct(f64);
 
 impl PhPct {
 
     pub const DEFAULT_VALUE: f64 = 0.15;
     pub const DEFAULT: Self = Self(Self::DEFAULT_VALUE);
 
-    pub fn new(val: f64) -> Self {
-        debug_assert!(val >= 0.0 && val <= 1.0, "PhPct value {} out of logical range [0, 1]", val);
-        Self(val.clamp(0.0, 1.0))
+    pub const fn new(val: f64) -> Self {
+        let v = if val < 0.0 { 
+            0.0 
+        } else if val > 1.0 { 
+            1.0 
+        } else { 
+            val 
+        };
+        Self(v)
     }
 
     pub fn format_pct(&self) -> String {
@@ -47,16 +53,15 @@ impl std::fmt::Display for PhPct {
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
 #[serde(transparent)]
-pub struct VolatilityPct(pub f64);
+pub struct VolatilityPct(f64);
 
 impl VolatilityPct {
 
     pub const MIN_EPSILON: f64 = 0.0001;
 
-    pub fn new(val: f64) -> Self {
-        debug_assert!(val >= 0.0, "Volatility cannot be negative: {}", val);
-        debug_assert!(val < 10.0, "Insane volatility detected (>1000%): {}. Possible unit error?", val);
-        Self(val.max(0.0))
+    pub const fn new(val: f64) -> Self {
+        let v = if val < 0.0 { 0.0 } else { val };
+        Self(v)
     }
 
     pub fn as_safe_divisor(&self) -> f64 {
@@ -80,13 +85,11 @@ impl std::fmt::Display for VolatilityPct {
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
 #[serde(transparent)]
-pub struct MomentumPct(pub f64);
+pub struct MomentumPct(f64);
 
 impl MomentumPct {
 
-    pub fn new(val: f64) -> Self {
-        debug_assert!(val.is_finite(), "Momentum must be a finite number");
-        debug_assert!(val.abs() < 10.0, "Insane momentum detected: {}. Check math.", val);
+    pub const fn new(val: f64) -> Self {
         Self(val)
     }
 }
@@ -101,6 +104,58 @@ impl Deref for MomentumPct {
 impl std::fmt::Display for MomentumPct {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:+.2}%", self.0 * 100.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct RoiPct(f64);
+
+impl RoiPct {
+    pub const MIN_EPSILON: f64 = 0.000001;
+
+    pub const fn new(val: f64) -> Self {
+        Self(val)
+    }
+
+    pub fn is_positive(&self) -> bool {
+        self.0 > Self::MIN_EPSILON
+    }
+}
+
+impl Deref for RoiPct {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for RoiPct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:+.2}%", self.0 * 100.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct AroiPct(f64);
+
+impl AroiPct {
+    pub const fn new(val: f64) -> Self {
+        Self(val)
+    }
+}
+
+impl Deref for AroiPct {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for AroiPct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:+.0}%", self.0 * 100.0)
     }
 }
 
@@ -158,10 +213,8 @@ pub struct ZoneClassificationConfig {
 
 #[derive(Clone, Debug)]
 pub struct TradeProfile {
-    pub min_roi: f64,  
-    pub min_aroi: f64, 
-    pub weight_roi: f64,  
-    pub weight_aroi: f64, 
+    pub min_roi_pct: RoiPct,  
+    pub min_aroi_pct: AroiPct, 
 }
 
 #[derive(Clone, Debug)]

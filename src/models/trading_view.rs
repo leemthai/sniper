@@ -8,7 +8,7 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants, PhPct};
+use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants, PhPct, RoiPct, AroiPct};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -25,27 +25,27 @@ use crate::utils::maths_utils::{
 
 impl OptimizationStrategy {
     /// Calculate a score based on the strategy
-    pub fn calculate_score(&self, roi: f64, duration_ms: f64) -> f64 {
+    pub fn calculate_score(&self, roi_pct: RoiPct, duration_ms: f64) -> f64 {
         match self {
-            OptimizationStrategy::MaxROI => roi,
+            OptimizationStrategy::MaxROI => *roi_pct,
             OptimizationStrategy::MaxAROI => {
                 // ROI acts as a hard filter (via Gatekeeper), but we maximize speed here
-                calculate_annualized_roi(roi, duration_ms)
+                *calculate_annualized_roi(roi_pct, duration_ms)
             },
             OptimizationStrategy::Balanced => {
 
                 // GEOMETRIC MEAN (Efficiency Score)
-                let aroi = calculate_annualized_roi(roi, duration_ms);
+                let aroi_pct = calculate_annualized_roi(roi_pct, duration_ms);
                 
                 // If trade is losing, score is negative.
-                if roi <= 0.0 {
-                    return roi; // Simple fallback for losers
+                if *roi_pct <= 0.0 {
+                    return *roi_pct; // Simple fallback for losers
                 }
                 
                 // If ROI is positive but AROI is massive (tiny duration), sqrt dampens it.
                 // If ROI is massive but AROI is low (long duration), sqrt dampens it.
                 // It peaks when BOTH are healthy.
-                (roi * aroi).sqrt()
+                (*roi_pct * *aroi_pct).sqrt()
             }
         }
     }
@@ -55,7 +55,7 @@ impl OptimizationStrategy {
 pub struct TradeVariant {
     pub ratio: f64,
     pub stop_price: f64,
-    pub roi: f64,            // Static snapshot ROI
+    pub roi_pct: RoiPct,
     pub simulation: SimulationResult,
 }
 
@@ -240,20 +240,17 @@ impl TradeOpportunity {
     pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
         let roi = self.expected_roi();
         let aroi = calculate_annualized_roi(roi, self.avg_duration_ms as f64);
-        is_opportunity_worthwhile(roi, aroi, profile.min_roi, profile.min_aroi)
+        is_opportunity_worthwhile(roi, aroi, profile.min_roi_pct, profile.min_aroi_pct)
     }
 
 /// Calculates the Expected ROI % per trade for this specific opportunity.
-    pub fn expected_roi(&self) -> f64 {
-        // RETURN THE SIMULATION TRUTH
-        // The simulation already calculated the true average PnL (including timeouts).
-        // We multiply by 100 to convert decimal (0.05) to percent (5.0).
-        self.simulation.avg_pnl_pct * 100.0
+    pub fn expected_roi(&self) -> RoiPct {
+        // RETURN THE SIMULATION TRUTH. The simulation already calculated the true average PnL (including timeouts).
+        self.simulation.avg_pnl_pct
     }
 
 /// Calculates the Expected ROI % using a dynamic live price.
-    /// Uses the Simulation Result as the baseline and adjusts for price movement.
-    pub fn live_roi(&self, current_price: f64) -> f64 {
+    pub fn live_roi(&self, current_price: f64) -> RoiPct {
         // 1. Get the baseline "True PnL" from the simulation (e.g. 7.0%)
         let base_roi = self.expected_roi(); 
 
@@ -267,11 +264,11 @@ impl TradeOpportunity {
 
         // 3. Adjust the ROI
         // If price moved +1% in our favor, our expected return improves by +1% (simplification)
-        base_roi + (price_drift_pct * 100.0)
+        RoiPct::new(*base_roi + price_drift_pct)
     }
 
     /// Calculates Annualized ROI based on LIVE price and AVERAGE duration.
-    pub fn live_annualized_roi(&self, current_price: f64) -> f64 {
+    pub fn live_annualized_roi(&self, current_price: f64) -> AroiPct {
         let roi = self.live_roi(current_price);
         calculate_annualized_roi(roi, self.avg_duration_ms as f64)
     }

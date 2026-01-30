@@ -57,7 +57,7 @@ pub fn execute_audit(
                     pair,
                     live_price,
                     &strategy,
-                    PhPct(ph_pct),
+                    PhPct::new(ph_pct),
                     ts_collection,
                     // base_config,
                     &mut reporter,

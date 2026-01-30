@@ -216,7 +216,7 @@ impl OhlcvTimeSeries {
     /// Returns 0.0 if range is invalid or empty.
     pub fn calculate_volatility_in_range(&self, start_idx: usize, end_idx: usize) -> VolatilityPct {
         if start_idx >= end_idx || end_idx > self.close_prices.len() {
-            return VolatilityPct(0.);
+            return VolatilityPct::new(0.);
         }
         
         let mut sum_vol = 0.0;
@@ -233,9 +233,9 @@ impl OhlcvTimeSeries {
         }
 
         if count > 0 {
-            VolatilityPct(sum_vol / count as f64)
+            VolatilityPct::new(sum_vol / count as f64)
         } else {
-            VolatilityPct(0.)
+            VolatilityPct::new(0.)
         }
     }
 

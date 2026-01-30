@@ -3,8 +3,7 @@ use std::cmp::Ordering;
 
 use crate::analysis::market_state::MarketState;
 
-use crate::config::DF;
-use crate::config::SimilaritySettings;
+use crate::config::{DF,SimilaritySettings, RoiPct};
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::trading_view::TradeDirection;
@@ -264,7 +263,7 @@ pub struct ScenarioConfig {
 pub enum Outcome {
     TargetHit(usize), // Succeeded in N candles
     StopHit(usize),   // Failed in N candles
-    TimedOut(f64),    // Neither hit nor failed. Stores % change at timeout
+    TimedOut(RoiPct),    // Neither hit nor failed. Stores % change at timeout
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,7 +272,7 @@ pub struct SimulationResult {
     pub avg_candle_count: f64,  // Average candles to result
     pub risk_reward_ratio: f64, // Based on historical outcomes
     pub sample_size: usize,     // How many similar scenarios we found
-    pub avg_pnl_pct: f64,       // The True Expected Retun (Continuous)
+    pub avg_pnl_pct: RoiPct,       // The True Expected Retun (Continuous)
     pub market_state: MarketState,
 }
 
@@ -460,7 +459,7 @@ impl ScenarioSimulator {
                         // Timeout means the full candle limit was exhausted
                         accumulated_candle_count += max_duration_candles as f64;
                         valid_samples += 1;
-                        total_pnl_pct += final_drift_pct;
+                        total_pnl_pct += *final_drift_pct;
                     }
                 }
             }
@@ -492,7 +491,7 @@ impl ScenarioSimulator {
                 avg_candle_count,
                 risk_reward_ratio,
                 sample_size: valid_samples,
-                avg_pnl_pct,
+                avg_pnl_pct: RoiPct::new(avg_pnl_pct),
                 market_state: current_market_state,
             })
         })
@@ -563,7 +562,7 @@ impl ScenarioSimulator {
                 let mismatch = match (&result, &scalar_result) {
                     (Outcome::TargetHit(i1), Outcome::TargetHit(i2)) => i1.abs_diff(*i2) > 1,
                     (Outcome::StopHit(i1), Outcome::StopHit(i2)) => i1.abs_diff(*i2) > 1,
-                    (Outcome::TimedOut(p1), Outcome::TimedOut(p2)) => (p1 - p2).abs() > 0.0000001,
+                    (Outcome::TimedOut(p1), Outcome::TimedOut(p2)) => (**p1 - **p2).abs() > 0.0000001,
                     _ => true,
                 };
                 if mismatch {
@@ -711,7 +710,7 @@ impl ScenarioSimulator {
             }
         }
 
-        Outcome::TimedOut(final_pnl)
+        Outcome::TimedOut(RoiPct::new(final_pnl))
     }
 
     /// The SIMD Implementation (AVX-512 Optimized)
@@ -827,6 +826,6 @@ impl ScenarioSimulator {
             TradeDirection::Short => -close_change,
         };
 
-        Outcome::TimedOut(final_pnl)
+        Outcome::TimedOut(RoiPct::new(final_pnl))
     }
 }

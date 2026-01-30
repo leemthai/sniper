@@ -16,7 +16,7 @@ use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{DF, OptimizationStrategy, StationId, TradeProfile, TunerStation, constants, PhPct};
+use crate::config::{DF, OptimizationStrategy, StationId, TradeProfile, TunerStation, constants, PhPct, RoiPct};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -36,7 +36,7 @@ use crate::utils::maths_utils::{
     calculate_annualized_roi, calculate_percent_diff, is_opportunity_worthwhile,
 };
 #[cfg(debug_assertions)]
-use {crate::ui::ui_text::UI_TEXT, crate::utils::maths_utils::calculate_expected_roi_pct};
+use {crate::ui::ui_text::UI_TEXT};
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -108,7 +108,7 @@ pub fn tune_to_station(
     for &ph in &scan_points {
         // Run the Optimized Pathfinder
         let result =
-            run_pathfinder_simulations(ohlcv, current_price, PhPct(ph), strategy, station.id, None);
+            run_pathfinder_simulations(ohlcv, current_price, PhPct::new(ph), strategy, station.id, None);
 
         let count = result.opportunities.len();
         if count > 0 {
@@ -202,7 +202,7 @@ pub fn tune_to_station(
         }
     }
 
-    Some(PhPct(best_match.0))
+    Some(PhPct::new(best_match.0))
 }
 
 /// Helper: Runs the simulation tournament for a specific target price.
@@ -241,10 +241,8 @@ fn simulate_target(
         if let Some((result, stop_price, variants)) = best_sl_opt {
             let avg_dur_ms = (result.avg_candle_count * constants::INTERVAL_WIDTH_MS as f64) as i64;
             let score = ctx.strategy.calculate_score(
-                result.avg_pnl_pct * 100.0,
+                result.avg_pnl_pct,
                 avg_dur_ms as f64,
-                // CONSTANTS.journey.profile.weight_roi,
-                // CONSTANTS.journey.profile.weight_aroi,
             );
 
             let unique_string = format!("{}_{}_{}", ctx.pair_name, source_id_suffix, direction);
@@ -954,41 +952,31 @@ fn run_stop_loss_tournament(
                 direction,
             ) {
                 // Metrics
-                let roi = result.avg_pnl_pct * 100.0;
+                let roi_pct = RoiPct::new(*result.avg_pnl_pct);
 
                 // --- FIX: UNIT CONVERSION (Candles -> MS) ---
                 let duration_real_ms = result.avg_candle_count * interval_ms as f64;
 
                 // Calculate AROI for the Gatekeeper & Judge
-                let aroi = calculate_annualized_roi(roi, duration_real_ms);
-
-                #[cfg(debug_assertions)]
-                let binary_roi = calculate_expected_roi_pct(
-                    result.success_rate,
-                    result.avg_pnl_pct,
-                    result.success_rate,
-                    (current_price - candidate_stop).abs() / current_price * 100.0,
-                );
+                let aroi_pct = calculate_annualized_roi(roi_pct, duration_real_ms);
 
                 // GATEKEEPER: Check both ROI and AROI against profile
                 let is_worthwhile =
-                    is_opportunity_worthwhile(roi, aroi, profile.min_roi, profile.min_aroi);
+                    is_opportunity_worthwhile(roi_pct, aroi_pct, profile.min_roi_pct, profile.min_aroi_pct);
 
                 if is_worthwhile {
                     // Store this variant
                     valid_variants.push(TradeVariant {
                         ratio,
                         stop_price: candidate_stop,
-                        roi,
+                        roi_pct,
                         simulation: result.clone(),
                     });
 
                     // JUDGE: Calculate Score based on Strategy (using CORRECT Time units)
                     let score = strategy.calculate_score(
-                        roi,
+                        roi_pct,
                         duration_real_ms,
-                        // profile.weight_roi,
-                        // profile.weight_aroi,
                     );
 
                     // Track Best
@@ -1003,15 +991,14 @@ fn run_stop_loss_tournament(
                     let risk_pct = calculate_percent_diff(candidate_stop, current_price);
                     let status_icon = if is_worthwhile { "✅" } else { "🔻" };
                     log::info!(
-                        "   [R:R {:.1}] {} Stop: {:.4} | {}: {:.1}% | ROI: {:+.2}% (Bin: {:+.2}%) | AROI: {:+.0}% | Risk: {:.2}%",
+                        "   [R:R {:.1}] {} Stop: {:.4} | {}: {:.1}% | ROI: {} | AROI: {} | Risk: {:.2}%",
                         ratio,
                         status_icon,
                         candidate_stop,
                         UI_TEXT.label_success_rate,
                         result.success_rate * 100.0,
-                        roi,
-                        binary_roi,
-                        aroi,
+                        roi_pct,
+                        aroi_pct,
                         risk_pct,
                     );
                 }

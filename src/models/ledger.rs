@@ -182,7 +182,7 @@ impl OpportunityLedger {
             // LOGGING  EVOLVE
             #[cfg(debug_assertions)]
             if DF.log_ledger {
-                if (existing.expected_roi() - new_opp.expected_roi()).abs() > 0.1 {
+                if (*existing.expected_roi() - *new_opp.expected_roi()).abs() > 0.1 {
                     log::info!(
                         "LEDGER EVOLVE [{}]: ID {} kept. Target: {:.2} -> {:.2} | ROI {:.2}% -> {:.2}% (Win: {:.1}%->{:.1}%) | SL: {:.2} -> {:.2}",
                         new_opp.pair_name,
