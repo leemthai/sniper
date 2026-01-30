@@ -21,7 +21,10 @@ pub use types::{
     OptimizationStrategy, 
     ZoneParams,
     SimilaritySettings,
-    ZoneClassificationConfig
+    ZoneClassificationConfig,
+    PhPct,
+    VolatilityPct,
+    MomentumPct
 };
 pub use tuner::{StationId, TunerStation, TimeTunerConfig};
 pub use binance::{BINANCE, BinanceApiConfig};

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::models::OhlcvTimeSeries;
-use crate::config::SimilaritySettings;
+use crate::config::{SimilaritySettings, VolatilityPct, MomentumPct};
 
 /// A normalized "Fingerprint" of the market conditions at a specific moment in time.
 /// Used to find historical matches for the Ghost Runner simulation.
@@ -10,12 +10,12 @@ pub struct MarketState {
     /// 1. Volatility (The "Temperature")
     /// Ratio of (High-Low) relative to the Close price.
     /// High = Violent/Fast market. Low = Quiet/Consolidation.
-    pub volatility_pct: f64,
+    pub volatility_pct: VolatilityPct,
 
     /// 2. Momentum (The "Velocity")
     /// Percentage change over the last N candles (e.g. 12 candles / 1 hour).
     /// Positive = Rushing up. Negative = Crashing down.
-    pub momentum_pct: f64,
+    pub momentum_pct: MomentumPct,
 
     /// 3. Relative Volume (The "Fuel")
     /// Current Volume divided by Average Volume (e.g. 20-period MA).
@@ -27,8 +27,8 @@ impl MarketState {
 
     /// Helper for debugging: Returns the contribution of each factor
     pub fn debug_score_components(&self, other: &Self, config: &SimilaritySettings) -> (f64, f64, f64, f64) {
-        let d_vol = (self.volatility_pct - other.volatility_pct).abs() * config.weight_volatility;
-        let d_mom = (self.momentum_pct - other.momentum_pct).abs() * config.weight_momentum;
+        let d_vol = (*self.volatility_pct - *other.volatility_pct).abs() * config.weight_volatility;
+        let d_mom = (*self.momentum_pct - *other.momentum_pct).abs() * config.weight_momentum;
         let d_vol_ratio = (self.relative_volume - other.relative_volume).abs() * config.weight_volume;
         (d_vol + d_mom + d_vol_ratio, d_vol, d_mom, d_vol_ratio)
     }
@@ -64,8 +64,8 @@ impl MarketState {
         let rel_vol = ts.relative_volumes.get(idx).copied().unwrap_or(1.0);
 
         Some(Self {
-            volatility_pct: volatility,
-            momentum_pct: momentum,
+            volatility_pct: VolatilityPct(volatility),
+            momentum_pct: MomentumPct(momentum),
             relative_volume: rel_vol,
         })
     }
@@ -73,8 +73,8 @@ impl MarketState {
 
 
     pub fn similarity_score(&self, other: &Self, config: &SimilaritySettings) -> f64 {
-        let d_vol = (self.volatility_pct - other.volatility_pct).abs() * config.weight_volatility;
-        let d_mom = (self.momentum_pct - other.momentum_pct).abs() * config.weight_momentum;
+        let d_vol = (*self.volatility_pct - *other.volatility_pct).abs() * config.weight_volatility;
+        let d_mom = (*self.momentum_pct - *other.momentum_pct).abs() * config.weight_momentum;
         let d_vol_ratio = (self.relative_volume - other.relative_volume).abs() * config.weight_volume;
 
         d_vol + d_mom + d_vol_ratio

@@ -3,6 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 
+use crate::config::VolatilityPct;
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 
@@ -213,9 +214,9 @@ impl OhlcvTimeSeries {
 
     /// Calculates the Average Volatility ((High-Low)/Close) over a range of indices.
     /// Returns 0.0 if range is invalid or empty.
-    pub fn calculate_volatility_in_range(&self, start_idx: usize, end_idx: usize) -> f64 {
+    pub fn calculate_volatility_in_range(&self, start_idx: usize, end_idx: usize) -> VolatilityPct {
         if start_idx >= end_idx || end_idx > self.close_prices.len() {
-            return 0.0;
+            return VolatilityPct(0.);
         }
         
         let mut sum_vol = 0.0;
@@ -232,9 +233,9 @@ impl OhlcvTimeSeries {
         }
 
         if count > 0 {
-            sum_vol / count as f64
+            VolatilityPct(sum_vol / count as f64)
         } else {
-            0.0
+            VolatilityPct(0.)
         }
     }
 

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{OptimizationStrategy, TICKER, constants};
+use crate::config::{OptimizationStrategy, TICKER, constants, VolatilityPct, MomentumPct};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -88,12 +88,12 @@ impl ZoneSniperApp {
                         .market_state
                         .as_ref()
                         .map(|m| m.volatility_pct)
-                        .unwrap_or(0.0);
+                        .unwrap_or(VolatilityPct(0.0));
                     let vb = b
                         .market_state
                         .as_ref()
                         .map(|m| m.volatility_pct)
-                        .unwrap_or(0.0);
+                        .unwrap_or(VolatilityPct(0.0));
                     va.total_cmp(&vb)
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
@@ -102,12 +102,12 @@ impl ZoneSniperApp {
                         .market_state
                         .as_ref()
                         .map(|m| m.momentum_pct)
-                        .unwrap_or(0.0);
+                        .unwrap_or(MomentumPct(0.0));
                     let mb = b
                         .market_state
                         .as_ref()
                         .map(|m| m.momentum_pct)
-                        .unwrap_or(0.0);
+                        .unwrap_or(MomentumPct(0.0));
                     ma.total_cmp(&mb)
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
@@ -242,7 +242,7 @@ impl ZoneSniperApp {
 
                 // --- CALCULATIONS ---
                 // We use the data captured in the opportunity, not the global config
-                let ph_pct = op.source_ph;
+                let ph_pct = op.source_ph_pct;
                 let max_time_ms = op.max_duration_ms;
                 let max_time_str = TimeUtils::format_duration(max_time_ms);
 
@@ -297,7 +297,7 @@ impl ZoneSniperApp {
                 // Volatility
                 ui.metric(
                     &UI_TEXT.label_volatility,
-                    &format!("{:.2}%", state.volatility_pct * 100.0),
+                    &format!("{}", state.volatility_pct),
                     PLOT_CONFIG.color_info,
                 );
 
@@ -310,16 +310,16 @@ impl ZoneSniperApp {
                             .color(PLOT_CONFIG.color_text_subdued),
                     );
                     ui.label(
-                        RichText::new(format!("{:+.2}%", state.momentum_pct * 100.0))
+                        RichText::new(format!("{}", state.momentum_pct))
                             .small()
-                            .color(get_momentum_color(state.momentum_pct)),
+                            .color(get_momentum_color(*state.momentum_pct)),
                     );
 
                     ui.label(
                         RichText::new(format!(
-                            " ({} {:.2}%)",
+                            " ({} {})",
                             UI_TEXT.opp_exp_trend_length,
-                            ph_pct * 100.0,
+                            ph_pct,
                         ))
                         .small()
                         .color(PLOT_CONFIG.color_text_subdued),
@@ -457,12 +457,12 @@ impl ZoneSniperApp {
 
                     ui.label(
                         RichText::new(format!(
-                            "{} ({} = {:.2}%, {} = {:+.2}%, {} = {:.2}x)",
+                            "{} ({} = {}, {} = {}, {} = {:.2}x)",
                             UI_TEXT.opp_expr_we_fingerprinted,
                             UI_TEXT.label_volatility,
-                            state.volatility_pct * 100.0,
+                            state.volatility_pct,
                             UI_TEXT.label_momentum,
-                            state.momentum_pct * 100.0,
+                            state.momentum_pct,
                             UI_TEXT.opp_exp_relative_volume,
                             state.relative_volume
                         ))
@@ -1150,13 +1150,13 @@ impl ZoneSniperApp {
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
                     ui.label(
-                        RichText::new(format!("{:.3}%", ms.volatility_pct * 100.0))
+                        RichText::new(format!("{}", ms.volatility_pct))
                             .small()
                             .color(PLOT_CONFIG.color_info),
                     );
-                    let mom_color = get_momentum_color(ms.momentum_pct);
+                    let mom_color = get_momentum_color(*ms.momentum_pct);
                     ui.label(
-                        RichText::new(format!("{:+.2}%", ms.momentum_pct * 100.0))
+                        RichText::new(format!("{}", ms.momentum_pct))
                             .small()
                             .color(mom_color),
                     );
@@ -1433,9 +1433,9 @@ impl ZoneSniperApp {
                         ui.horizontal(|ui| {
                             ui.label(
                                 RichText::new(format!(
-                                    "{} {:.2}%",
+                                    "{} {}",
                                     UI_TEXT.label_source_ph,
-                                    op.source_ph * 100.0
+                                    op.source_ph_pct
                                 ))
                                 .small()
                                 .color(PLOT_CONFIG.color_text_subdued),
@@ -1507,24 +1507,24 @@ impl ZoneSniperApp {
                         );
                     }
 
-                    if let Some(best_ph) = self.run_auto_tune_logic(&pair_name, station_id) {
+                    if let Some(best_ph_pct) = self.run_auto_tune_logic(&pair_name, station_id) {
                         #[cfg(debug_assertions)]
                         if DF.log_tuner {
                             log::info!(
-                                "🎛️ BUTTON TUNE [{}] Station: {:?} -> PH {:.2}%",
+                                "🎛️ BUTTON TUNE [{}] Station: {:?} -> PH {}",
                                 pair_name,
                                 station_id,
-                                best_ph * 100.0
+                                best_ph_pct
                             );
                         }
 
                         // C. Apply Result to Config
-                        self.active_ph_pct = best_ph;
+                        self.active_ph_pct = best_ph_pct;
 
                         // D. Update Engine
                         if let Some(engine) = &mut self.engine {
                             // Create specific config for this pair's override
-                            engine.shared_config.insert_ph(pair_name.clone(), best_ph);
+                            engine.shared_config.insert_ph(pair_name.clone(), best_ph_pct);
 
                             // Update global context & Fire
                             // engine.update_config(self.app_config.clone());
@@ -1532,7 +1532,7 @@ impl ZoneSniperApp {
                             engine.force_recalc(
                                 &pair_name,
                                 None,
-                                best_ph,
+                                best_ph_pct,
                                 self.saved_strategy,
                                 station_id,
                                 JobMode::FullAnalysis,
@@ -2047,7 +2047,7 @@ impl ZoneSniperApp {
 
                     ui.metric(
                         &UI_TEXT.label_volatility,
-                        &format!("{:.3}%", model.cva.volatility_pct),
+                        &format!("{}", model.cva.volatility_pct),
                         PLOT_CONFIG.color_warning,
                     );
                 }

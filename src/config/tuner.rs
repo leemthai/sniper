@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::config::PhPct;
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StationId {
     Scalp,
@@ -15,8 +17,8 @@ pub struct TunerStation {
     pub name: &'static str,
     pub target_min_hours: f64,
     pub target_max_hours: f64,
-    pub scan_ph_min: f64,
-    pub scan_ph_max: f64,
+    pub scan_ph_min: PhPct,
+    pub scan_ph_max: PhPct,
 }
 
 #[derive(Debug, Clone, Copy)]

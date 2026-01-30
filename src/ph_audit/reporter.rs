@@ -1,4 +1,5 @@
 use chrono::Local;
+use crate::config::PhPct;
 
 pub struct AuditReporter {
     buffer: Vec<String>,
@@ -19,7 +20,7 @@ impl AuditReporter {
         &mut self,
         pair: &str,
         strategy: &str,
-        ph: f64,
+        ph_pct: PhPct,
         trend_k: usize,
         sim_k: usize,
         total_candles: usize,
@@ -59,7 +60,7 @@ impl AuditReporter {
             ts,
             pair,
             strategy,
-            ph * 100.0,
+            *ph_pct * 100.0,
             trend_k,
             sim_k,
             total_candles,

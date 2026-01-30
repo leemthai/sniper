@@ -18,7 +18,7 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{DF, OptimizationStrategy, StationId, constants};
+use crate::config::{DF, OptimizationStrategy, StationId, constants, PhPct};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -206,7 +206,7 @@ pub struct ZoneSniperApp {
     #[serde(skip)]
     pub active_station_id: StationId,
     #[serde(skip)]
-    pub active_ph_pct: f64,
+    pub active_ph_pct: PhPct,
     #[serde(skip)]
     pub scroll_target: Option<NavigationTarget>,
     #[serde(skip)]
@@ -248,7 +248,7 @@ impl Default for ZoneSniperApp {
             selected_pair: Some("BTCUSDT".to_string()),
             shared_config: SharedConfiguration::new(),
             active_station_id: StationId::default(),
-            active_ph_pct: 0.15,
+            active_ph_pct: PhPct::default(),
             startup_tune_done: false,
             plot_visibility: PlotVisibility::default(),
             show_debug_help: false,
@@ -354,7 +354,7 @@ impl ZoneSniperApp {
 
     /// Helper: Runs the Auto-Tune algorithm for a specific pair and station.
     /// Returns Some(new_ph) if successful. Returns None if data/price is missing.
-    pub fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<f64> {
+    pub fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<PhPct> {
         if let Some(e) = &self.engine {
             // 1. Get Config for the requested Station
             let station = constants::tuner::CONFIG
@@ -396,7 +396,7 @@ impl ZoneSniperApp {
             }
         }
 
-        self.active_station_id = self.shared_config.get_station(&new_pair_name).unwrap(); // Will crash if None. Deliberate choice
+        self.active_station_id = self.shared_config.get_station(&new_pair_name).expect(&format!("handle_pair_selection expects a value for station id for pair {}", new_pair_name)); // Will crash if None. Deliberate choice
         #[cfg(debug_assertions)]
         if DF.log_active_station_id {
             log::info!(
@@ -468,7 +468,7 @@ impl ZoneSniperApp {
         // 1. Switch State (Pure UI)
         self.handle_pair_selection(op.pair_name.clone());
 
-        self.active_ph_pct = op.source_ph;
+        self.active_ph_pct = op.source_ph_pct;
         #[cfg(debug_assertions)]
         if DF.log_tuner {
             log::info!(
@@ -866,10 +866,6 @@ impl ZoneSniperApp {
     fn render_running_state(&mut self, ctx: &Context) {
         let start = AppInstant::now();
         if let Some(e) = &mut self.engine {
-            // #[cfg(debug_assertions)]
-            // if DF.log_station_overrides {
-            //     log::info!("engine_station_overrides status in render_running_state: {:?}", self.shared_config.get_all_stations());
-            // }
             e.update();
         }
         let engine_time = start.elapsed().as_micros();
@@ -957,12 +953,13 @@ impl ZoneSniperApp {
         if let Some(e) = &mut self.engine {
             while processed < chunk_size && !state.todo_list.is_empty() {
                 if let Some(pair) = state.todo_list.pop() {
-                    // A. Determine Station (and use default if we don't have one.....)
+
+                    // A. Determine Station for each pair
 
                     let station_id = self
                         .shared_config
                         .get_station(&pair)
-                        .unwrap_or_default();
+                        .expect(&format!("handle_tuning_phase stations should all be full, especially for pair {}", pair));
                     #[cfg(debug_assertions)]
                     if DF.log_active_station_id {
                         log::info!(
@@ -1114,7 +1111,7 @@ impl ZoneSniperApp {
                 self.active_station_id = self
                     .shared_config
                     .get_station(&final_pair.clone())
-                    .unwrap_or_default();
+                    .expect(&format!("check_loading_completion must have station id set for all pairs, including the final_pair which is {} ", final_pair));
                 #[cfg(debug_assertions)]
                 if DF.log_active_station_id {
                     log::info!(
@@ -1230,12 +1227,12 @@ impl ZoneSniperApp {
                         }
 
                         // TEMP no idea what to do with this shitcode yet.
-                        self.active_ph_pct = op.source_ph;
+                        self.active_ph_pct = op.source_ph_pct;
                         #[cfg(debug_assertions)]
                         if DF.log_tuner {
                             log::info!(
                                 "TUNER: set self.active_ph_pct to {:?} in check_loading_completion as start-up value",
-                                op.source_ph
+                                op.source_ph_pct
                             );
                         }
                     }
@@ -1288,7 +1285,7 @@ impl ZoneSniperApp {
         let available_pairs = timeseries.unique_pair_names();
         let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
 
-        // 1. Register pairs in shared config
+        // 1. Register pairs in shared config - ensures all pairs write 
         self.shared_config.register_pairs(available_pairs.clone());
 
         // Resolve Startup Pair - and check if the saved 'selected_pair' actually exists in the loaded data.
@@ -1306,9 +1303,9 @@ impl ZoneSniperApp {
                 self.shared_config
             );
         }
-        for pair in available_pairs.clone() {
-            self.shared_config.ensure_station_default(pair);
-        }
+        self.shared_config.ensure_all_stations_initialized();
+        self.shared_config.ensure_all_phs_initialized(PhPct::default());
+
         #[cfg(debug_assertions)]
         if DF.log_station_overrides {
             log::info!(
@@ -1316,7 +1313,7 @@ impl ZoneSniperApp {
                 self.shared_config
             );
         }
-        let final_pair = if let Some(p) = valid_startup_pair {
+        let start_pair = if let Some(p) = valid_startup_pair {
             p // Saved pair is valid
         } else {
             // Saved pair is invalid/missing. Fallback to first available.
@@ -1338,12 +1335,12 @@ impl ZoneSniperApp {
         if DF.log_selected_pair {
             log::info!(
                 "SELECTED PAIR: set to [{:?}] in check_loading_completion",
-                final_pair
+                start_pair
             );
         }
-        self.selected_pair = Some(final_pair.clone()); // Guaranteed to have a selected_pair after this
+        self.selected_pair = Some(start_pair.clone()); // Guaranteed to have a selected_pair after this
 
-        (available_pairs, valid_set, final_pair)
+        (available_pairs, valid_set, start_pair)
     }
 
     

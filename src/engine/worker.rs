@@ -16,7 +16,7 @@ use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{DF, OptimizationStrategy, StationId, TradeProfile, TunerStation, constants};
+use crate::config::{DF, OptimizationStrategy, StationId, TradeProfile, TunerStation, constants, PhPct};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -69,7 +69,8 @@ pub fn tune_to_station(
     current_price: f64,
     station: &TunerStation,
     strategy: OptimizationStrategy,
-) -> Option<f64> {
+) -> Option<PhPct> {
+
     let _t_start = AppInstant::now();
 
     #[cfg(debug_assertions)]
@@ -81,8 +82,8 @@ pub fn tune_to_station(
                 station.name,
                 station.target_min_hours,
                 station.target_max_hours,
-                station.scan_ph_min * 100.0,
-                station.scan_ph_max * 100.0,
+                *station.scan_ph_min * 100.0,
+                *station.scan_ph_max * 100.0,
                 strategy
             );
         }
@@ -92,12 +93,12 @@ pub fn tune_to_station(
     let steps = constants::TUNER_SCAN_STEPS;
     let mut scan_points = Vec::with_capacity(steps);
     if steps > 1 {
-        let step_size = (station.scan_ph_max - station.scan_ph_min) / (steps - 1) as f64;
+        let step_size = (*station.scan_ph_max - *station.scan_ph_min) / (steps - 1) as f64;
         for i in 0..steps {
-            scan_points.push(station.scan_ph_min + (i as f64 * step_size));
+            scan_points.push(*station.scan_ph_min + (i as f64 * step_size));
         }
     } else {
-        scan_points.push(station.scan_ph_min); // Fallback
+        scan_points.push(*station.scan_ph_min); // Fallback
     }
 
     // 2. Run Simulations
@@ -107,7 +108,7 @@ pub fn tune_to_station(
     for &ph in &scan_points {
         // Run the Optimized Pathfinder
         let result =
-            run_pathfinder_simulations(ohlcv, current_price, ph, strategy, station.id, None);
+            run_pathfinder_simulations(ohlcv, current_price, PhPct(ph), strategy, station.id, None);
 
         let count = result.opportunities.len();
         if count > 0 {
@@ -201,7 +202,7 @@ pub fn tune_to_station(
         }
     }
 
-    Some(best_match.0)
+    Some(PhPct(best_match.0))
 }
 
 /// Helper: Runs the simulation tournament for a specific target price.
@@ -258,7 +259,7 @@ fn simulate_target(
             let opp = TradeOpportunity {
                 id: uuid,
                 created_at: TimeUtils::now_timestamp_ms(),
-                source_ph: ctx.ph_pct,
+                source_ph_pct: ctx.ph_pct,
                 pair_name: ctx.pair_name.to_string(),
                 direction,
                 start_price: ctx.current_price,
@@ -445,12 +446,13 @@ struct PathfinderContext<'a> {
     station_id: StationId,
     duration_candles: usize,
     duration_ms: u64,
-    ph_pct: f64,
-    ph_min: f64,
-    ph_max: f64,
+    ph_pct: PhPct,
+    price_min: f64,
+    price_max: f64,
 }
 
 fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
+    
     let price_buffer_pct = constants::journey::optimization::PRICE_BUFFER_PCT;
     let steps = constants::journey::optimization::SCOUT_STEPS;
     let scout_risks = [2.5]; // Optimization: 1 variant
@@ -519,19 +521,19 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
     let short_end = ctx.current_price * (1.0 - price_buffer_pct);
 
     // Combine PH constraints with Bias constraints
-    let long_active = (ctx.ph_max > long_start) && bias_long;
-    let short_active = (ctx.ph_min < short_end) && bias_short;
+    let long_active = (ctx.price_max > long_start) && bias_long;
+    let short_active = (ctx.price_min < short_end) && bias_short;
     // log::error!("{}: long active is {} short active is {}", ctx.pair_name, long_active, short_active);
 
     // Calculate step sizes
     let long_step_size = if long_active {
-        (ctx.ph_max - long_start) / steps as f64
+        (ctx.price_max - long_start) / steps as f64
     } else {
         0.0
     };
 
     let short_step_size = if short_active {
-        (short_end - ctx.ph_min) / steps as f64
+        (short_end - ctx.price_min) / steps as f64
     } else {
         0.0
     };
@@ -559,7 +561,7 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
 
                 // 2. Short Scout Logic
                 if short_active {
-                    let target = ctx.ph_min + (i as f64 * short_step_size);
+                    let target = ctx.price_min + (i as f64 * short_step_size);
                     if let Some(res) = simulate_target(
                         ctx,
                         target,
@@ -627,7 +629,7 @@ fn run_drill_phase(
     crate::trace_time!("Pathfinder: Phase B (Drill)", 2000, {
         let mut drill_targets = Vec::new();
 
-        let grid_step_pct = (ctx.ph_max - ctx.ph_min) / ctx.current_price / steps as f64;
+        let grid_step_pct = (ctx.price_max - ctx.price_min) / ctx.current_price / steps as f64;
         let drill_offset_pct = grid_step_pct * drill_offset_factor;
         let dedup_radius = grid_step_pct * 100.0;
 
@@ -768,7 +770,7 @@ pub struct PathfinderResult {
 pub fn run_pathfinder_simulations(
     ohlcv: &OhlcvTimeSeries,
     current_price: f64,
-    ph_pct: f64,
+    ph_pct: PhPct,
     strategy: OptimizationStrategy,
     station_id: StationId,
     cva_opt: Option<&CVACore>,
@@ -818,7 +820,7 @@ pub fn run_pathfinder_simulations(
         }
     };
 
-    let (ph_min, ph_max) = price_horizon::calculate_price_range(current_price, ph_pct);
+    let (price_min, price_max) = price_horizon::calculate_price_range(current_price, ph_pct);
 
     // Build Context Object
     let ctx = PathfinderContext {
@@ -833,20 +835,20 @@ pub fn run_pathfinder_simulations(
         duration_candles,
         duration_ms: duration.as_millis() as u64,
         ph_pct,
-        ph_min,
-        ph_max,
+        price_min,
+        price_max,
     };
 
     #[cfg(debug_assertions)]
     if DF.log_pathfinder {
         log::info!(
-            "🎯 PATHFINDER START [{}] Price: ${:.4} | PH Range: ${:.4} - ${:.4} ({:.2}%) | Vol: {:.3}%",
+            "🎯 PATHFINDER START [{}] Price: ${:.4} | PH Range: ${:.4} - ${:.4} ({}) | Vol: {}",
             ctx.pair_name,
             ctx.current_price,
-            ctx.ph_min,
-            ctx.ph_max,
-            ctx.ph_pct * 100.0,
-            avg_volatility * 100.0
+            ctx.price_min,
+            ctx.price_max,
+            ctx.ph_pct,
+            avg_volatility
         );
     }
 
@@ -858,8 +860,8 @@ pub fn run_pathfinder_simulations(
     let final_opps: Vec<TradeOpportunity> = apply_diversity_filter(
         drill_results,
         ctx.pair_name,
-        ctx.ph_min,
-        ctx.ph_max,
+        ctx.price_min,
+        ctx.price_max,
         strategy,
     );
     // Return everything
@@ -895,7 +897,7 @@ fn run_stop_loss_tournament(
         let target_dist_abs = (target_price - current_price).abs();
 
         // 1. Safety Check: Volatility Floor.
-        let vol_floor_pct = current_state.volatility_pct * 2.0;
+        let vol_floor_pct = *current_state.volatility_pct * 2.0;
         let min_stop_dist = current_price * vol_floor_pct;
 
         // Logging setup
@@ -1079,7 +1081,7 @@ fn perform_standard_analysis(
     tx: Sender<JobResult>,
 ) {
     let ph_pct = req.ph_pct;
-    let base_label = format!("{} @ {:.2}%", req.pair_name, ph_pct * 100.0);
+    let base_label = format!("{} @ {:.2}%", req.pair_name, *ph_pct * 100.0);
 
     crate::trace_time!(&format!("Total JOB [{}]", base_label), 10_000, {
         let start = AppInstant::now();

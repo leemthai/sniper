@@ -3,8 +3,7 @@ use strum::IntoEnumIterator;
 
 use crate::analysis::pair_analysis;
 
-use crate::config::constants;
-use crate::config::{OptimizationStrategy, StationId};
+use crate::config::{OptimizationStrategy, StationId, constants, PhPct};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -58,7 +57,7 @@ pub fn execute_audit(
                     pair,
                     live_price,
                     &strategy,
-                    ph_pct,
+                    PhPct(ph_pct),
                     ts_collection,
                     // base_config,
                     &mut reporter,
@@ -77,7 +76,7 @@ fn run_single_simulation(
     pair: &str,
     price: f64,
     strategy: &OptimizationStrategy,
-    ph_pct: f64,
+    ph_pct: PhPct,
     ts_collection: &TimeSeriesCollection,
     reporter: &mut AuditReporter,
 ) {

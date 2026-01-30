@@ -7,6 +7,7 @@ pub const INTERVAL_WIDTH_MS: i64 = TimeUtils::MS_IN_5_MIN;
 pub const ZONE_COUNT: usize = 256;
 pub const TIME_DECAY_FACTOR: f64 = 1.5;
 pub const TUNER_SCAN_STEPS: usize = 4;
+// pub const PH_DEFAULT: f64 = 0.15;
 
 pub mod journey {
     use super::*;
@@ -123,6 +124,7 @@ pub mod cva {
 
 pub mod tuner {
     use crate::config::{TunerStation, StationId, TimeTunerConfig};
+    use crate::config::PhPct;
 
     pub const STATIONS: &[TunerStation] = &[
         TunerStation {
@@ -130,32 +132,32 @@ pub mod tuner {
             name: "⚡ SCALP",
             target_min_hours: 1.0,
             target_max_hours: 6.0,
-            scan_ph_min: 0.01,
-            scan_ph_max: 0.04,
+            scan_ph_min: PhPct(0.01),
+            scan_ph_max: PhPct(0.04),
         },
         TunerStation {
             id: StationId::Day,
             name: "☀️ DAY",
             target_min_hours: 6.0,
             target_max_hours: 24.0,
-            scan_ph_min: 0.03,
-            scan_ph_max: 0.08,
+            scan_ph_min: PhPct(0.03),
+            scan_ph_max: PhPct(0.08),
         },
         TunerStation {
             id: StationId::Swing,
             name: "🌊 SWING",
             target_min_hours: 24.0,
             target_max_hours: 120.0,
-            scan_ph_min: 0.05,
-            scan_ph_max: 0.15,
+            scan_ph_min: PhPct(0.05),
+            scan_ph_max: PhPct(0.15),
         },
         TunerStation {
             id: StationId::Macro,
             name: "🏔️ MACRO",
             target_min_hours: 336.0,
             target_max_hours: 2160.0,
-            scan_ph_min: 0.15,
-            scan_ph_max: 0.60,
+            scan_ph_min: PhPct(0.15),
+            scan_ph_max: PhPct(0.60),
         },
     ];
 

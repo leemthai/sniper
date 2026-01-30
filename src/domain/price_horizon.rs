@@ -1,3 +1,4 @@
+use crate::config::PhPct;
 use crate::models::OhlcvTimeSeries;
 
 /// Automatically select discontinuous slice ranges based on price relevancy.
@@ -5,7 +6,7 @@ use crate::models::OhlcvTimeSeries;
 pub fn auto_select_ranges(
     timeseries: &OhlcvTimeSeries,
     current_price: f64,
-    ph_pct: f64,
+    ph_pct: PhPct,
 ) -> (Vec<(usize, usize)>, (f64, f64)) {
     // 1. Calculate the user-defined price range
     let (price_min, price_max) = calculate_price_range(current_price, ph_pct);
@@ -19,9 +20,9 @@ pub fn auto_select_ranges(
 }
 
 /// Calculates the price range considered "relevant" to the current price.
-pub fn calculate_price_range(current_price: f64, threshold: f64) -> (f64, f64) {
-    let min = current_price * (1.0 - threshold);
-    let max = current_price * (1.0 + threshold);
+pub fn calculate_price_range(current_price: f64, threshold: PhPct) -> (f64, f64) {
+    let min = current_price * (1.0 - *threshold);
+    let max = current_price * (1.0 + *threshold);
     (min, max)
 }
 

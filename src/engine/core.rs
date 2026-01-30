@@ -7,7 +7,7 @@ use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::R
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
-use crate::config::{OptimizationStrategy, StationId, constants};
+use crate::config::{OptimizationStrategy, StationId, constants, PhPct};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
@@ -66,7 +66,7 @@ pub struct SniperEngine {
     pub queue: VecDeque<(
         String, // pair_name
         Option<f64>, // price
-        f64, // ph_pct
+        PhPct, // ph_pct
         OptimizationStrategy, // strategy
         StationId, // StationId
         JobMode, // Mode
@@ -161,7 +161,7 @@ impl SniperEngine {
     /// INTENT: The User clicked a specific Trade Opportunity.
     /// Action: Calculate CVA Zones for this specific PH so the chart looks right,
     /// but DO NOT re-run simulations (preserve the trade list).
-    pub fn request_trade_context(&mut self, pair_name: String, target_ph: f64) {
+    pub fn request_trade_context(&mut self, pair_name: String, target_ph: PhPct) {
         // 2. Set Override (so the worker picks it up)
         self.shared_config.insert_ph(pair_name.clone(), target_ph);
         let station_id = self
@@ -624,10 +624,10 @@ impl SniperEngine {
                          config: &SharedConfiguration| {
 
             // 1. Lookup PH (Specific to pair)
-            let ph_pct = config.get_ph(&pair).unwrap_or(0.15);
+            let ph_pct = config.get_ph(&pair).expect("We must have value for ph_pct for this pair at all times");
 
             // 2. Lookup Station (Specific to pair)
-            let station = config.get_station(&pair).unwrap_or_default();
+            let station = config.get_station(&pair).expect(&format!("trigger_global_recalc must have station set for pair {}", pair));
 
             target_queue.push_back((
                 pair,
@@ -664,7 +664,7 @@ impl SniperEngine {
         &mut self,
         pair: &str,
         price_override: Option<f64>,
-        ph_pct: f64,
+        ph_pct: PhPct,
         strategy: OptimizationStrategy,
         station_id: StationId,
         mode: JobMode,
@@ -745,6 +745,7 @@ impl SniperEngine {
     }
 
     fn check_automatic_triggers(&mut self) {
+
         let pairs: Vec<String> = self.shared_config.get_all_pairs();
         let threshold = constants::cva::PRICE_RECALC_THRESHOLD_PCT;
 
@@ -834,7 +835,7 @@ impl SniperEngine {
         &mut self,
         pair: String,
         price_override: Option<f64>,
-        ph_pct: f64,
+        ph_pct: PhPct,
         strategy: OptimizationStrategy,
         station_id: StationId,
         mode: JobMode,

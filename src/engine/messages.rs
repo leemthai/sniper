@@ -1,5 +1,5 @@
 use std::sync::{Arc, RwLock};
-use crate::config::{OptimizationStrategy, StationId};
+use crate::config::{OptimizationStrategy, StationId, PhPct};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::cva::CVACore;
 use crate::models::horizon_profile::HorizonProfile;
@@ -23,7 +23,7 @@ pub struct JobRequest {
     pub current_price: Option<f64>,
     pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
     pub existing_profile: Option<HorizonProfile>,
-    pub ph_pct: f64,
+    pub ph_pct: PhPct,
     pub strategy: OptimizationStrategy,
     pub station_id: StationId,
     pub mode: JobMode,

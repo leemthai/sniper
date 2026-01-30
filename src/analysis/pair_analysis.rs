@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 
-use crate::config::constants;
+use crate::config::{constants, PhPct};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
 use crate::models::cva::CVACore;
@@ -14,7 +14,7 @@ pub fn pair_analysis_pure(
     pair_name: String,
     timeseries_data: &TimeSeriesCollection,
     current_price: f64,
-    ph_pct: f64,
+    ph_pct: PhPct,
 ) -> Result<CVACore> {
     // 1. Find the Data
     // find_matching_ohlcv returns Result, so we use with_context to add the error message

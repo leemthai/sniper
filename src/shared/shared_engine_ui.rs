@@ -1,4 +1,4 @@
-use crate::config::StationId;
+use crate::config::{PhPct, StationId};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock};
 pub struct UIEngineSharedData {
     pub pairs: HashSet<String>,
     pub station_overrides: HashMap<String, StationId>,
-    pub ph_overrides: HashMap<String, f64>,
+    pub ph_overrides: HashMap<String, PhPct>,
     // Add other shared configurations here as needed in the future
 }
 
@@ -22,6 +22,7 @@ impl SharedConfiguration {
     }
 
     // --- Pair Registry ---
+    // i.e write a list of pairs
     pub fn register_pairs(&self, pairs: Vec<String>) {
         let mut lock = self.inner.write().unwrap();
         for p in pairs {
@@ -37,12 +38,32 @@ impl SharedConfiguration {
         self.inner.read().unwrap().pairs.iter().cloned().collect()
     }
 
+    /// Iterates through all registered pairs and ensures they have a StationId.
+    pub fn ensure_all_stations_initialized(&self) {
+        let mut data = self.inner.write().unwrap();
+        let keys: Vec<String> = data.pairs.iter().cloned().collect();
+        for pair in keys {
+            data.station_overrides
+                .entry(pair)
+                .or_insert(StationId::default());
+        }
+    }
+
+    /// Iterates through all registered pairs and ensures they have a PH value.
+    pub fn ensure_all_phs_initialized(&self, default_ph: PhPct) {
+        let mut data = self.inner.write().unwrap();
+        let keys: Vec<String> = data.pairs.iter().cloned().collect();
+        for pair in keys {
+            data.ph_overrides.entry(pair).or_insert(default_ph);
+        }
+    }
+
     // --- Read Accessors ---
     pub fn get_station(&self, key: &str) -> Option<StationId> {
         self.inner.read().unwrap().station_overrides.get(key).copied()
     }
 
-    pub fn get_ph(&self, key: &str) -> Option<f64> {
+    pub fn get_ph(&self, key: &str) -> Option<PhPct> {
         self.inner.read().unwrap().ph_overrides.get(key).copied()
     }
 
@@ -51,7 +72,7 @@ impl SharedConfiguration {
         self.inner.write().unwrap().station_overrides.insert(key, value);
     }
 
-    pub fn insert_ph(&self, key: String, value: f64) {
+    pub fn insert_ph(&self, key: String, value: PhPct) {
         self.inner.write().unwrap().ph_overrides.insert(key, value);
     }
 
@@ -66,7 +87,7 @@ impl SharedConfiguration {
     }
     
     // Ensure default PH if needed
-    pub fn ensure_ph_default(&self, key: String, default_value: f64) {
+    pub fn ensure_ph_default(&self, key: String, default_value: PhPct) {
         self.inner.write().unwrap().ph_overrides.entry(key).or_insert(default_value);
     }
     
@@ -76,7 +97,7 @@ impl SharedConfiguration {
     }
     
     // Utility to get all PH overrides
-    pub fn get_all_phs(&self) -> HashMap<String, f64> {
+    pub fn get_all_phs(&self) -> HashMap<String, PhPct> {
         self.inner.read().unwrap().ph_overrides.clone()
     }
 }

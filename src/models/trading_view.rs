@@ -8,7 +8,7 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants};
+use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants, PhPct};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -150,7 +150,7 @@ impl std::fmt::Display for TradeOutcome {
 pub struct TradeOpportunity {
     pub id: String,
     pub created_at: i64,
-    pub source_ph: f64,
+    pub source_ph_pct: PhPct,
 
     pub pair_name: String,
     pub direction: TradeDirection,

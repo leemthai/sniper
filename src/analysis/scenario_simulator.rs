@@ -47,8 +47,8 @@ fn calculate_scores_scalar(
     weights: &SimilaritySettings,
 ) -> Vec<f32> {
     let mut results = Vec::with_capacity(history.vol.len());
-    let c_vol = current.volatility_pct as f32;
-    let c_mom = current.momentum_pct as f32;
+    let c_vol = *current.volatility_pct as f32;
+    let c_mom = *current.momentum_pct as f32;
     let c_rel = current.relative_volume as f32;
 
     let w_vol = weights.weight_volatility as f32;
@@ -79,8 +79,8 @@ unsafe fn calculate_scores_avx512(
 
     // Explicit unsafe block required for intrinsics and pointer arithmetic
     unsafe {
-        let cur_vol = _mm512_set1_ps(current.volatility_pct as f32);
-        let cur_mom = _mm512_set1_ps(current.momentum_pct as f32);
+        let cur_vol = _mm512_set1_ps(*current.volatility_pct as f32);
+        let cur_mom = _mm512_set1_ps(*current.momentum_pct as f32);
         let cur_rel = _mm512_set1_ps(current.relative_volume as f32);
 
         let w_vol = _mm512_set1_ps(weights.weight_volatility as f32);

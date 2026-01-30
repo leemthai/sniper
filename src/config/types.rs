@@ -1,10 +1,108 @@
 //! Analysis and computation constants (Immutable Blueprints)
 
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 use std::time::Duration;
 use strum_macros::{Display, EnumIter};
 
 use crate::ui::config::UI_TEXT;
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PhPct(pub f64);
+
+impl PhPct {
+
+    pub const DEFAULT_VALUE: f64 = 0.15;
+    pub const DEFAULT: Self = Self(Self::DEFAULT_VALUE);
+
+    pub fn new(val: f64) -> Self {
+        debug_assert!(val >= 0.0 && val <= 1.0, "PhPct value {} out of logical range [0, 1]", val);
+        Self(val.clamp(0.0, 1.0))
+    }
+
+    pub fn format_pct(&self) -> String {
+        format!("{:.2}%", self.0 * 100.0)
+    }
+}
+
+impl Default for PhPct {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl Deref for PhPct {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for PhPct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.4}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct VolatilityPct(pub f64);
+
+impl VolatilityPct {
+
+    pub const MIN_EPSILON: f64 = 0.0001;
+
+    pub fn new(val: f64) -> Self {
+        debug_assert!(val >= 0.0, "Volatility cannot be negative: {}", val);
+        debug_assert!(val < 10.0, "Insane volatility detected (>1000%): {}. Possible unit error?", val);
+        Self(val.max(0.0))
+    }
+
+    pub fn as_safe_divisor(&self) -> f64 {
+        self.0.max(Self::MIN_EPSILON)
+    }
+    
+}
+
+impl Deref for VolatilityPct {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for VolatilityPct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.3}%", self.0 * 100.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct MomentumPct(pub f64);
+
+impl MomentumPct {
+
+    pub fn new(val: f64) -> Self {
+        debug_assert!(val.is_finite(), "Momentum must be a finite number");
+        debug_assert!(val.abs() < 10.0, "Insane momentum detected: {}. Check math.", val);
+        Self(val)
+    }
+}
+
+impl Deref for MomentumPct {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for MomentumPct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:+.2}%", self.0 * 100.0)
+    }
+}
 
 // --- ENUMS (Definitions) ---
 
