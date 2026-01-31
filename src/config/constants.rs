@@ -18,9 +18,11 @@ pub mod journey {
     pub const MIN_JOURNEY_DURATION: Duration = Duration::from_secs(3600);
 
     pub mod profile {
-        use crate::config::{RoiPct, AroiPct};
+        use crate::config::{RoiPct, AroiPct, Weight};
         pub const MIN_ROI: RoiPct = RoiPct::new(0.001); // 0.10%
         pub const MIN_AROI: AroiPct = AroiPct::new(0.20); // 20%
+        pub const WEIGHT_ROI: Weight = Weight::new(1.0);
+        pub const WEIGHT_AROI: Weight = Weight::new(0.002);
     }
 
     pub mod optimization {
@@ -47,6 +49,8 @@ pub mod journey {
         profile: TradeProfile {
             min_roi_pct: self::profile::MIN_ROI,
             min_aroi_pct: self::profile::MIN_AROI,
+            weight_roi: self::profile::WEIGHT_ROI,
+            weight_aroi: self::profile::WEIGHT_AROI,
         },
         optimization: OptimalSearchSettings {
             scout_steps: optimization::SCOUT_STEPS,
@@ -66,9 +70,10 @@ pub mod journey {
 
 pub mod similarity {
     use super::*;
-    pub const WEIGHT_VOLATILITY: f64 = 10.0;
-    pub const WEIGHT_MOMENTUM: f64 = 5.0;
-    pub const WEIGHT_VOLUME: f64 = 1.0;
+    use crate::config::Weight;
+    pub const WEIGHT_VOLATILITY: Weight = Weight::new(10.0);
+    pub const WEIGHT_MOMENTUM: Weight = Weight::new(5.0);
+    pub const WEIGHT_VOLUME: Weight = Weight::new(1.0);
     pub const CUTOFF_SCORE: f64 = 100.0;
 
     pub const DEFAULT: SimilaritySettings = SimilaritySettings {
@@ -81,18 +86,22 @@ pub mod similarity {
 
 pub mod zones {
     use super::*;
+    use crate::config::Sigma;
+
     pub mod sticky {
+        use super::*;
         pub const SMOOTH_PCT: f64 = 0.02;
         pub const GAP_PCT: f64 = 0.01;
         pub const VIABILITY_PCT: f64 = 0.001;
-        pub const SIGMA: f64 = 0.2;
+        pub const SIGMA: Sigma = Sigma::new(0.2);
     }
 
     pub mod reversal {
+        use super::*;
         pub const SMOOTH_PCT: f64 = 0.005;
         pub const GAP_PCT: f64 = 0.0;
         pub const VIABILITY_PCT: f64 = 0.0005;
-        pub const SIGMA: f64 = 1.5;
+        pub const SIGMA: Sigma = Sigma::new(1.5);
     }
 
     pub const DEFAULT: ZoneClassificationConfig = ZoneClassificationConfig {

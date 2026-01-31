@@ -3,8 +3,6 @@ use std::cmp::{max, min};
 use std::f64;
 use std::time::Duration; // Ensure this import exists
 
-pub const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
-
 /// Calculates the span of time (in days) covered by a timestamp range.
 pub fn calculate_history_days(min_ts: i64, max_ts: i64) -> f64 {
     let span_ms = max_ts.saturating_sub(min_ts);
@@ -111,16 +109,6 @@ pub fn format_volume_compact(val: f64) -> String {
     }
 }
 
-/// Calculates Annualized ROI % (Simple Projection).
-/// Formula: ROI * (Year / Duration)
-// #[inline]
-// pub fn calculate_annualized_roi(roi_pct: RoiPct, duration_ms: f64) -> AroiPct {
-//     if duration_ms < 1000.0 { return AroiPct::new(0.0); } // Avoid weirdness for <1s trades
-//     let factors_per_year = MS_IN_YEAR / duration_ms;
-//     AroiPct::new(*roi_pct * factors_per_year)
-// }
-
-
 /// Converts a Duration into a specific number of candles based on the interval.
 pub fn duration_to_candles(duration: Duration, interval_ms: i64) -> usize {
     if interval_ms <= 0 { return 0; }
@@ -183,13 +171,8 @@ impl RangeF64 {
     }
 
     #[inline]
-    pub fn range_length(&self) -> f64 {
-        self.end_range - self.start_range
-    }
-
-    #[inline]
     pub fn chunk_size(&self) -> f64 {
-        self.range_length() / (self.n_chunks as f64)
+        (self.end_range - self.start_range) / (self.n_chunks as f64)
     }
 
     #[inline]
@@ -220,11 +203,11 @@ pub fn intervals(range_start: i64, range_end: i64, interval: i64) -> i64 {
 }
 
 /// In which interval is `value`
-#[inline]
-pub fn index_into_range(range_start: i64, value: i64, range_interval: i64) -> i64 {
-    debug_assert_eq!((value - range_start) % range_interval, 0);
-    (value - range_start) / range_interval
-}
+// #[inline]
+// pub fn index_into_range(range_start: i64, value: i64, range_interval: i64) -> i64 {
+//     debug_assert_eq!((value - range_start) % range_interval, 0);
+//     (value - range_start) / range_interval
+// }
 
 #[inline]
 pub fn get_max(vec: &[f64]) -> f64 {

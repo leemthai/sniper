@@ -489,7 +489,7 @@ impl TradingModel {
                 // Threshold = Mean + (Sigma * StdDev)
                 // We clamp it between 0.05 and 0.95 to prevent
                 // "Selecting Everything" (if flat) or "Selecting Nothing" (if extreme outliers).
-                let adaptive_threshold = (mean + (params.sigma * std_dev)).clamp(0.05, 0.95);
+                let adaptive_threshold = (mean + (*params.sigma * std_dev)).clamp(0.05, 0.95);
 
                 // --- DIAGNOSTIC LOGGING ---
                 #[cfg(debug_assertions)]
@@ -506,7 +506,7 @@ impl TradingModel {
                     let killed_by_gate = pre_gate_nonzero.saturating_sub(post_gate_nonzero);
 
                     log::info!(
-                        "STATS [{}] for {}: TotalRes={:.1}  | Viable Threshold={:.1} | Mean={:.3} | StdDev={:.3} | Sigma={:.1}",
+                        "STATS [{}] for {}: TotalRes={:.1}  | Viable Threshold={:.1} | Mean={:.3} | StdDev={:.3} | Sigma={}",
                         _layer_name,
                         cva.pair_name,
                         resource_total,

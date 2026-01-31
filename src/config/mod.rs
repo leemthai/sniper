@@ -27,7 +27,12 @@ pub use types::{
     MomentumPct,
     RoiPct,
     AroiPct,
-    Prob
+    Prob,
+    VolRatio,
+    Sigma,
+    Weight,
+    BaseVol,
+    QuoteVol
 };
 pub use tuner::{StationId, TunerStation, TimeTunerConfig};
 pub use binance::{BINANCE, BinanceApiConfig};

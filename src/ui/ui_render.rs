@@ -334,13 +334,13 @@ impl ZoneSniperApp {
                             .small()
                             .color(PLOT_CONFIG.color_text_subdued),
                     );
-                    let vol_color = if state.relative_volume > 1.0 {
+                    let vol_color = if *state.relative_volume > 1.0 {
                         PLOT_CONFIG.color_warning
                     } else {
                         PLOT_CONFIG.color_text_subdued
                     };
                     ui.label(
-                        RichText::new(format!("{:.2}x", state.relative_volume))
+                        RichText::new(format!("{}", state.relative_volume))
                             .small()
                             .color(vol_color),
                     );
@@ -457,7 +457,7 @@ impl ZoneSniperApp {
 
                     ui.label(
                         RichText::new(format!(
-                            "{} ({} = {}, {} = {}, {} = {:.2}x)",
+                            "{} ({} = {}, {} = {}, {} = {})",
                             UI_TEXT.opp_expr_we_fingerprinted,
                             UI_TEXT.label_volatility,
                             state.volatility_pct,

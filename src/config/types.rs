@@ -67,7 +67,15 @@ impl VolatilityPct {
     pub fn as_safe_divisor(&self) -> f64 {
         self.0.max(Self::MIN_EPSILON)
     }
-    
+
+    /// Calculates Volatility % from candle data: (High - Low) / Close
+    pub fn calculate(high: f64, low: f64, close: f64) -> Self {
+        if close > f64::EPSILON {
+            Self::new((high - low) / close)
+        } else {
+            Self::new(0.0)
+        }
+    }
 }
 
 impl Deref for VolatilityPct {
@@ -91,6 +99,15 @@ impl MomentumPct {
 
     pub const fn new(val: f64) -> Self {
         Self(val)
+    }
+
+    /// Calculates Momentum %: (Current - Previous) / Previous
+    pub fn calculate(current_close: f64, prev_close: f64) -> Self {
+        if prev_close > f64::EPSILON {
+            Self::new((current_close - prev_close) / prev_close)
+        } else {
+            Self::new(0.0)
+        }
     }
 }
 
@@ -189,6 +206,65 @@ impl std::fmt::Display for Prob {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct VolRatio(f64);
+
+impl VolRatio {
+    pub const fn new(val: f64) -> Self {
+        let v = if val < 0.0 { 0.0 } else { val };
+        Self(v)
+    }
+
+    /// Calculates the ratio between current and average volume.
+    /// Handles division by zero by returning 1.0 (neutral).
+    pub fn calculate(current_vol: f64, avg_vol: f64) -> Self {
+        if avg_vol > f64::EPSILON {
+            Self::new(current_vol / avg_vol)
+        } else {
+            Self::new(1.0)
+        }
+    }
+}
+
+impl Deref for VolRatio {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for VolRatio {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.2}x", self.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct Sigma(f64);
+
+impl Sigma {
+    pub const fn new(val: f64) -> Self {
+        // Sigma for thresholds is usually positive, but we'll allow 0.0
+        let v = if val < 0.0 { 0.0 } else { val };
+        Self(v)
+    }
+}
+
+impl Deref for Sigma {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Sigma {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.1}σ", self.0)
+    }
+}
+
 // --- ENUMS (Definitions) ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter)]
@@ -219,19 +295,109 @@ impl OptimizationStrategy {
 
 // --- STRUCTS (Constants) ---
 
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct BaseVol(f64);
+
+impl BaseVol {
+    pub const fn new(val: f64) -> Self {
+        let v = if val < 0.0 { 0.0 } else { val };
+        Self(v)
+    }
+
+    /// Returns the volume as a weight for math (alias for deref)
+    pub fn as_weight(&self) -> f64 {
+        self.0
+    }
+}
+
+impl Deref for BaseVol {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for BaseVol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.8}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct QuoteVol(f64);
+
+impl QuoteVol {
+    pub const fn new(val: f64) -> Self {
+        let v = if val < 0.0 { 0.0 } else { val };
+        Self(v)
+    }
+}
+
+impl Deref for QuoteVol {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::AddAssign for QuoteVol {
+    fn add_assign(&mut self, other: Self) {
+        self.0 += other.0;
+    }
+}
+
+impl std::fmt::Display for QuoteVol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let val = self.0;
+        if val >= 1_000_000.0 {
+            write!(f, "{:.1}M", val / 1_000_000.0)
+        } else if val >= 1_000.0 {
+            write!(f, "{:.0}K", val / 1_000.0)
+        } else {
+            write!(f, "{:.0}", val)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct Weight(f64);
+
+impl Weight {
+    pub const fn new(val: f64) -> Self {
+        let v = if val < 0.0 { 0.0 } else { val };
+        Self(v)
+    }
+}
+
+impl Deref for Weight {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Weight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.1}", self.0)
+    }
+}
+
 #[derive(Clone, Debug, Copy)]
 pub struct ZoneParams {
     pub smooth_pct: f64,
     pub gap_pct: f64,
     pub viability_pct: f64,
-    pub sigma: f64,
+    pub sigma: Sigma,
 }
 
 #[derive(Clone, Debug)]
 pub struct SimilaritySettings {
-    pub weight_volatility: f64,
-    pub weight_momentum: f64,
-    pub weight_volume: f64,
+    pub weight_volatility: Weight,
+    pub weight_momentum: Weight,
+    pub weight_volume: Weight,
     pub cutoff_score: f64, 
 }
 
@@ -244,7 +410,9 @@ pub struct ZoneClassificationConfig {
 #[derive(Clone, Debug)]
 pub struct TradeProfile {
     pub min_roi_pct: RoiPct,  
-    pub min_aroi_pct: AroiPct, 
+    pub min_aroi_pct: AroiPct,
+    pub weight_roi: Weight,  
+    pub weight_aroi: Weight, 
 }
 
 impl TradeProfile {

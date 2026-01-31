@@ -48,11 +48,11 @@ fn calculate_scores_scalar(
     let mut results = Vec::with_capacity(history.vol.len());
     let c_vol = *current.volatility_pct as f32;
     let c_mom = *current.momentum_pct as f32;
-    let c_rel = current.relative_volume as f32;
+    let c_rel = *current.relative_volume as f32;
 
-    let w_vol = weights.weight_volatility as f32;
-    let w_mom = weights.weight_momentum as f32;
-    let w_rel = weights.weight_volume as f32;
+    let w_vol = *weights.weight_volatility as f32;
+    let w_mom = *weights.weight_momentum as f32;
+    let w_rel = *weights.weight_volume as f32;
 
     for i in 0..history.vol.len() {
         let d_vol = (history.vol[i] - c_vol).abs();
@@ -80,11 +80,11 @@ unsafe fn calculate_scores_avx512(
     unsafe {
         let cur_vol = _mm512_set1_ps(*current.volatility_pct as f32);
         let cur_mom = _mm512_set1_ps(*current.momentum_pct as f32);
-        let cur_rel = _mm512_set1_ps(current.relative_volume as f32);
+        let cur_rel = _mm512_set1_ps(*current.relative_volume as f32);
 
-        let w_vol = _mm512_set1_ps(weights.weight_volatility as f32);
-        let w_mom = _mm512_set1_ps(weights.weight_momentum as f32);
-        let w_rel = _mm512_set1_ps(weights.weight_volume as f32);
+        let w_vol = _mm512_set1_ps(*weights.weight_volatility as f32);
+        let w_mom = _mm512_set1_ps(*weights.weight_momentum as f32);
+        let w_rel = _mm512_set1_ps(*weights.weight_volume as f32);
 
         for i in (0..len).step_by(16) {
             let h_vol = _mm512_loadu_ps(history.vol.as_ptr().add(i));
@@ -317,7 +317,7 @@ impl ScenarioSimulator {
                 let safe_end = end_idx.min(ts.relative_volumes.len());
                 simd_history.rel_vol = ts.relative_volumes[start_idx..safe_end]
                     .iter()
-                    .map(|&v| v as f32)
+                    .map(|&v| *v as f32)
                     .collect();
             }
 

@@ -3,7 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 
-use crate::config::VolatilityPct;
+use crate::config::{VolatilityPct, VolRatio};
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 
@@ -45,7 +45,7 @@ pub struct OhlcvTimeSeries {
     pub base_asset_volumes: Vec<f64>,
     pub quote_asset_volumes: Vec<f64>,
 
-    pub relative_volumes: Vec<f64>,
+    pub relative_volumes: Vec<VolRatio>,
 
 }
 
@@ -116,7 +116,7 @@ impl OhlcvTimeSeries {
 
 
     /// Helper: Calculates Relative Volume for a specific index using existing data
-    fn calculate_rvol_at_index(&self, idx: usize) -> f64 {
+    fn calculate_rvol_at_index(&self, idx: usize) -> VolRatio {
         let start = idx.saturating_sub(RVOL_WINDOW - 1);
         let slice = &self.base_asset_volumes[start..=idx];
         let sum: f64 = slice.iter().sum();
@@ -125,11 +125,7 @@ impl OhlcvTimeSeries {
         
         let current_vol = self.base_asset_volumes[idx];
         
-        if avg > f64::EPSILON {
-            current_vol / avg
-        } else {
-            1.0 // Default if Avg is 0
-        }
+        VolRatio::calculate(current_vol, avg)
     }
 
     // ... calculate_volatility_in_range implementation ...
@@ -189,11 +185,7 @@ impl OhlcvTimeSeries {
             let count = (i + 1).min(window_size) as f64;
             let avg = rolling_sum / count;
 
-            let rvol = if avg > f64::EPSILON {
-                c.base_asset_volume / avg
-            } else {
-                1.0
-            };
+            let rvol = VolRatio::calculate(c.base_asset_volume, avg);
             rvol_vec.push(rvol);
         }
 
