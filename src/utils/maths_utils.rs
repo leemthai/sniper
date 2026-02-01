@@ -1,7 +1,6 @@
 use argminmax::ArgMinMax;
-// use std::cmp::{max, min};
 use std::f64;
-use std::time::Duration; // Ensure this import exists
+use std::time::Duration;
 
 /// Calculates the span of time (in days) covered by a timestamp range.
 pub fn calculate_history_days(min_ts: i64, max_ts: i64) -> f64 {

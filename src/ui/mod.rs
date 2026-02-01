@@ -6,7 +6,6 @@ pub mod ui_panels;
 pub mod ui_plot_view;
 pub mod ui_render;
 pub mod ui_text;
-pub mod archive_utils;
 pub mod plot_layers;
 pub mod styles;
 pub mod ticker;
