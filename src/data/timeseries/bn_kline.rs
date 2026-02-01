@@ -15,7 +15,7 @@ use binance_sdk::spot::{
 use binance_sdk::{errors, errors::ConnectorError as connection_error};
 
 // Local crates
-use crate::config::{BINANCE, BinanceApiConfig, BaseVol, QuoteVol};
+use crate::config::{BINANCE, BinanceApiConfig, BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice};
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
@@ -105,10 +105,10 @@ impl AllValidKlines4Pair {
 #[derive(PartialOrd, PartialEq)]
 pub struct BNKline {
     pub open_timestamp_ms: i64, // only necessary field. All others are optional
-    pub open_price: Option<f64>,
-    pub high_price: Option<f64>,
-    pub low_price: Option<f64>,
-    pub close_price: Option<f64>,
+    pub open_price: Option<OpenPrice>,
+    pub high_price: Option<HighPrice>,
+    pub low_price: Option<LowPrice>,
+    pub close_price: Option<ClosePrice>,
     pub base_asset_volume: Option<BaseVol>,
     pub quote_asset_volume: Option<QuoteVol>,
 }
@@ -175,10 +175,10 @@ impl TryFrom<Vec<KlinesItemInner>> for BNKline {
         // Return the constructed struct on success.
         Ok(BNKline {
             open_timestamp_ms,
-            open_price,
-            high_price,
-            low_price,
-            close_price,
+            open_price: open_price.map(OpenPrice::new),
+            high_price: high_price.map(HighPrice::new),
+            low_price: low_price.map(LowPrice::new),
+            close_price: close_price.map(ClosePrice::new),
             base_asset_volume: volume.map(BaseVol::new),
             quote_asset_volume: quote_asset_volume.map(QuoteVol::new),
         })
@@ -429,10 +429,10 @@ impl From<BNKline> for Candle {
     fn from(bn: BNKline) -> Self {
         Candle::new(
             bn.open_timestamp_ms,
-            bn.open_price.unwrap_or(0.0),
-            bn.high_price.unwrap_or(0.0),
-            bn.low_price.unwrap_or(0.0),
-            bn.close_price.unwrap_or(0.0),
+            bn.open_price.unwrap_or_default(),
+            bn.high_price.unwrap_or_default(),
+            bn.low_price.unwrap_or_default(),
+            bn.close_price.unwrap_or_default(),
             bn.base_asset_volume.unwrap_or_default(),
             bn.quote_asset_volume.unwrap_or_default(),
         )

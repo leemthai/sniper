@@ -15,6 +15,8 @@ use crate::config::{OptimizationStrategy, TICKER, constants, VolatilityPct, Mome
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
+use crate::config::{PriceLike};
+
 use crate::domain::pair_interval::PairInterval;
 
 use crate::engine::messages::JobMode;
@@ -30,7 +32,6 @@ use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outc
 use crate::ui::{time_tuner, time_tuner::TunerAction};
 use crate::ui::ui_panels::CandleRangePanel;
 use crate::ui::ui_plot_view::PlotInteraction;
-use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
 use crate::utils::maths_utils::{calculate_percent_diff};
@@ -67,12 +68,12 @@ impl ZoneSniperApp {
                         .opportunity
                         .as_ref()
                         .map(|o| o.target_price)
-                        .unwrap_or(0.0);
+                        .unwrap_or_default();
                     let val_b = b
                         .opportunity
                         .as_ref()
                         .map(|o| o.target_price)
-                        .unwrap_or(0.0);
+                        .unwrap_or_default();
                     val_a
                         .total_cmp(&val_b)
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
@@ -208,8 +209,8 @@ impl ZoneSniperApp {
         };
 
         // Get live context
-        let current_price = self.get_display_price(&op.pair_name).unwrap_or(0.0);
-        let calc_price = if current_price > f64::EPSILON {
+        let current_price = self.get_display_price(&op.pair_name).unwrap_or_default();
+        let calc_price = if current_price.is_positive() {
             current_price
         } else {
             op.start_price
@@ -225,8 +226,7 @@ impl ZoneSniperApp {
             .show(ctx, |ui| {
                 let sim = &op.simulation;
                 let state = &op.market_state;
-                let target_str = format_price(op.target_price);
-                ui.heading(format!("{}: {}", UI_TEXT.opp_exp_current_opp, target_str));
+                ui.heading(format!("{}: {}", UI_TEXT.opp_exp_current_opp, op.target_price));
 
                 // "Setup Type: LONG" (with encoded color)
                 ui.horizontal(|ui| {
@@ -359,11 +359,11 @@ impl ZoneSniperApp {
                 // Entry / Target can stay standard
                 ui.metric(
                     &UI_TEXT.opp_exp_trade_entry,
-                    &format_price(calc_price),
+                    &format!("{}", calc_price),
                     PLOT_CONFIG.color_text_neutral,
                 );
-                let target_dist = calculate_percent_diff(op.target_price, calc_price);
-                let stop_dist = calculate_percent_diff(op.stop_price, calc_price);
+                let target_dist = calculate_percent_diff(*op.target_price, *calc_price);
+                let stop_dist = calculate_percent_diff(*op.stop_price, *calc_price);
 
                 // TARGET ROW
                 ui.horizontal(|ui| {
@@ -374,7 +374,7 @@ impl ZoneSniperApp {
                             .color(PLOT_CONFIG.color_text_subdued),
                     );
                     ui.label(
-                        RichText::new(format_price(op.target_price))
+                        RichText::new(format!("{}", op.target_price))
                             .small()
                             .color(PLOT_CONFIG.color_profit),
                     );
@@ -394,7 +394,7 @@ impl ZoneSniperApp {
                             .color(PLOT_CONFIG.color_text_subdued),
                     );
                     ui.label(
-                        RichText::new(format_price(op.stop_price))
+                        RichText::new(format!("{}", op.stop_price))
                             .small()
                             .color(PLOT_CONFIG.color_stop_loss),
                     );
@@ -1046,9 +1046,8 @@ impl ZoneSniperApp {
                     ui.horizontal(|ui| {
                         // Left: Target Price
                         // Use truncation/small font to fit
-                        let target_str = format_price(op.target_price);
                         ui.label(
-                            RichText::new(format!("T: {}", target_str))
+                            RichText::new(format!("T: {}", op.target_price))
                                 .size(10.0)
                                 .color(PLOT_CONFIG.color_info),
                         );
@@ -1418,7 +1417,7 @@ impl ZoneSniperApp {
 
                             // Live Stats (Mini)
                             // We can safely borrow self here for get_display_price because 'pair_opt' owns the string now
-                            let current_price = self.get_display_price(&pair).unwrap_or(0.0);
+                            let current_price = self.get_display_price(&pair).unwrap_or_default(); 
                             let roi_pct = op.live_roi(current_price);
                             let color = get_outcome_color(*roi_pct);
 
@@ -1736,7 +1735,7 @@ impl ZoneSniperApp {
                 let mut should_close = false;
 
                 for (i, variant) in op.variants.iter().enumerate() {
-                    let risk_pct = calculate_percent_diff(variant.stop_price, op.start_price);
+                    let risk_pct = calculate_percent_diff(*variant.stop_price, *op.start_price);
                     let win_rate = variant.simulation.success_rate;
 
                     let text = format!(
@@ -1937,7 +1936,7 @@ impl ZoneSniperApp {
                 ui.separator();
                 if let Some(sim_price) = self.simulated_prices.get(pair) {
                     ui.label(
-                        RichText::new(format!("{} {}", UI_TEXT.sp_price, format_price(*sim_price)))
+                        RichText::new(format!("{} {}", UI_TEXT.sp_price, sim_price))
                             .strong()
                             .color(PLOT_CONFIG.color_short),
                     );
@@ -1953,7 +1952,7 @@ impl ZoneSniperApp {
 
                 if let Some(price) = self.get_display_price(pair) {
                     ui.label(
-                        RichText::new(format!("{} {}", UI_TEXT.sp_price, format_price(price)))
+                        RichText::new(format!("{} {}", UI_TEXT.sp_price, price))
                             .strong()
                             .color(PLOT_CONFIG.color_text_primary),
                     );
@@ -1969,11 +1968,11 @@ impl ZoneSniperApp {
             if let Some(pair) = &self.selected_pair {
                 if let Some(model) = engine.get_model(pair) {
                     let cva = &model.cva;
-                    let zone_size = (cva.price_range.end_range - cva.price_range.start_range)
+                    let zone_size = (cva.price_range.end - cva.price_range.start)
                         / cva.zone_count as f64;
                     ui.metric(
                         &UI_TEXT.sp_zone_size,
-                        &format!("{}", format_price(zone_size)),
+                        &format!("{}", zone_size),
                         PLOT_CONFIG.color_info,
                     );
                     ui.separator();

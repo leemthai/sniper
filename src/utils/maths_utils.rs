@@ -1,5 +1,5 @@
 use argminmax::ArgMinMax;
-use std::cmp::{max, min};
+// use std::cmp::{max, min};
 use std::f64;
 use std::time::Duration; // Ensure this import exists
 
@@ -99,99 +99,12 @@ pub fn format_fixed_chars(val: f64, width: usize) -> Option<String> {
 }
 
 
-// pub fn format_volume_compact(val: f64) -> String {
-//     if val > 1_000_000.0 {
-//         format!("{:.1}M", val / 1_000_000.0)
-//     } else if val > 1_000.0 {
-//         format!("{:.0}K", val / 1_000.0)
-//     } else {
-//         format!("{:.0}", val)
-//     }
-// }
-
 /// Converts a Duration into a specific number of candles based on the interval.
 pub fn duration_to_candles(duration: Duration, interval_ms: i64) -> usize {
     if interval_ms <= 0 { return 0; }
     (duration.as_millis() as i64 / interval_ms) as usize
 }
 
-
-#[derive(serde::Deserialize, serde::Serialize, Default, Debug, Clone)]
-pub struct RangeF64 {
-    pub start_range: f64,
-    pub end_range: f64,
-    pub n_chunks: usize,
-}
-
-impl RangeF64 {
-    #[inline]
-    pub fn n_chunks(&self) -> usize {
-        self.n_chunks
-    }
-
-    pub fn new(start_range: f64, end_range: f64, n_chunks: usize) -> Self {
-        Self {
-            start_range,
-            end_range,
-            n_chunks,
-        }
-    }
-
-    #[inline]
-    pub fn min_max(&self) -> (f64, f64) {
-        (self.start_range, self.end_range)
-    }
-
-    #[inline]
-    pub fn count_intersecting_chunks(&self, mut x_low: f64, mut x_high: f64) -> usize {
-        // Swap the values over if necessary
-        if x_high < x_low {
-            (x_low, x_high) = (x_high, x_low);
-        }
-        // Determine the indices of the first and last chunk intersected.
-        // We use min and max to ensure the indices are within the valid range.
-        let first_chunk_index = max(
-            0,
-            ((x_low - self.start_range) / self.chunk_size()).floor() as isize,
-        );
-        let last_chunk_index = min(
-            (self.n_chunks - 1) as isize,
-            ((x_high - self.start_range) / self.chunk_size()).floor() as isize,
-        );
-
-        // If the ranges don't overlap, return 0.
-        // This can happen if `last_chunk_index < first_chunk_index`.
-        // TEMP can this really happen? just put on for debug and find out
-        #[cfg(debug_assertions)]
-        if last_chunk_index < first_chunk_index {
-            return 0;
-        }
-        // The number of intersecting chunks is inclusive of both ends.
-        (last_chunk_index - first_chunk_index + 1) as usize
-    }
-
-    #[inline]
-    pub fn chunk_size(&self) -> f64 {
-        (self.end_range - self.start_range) / (self.n_chunks as f64)
-    }
-
-    #[inline]
-    pub fn chunk_index(&self, value: f64) -> usize {
-        let index = (value - self.start_range) / self.chunk_size();
-        let chunk_index = index as usize;
-
-        // Clamping handles floating-point inaccuracies at the boundary.
-        chunk_index.min(self.n_chunks - 1)
-    }
-
-    #[inline]
-    pub fn chunk_bounds(&self, chunk_index: usize) -> (f64, f64) {
-        debug_assert!(chunk_index < self.n_chunks);
-        let lower_bound = self.start_range + chunk_index as f64 * self.chunk_size();
-        let upper_bound = self.start_range + (chunk_index + 1) as f64 * self.chunk_size();
-        (lower_bound, upper_bound)
-    }
-}
 
 /// Given an interval size, how many intervals total in a given range,
 /// This assumes the range is exclusive, and hence why we need to add 1
@@ -202,12 +115,6 @@ pub fn intervals(range_start: i64, range_end: i64, interval: i64) -> i64 {
     ((range_end - range_start) / interval) + 1
 }
 
-/// In which interval is `value`
-// #[inline]
-// pub fn index_into_range(range_start: i64, value: i64, range_interval: i64) -> i64 {
-//     debug_assert_eq!((value - range_start) % range_interval, 0);
-//     (value - range_start) / range_interval
-// }
 
 #[inline]
 pub fn get_max(vec: &[f64]) -> f64 {

@@ -1,29 +1,29 @@
-use crate::config::PhPct;
+use crate::config::{PhPct, Price};
 use crate::models::OhlcvTimeSeries;
 
 /// Automatically select discontinuous slice ranges based on price relevancy.
 /// Returns a tuple: (Vector of ranges [(start, end)], (price_min, price_max)).
 pub fn auto_select_ranges(
     timeseries: &OhlcvTimeSeries,
-    current_price: f64,
+    current_price: Price,
     ph_pct: PhPct,
-) -> (Vec<(usize, usize)>, (f64, f64)) {
+) -> (Vec<(usize, usize)>, (Price, Price)) {
     // 1. Calculate the user-defined price range
     let (price_min, price_max) = calculate_price_range(current_price, ph_pct);
 
     // 2. Find all ranges where price is relevant
     let ranges = crate::trace_time!("Scan All Candles", 3_000, {
-        find_relevant_ranges(timeseries, price_min, price_max)
+        find_relevant_ranges(timeseries, *price_min, *price_max)
     });
 
     (ranges, (price_min, price_max))
 }
 
 /// Calculates the price range considered "relevant" to the current price.
-pub fn calculate_price_range(current_price: f64, threshold: PhPct) -> (f64, f64) {
-    let min = current_price * (1.0 - *threshold);
-    let max = current_price * (1.0 + *threshold);
-    (min, max)
+pub fn calculate_price_range(current_price: Price, threshold: PhPct) -> (Price, Price) {
+    let min = *current_price * (1.0 - *threshold);
+    let max = *current_price * (1.0 + *threshold);
+    (Price::new(min), Price::new(max))
 }
 
 /// Find all discontinuous ranges of candles where price is within the relevancy range.
@@ -41,7 +41,7 @@ fn find_relevant_ranges(
 
         // Check if candle overlaps with relevant price range.
         // Overlap exists if candle_low <= range_max AND candle_high >= range_min.
-        let is_relevant = candle.low_price <= price_max && candle.high_price >= price_min;
+        let is_relevant = *candle.low_price <= price_max && *candle.high_price >= price_min;
 
         if is_relevant {
             // Start a new range if we're not in one

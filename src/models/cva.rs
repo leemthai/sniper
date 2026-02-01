@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::config::{VolatilityPct};
-use crate::utils::maths_utils::RangeF64;
+use crate::config::{VolatilityPct, Price, PriceRange};
 
 /// Lean CVA results containing only actively used metrics
 /// Memory footprint: ~3.2KB per 100 zones vs 14.4KB with full CVAResults
@@ -20,7 +19,7 @@ pub struct CVACore {
 
     // Metadata
     pub pair_name: String,
-    pub price_range: RangeF64,
+    pub price_range: PriceRange<Price>,
     pub zone_count: usize,
 
     // Metadata fields required by pair_analysis.rs and ui_plot_view.rs
@@ -75,12 +74,11 @@ impl CVACore {
     /// Applies a score to a range of zones WITHOUT diluting it.
     /// Used for: Wicks / Rejection / Presence.
     /// If a wick covers 5 zones, all 5 zones get the full rejection score.
-    #[inline]
     pub fn apply_rejection_impact(
         &mut self,
         st: ScoreType,
-        start_range: f64,
-        end_range: f64,
+        start_range: Price,
+        end_range: Price,
         score_to_apply: f64,
     ) {
         // Safety: Zero width implies no range to score
@@ -111,12 +109,11 @@ impl CVACore {
     }
 
 
-    #[inline]
     pub fn distribute_conserved_volume(
         &mut self,
         st: ScoreType,
-        start_range: f64,
-        end_range: f64,
+        start_range: Price,
+        end_range: Price,
         score_to_spread: f64,
     ) {
         if start_range == end_range {
@@ -152,8 +149,8 @@ impl CVACore {
 
     // Updated Constructor to match src/models/timeseries.rs usage
     pub fn new(
-        min_price: f64,
-        max_price: f64,
+        min_price: Price,
+        max_price: Price,
         zone_count: usize,
         pair_name: String,
         time_decay_factor: f64,
@@ -162,8 +159,9 @@ impl CVACore {
         interval_ms: i64,
         volatility_pct: VolatilityPct,
     ) -> Self {
-        let price_range = RangeF64::new(min_price, max_price, zone_count);
-        let n_slices = price_range.n_chunks();
+        
+        let price_range = PriceRange::new(min_price, max_price, zone_count);
+        let n_slices = price_range.n_chunks;
 
         CVACore {
             candle_bodies_vw: vec![0.0; n_slices],

@@ -2,6 +2,8 @@ use anyhow::Result;
 
 use serde::{Deserialize, Serialize};
 
+use crate::config::Price;
+
 #[cfg(not(target_arch = "wasm32"))]
 use {
     anyhow::Context,
@@ -28,8 +30,8 @@ pub struct TradeResult {
     pub trade_id: String, // Original UUID
     pub pair: String,
     pub direction: TradeDirection,
-    pub entry_price: f64,
-    pub exit_price: f64,
+    pub entry_price: Price,
+    pub exit_price: Price,
     pub outcome: TradeOutcome,
     pub entry_time: i64,
     pub exit_time: i64,
@@ -176,8 +178,8 @@ impl ResultsRepositoryTrait for ResultsRepository {
         .bind(install_id)
         .bind(result.pair)
         .bind(direction_str)
-        .bind(result.entry_price)
-        .bind(result.exit_price)
+        .bind(*result.entry_price)
+        .bind(*result.exit_price)
         .bind(outcome_str)
         .bind(result.entry_time)
         .bind(result.exit_time)

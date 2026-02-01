@@ -4,8 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
+
+use crate::config::PhPct;
+
 #[cfg(debug_assertions)]
-use crate::config::DF;
+use crate::config::{DF};
 
 use crate::models::trading_view::TradeOpportunity;
 
@@ -26,7 +29,7 @@ impl OpportunityLedger {
 
     /// Intelligently updates the ledger.
     /// Returns: (IsNew, ActiveID)
-    pub fn evolve(&mut self, new_opp: TradeOpportunity, tolerance_pct: f64) -> (bool, String) {
+    pub fn evolve(&mut self, new_opp: TradeOpportunity, tolerance_pct: PhPct) -> (bool, String) {
         // 1. Try Exact ID Match (Fast Path)
         let exact_id = new_opp.id.clone();
         if self.opportunities.contains_key(&exact_id) {
@@ -40,14 +43,14 @@ impl OpportunityLedger {
             .values()
             .filter(|op| op.pair_name == new_opp.pair_name && op.direction == new_opp.direction)
             .map(|op| {
-                let diff = calculate_percent_diff(op.target_price, new_opp.target_price);
+                let diff = calculate_percent_diff(*op.target_price,*new_opp.target_price);
                 (op.id.clone(), diff)
             })
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
 
         // 3. Evaluate Match using Configured Tolerance
-        if let Some((id, diff)) = closest_match {
-            if diff < tolerance_pct {
+        if let Some((id, diff_pct)) = closest_match {
+            if diff_pct < *tolerance_pct {
                 // LOGGING (Drift Detection)
                 #[cfg(debug_assertions)]
                 {
@@ -62,7 +65,7 @@ impl OpportunityLedger {
                                     &new_opp.id
                                 },
                                 if id.len() > 8 { &id[..8] } else { &id },
-                                diff
+                                diff_pct
                             );
                         }
                     }
@@ -117,7 +120,8 @@ impl OpportunityLedger {
     /// 1. Trades from different strategies (e.g. ROI vs AROI) NEVER merge. They coexist.
     /// 2. Trades from the SAME strategy with overlapping targets are merged.
     /// 3. The winner is decided by the Score of that specific strategy.
-    pub fn prune_collisions(&mut self, tolerance_pct: f64) {
+    pub fn prune_collisions(&mut self, tolerance_pct: PhPct) {
+
         let mut to_remove = Vec::new();
         let ops: Vec<_> = self.opportunities.values().cloned().collect();
 
@@ -140,9 +144,9 @@ impl OpportunityLedger {
                     }
 
                     // Same strategy and stationId so preserve the best one
-                    let diff = calculate_percent_diff(a.target_price, b.target_price);
+                    let diff_pct = calculate_percent_diff(*a.target_price, *b.target_price);
 
-                    if diff < tolerance_pct {
+                    if diff_pct < *tolerance_pct {
                         let score_a = a.calculate_quality_score();
                         let score_b = b.calculate_quality_score();
                         let (_winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
@@ -162,7 +166,7 @@ impl OpportunityLedger {
                                 } else {
                                     &_winner.id
                                 },
-                                diff
+                                diff_pct
                             );
                         }
                         to_remove.push(loser.id.clone());

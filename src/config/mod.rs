@@ -32,7 +32,17 @@ pub use types::{
     Sigma,
     Weight,
     BaseVol,
-    QuoteVol
+    QuoteVol,
+    Price,
+    OpenPrice,
+    HighPrice,
+    LowPrice,
+    ClosePrice,
+    TargetPrice,
+    StopPrice,
+    PriceDelta,
+    PriceLike,
+    PriceRange,
 };
 pub use tuner::{StationId, TunerStation, TimeTunerConfig};
 pub use binance::{BINANCE, BinanceApiConfig};

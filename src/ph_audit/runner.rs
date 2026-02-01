@@ -3,7 +3,7 @@ use strum::IntoEnumIterator;
 
 use crate::analysis::pair_analysis;
 
-use crate::config::{OptimizationStrategy, StationId, constants, PhPct};
+use crate::config::{OptimizationStrategy, StationId, constants, PhPct, Price};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -55,7 +55,7 @@ pub fn execute_audit(
             for &ph_pct in config::PH_LEVELS {
                 run_single_simulation(
                     pair,
-                    live_price,
+                    Price::new(live_price),
                     &strategy,
                     PhPct::new(ph_pct),
                     ts_collection,
@@ -74,20 +74,13 @@ pub fn execute_audit(
 
 fn run_single_simulation(
     pair: &str,
-    price: f64,
+    price: Price,
     strategy: &OptimizationStrategy,
     ph_pct: PhPct,
     ts_collection: &TimeSeriesCollection,
     reporter: &mut AuditReporter,
 ) {
-    // Apply Context
-    // config.price_horizon.threshold_pct = ph_pct;
-    // config.journey.profile.goal = strategy.clone();
-
-    let interval_ms = constants::INTERVAL_WIDTH_MS;
-    // Unwrap is safe here because we checked existence in the main loop
-    let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, interval_ms).unwrap();
-
+    let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, constants::INTERVAL_WIDTH_MS).unwrap(); // Unwrap is safe here because we checked existence in the main loop
     let start_time = AppInstant::now();
 
     // C. Run Pipeline (Using worker internals)
@@ -126,7 +119,7 @@ fn run_single_simulation(
     let top_5_b = opportunities.iter().take(5);
     let avg_stop: Option<f64> = if count > 0 {
         let sum: f64 = top_5_b.clone()
-            .map(|o| (o.stop_price - o.start_price).abs() / o.start_price)
+            .map(|o| (*o.stop_price - *o.start_price).abs() / *o.start_price)
             .sum();
         Some(sum / top_5_b.count() as f64)
     } else {

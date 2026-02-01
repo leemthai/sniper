@@ -3,7 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 
-use crate::config::{VolatilityPct, VolRatio, BaseVol, QuoteVol};
+use crate::config::{VolatilityPct, VolRatio, BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice, Price};
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 
@@ -19,10 +19,10 @@ const RVOL_WINDOW: usize = 20;
 pub struct LiveCandle {
     pub symbol: String,
     pub open_time: i64,
-    pub open: f64,
-    pub high: f64,
-    pub low: f64,
-    pub close: f64,
+    pub open: OpenPrice,
+    pub high: HighPrice,
+    pub low: LowPrice,
+    pub close: ClosePrice,
     pub volume: BaseVol,
     pub quote_vol: QuoteVol,
     pub is_closed: bool,
@@ -36,10 +36,10 @@ pub struct OhlcvTimeSeries {
     pub timestamps: Vec<i64>,
 
     // Prices
-    pub open_prices: Vec<f64>,
-    pub high_prices: Vec<f64>,
-    pub low_prices: Vec<f64>,
-    pub close_prices: Vec<f64>,
+    pub open_prices: Vec<OpenPrice>,
+    pub high_prices: Vec<HighPrice>,
+    pub low_prices: Vec<LowPrice>,
+    pub close_prices: Vec<ClosePrice>,
 
     // Volumes
     pub base_asset_volumes: Vec<BaseVol>,
@@ -215,10 +215,10 @@ impl OhlcvTimeSeries {
         let mut count = 0;
 
         for i in start_idx..end_idx {
-            let close = self.close_prices[i];
+            let close = *self.close_prices[i];
             if close > f64::EPSILON {
-                let high = self.high_prices[i];
-                let low = self.low_prices[i];
+                let high = *self.high_prices[i];
+                let low = *self.low_prices[i];
                 sum_vol += (high - low) / close;
                 count += 1;
             }
@@ -273,8 +273,9 @@ impl TimeSeriesSlice<'_> {
         n_chunks: usize,
         pair_name: String,
         time_decay_factor: f64,
-        price_range: (f64, f64), // User-defined price range
+        price_range: (Price, Price), // User-defined price range
     ) -> CVACore {
+
         let (min_price, max_price) = price_range;
 
         // Calculate total candles across all ranges
@@ -287,8 +288,8 @@ impl TimeSeriesSlice<'_> {
         for (start, end) in &self.ranges {
             for i in *start..*end {
                 let candle = self.series_data.get_candle(i);
-                if candle.close_price > f64::EPSILON {
-                    volatility_sum += (candle.high_price - candle.low_price) / candle.close_price;
+                if *candle.close_price > f64::EPSILON {
+                    volatility_sum += (*candle.high_price - *candle.low_price) / *candle.close_price;
                 }
             }
         }
@@ -345,12 +346,12 @@ impl TimeSeriesSlice<'_> {
         let clamp = |price: f64| price.max(price_min).min(price_max);
 
         // 1. FULL CANDLE (Sticky Zones) - Keep Volume Weighting
-        let candle_low = clamp(candle.low_price);
-        let candle_high = clamp(candle.high_price);
+        let candle_low = clamp(*candle.low_price);
+        let candle_high = clamp(*candle.high_price);
         cva_core.distribute_conserved_volume(
             ScoreType::FullCandleTVW,
-            candle_low,
-            candle_high,
+            candle_low.into(),
+            candle_high.into(),
             *candle.base_asset_volume * temporal_weight,
         );
 
@@ -360,8 +361,8 @@ impl TimeSeriesSlice<'_> {
 
         cva_core.apply_rejection_impact( 
             ScoreType::LowWickCount,
-            low_wick_start,
-            low_wick_end,
+            low_wick_start.into(),
+            low_wick_end.into(),
             temporal_weight, 
         );
 
@@ -371,18 +372,10 @@ impl TimeSeriesSlice<'_> {
 
         cva_core.apply_rejection_impact( 
             ScoreType::HighWickCount,
-            high_wick_start,
-            high_wick_end,
+            high_wick_start.into(),
+            high_wick_end.into(),
             temporal_weight,
         );
-
-        // // 5. Quote Volume - Keep Spread
-        // cva_core.distribute_conserved_volume(
-        //     ScoreType::QuoteVolume,
-        //     candle_low,
-        //     candle_high,
-        //     candle.quote_asset_volume,
-        // );
 
     }
 }

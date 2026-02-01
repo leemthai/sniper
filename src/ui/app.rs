@@ -18,7 +18,7 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{DF, OptimizationStrategy, StationId, constants, PhPct};
+use crate::config::{DF, OptimizationStrategy, PhPct, Price, StationId, constants};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -224,7 +224,7 @@ pub struct ZoneSniperApp {
     #[serde(skip)]
     pub sim_direction: SimDirection,
     #[serde(skip)]
-    pub simulated_prices: HashMap<String, f64>,
+    pub simulated_prices: HashMap<String, Price>,
     #[serde(skip)]
     pub nav_states: HashMap<String, NavigationState>,
     #[serde(skip)]
@@ -372,7 +372,7 @@ impl ZoneSniperApp {
                     .ok()?;
 
             // 4. Run Worker Logic
-            return worker::tune_to_station(ohlcv, price, station, self.saved_strategy);
+            return worker::tune_to_station(ohlcv, Price::new(price), station, self.saved_strategy);
         }
         None
     }
@@ -396,7 +396,13 @@ impl ZoneSniperApp {
             }
         }
 
-        self.active_station_id = self.shared_config.get_station(&new_pair_name).expect(&format!("handle_pair_selection expects a value for station id for pair {}", new_pair_name)); // Will crash if None. Deliberate choice
+        self.active_station_id = self
+            .shared_config
+            .get_station(&new_pair_name)
+            .expect(&format!(
+                "handle_pair_selection expects a value for station id for pair {}",
+                new_pair_name
+            )); // Will crash if None. Deliberate choice
         #[cfg(debug_assertions)]
         if DF.log_active_station_id {
             log::info!(
@@ -558,12 +564,12 @@ impl ZoneSniperApp {
 
     pub fn mark_all_journeys_stale(&mut self, _reason: &str) {}
 
-    pub fn get_display_price(&self, pair: &str) -> Option<f64> {
+    pub fn get_display_price(&self, pair: &str) -> Option<Price> {
         if let Some(sim_price) = self.simulated_prices.get(pair) {
             return Some(*sim_price);
         }
         if let Some(e) = &self.engine {
-            return e.get_price(pair);
+            return e.get_price(pair).map(Price::new);
         }
         None
     }
@@ -578,7 +584,7 @@ impl ZoneSniperApp {
                 let all_pairs = e.get_all_pair_names();
                 for pair in all_pairs {
                     if let Some(live_price) = e.get_price(&pair) {
-                        self.simulated_prices.insert(pair, live_price);
+                        self.simulated_prices.insert(pair, Price::new(live_price));
                     }
                 }
             } else {
@@ -591,15 +597,16 @@ impl ZoneSniperApp {
         let Some(pair) = self.selected_pair.clone() else {
             return;
         };
-        let current_price = self.get_display_price(&pair).unwrap_or(0.0);
-        if current_price <= 0.0 {
+        let current_price = self.get_display_price(&pair).unwrap_or(Price::new(0.0));
+        if *current_price <= 0.0 {
             return;
         }
 
-        let change = current_price * percent;
-        let new_price = current_price + change;
+        let change = *current_price * percent;
+        let new_price = *current_price + change;
 
-        self.simulated_prices.insert(pair.clone(), new_price);
+        self.simulated_prices
+            .insert(pair.clone(), Price::new(new_price));
     }
 
     pub(super) fn jump_to_next_zone(&mut self, zone_type: &str) {
@@ -607,7 +614,9 @@ impl ZoneSniperApp {
             let Some(pair) = self.selected_pair.clone() else {
                 return;
             };
-            let current_price = self.get_display_price(&pair).unwrap_or(0.0);
+            let Some(current_price) = self.get_display_price(&pair) else {
+                return;
+            };
             let Some(model) = e.get_model(&pair) else {
                 return;
             };
@@ -627,20 +636,20 @@ impl ZoneSniperApp {
                 let target = match self.sim_direction {
                     SimDirection::Up => superzones
                         .iter()
-                        .filter(|sz| sz.price_center > current_price)
+                        .filter(|sz| *sz.price_center > *current_price)
                         .min_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
                     SimDirection::Down => superzones
                         .iter()
-                        .filter(|sz| sz.price_center < current_price)
+                        .filter(|sz| *sz.price_center < *current_price)
                         .max_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
                 };
 
                 if let Some(target_zone) = target {
                     let jump_price = match self.sim_direction {
-                        SimDirection::Up => target_zone.price_center * 1.0001,
-                        SimDirection::Down => target_zone.price_center * 0.9999,
+                        SimDirection::Up => *target_zone.price_center * 1.0001,
+                        SimDirection::Down => *target_zone.price_center * 0.9999,
                     };
-                    self.simulated_prices.insert(pair, jump_price);
+                    self.simulated_prices.insert(pair, Price::new(jump_price));
                 }
             }
         }
@@ -953,13 +962,12 @@ impl ZoneSniperApp {
         if let Some(e) = &mut self.engine {
             while processed < chunk_size && !state.todo_list.is_empty() {
                 if let Some(pair) = state.todo_list.pop() {
-
                     // A. Determine Station for each pair
 
-                    let station_id = self
-                        .shared_config
-                        .get_station(&pair)
-                        .expect(&format!("handle_tuning_phase stations should all be full, especially for pair {}", pair));
+                    let station_id = self.shared_config.get_station(&pair).expect(&format!(
+                        "handle_tuning_phase stations should all be full, especially for pair {}",
+                        pair
+                    ));
                     #[cfg(debug_assertions)]
                     if DF.log_active_station_id {
                         log::info!(
@@ -986,7 +994,7 @@ impl ZoneSniperApp {
                                     if price > f64::EPSILON {
                                         worker::tune_to_station(
                                             ohlcv,
-                                            price,
+                                            Price::new(price),
                                             station_def,
                                             self.saved_strategy,
                                         )
@@ -1096,7 +1104,6 @@ impl ZoneSniperApp {
         }
     }
 
-    
     /// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
     fn check_loading_completion(&mut self) -> Option<AppState> {
@@ -1160,7 +1167,8 @@ impl ZoneSniperApp {
                 // Remove all opportunities for pairs that were not loaded in this session.
                 let _count_before = e.engine_ledger.opportunities.len();
 
-                e.engine_ledger.retain(|_id, op| valid_set.contains(&op.pair_name));
+                e.engine_ledger
+                    .retain(|_id, op| valid_set.contains(&op.pair_name));
 
                 #[cfg(debug_assertions)]
                 {
@@ -1285,7 +1293,7 @@ impl ZoneSniperApp {
         let available_pairs = timeseries.unique_pair_names();
         let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
 
-        // 1. Register pairs in shared config - ensures all pairs write 
+        // 1. Register pairs in shared config - ensures all pairs write
         self.shared_config.register_pairs(available_pairs.clone());
 
         // Resolve Startup Pair - and check if the saved 'selected_pair' actually exists in the loaded data.
@@ -1304,7 +1312,8 @@ impl ZoneSniperApp {
             );
         }
         self.shared_config.ensure_all_stations_initialized();
-        self.shared_config.ensure_all_phs_initialized(PhPct::default());
+        self.shared_config
+            .ensure_all_phs_initialized(PhPct::default());
 
         #[cfg(debug_assertions)]
         if DF.log_station_overrides {
@@ -1343,7 +1352,6 @@ impl ZoneSniperApp {
         (available_pairs, valid_set, start_pair)
     }
 
-    
     // --- AUDIT HELPER ---
     #[cfg(feature = "ph_audit")]
     fn try_run_audit(&self, ctx: &Context) {

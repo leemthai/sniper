@@ -1,10 +1,8 @@
 // use std::collections::HashMap;
 use eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2};
 
-use crate::config::{TICKER, constants};
+use crate::config::{TICKER, constants, Price};
 use crate::engine::SniperEngine;
-
-use crate::ui::utils::format_price;
 
 use crate::models::timeseries;
 use crate::utils::TimeUtils;
@@ -13,7 +11,7 @@ use crate::utils::time_utils::AppInstant;
 
 pub struct TickerItem {
     pub symbol: String,
-    pub price: f64,
+    pub price: Price,
     pub change: f64,           // Difference since last update
     pub last_update_time: f64, // For fade effects
     pub url: Option<String>,
@@ -51,14 +49,14 @@ impl TickerState {
             if self.items.is_empty() {
                 self.items.push(TickerItem {
                     symbol: "ZONE SNIPER WEB DEMO".to_string(),
-                    price: 0.0,
+                    price: Price::new(0.0),
                     change: 0.0,
                     last_update_time: 0.0,
                     url: None,
                 });
                 self.items.push(TickerItem {
                     symbol: "VISIT US ON GITHUB".to_string(),
-                    price: 0.0,
+                    price: Price::new(0.0),
                     change: 0.0,
                     last_update_time: 0.0,
                     url: Some("https://github.com/leemthai/sniper".to_string()),
@@ -66,7 +64,7 @@ impl TickerState {
                 self.items.push(TickerItem {
                     symbol: "GET PRO VERSION FOR LIVE DATA, UNLIMITED TRADING PAIRS AND MUCH MORE"
                         .to_string(),
-                    price: 0.0,
+                    price: Price::new(0.0),
                     change: 0.0,
                     last_update_time: 0.0,
                     url: None,
@@ -74,7 +72,7 @@ impl TickerState {
                 // Add fake price data for demo pairs - TEMP do we really want this?
                 self.items.push(TickerItem {
                     symbol: "BTCUSDT".to_string(),
-                    price: 98000.0,
+                    price: Price::new(98000.0),
                     change: 120.5,
                     last_update_time: 0.0,
                     url: None,
@@ -111,22 +109,22 @@ impl TickerState {
 
                         if idx < ohlcv.close_prices.len() {
                             let old_price = ohlcv.close_prices[idx];
-                            if old_price > f64::EPSILON {
-                                change_24h = current_price - old_price;
+                            if *old_price > f64::EPSILON {
+                                change_24h = current_price - *old_price;
                             }
                         }
                     }
 
                     // B. Update or Add to List
                     if let Some(item) = self.items.iter_mut().find(|i| i.symbol == pair) {
-                        item.price = current_price;
+                        item.price = Price::new(current_price);
                         item.change = change_24h;
                         // Note: last_update_time is used for 'flash' effects,
                         // we can update it only if price changed, or just leave it.
                     } else {
                         self.items.push(TickerItem {
                             symbol: pair,
-                            price: current_price,
+                            price: Price::new(current_price),
                             change: change_24h,
                             last_update_time: 0.0,
                             url: None,
@@ -143,7 +141,7 @@ impl TickerState {
                 if !self.items.iter().any(|i| i.symbol == symbol_key) {
                     self.items.push(TickerItem {
                         symbol: symbol_key,
-                        price: 0.0, // 0.0 marks it as a message/link
+                        price: Price::new(0.0), // 0.0 marks it as a message/link
                         change: 0.0,
                         last_update_time: 0.0,
                         url: url.map(|s| s.to_string()),
@@ -160,12 +158,12 @@ impl TickerState {
         }
 
         // 2. Static Message (WASM or Custom)
-        if item.price == 0.0 && item.change == 0.0 {
+        if *item.price == 0.0 && item.change == 0.0 {
             return item.symbol.clone();
         }
 
         // 2. Price
-        let price_str = format_price(item.price);
+        let price_str = format!("{}", item.price);
 
         // 3. Formatted Percent
         let pct = self.calculate_pct(item);
@@ -222,7 +220,7 @@ impl TickerState {
 
     // Helper: Single source of truth for % calculation
     fn calculate_pct(&self, item: &TickerItem) -> f64 {
-        let old_price = item.price - item.change;
+        let old_price = *item.price - item.change;
         if old_price.abs() > f64::EPSILON {
             (item.change / old_price) * 100.0
         } else {
@@ -304,7 +302,7 @@ impl TickerState {
                 // COLOR LOGIC
                 let text_color = if let Some(_) = &item.url {
                     TICKER.text_color_link
-                } else if item.price == 0.0 {
+                } else if *item.price == 0.0 {
                     // Custom Message
                     if TICKER.rainbow_mode {
                         self.get_rainbow_color(loop_x)
@@ -358,7 +356,7 @@ impl TickerState {
                                 // Handle URL or Pair Click
                                 if let Some(url) = &item.url {
                                     ui.ctx().open_url(OpenUrl::new_tab(url));
-                                } else if item.price != 0.0 {
+                                } else if *item.price != 0.0 {
                                     clicked_pair = Some(item.symbol.clone());
                                 }
                             }

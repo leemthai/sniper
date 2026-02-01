@@ -1,7 +1,7 @@
 //! Analysis and computation constants (Immutable Blueprints)
 
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
+use std::ops::{Deref, Sub};
 use std::time::Duration;
 use strum_macros::{Display, EnumIter};
 
@@ -12,17 +12,16 @@ use crate::ui::config::UI_TEXT;
 pub struct PhPct(f64);
 
 impl PhPct {
-
     pub const DEFAULT_VALUE: f64 = 0.15;
     pub const DEFAULT: Self = Self(Self::DEFAULT_VALUE);
 
     pub const fn new(val: f64) -> Self {
-        let v = if val < 0.0 { 
-            0.0 
-        } else if val > 1.0 { 
-            1.0 
-        } else { 
-            val 
+        let v = if val < 0.0 {
+            0.0
+        } else if val > 1.0 {
+            1.0
+        } else {
+            val
         };
         Self(v)
     }
@@ -56,7 +55,6 @@ impl std::fmt::Display for PhPct {
 pub struct VolatilityPct(f64);
 
 impl VolatilityPct {
-
     pub const MIN_EPSILON: f64 = 0.0001;
 
     pub const fn new(val: f64) -> Self {
@@ -96,7 +94,6 @@ impl std::fmt::Display for VolatilityPct {
 pub struct MomentumPct(f64);
 
 impl MomentumPct {
-
     pub const fn new(val: f64) -> Self {
         Self(val)
     }
@@ -265,6 +262,196 @@ impl std::fmt::Display for Sigma {
     }
 }
 
+/// A behavioral contract for anything that behaves like a price.
+pub trait PriceLike {
+    fn value(&self) -> f64;
+
+    const MIN_EPSILON: f64 = 1e-10;
+
+    fn is_positive(&self) -> bool {
+        self.value() > Self::MIN_EPSILON
+    }
+
+    /// Formats a price with "Trader Precision" adaptive decimals.
+    fn format_price(&self) -> String {
+        let price = self.value();
+        if price == 0.0 {
+            return "$0.00".to_string();
+        }
+
+        // Determine magnitude
+        let abs_price = price.abs();
+
+        if abs_price >= 1000.0 {
+            format!("${:.2}", price)
+        } else if abs_price >= 1.0 {
+            format!("${:.4}", price)
+        } else if abs_price >= 0.01 {
+            format!("${:.5}", price)
+        } else {
+            format!("${:.8}", price)
+        }
+    }
+}
+
+macro_rules! impl_into_price {
+    ($from:ident) => {
+        impl From<$from> for Price {
+            fn from(p: $from) -> Self {
+                Price::new(p.value())
+            }
+        }
+    };
+}
+
+macro_rules! define_price_type {
+    ($name:ident) => {
+        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+        #[serde(transparent)]
+        pub struct $name(f64);
+
+        impl From<f64> for $name {
+            fn from(v: f64) -> Self {
+                $name::new(v)
+            }
+        }
+
+        impl $name {
+            pub const fn new(val: f64) -> Self {
+                // Absolute prices should not be negative
+                let v = if val < 0.0 { 0.0 } else { val };
+                Self(v)
+            }
+        }
+
+        impl Sub for $name {
+            type Output = f64;
+
+            fn sub(self, rhs: Self) -> Self::Output {
+                self.value() - rhs.value()
+            }
+        }
+
+        impl Deref for $name {
+            type Target = f64;
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl PriceLike for $name {
+            fn value(&self) -> f64 {
+                self.0
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.format_price())
+            }
+        }
+    };
+}
+
+// Generate the Price Hierarchy
+define_price_type!(Price);
+define_price_type!(OpenPrice);
+define_price_type!(HighPrice);
+define_price_type!(LowPrice);
+define_price_type!(ClosePrice);
+define_price_type!(TargetPrice);
+define_price_type!(StopPrice);
+
+impl_into_price!(OpenPrice);
+impl_into_price!(HighPrice);
+impl_into_price!(LowPrice);
+impl_into_price!(ClosePrice);
+impl_into_price!(TargetPrice);
+impl_into_price!(StopPrice);
+
+#[derive(serde::Deserialize, serde::Serialize, Default, Debug, Clone)]
+pub struct PriceRange<T> {
+    pub start: T,
+    pub end: T,
+    pub n_chunks: usize,
+}
+
+impl<T: PriceLike> PriceRange<T> {
+    pub fn new(start: T, end: T, n_chunks: usize) -> Self {
+        Self { start, end, n_chunks }
+    }
+
+    pub fn min_max(&self) -> (f64, f64) {
+        (self.start.value(), self.end.value())
+    }
+
+    pub fn chunk_size(&self) -> f64 {
+        (self.end.value() - self.start.value()) / self.n_chunks as f64
+    }
+
+    pub fn chunk_index(&self, value: T) -> usize {
+        let index = (value.value() - self.start.value()) / self.chunk_size();
+        (index as usize).min(self.n_chunks - 1)
+    }
+
+    pub fn chunk_bounds(&self, idx: usize) -> (f64, f64) {
+        let low = self.start.value() + idx as f64 * self.chunk_size();
+        let high = self.start.value() + (idx + 1) as f64 * self.chunk_size();
+        (low, high)
+    }
+
+    pub fn count_intersecting_chunks(
+        &self,
+        low: T,
+        high: T,
+    ) -> usize {
+        let mut x_low = low.value();
+        let mut x_high = high.value();
+
+        if x_high < x_low {
+            (x_low, x_high) = (x_high, x_low);
+        }
+
+        let first = ((x_low - self.start.value()) / self.chunk_size()).floor() as isize;
+        let last  = ((x_high - self.start.value()) / self.chunk_size()).floor() as isize;
+
+        let first = first.max(0);
+        let last = last.min((self.n_chunks - 1) as isize);
+
+        if last < first {
+            return 0;
+        }
+
+        (last - first + 1) as usize
+    }
+}
+
+
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct PriceDelta(pub f64);
+
+impl PriceDelta {
+    pub const fn new(val: f64) -> Self {
+        Self(val) // Deltas can be negative
+    }
+}
+
+impl Deref for PriceDelta {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for PriceDelta {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Deltas show the sign but usually not the currency symbol
+        write!(f, "{:+.4}", self.0)
+    }
+}
+
 // --- ENUMS (Definitions) ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter)]
@@ -387,9 +574,9 @@ impl std::fmt::Display for Weight {
 
 #[derive(Clone, Debug, Copy)]
 pub struct ZoneParams {
-    pub smooth_pct: f64,
-    pub gap_pct: f64,
-    pub viability_pct: f64,
+    pub smooth_pct: PhPct,
+    pub gap_pct: PhPct,
+    pub viability_pct: PhPct,
     pub sigma: Sigma,
 }
 
@@ -398,7 +585,7 @@ pub struct SimilaritySettings {
     pub weight_volatility: Weight,
     pub weight_momentum: Weight,
     pub weight_volume: Weight,
-    pub cutoff_score: f64, 
+    pub cutoff_score: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -409,28 +596,26 @@ pub struct ZoneClassificationConfig {
 
 #[derive(Clone, Debug)]
 pub struct TradeProfile {
-    pub min_roi_pct: RoiPct,  
+    pub min_roi_pct: RoiPct,
     pub min_aroi_pct: AroiPct,
-    pub weight_roi: Weight,  
-    pub weight_aroi: Weight, 
+    pub weight_roi: Weight,
+    pub weight_aroi: Weight,
 }
 
 impl TradeProfile {
-    
     pub const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
 
     pub fn calculate_annualized_roi(roi: RoiPct, duration_ms: f64) -> AroiPct {
         if duration_ms < 1000.0 {
-                return AroiPct::new(0.0);
-            }
-            let factors_per_year = Self::MS_IN_YEAR / duration_ms;
-            AroiPct::new(*roi * factors_per_year)
+            return AroiPct::new(0.0);
         }
+        let factors_per_year = Self::MS_IN_YEAR / duration_ms;
+        AroiPct::new(*roi * factors_per_year)
+    }
     /// Returns true if both ROI and AROI meet the minimum thresholds defined in this profile.
     pub fn is_worthwhile(&self, roi_pct: RoiPct, aroi_pct: AroiPct) -> bool {
         *roi_pct >= *self.min_roi_pct && *aroi_pct >= *self.min_aroi_pct
     }
-
 }
 
 #[derive(Clone, Debug)]
@@ -438,23 +623,23 @@ pub struct OptimalSearchSettings {
     pub scout_steps: usize,
     pub drill_top_n: usize,
     pub drill_offset_factor: f64,
-    pub drill_cutoff_pct: f64, 
+    pub drill_cutoff_pct: PhPct,
     pub volatility_lookback: usize,
-    pub diversity_regions: usize, 
-    pub diversity_cut_off: f64,   
+    pub diversity_regions: usize,
+    pub diversity_cut_off: PhPct,
     pub max_results: usize,
-    pub price_buffer_pct: f64,
-    pub fuzzy_match_tolerance: f64, 
-    pub prune_interval_sec: u64, 
+    pub price_buffer_pct: PhPct,
+    pub fuzzy_match_tolerance: PhPct,
+    pub prune_interval_sec: u64,
 }
 
 #[derive(Clone, Debug)]
 pub struct JourneySettings {
     pub sample_count: usize,
     pub risk_reward_tests: &'static [f64],
-    pub volatility_zigzag_factor: f64, 
-    pub min_journey_duration: Duration, 
-    pub max_journey_time: Duration,    
+    pub volatility_zigzag_factor: f64,
+    pub min_journey_duration: Duration,
+    pub max_journey_time: Duration,
     pub profile: TradeProfile,
     pub optimization: OptimalSearchSettings,
 }

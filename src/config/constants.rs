@@ -19,23 +19,24 @@ pub mod journey {
 
     pub mod profile {
         use crate::config::{RoiPct, AroiPct, Weight};
-        pub const MIN_ROI: RoiPct = RoiPct::new(0.001); // 0.10%
-        pub const MIN_AROI: AroiPct = AroiPct::new(0.20); // 20%
+        pub const MIN_ROI: RoiPct = RoiPct::new(0.001);
+        pub const MIN_AROI: AroiPct = AroiPct::new(0.20);
         pub const WEIGHT_ROI: Weight = Weight::new(1.0);
         pub const WEIGHT_AROI: Weight = Weight::new(0.002);
     }
 
     pub mod optimization {
+        use crate::config::PhPct;
         pub const SCOUT_STEPS: usize = 20;
         pub const DRILL_TOP_N: usize = 5;
         pub const DRILL_OFFSET_FACTOR: f64 = 0.25;
-        pub const DRILL_CUTOFF_PCT: f64 = 0.70;
+        pub const DRILL_CUTOFF_PCT: PhPct = PhPct::new(0.70);
         pub const VOLATILITY_LOOKBACK: usize = 50;
         pub const DIVERSITY_REGIONS: usize = 5;
-        pub const DIVERSITY_CUT_OFF: f64 = 0.5;
+        pub const DIVERSITY_CUT_OFF: PhPct = PhPct::new(0.5);
         pub const MAX_RESULTS: usize = 5;
-        pub const PRICE_BUFFER_PCT: f64 = 0.005;
-        pub const FUZZY_MATCH_TOLERANCE: f64 = 0.5;
+        pub const PRICE_BUFFER_PCT: PhPct = PhPct::new(0.005);
+        pub const FUZZY_MATCH_TOLERANCE: PhPct = PhPct::new(0.5);
         pub const PRUNE_INTERVAL_SEC: u64 = 10;
     }
 
@@ -90,17 +91,19 @@ pub mod zones {
 
     pub mod sticky {
         use super::*;
-        pub const SMOOTH_PCT: f64 = 0.02;
-        pub const GAP_PCT: f64 = 0.01;
-        pub const VIABILITY_PCT: f64 = 0.001;
+        use crate::config::PhPct;
+        pub const SMOOTH_PCT: PhPct = PhPct::new(0.02);
+        pub const GAP_PCT: PhPct = PhPct::new(0.01);
+        pub const VIABILITY_PCT: PhPct = PhPct::new(0.001);
         pub const SIGMA: Sigma = Sigma::new(0.2);
     }
 
     pub mod reversal {
         use super::*;
-        pub const SMOOTH_PCT: f64 = 0.005;
-        pub const GAP_PCT: f64 = 0.0;
-        pub const VIABILITY_PCT: f64 = 0.0005;
+        use crate::config::PhPct;
+        pub const SMOOTH_PCT: PhPct = PhPct::new(0.005);
+        pub const GAP_PCT: PhPct = PhPct::new(0.0);
+        pub const VIABILITY_PCT: PhPct = PhPct::new(0.0005);
         pub const SIGMA: Sigma = Sigma::new(1.5);
     }
 
@@ -122,7 +125,8 @@ pub mod zones {
 
 pub mod cva {
     use super::*;
-    pub const PRICE_RECALC_THRESHOLD_PCT: f64 = 0.01;
+    use crate::config::PhPct;
+    pub const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
     pub const MIN_CANDLES_FOR_ANALYSIS: usize = 500;
     pub const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
 }

@@ -37,11 +37,11 @@ impl MarketState {
         let current = ts.get_candle(idx);
         
         // 1. Volatility (Unchanged)
-        let volatility = VolatilityPct::calculate(current.high_price, current.low_price, current.close_price);
+        let volatility = VolatilityPct::calculate(*current.high_price, *current.low_price, *current.close_price);
 
         // 2. Momentum (Adaptive - O(1) Lookup)
         let prev_n = ts.get_candle(idx - trend_lookback);
-        let momentum = MomentumPct::calculate(current.close_price, prev_n.close_price);
+        let momentum = MomentumPct::calculate(*current.close_price, *prev_n.close_price);
 
         // 3. Relative Volume (O(1) Lookup)
         // We now read the pre-calculated value directly.

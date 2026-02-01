@@ -1,3 +1,4 @@
+use crate::config::{HighPrice, LowPrice};
 use crate::models::OhlcvTimeSeries;
 use crate::utils::TimeUtils;
 
@@ -20,8 +21,8 @@ pub struct DisplaySegment {
     pub end_ts: i64,
     pub candle_count: usize,
 
-    pub low_price: f64,
-    pub high_price: f64,
+    pub low_price: LowPrice,
+    pub high_price: HighPrice,
     
     // Gap *preceding* this segment
     pub gap_reason: GapReason,
@@ -190,9 +191,9 @@ pub fn analyze(
                     let high = ts.high_prices[prev_end_idx];
                     let (min_ph, max_ph) = bounds;
                     
-                    if low > max_ph {
+                    if *low > max_ph {
                         GapReason::PriceAbovePH
-                    } else if high < min_ph {
+                    } else if *high < min_ph {
                         GapReason::PriceBelowPH
                     } else {
                         GapReason::PriceMixed
@@ -207,8 +208,8 @@ pub fn analyze(
 
         // NEW: Calculate Min/Max for this segment
         // We iterate the slice to find bounds. This is done in the Worker, so it's safe.
-        let mut seg_low = f64::MAX;
-        let mut seg_high = f64::MIN;
+        let mut seg_low = ts.low_prices[start];
+        let mut seg_high = ts.high_prices[start];
         
         // Note: 'end' is exclusive
         for i in start..end {
@@ -217,9 +218,6 @@ pub fn analyze(
             if l < seg_low { seg_low = l; }
             if h > seg_high { seg_high = h; }
         }
-        
-        // Handle empty case (shouldn't happen logic-wise but good safety)
-        if seg_low == f64::MAX { seg_low = 0.0; seg_high = 0.0; }
 
         DisplaySegment {
             start_idx: start,

@@ -1,4 +1,4 @@
-use crate::config::{BaseVol, QuoteVol};
+use crate::config::{BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice};
 
 // Define the CandleType enum
 #[derive(Debug, PartialEq)]
@@ -11,10 +11,10 @@ pub enum CandleType {
 pub struct Candle {
     pub timestamp_ms: i64,
 
-    pub open_price: f64,
-    pub high_price: f64,
-    pub low_price: f64,
-    pub close_price: f64,
+    pub open_price: OpenPrice,
+    pub high_price: HighPrice,
+    pub low_price: LowPrice,
+    pub close_price: ClosePrice,
 
     pub base_asset_volume: BaseVol,
     pub quote_asset_volume: QuoteVol,
@@ -25,10 +25,10 @@ impl Candle {
     // A constructor for convenience
     pub fn new(
         timestamp_ms: i64,
-        open: f64,
-        high: f64,
-        low: f64,
-        close: f64,
+        open: OpenPrice,
+        high: HighPrice,
+        low: LowPrice,
+        close: ClosePrice,
         base_vol: BaseVol,
         quote_vol: QuoteVol,
     ) -> Self {
@@ -45,7 +45,7 @@ impl Candle {
 
     // A method to determine the type of candle
     pub fn get_type(&self) -> CandleType {
-        if self.close_price >= self.open_price {
+        if *self.close_price >= *self.open_price {
             CandleType::Bullish
         } else {
             CandleType::Bearish
@@ -55,14 +55,14 @@ impl Candle {
     // Returns the low and high of the candle body as a tuple
     pub fn body_range(&self) -> (f64, f64) {
         match self.get_type() {
-            CandleType::Bullish => (self.open_price, self.close_price),
-            CandleType::Bearish => (self.close_price, self.open_price),
+            CandleType::Bullish => (*self.open_price, *self.close_price),
+            CandleType::Bearish => (*self.close_price, *self.open_price),
         }
     }
 
     // Calculates the low of the bottom wick.
     pub fn low_wick_low(&self) -> f64 {
-        self.low_price
+        *self.low_price
     }
 
     // Calculates the high of the bottom wick.
@@ -77,6 +77,6 @@ impl Candle {
 
     // Calculates the high of the top wick.
     pub fn high_wick_high(&self) -> f64 {
-        self.high_price
+        *self.high_price
     }
 }

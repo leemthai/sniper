@@ -2,11 +2,12 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::domain::candle::Candle;
-use crate::config::{BaseVol, QuoteVol};
+// use ;
 
 // WASM imports
 #[cfg(not(target_arch = "wasm32"))]
 use {
+    crate::config::{BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice},
     sqlx::ConnectOptions,
     sqlx::{
         Pool, QueryBuilder, Row, Sqlite,
@@ -135,10 +136,10 @@ impl MarketDataStorage for SqliteStorage {
                 b.push_bind(pair)
                     .push_bind(interval)
                     .push_bind(c.timestamp_ms)
-                    .push_bind(c.open_price)
-                    .push_bind(c.high_price)
-                    .push_bind(c.low_price)
-                    .push_bind(c.close_price)
+                    .push_bind(*c.open_price)
+                    .push_bind(*c.high_price)
+                    .push_bind(*c.low_price)
+                    .push_bind(*c.close_price)
                     .push_bind(*c.base_asset_volume)
                     .push_bind(*c.quote_asset_volume);
             });
@@ -185,10 +186,10 @@ impl MarketDataStorage for SqliteStorage {
             .map(|row| {
                 Candle::new(
                     row.get("open_time"),
-                    row.get("open"),
-                    row.get("high"),
-                    row.get("low"),
-                    row.get("close"),
+                    OpenPrice::new(row.get("open")),
+                    HighPrice::new(row.get("high")),
+                    LowPrice::new(row.get("low")),
+                    ClosePrice::new(row.get("close")),
                     BaseVol::new(row.get("base_vol")),
                     QuoteVol::new(row.get("quote_vol")),
                 )

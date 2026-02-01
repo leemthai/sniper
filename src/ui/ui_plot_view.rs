@@ -3,10 +3,10 @@ use std::hash::{Hash, Hasher};
 use colorgrad::Gradient;
 use eframe::egui::{Color32, Ui, Vec2b, Rect, PointerButton};
 use egui_plot::{Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotUi, VPlacement, PlotPoint};
-// use futures::select;
 
 use crate::analysis::range_gap_finder::DisplaySegment;
 
+use crate::config::Price;
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::engine::SniperEngine;
@@ -202,16 +202,17 @@ impl PlotView {
     fn calculate_y_bounds(
         &self,
         cva_results: &CVACore,
-        current_price_opt: Option<f64>,
+        current_price_opt: Option<Price>,
     ) -> std::ops::RangeInclusive<f64> {
+
         let (ph_min, ph_max) = cva_results.price_range.min_max();
-        let current_price = current_price_opt.unwrap_or(ph_min);
+        let current_price = current_price_opt.unwrap_or_default();
 
         // 1. Calculate Standard Union (PH + Price)
         // We intentionally ignore model.segments for the *Final* calculation to keep Sniper View,
         // but we calculate them below for the Debug Log you requested.
-        let final_min = ph_min.min(current_price);
-        let final_max = ph_max.max(current_price);
+        let final_min = ph_min.min(*current_price);
+        let final_max = ph_max.max(*current_price);
 
         // 2. Apply Configured Padding
         let range = final_max - final_min;
@@ -331,7 +332,7 @@ impl PlotView {
         ui: &mut Ui,
         cva_results: &CVACore,
         trading_model: &TradingModel,
-        current_pair_price: Option<f64>,
+        current_pair_price: Option<Price>,
         background_score_type: ScoreType,
         visibility: &PlotVisibility,
         engine: &SniperEngine,
@@ -381,6 +382,7 @@ impl PlotView {
             .allow_drag(Vec2b { x: false, y: true })
             .allow_zoom(Vec2b { x: false, y: true })
             .show(ui, |plot_ui| {
+
                 let width = view_max - view_min;
                 let safe_width = width.max(10.0); // Safetey: If width is 0 (empty dat), default to small pad
                 let pad_x = safe_width * PLOT_CONFIG.plot_x_padding_pct;
@@ -392,7 +394,7 @@ impl PlotView {
                 } else {
                     Self::enforce_manual_safety_limits(
                         plot_ui,
-                        current_pair_price.unwrap_or(ph_min),
+                        *current_pair_price.unwrap_or_default(), // (Price::new(ph_min)),
                     );
                 }
 
@@ -424,7 +426,7 @@ impl PlotView {
                     x_max: total_visual_width,
                     current_price: current_pair_price,
                     resolution: resolution,
-                    ph_bounds: (ph_min, ph_max),
+                    ph_bounds: (Price::new(ph_min), Price::new(ph_max)),
                     clip_rect,
                     selected_opportunity: &selected_opportunity,
                 };

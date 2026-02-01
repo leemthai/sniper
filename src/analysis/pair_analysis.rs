@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 
-use crate::config::{constants, PhPct};
+use crate::config::{constants, PhPct, Price};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
 use crate::models::cva::CVACore;
@@ -13,7 +13,7 @@ use crate::models::timeseries::{TimeSeriesSlice, find_matching_ohlcv};
 pub fn pair_analysis_pure(
     pair_name: String,
     timeseries_data: &TimeSeriesCollection,
-    current_price: f64,
+    current_price: Price,
     ph_pct: PhPct,
 ) -> Result<CVACore> {
     // 1. Find the Data

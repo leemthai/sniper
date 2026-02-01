@@ -7,7 +7,7 @@ use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::R
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
-use crate::config::{OptimizationStrategy, StationId, constants, PhPct, QuoteVol};
+use crate::config::{OptimizationStrategy, StationId, constants, PhPct, QuoteVol, Price};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
@@ -256,7 +256,7 @@ impl SniperEngine {
                             }
                             self.force_recalc(
                                 &pair_name,
-                                Some(candle.close),
+                                Some(*candle.close),
                                 ph_pct,
                                 self.engine_strategy,
                                 station_id,
@@ -313,10 +313,10 @@ impl SniperEngine {
 
                 if let Some(ref reason) = outcome {
                     exit_price = match reason {
-                        TradeOutcome::TargetHit => op.target_price,
-                        TradeOutcome::StopHit => op.stop_price,
-                        TradeOutcome::Timeout => current_price,
-                        TradeOutcome::ManualClose => current_price,
+                        TradeOutcome::TargetHit => *op.target_price,
+                        TradeOutcome::StopHit => *op.stop_price,
+                        TradeOutcome::Timeout => *current_price,
+                        TradeOutcome::ManualClose => *current_price,
                     };
                 }
 
@@ -324,10 +324,10 @@ impl SniperEngine {
                 if let Some(reason) = outcome {
                     let pnl = match op.direction {
                         TradeDirection::Long => {
-                            (exit_price - op.start_price) / op.start_price * 100.0
+                            (exit_price - *op.start_price) / *op.start_price * 100.0
                         }
                         TradeDirection::Short => {
-                            (op.start_price - exit_price) / op.start_price * 100.0
+                            (*op.start_price - exit_price) / *op.start_price * 100.0
                         }
                     };
 
@@ -347,7 +347,7 @@ impl SniperEngine {
                         pair: pair.clone(),
                         direction: op.direction.clone(),
                         entry_price: op.start_price,
-                        exit_price,
+                        exit_price: exit_price.into(),
                         outcome: reason,
                         entry_time: op.created_at,
                         exit_time: now_ms,
@@ -397,7 +397,7 @@ impl SniperEngine {
     /// Generates the master list for the Trade Finder.
     pub fn get_trade_finder_rows(
         &self,
-        overrides: Option<&HashMap<String, f64>>,
+        overrides: Option<&HashMap<String, Price>>,
     ) -> Vec<TradeFinderRow> {
         crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
             let mut rows = Vec::new();
@@ -420,9 +420,7 @@ impl SniperEngine {
                 // 2. Get Context (Price)
                 // STRICT MODE: Do not default to 0.0. If no price, skip the pair.
                 let price_opt = if let Some(map) = overrides {
-                    map.get(pair)
-                        .copied()
-                        .or_else(|| self.price_stream.get_price(pair))
+                    map.get(pair).copied().map(|p| *p).or_else(|| self.price_stream.get_price(pair))
                 } else {
                     self.price_stream.get_price(pair)
                 };
@@ -477,7 +475,7 @@ impl SniperEngine {
                             market_state: Some(op.market_state),
                             opportunity_count_total: total_ops,
                             opportunity: Some(op.clone()),
-                            current_price,
+                            current_price: Price::new(current_price),
                         });
                     }
                 } else {
@@ -488,7 +486,7 @@ impl SniperEngine {
                         market_state: None,
                         opportunity_count_total: 0,
                         opportunity: None,
-                        current_price,
+                        current_price: Price::new(current_price),
                     });
                 }
             }
@@ -766,7 +764,7 @@ impl SniperEngine {
                         let diff = (current_price - state.last_update_price).abs();
                         let pct_diff = diff / state.last_update_price;
 
-                        if pct_diff > threshold {
+                        if pct_diff > *threshold {
                             #[cfg(debug_assertions)]
                             if DF.log_engine {
                                 log::info!(
