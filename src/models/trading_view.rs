@@ -8,7 +8,7 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants, PhPct, RoiPct, AroiPct};
+use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants, PhPct, RoiPct, AroiPct, QuoteVol};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -114,7 +114,7 @@ pub struct TradeFinderRow {
     pub pair_name: String,
     
     // 24h Quote Volume (e.g. USDT volume). Crucial for filtering "Dead" coins.
-    pub quote_volume_24h: f64,
+    pub quote_volume_24h: QuoteVol,
     
     // Market State (Volatility, Momentum)
     pub market_state: Option<MarketState>, 

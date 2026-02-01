@@ -7,7 +7,7 @@ use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::R
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
-use crate::config::{OptimizationStrategy, StationId, constants, PhPct};
+use crate::config::{OptimizationStrategy, StationId, constants, PhPct, QuoteVol};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
@@ -434,7 +434,7 @@ impl SniperEngine {
 
                 // 3. Calculate Volume & Market State (From TimeSeries)
                 // We do this for every pair regardless of whether it has ops
-                let mut vol_24h = 0.0;
+                let mut vol_24h = QuoteVol::new(0.0);
 
                 if let Some(ts) = ts_guard
                     .series_data

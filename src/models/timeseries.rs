@@ -3,7 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 
-use crate::config::{VolatilityPct, VolRatio};
+use crate::config::{VolatilityPct, VolRatio, BaseVol, QuoteVol};
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 
@@ -23,8 +23,8 @@ pub struct LiveCandle {
     pub high: f64,
     pub low: f64,
     pub close: f64,
-    pub volume: f64,
-    pub quote_vol: f64,
+    pub volume: BaseVol,
+    pub quote_vol: QuoteVol,
     pub is_closed: bool,
 }
 
@@ -42,8 +42,8 @@ pub struct OhlcvTimeSeries {
     pub close_prices: Vec<f64>,
 
     // Volumes
-    pub base_asset_volumes: Vec<f64>,
-    pub quote_asset_volumes: Vec<f64>,
+    pub base_asset_volumes: Vec<BaseVol>,
+    pub quote_asset_volumes: Vec<QuoteVol>,
 
     pub relative_volumes: Vec<VolRatio>,
 
@@ -119,11 +119,11 @@ impl OhlcvTimeSeries {
     fn calculate_rvol_at_index(&self, idx: usize) -> VolRatio {
         let start = idx.saturating_sub(RVOL_WINDOW - 1);
         let slice = &self.base_asset_volumes[start..=idx];
-        let sum: f64 = slice.iter().sum();
+        let sum: f64 = slice.iter().map(|v| **v).sum();
         let count = slice.len().max(1) as f64;
         let avg = sum / count;
         
-        let current_vol = self.base_asset_volumes[idx];
+        let current_vol = *self.base_asset_volumes[idx];
         
         VolRatio::calculate(current_vol, avg)
     }
@@ -174,18 +174,18 @@ impl OhlcvTimeSeries {
             quote_vec.push(c.quote_asset_volume);
 
             // --- RVOL Calculation (O(1) Rolling) ---
-            rolling_sum += c.base_asset_volume;
+            rolling_sum += *c.base_asset_volume;
 
             if i >= window_size {
                 // Subtract the element that fell out of the window
-                rolling_sum -= candles[i - window_size].base_asset_volume;
+                rolling_sum -= *candles[i - window_size].base_asset_volume;
             }
 
             // Count is i+1 until we hit window_size, then it stays at window_size
             let count = (i + 1).min(window_size) as f64;
             let avg = rolling_sum / count;
 
-            let rvol = VolRatio::calculate(c.base_asset_volume, avg);
+            let rvol = VolRatio::calculate(*c.base_asset_volume, avg);
             rvol_vec.push(rvol);
         }
 
@@ -307,7 +307,7 @@ impl TimeSeriesSlice<'_> {
             self.series_data.open_prices.len(),
             total_candles,
             self.series_data.pair_interval.interval_ms,
-            volatility_pct * 100.0,
+            VolatilityPct::new(volatility_pct),
         );
 
         // Process all candles across all ranges, maintaining temporal decay based on position
@@ -351,7 +351,7 @@ impl TimeSeriesSlice<'_> {
             ScoreType::FullCandleTVW,
             candle_low,
             candle_high,
-            candle.base_asset_volume * temporal_weight,
+            *candle.base_asset_volume * temporal_weight,
         );
 
         // 2. LOW WICK - USE FLAT LOGIC

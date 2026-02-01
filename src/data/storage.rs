@@ -2,6 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::domain::candle::Candle;
+use crate::config::{BaseVol, QuoteVol};
 
 // WASM imports
 #[cfg(not(target_arch = "wasm32"))]
@@ -138,8 +139,8 @@ impl MarketDataStorage for SqliteStorage {
                     .push_bind(c.high_price)
                     .push_bind(c.low_price)
                     .push_bind(c.close_price)
-                    .push_bind(c.base_asset_volume)
-                    .push_bind(c.quote_asset_volume);
+                    .push_bind(*c.base_asset_volume)
+                    .push_bind(*c.quote_asset_volume);
             });
 
             let query = query_builder.build();
@@ -188,8 +189,8 @@ impl MarketDataStorage for SqliteStorage {
                     row.get("high"),
                     row.get("low"),
                     row.get("close"),
-                    row.get("base_vol"),
-                    row.get("quote_vol"),
+                    BaseVol::new(row.get("base_vol")),
+                    QuoteVol::new(row.get("quote_vol")),
                 )
             })
             .collect();

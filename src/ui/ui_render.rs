@@ -33,7 +33,7 @@ use crate::ui::ui_plot_view::PlotInteraction;
 use crate::ui::utils::format_price;
 
 use crate::utils::TimeUtils;
-use crate::utils::maths_utils::{calculate_percent_diff, format_volume_compact};
+use crate::utils::maths_utils::{calculate_percent_diff};
 
 use super::app::ZoneSniperApp;
 
@@ -1188,7 +1188,7 @@ impl ZoneSniperApp {
         table_row.col(|ui| {
             ui.vertical(|ui| {
                 self.down_from_top(ui);
-                let val_str = format_volume_compact(row.quote_volume_24h);
+                let val_str = format!("{}", row.quote_volume_24h);
                 ui.label(
                     RichText::new(val_str)
                         .small()

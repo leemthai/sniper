@@ -99,15 +99,15 @@ pub fn format_fixed_chars(val: f64, width: usize) -> Option<String> {
 }
 
 
-pub fn format_volume_compact(val: f64) -> String {
-    if val > 1_000_000.0 {
-        format!("{:.1}M", val / 1_000_000.0)
-    } else if val > 1_000.0 {
-        format!("{:.0}K", val / 1_000.0)
-    } else {
-        format!("{:.0}", val)
-    }
-}
+// pub fn format_volume_compact(val: f64) -> String {
+//     if val > 1_000_000.0 {
+//         format!("{:.1}M", val / 1_000_000.0)
+//     } else if val > 1_000.0 {
+//         format!("{:.0}K", val / 1_000.0)
+//     } else {
+//         format!("{:.0}", val)
+//     }
+// }
 
 /// Converts a Duration into a specific number of candles based on the interval.
 pub fn duration_to_candles(duration: Duration, interval_ms: i64) -> usize {

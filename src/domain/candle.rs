@@ -1,3 +1,5 @@
+use crate::config::{BaseVol, QuoteVol};
+
 // Define the CandleType enum
 #[derive(Debug, PartialEq)]
 pub enum CandleType {
@@ -14,8 +16,8 @@ pub struct Candle {
     pub low_price: f64,
     pub close_price: f64,
 
-    pub base_asset_volume: f64,
-    pub quote_asset_volume: f64,
+    pub base_asset_volume: BaseVol,
+    pub quote_asset_volume: QuoteVol,
 }
 
 // Implement methods for the Candle struct
@@ -27,8 +29,8 @@ impl Candle {
         high: f64,
         low: f64,
         close: f64,
-        base_vol: f64,
-        quote_vol: f64,
+        base_vol: BaseVol,
+        quote_vol: QuoteVol,
     ) -> Self {
         Candle {
             timestamp_ms,

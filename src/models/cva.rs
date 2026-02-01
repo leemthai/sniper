@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+use crate::config::{VolatilityPct};
 use crate::utils::maths_utils::RangeF64;
 
 /// Lean CVA results containing only actively used metrics
@@ -10,10 +11,8 @@ pub struct CVACore {
     // Active metrics (volume-weighted)
     pub candle_bodies_vw: Vec<f64>, // Mapped to FullCandleTVW
 
-    pub low_wick_counts: Vec<f64>,  // Renamed from low_wicks_vw
-    pub high_wick_counts: Vec<f64>, // Renamed from high_wicks_vw
-
-    pub quote_volumes: Vec<f64>, // Keep for legacy/debug
+    pub low_wick_counts: Vec<f64>, 
+    pub high_wick_counts: Vec<f64>, 
 
     pub total_candles: usize,
 
@@ -32,7 +31,7 @@ pub struct CVACore {
     // NEW METRICS
     pub relevant_candle_count: usize, // Number of candles inside the horizon
     pub interval_ms: i64,             // e.g. 3600000 for 1h
-    pub volatility_pct: f64,          // Average (High-Low)/Close % for relevant candles
+    pub volatility_pct: VolatilityPct, // Average (High-Low)/Close % for relevant candles
 }
 
 /// Score types for the lean CVA model
@@ -44,7 +43,6 @@ pub enum ScoreType {
     FullCandleTVW, // Sticky (Volume * Time)
     LowWickCount,  // Reversal (Count * Time) - Renamed from LowWickVW
     HighWickCount, // Reversal (Count * Time) - Renamed from HighWickVW
-    // QuoteVolume,   // Keep for debug/legacy
 }
 
 impl fmt::Display for ScoreType {
@@ -53,7 +51,6 @@ impl fmt::Display for ScoreType {
             ScoreType::FullCandleTVW => write!(f, "Full Candle Temporal-Volume Weighted"),
             ScoreType::LowWickCount => write!(f, "Low Wick Count (Rejection Prob. Numerator)"),
             ScoreType::HighWickCount => write!(f, "High Wick Count (Rejection Prob. Numerator)"),
-            // ScoreType::QuoteVolume => write!(f, "Quote Volume (transitions)"),
         }
     }
 }
@@ -163,7 +160,7 @@ impl CVACore {
         total_candles: usize,
         relevant_candle_count: usize,
         interval_ms: i64,
-        volatility_pct: f64,
+        volatility_pct: VolatilityPct,
     ) -> Self {
         let price_range = RangeF64::new(min_price, max_price, zone_count);
         let n_slices = price_range.n_chunks();
@@ -172,7 +169,6 @@ impl CVACore {
             candle_bodies_vw: vec![0.0; n_slices],
             low_wick_counts: vec![0.0; n_slices],
             high_wick_counts: vec![0.0; n_slices],
-            quote_volumes: vec![0.0; n_slices],
             pair_name,
             price_range,
             zone_count,

@@ -498,8 +498,8 @@ fn parse_and_send_kline(data: &serde_json::Value, tx: &Sender<LiveCandle>) {
         high: k["h"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
         low: k["l"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
         close,
-        volume: k["v"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
-        quote_vol: k["q"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
+        volume: crate::config::BaseVol::new(k["v"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
+        quote_vol: crate::config::QuoteVol::new(k["q"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
         is_closed,
     };
 

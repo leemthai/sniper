@@ -15,7 +15,7 @@ use binance_sdk::spot::{
 use binance_sdk::{errors, errors::ConnectorError as connection_error};
 
 // Local crates
-use crate::config::{BINANCE, BinanceApiConfig};
+use crate::config::{BINANCE, BinanceApiConfig, BaseVol, QuoteVol};
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
@@ -109,8 +109,8 @@ pub struct BNKline {
     pub high_price: Option<f64>,
     pub low_price: Option<f64>,
     pub close_price: Option<f64>,
-    pub base_asset_volume: Option<f64>,
-    pub quote_asset_volume: Option<f64>,
+    pub base_asset_volume: Option<BaseVol>,
+    pub quote_asset_volume: Option<QuoteVol>,
 }
 
 // Custom error type for BNKline for better error messages.
@@ -179,8 +179,8 @@ impl TryFrom<Vec<KlinesItemInner>> for BNKline {
             high_price,
             low_price,
             close_price,
-            base_asset_volume: volume,
-            quote_asset_volume,
+            base_asset_volume: volume.map(BaseVol::new),
+            quote_asset_volume: quote_asset_volume.map(QuoteVol::new),
         })
     }
 }
@@ -433,8 +433,8 @@ impl From<BNKline> for Candle {
             bn.high_price.unwrap_or(0.0),
             bn.low_price.unwrap_or(0.0),
             bn.close_price.unwrap_or(0.0),
-            bn.base_asset_volume.unwrap_or(0.0),
-            bn.quote_asset_volume.unwrap_or(0.0),
+            bn.base_asset_volume.unwrap_or_default(),
+            bn.quote_asset_volume.unwrap_or_default(),
         )
     }
 }
