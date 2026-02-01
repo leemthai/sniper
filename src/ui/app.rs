@@ -5,7 +5,7 @@ use std::sync::mpsc::{self, Receiver};
 
 use eframe::egui::{
     Align, CentralPanel, Context, FontData, FontDefinitions, FontFamily, Grid, Key, Layout,
-    ProgressBar, RichText, ScrollArea, Ui,
+    ProgressBar, RichText, ScrollArea, Ui, Visuals,
 };
 use eframe::{Frame, Storage};
 use serde::{Deserialize, Serialize};
@@ -33,10 +33,9 @@ use crate::models::{ProgressEvent, SyncStatus, find_matching_ohlcv};
 use crate::shared::SharedConfiguration;
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
-use crate::ui::config::UI_TEXT;
+use crate::ui::config::{UI_TEXT, UI_CONFIG};
 use crate::ui::ticker::TickerState;
 use crate::ui::ui_plot_view::PlotView;
-use crate::ui::utils::setup_custom_visuals;
 
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
@@ -1418,6 +1417,25 @@ impl ZoneSniperApp {
     }
 }
 
+
+/// Sets up custom visuals for the entire application
+pub fn setup_custom_visuals(ctx: &Context) {
+    let mut visuals = Visuals::dark();
+
+    // Customize the dark theme
+    visuals.window_fill = UI_CONFIG.colors.central_panel;
+    visuals.panel_fill = UI_CONFIG.colors.side_panel;
+
+    // Make the widgets stand out a bit more
+    visuals.widgets.noninteractive.fg_stroke.color = UI_CONFIG.colors.label;
+    visuals.widgets.inactive.fg_stroke.color = UI_CONFIG.colors.label;
+    visuals.widgets.hovered.fg_stroke.color = UI_CONFIG.colors.heading;
+    visuals.widgets.active.fg_stroke.color = UI_CONFIG.colors.heading;
+
+    // Set the custom visuals
+    ctx.set_visuals(visuals);
+}
+
 impl eframe::App for ZoneSniperApp {
     fn save(&mut self, storage: &mut dyn Storage) {
         // Update the serializable ID from the runtime "fat" object
@@ -1442,6 +1460,7 @@ impl eframe::App for ZoneSniperApp {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
+    
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         setup_custom_visuals(ctx);
 
