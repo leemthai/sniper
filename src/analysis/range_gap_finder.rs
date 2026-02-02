@@ -1,4 +1,4 @@
-use crate::config::{HighPrice, LowPrice};
+use crate::config::{HighPrice, LowPrice, Price};
 use crate::models::OhlcvTimeSeries;
 use crate::utils::TimeUtils;
 
@@ -36,7 +36,7 @@ impl RangeGapFinder {
 pub fn analyze(
         timeseries: &OhlcvTimeSeries, 
         ph_ranges: &[(usize, usize)],
-        price_bounds: (f64, f64),
+        price_bounds: (Price, Price),
         merge_tolerance_ms: i64, // <--- NEW ARGUMENT
     ) -> Vec<DisplaySegment> {
         if ph_ranges.is_empty() || timeseries.timestamps.is_empty() {
@@ -170,7 +170,7 @@ pub fn analyze(
         prev_end_idx: usize,
         prev_end_ts: i64,
         is_first: bool,
-        bounds: (f64, f64),
+        bounds: (Price, Price),
     ) -> DisplaySegment {
 
 
@@ -191,9 +191,9 @@ pub fn analyze(
                     let high = ts.high_prices[prev_end_idx];
                     let (min_ph, max_ph) = bounds;
                     
-                    if *low > max_ph {
+                    if low > max_ph {
                         GapReason::PriceAbovePH
-                    } else if *high < min_ph {
+                    } else if high < min_ph {
                         GapReason::PriceBelowPH
                     } else {
                         GapReason::PriceMixed

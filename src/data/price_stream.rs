@@ -1,3 +1,5 @@
+use crate::config::Price;
+
 #[cfg(not(target_arch = "wasm32"))]
 use crate::models::timeseries::LiveCandle;
 #[cfg(not(target_arch = "wasm32"))]
@@ -62,7 +64,7 @@ pub enum ConnectionStatus {
 #[cfg(not(target_arch = "wasm32"))]
 pub struct PriceStreamManager {
     // Map of symbol -> current price
-    prices: Arc<Mutex<HashMap<String, f64>>>,
+    prices: Arc<Mutex<HashMap<String, Price>>>,
     // Map of symbol -> connection status
     connection_status: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     subscribed_symbols: Arc<Mutex<Vec<String>>>,
@@ -103,7 +105,7 @@ impl PriceStreamManager {
     }
 
     /// Get the current live price for a symbol
-    pub fn get_price(&self, symbol: &str) -> Option<f64> {
+    pub fn get_price(&self, symbol: &str) -> Option<Price> {
         let symbol_lower = symbol.to_lowercase();
         self.prices.lock().unwrap().get(&symbol_lower).copied()
     }
@@ -202,7 +204,7 @@ impl Default for PriceStreamManager {
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone)]
 pub struct PriceStreamManager {
-    prices: HashMap<String, f64>,
+    prices: HashMap<String, Price>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -215,7 +217,7 @@ impl Default for PriceStreamManager {
 #[cfg(target_arch = "wasm32")]
 impl PriceStreamManager {
     pub fn new() -> Self {
-        let parsed: HashMap<String, f64> =
+        let parsed: HashMap<String, Price> =
             serde_json::from_str(DEMO_PRICES_JSON).unwrap_or_default();
         let mut prices = HashMap::new();
         for (symbol, price) in parsed {
@@ -224,7 +226,7 @@ impl PriceStreamManager {
         Self { prices }
     }
 
-    pub fn get_price(&self, symbol: &str) -> Option<f64> {
+    pub fn get_price(&self, symbol: &str) -> Option<Price> {
         let symbol_lower = symbol.to_lowercase();
         self.prices.get(&symbol_lower).copied()
     }
@@ -247,10 +249,10 @@ impl PriceStreamManager {
 #[cfg(not(target_arch = "wasm32"))]
 async fn run_combined_price_stream_with_reconnect(
     symbols: &[String],
-    prices_arc: Arc<Mutex<HashMap<String, f64>>>,
+    prices_arc: Arc<Mutex<HashMap<String, Price>>>,
     status_arc: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     suspended_arc: Arc<Mutex<bool>>,
-    candle_tx: Option<Sender<LiveCandle>>, // <--- NEW ARGUMENT
+    candle_tx: Option<Sender<LiveCandle>>,
 ) {
     let mut reconnect_delay = BINANCE.ws.initial_reconnect_delay_sec;
     let url = build_combined_stream_url(symbols); // Ensure your build_combined_stream_url includes klines now!
@@ -308,11 +310,12 @@ async fn run_combined_price_stream_with_reconnect(
 async fn run_combined_price_stream(
     symbols: &[String],
     url: &str,
-    prices_arc: Arc<Mutex<HashMap<String, f64>>>,
+    prices_arc: Arc<Mutex<HashMap<String, Price>>>,
     status_arc: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     suspended_arc: Arc<Mutex<bool>>,
     candle_tx: Option<Sender<LiveCandle>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+
     let (ws_stream, _) = connect_async(url).await?;
 
     // Update status to connected
@@ -342,7 +345,7 @@ async fn run_combined_price_stream(
                                 // We use the current candle close ("c") as the live price
                                 if let Some(k) = v["data"].get("k") {
                                     if let Some(c_str) = k["c"].as_str() {
-                                        if let Ok(price) = c_str.parse::<f64>() {
+                                        if let Ok(raw) = c_str.parse::<f64>() {
                                             // Check Suspension
                                             let is_suspended = *suspended_arc.lock().unwrap();
                                             if !is_suspended {
@@ -352,6 +355,7 @@ async fn run_combined_price_stream(
                                                     .to_lowercase();
 
                                                 // Update Map
+                                                let price = Price::new(raw);
                                                 prices_arc
                                                     .lock()
                                                     .unwrap()
@@ -394,7 +398,7 @@ async fn run_combined_price_stream(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &[String]) {
+async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, Price>>>, symbols: &[String]) {
     #[cfg(debug_assertions)]
     if DF.log_price_stream_updates {
         log::info!(">>> PriceStream: Warming up price cache via REST API...");
@@ -437,9 +441,9 @@ async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, f64>>>, symbols: &
                                     let symbol_lower = s.to_lowercase();
 
                                     if wanted_set.contains(&symbol_lower) {
-                                        let price = p.parse::<f64>().unwrap_or(0.0);
-                                        if price > 0.0 {
-                                            p_lock.insert(symbol_lower, price);
+                                        let raw = p.parse::<f64>().unwrap_or(0.0);
+                                        if raw > 0.0 {
+                                            p_lock.insert(symbol_lower, Price::new(raw));
                                             _updated_count += 1;
                                         }
                                     }

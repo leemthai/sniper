@@ -17,7 +17,9 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{DF, OptimizationStrategy, PhPct, Price, StationId, constants, CandleResolution};
+use crate::config::{
+    CandleResolution, DF, OptimizationStrategy, PhPct, Price, StationId, constants, PriceLike,
+};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -32,7 +34,7 @@ use crate::models::{ProgressEvent, SyncStatus, find_matching_ohlcv};
 use crate::shared::SharedConfiguration;
 
 use crate::ui::app_simulation::{SimDirection, SimStepSize};
-use crate::ui::config::{UI_TEXT, UI_CONFIG};
+use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::ticker::TickerState;
 use crate::ui::ui_plot_view::PlotView;
 
@@ -117,7 +119,6 @@ impl Default for PlotVisibility {
         }
     }
 }
-
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
@@ -305,12 +306,15 @@ impl ZoneSniperApp {
 
             // 3. Get Data
             let ts_guard = e.timeseries.read().unwrap();
-            let ohlcv =
-                find_matching_ohlcv(&ts_guard.series_data, pair, constants::BASE_INTERVAL.as_millis() as i64)
-                    .ok()?;
+            let ohlcv = find_matching_ohlcv(
+                &ts_guard.series_data,
+                pair,
+                constants::BASE_INTERVAL.as_millis() as i64,
+            )
+            .ok()?;
 
             // 4. Run Worker Logic
-            return worker::tune_to_station(ohlcv, Price::new(price), station, self.saved_strategy);
+            return worker::tune_to_station(ohlcv, price, station, self.saved_strategy);
         }
         None
     }
@@ -507,7 +511,7 @@ impl ZoneSniperApp {
             return Some(*sim_price);
         }
         if let Some(e) = &self.engine {
-            return e.get_price(pair).map(Price::new);
+            return e.get_price(pair);
         }
         None
     }
@@ -522,7 +526,7 @@ impl ZoneSniperApp {
                 let all_pairs = e.get_all_pair_names();
                 for pair in all_pairs {
                     if let Some(live_price) = e.get_price(&pair) {
-                        self.simulated_prices.insert(pair, Price::new(live_price));
+                        self.simulated_prices.insert(pair, live_price);
                     }
                 }
             } else {
@@ -536,12 +540,12 @@ impl ZoneSniperApp {
             return;
         };
         let current_price = self.get_display_price(&pair).unwrap_or(Price::new(0.0));
-        if *current_price <= 0.0 {
+        if !current_price.is_positive() {
             return;
         }
 
-        let change = *current_price * percent;
-        let new_price = *current_price + change;
+        let change = current_price.value() * percent;
+        let new_price = current_price.value() + change;
 
         self.simulated_prices
             .insert(pair.clone(), Price::new(new_price));
@@ -574,18 +578,18 @@ impl ZoneSniperApp {
                 let target = match self.sim_direction {
                     SimDirection::Up => superzones
                         .iter()
-                        .filter(|sz| *sz.price_center > *current_price)
+                        .filter(|sz| sz.price_center.value() > current_price.value())
                         .min_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
                     SimDirection::Down => superzones
                         .iter()
-                        .filter(|sz| *sz.price_center < *current_price)
+                        .filter(|sz| sz.price_center.value() < current_price.value())
                         .max_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
                 };
 
                 if let Some(target_zone) = target {
                     let jump_price = match self.sim_direction {
-                        SimDirection::Up => *target_zone.price_center * 1.0001,
-                        SimDirection::Down => *target_zone.price_center * 0.9999,
+                        SimDirection::Up => target_zone.price_center.value() * 1.0001,
+                        SimDirection::Down => target_zone.price_center.value() * 0.9999,
                     };
                     self.simulated_prices.insert(pair, Price::new(jump_price));
                 }
@@ -761,7 +765,8 @@ impl ZoneSniperApp {
                 );
 
                 // Subtitle / Info
-                let interval_str = TimeUtils::interval_to_string(constants::BASE_INTERVAL.as_millis() as i64);
+                let interval_str =
+                    TimeUtils::interval_to_string(constants::BASE_INTERVAL.as_millis() as i64);
                 ui.label(
                     RichText::new(format!(
                         "{} {} {}",
@@ -929,23 +934,12 @@ impl ZoneSniperApp {
                                 constants::BASE_INTERVAL.as_millis() as i64,
                             ) {
                                 if let Some(price) = e.price_stream.get_price(&pair) {
-                                    if price > f64::EPSILON {
-                                        worker::tune_to_station(
-                                            ohlcv,
-                                            Price::new(price),
-                                            station_def,
-                                            self.saved_strategy,
-                                        )
-                                    } else {
-                                        if DF.log_ph_vals {
-                                            log::warn!(
-                                                "Can't tune because price is {} for {}",
-                                                price,
-                                                &pair
-                                            );
-                                        }
-                                        None
-                                    }
+                                    worker::tune_to_station(
+                                        ohlcv,
+                                        price,
+                                        station_def,
+                                        self.saved_strategy,
+                                    )
                                 } else {
                                     log::warn!(
                                         "Can't tune {} because we don't have a price for it ",
@@ -1356,7 +1350,6 @@ impl ZoneSniperApp {
     }
 }
 
-
 /// Sets up custom visuals for the entire application
 pub fn setup_custom_visuals(ctx: &Context) {
     let mut visuals = Visuals::dark();
@@ -1399,7 +1392,6 @@ impl eframe::App for ZoneSniperApp {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
-    
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         setup_custom_visuals(ctx);
 

@@ -76,6 +76,10 @@ impl TimeUtils {
         Utc::now().timestamp_millis()
     }
 
+    pub fn now_utc() -> DateTime<Utc> {
+        Utc::now()
+    }
+
     /// Format as "YYYY-MM-DD"
     pub fn epoch_ms_to_date_string(epoch_ms: i64) -> String {
         let secs = epoch_ms / 1000;

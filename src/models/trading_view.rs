@@ -1,6 +1,8 @@
 use std::fmt;
 use std::sync::Arc;
 
+use chrono::Duration as ChronoDuration;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::analysis::market_state::MarketState;
@@ -8,7 +10,11 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants, PhPct, RoiPct, AroiPct, QuoteVol, Price, TargetPrice, StopPrice, PriceLike, DurationMs};
+use crate::config::{
+    AroiPct, DurationMs, OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, RoiPct,
+    StationId, StopPrice, TargetPrice, TradeProfile, ZoneClassificationConfig, ZoneParams,
+    constants,
+};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -28,17 +34,16 @@ impl OptimizationStrategy {
             OptimizationStrategy::MaxAROI => {
                 // ROI acts as a hard filter (via Gatekeeper), but we maximize speed here
                 *TradeProfile::calculate_annualized_roi(roi_pct, duration)
-            },
+            }
             OptimizationStrategy::Balanced => {
-
                 // GEOMETRIC MEAN (Efficiency Score)
                 let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, duration);
-                
+
                 // If trade is losing, score is negative.
                 if *roi_pct <= 0.0 {
                     return *roi_pct; // Simple fallback for losers
                 }
-                
+
                 // If ROI is positive but AROI is massive (tiny duration), sqrt dampens it.
                 // If ROI is massive but AROI is low (long duration), sqrt dampens it.
                 // It peaks when BOTH are healthy.
@@ -55,7 +60,6 @@ pub struct TradeVariant {
     pub roi_pct: RoiPct,
     pub simulation: SimulationResult,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TradeDirection {
@@ -112,13 +116,13 @@ pub enum SortColumn {
 #[derive(Debug, Clone)]
 pub struct TradeFinderRow {
     pub pair_name: String,
-    
+
     // 24h Quote Volume (e.g. USDT volume). Crucial for filtering "Dead" coins.
     pub quote_volume_24h: QuoteVol,
-    
+
     // Market State (Volatility, Momentum)
-    pub market_state: Option<MarketState>, 
-    
+    pub market_state: Option<MarketState>,
+
     pub opportunity: Option<TradeOpportunity>,
     pub current_price: Price,
     pub opportunity_count_total: usize,
@@ -146,7 +150,7 @@ impl std::fmt::Display for TradeOutcome {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradeOpportunity {
     pub id: String,
-    pub created_at: i64,
+    pub created_at: DateTime<Utc>,
     pub source_ph_pct: PhPct,
 
     pub pair_name: String,
@@ -154,7 +158,7 @@ pub struct TradeOpportunity {
     pub start_price: Price,
     pub target_price: TargetPrice,
     pub stop_price: StopPrice,
-    
+
     pub max_duration_ms: DurationMs,
     pub avg_duration_ms: DurationMs,
 
@@ -163,7 +167,7 @@ pub struct TradeOpportunity {
     pub market_state: MarketState,
 
     pub visuals: Option<VisualFluff>,
-    
+
     pub simulation: SimulationResult,
     pub variants: Vec<TradeVariant>,
 }
@@ -175,40 +179,35 @@ pub enum NavigationTarget {
 }
 
 impl fmt::Display for TradeOpportunity {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ID {} (pair: {})", self.id, self.pair_name)
     }
 }
 
 impl TradeOpportunity {
-
     /// Calculates a composite Quality Score (0.0 to 100.0+)
     /// Used for "Auto-Tuning" and finding the best setups.
     pub fn calculate_quality_score(&self) -> f64 {
-        self.strategy.calculate_score(
-            self.expected_roi(), 
-            self.avg_duration_ms, 
-        )
+        self.strategy
+            .calculate_score(self.expected_roi(), self.avg_duration_ms)
     }
 
-    /// Centralized "Referee" Logic. 
+    /// Centralized "Referee" Logic.
     /// Determines if the trade is dead based on current price action and time.
     pub fn check_exit_condition(
-        &self, 
-        current_high: impl PriceLike, 
-        current_low: impl PriceLike, 
-        current_time: i64
+        &self,
+        current_high: impl PriceLike,
+        current_low: impl PriceLike,
+        current_time: DateTime<Utc>,
     ) -> Option<TradeOutcome> {
-
         // 1. Check Expiry (Hard Limit)
-        if current_time > (self.created_at + *self.max_duration_ms) {
+        if current_time > self.created_at + ChronoDuration::from(self.max_duration_ms) {
             return Some(TradeOutcome::Timeout);
         }
 
         // 2. Check Price Levels
         match self.direction {
             TradeDirection::Long => {
-
                 // Pessimistic: Check Stop first
                 if current_low.value() <= self.stop_price.value() {
                     return Some(TradeOutcome::StopHit);
@@ -216,7 +215,7 @@ impl TradeOpportunity {
                 if current_high.value() >= self.target_price.value() {
                     return Some(TradeOutcome::TargetHit);
                 }
-            },
+            }
             TradeDirection::Short => {
                 if current_high.value() >= self.stop_price.value() {
                     return Some(TradeOutcome::StopHit);
@@ -242,23 +241,23 @@ impl TradeOpportunity {
         profile.is_worthwhile(roi, aroi)
     }
 
-/// Calculates the Expected ROI % per trade for this specific opportunity.
+    /// Calculates the Expected ROI % per trade for this specific opportunity.
     pub fn expected_roi(&self) -> RoiPct {
         // RETURN THE SIMULATION TRUTH. The simulation already calculated the true average PnL (including timeouts).
         self.simulation.avg_pnl_pct
     }
 
-/// Calculates the Expected ROI % using a dynamic live price.
+    /// Calculates the Expected ROI % using a dynamic live price.
     pub fn live_roi(&self, current_price: Price) -> RoiPct {
         // 1. Get the baseline "True PnL" from the simulation (e.g. 7.0%)
-        let base_roi = self.expected_roi(); 
+        let base_roi = self.expected_roi();
 
         // 2. Calculate how much price has moved in our favor since entry
         // Long: (Current - Start) / Start
         // Short: (Start - Current) / Start
         let price_drift_pct = match self.direction {
-            TradeDirection::Long => (current_price - self.start_price) / *self.start_price,
-            TradeDirection::Short => (self.start_price - current_price) / *self.start_price,
+            TradeDirection::Long => (current_price - self.start_price) / self.start_price.value(),
+            TradeDirection::Short => (self.start_price - current_price) / self.start_price.value(),
         };
 
         // 3. Adjust the ROI
@@ -310,11 +309,6 @@ impl Zone {
             price_center: Price::new(price_center),
         }
     }
-
-    /// Distance from price to zone center
-    pub fn distance_to(&self, price: f64) -> f64 {
-        (*self.price_center - price).abs()
-    }
 }
 
 impl SuperZone {
@@ -330,7 +324,7 @@ impl SuperZone {
 
         let price_bottom = first.price_bottom;
         let price_top = last.price_top;
-        let price_center = (*price_bottom + *price_top) / 2.0;
+        let price_center = (price_bottom.value() + price_top.value()) / 2.0;
 
         Self {
             id: first.index,
@@ -343,19 +337,14 @@ impl SuperZone {
     }
 
     /// Check if a price is within this superzone
-    pub fn contains(&self, price: f64) -> bool {
-        price >= *self.price_bottom && price <= *self.price_top
+    pub fn contains(&self, price: Price) -> bool {
+        price.value() >= self.price_bottom.value() && price.value() <= self.price_top.value()
     }
 
     /// Distance from price to superzone center
-    pub fn distance_to(&self, price: f64) -> f64 {
-        (*self.price_center - price).abs()
+    pub fn distance_to(&self, price: Price) -> Price {
+        Price::new((self.price_center.value() - price.value()).abs())
     }
-
-    // Number of constituent zones
-    // pub fn original_zone_count(&self) -> usize {
-    //     self.constituent_zones.len()
-    // }
 }
 
 /// Aggregate contiguous zones into SuperZones
@@ -432,7 +421,9 @@ impl TradingModel {
     ) -> Self {
         let (classified, stats) = Self::classify_zones(&cva, &constants::zones::DEFAULT);
 
-        let bounds = cva.price_range.min_max();
+        let (low, high) = cva.price_range.min_max();
+        let bounds: (Price, Price) = (Price::new(low), Price::new(high));
+
         let merge_ms = constants::cva::SEGMENT_MERGE_TOLERANCE_MS;
 
         let segments = RangeGapFinder::analyze(ohlcv, &cva.included_ranges, bounds, merge_ms);
@@ -448,7 +439,10 @@ impl TradingModel {
         }
     }
 
-    fn classify_zones(cva: &CVACore, config: &ZoneClassificationConfig) -> (ClassifiedZones, ZoneCoverageStats) {
+    fn classify_zones(
+        cva: &CVACore,
+        config: &ZoneClassificationConfig,
+    ) -> (ClassifiedZones, ZoneCoverageStats) {
         let (price_min, price_max) = cva.price_range.min_max();
         let zone_count = cva.zone_count;
         let total_candles = cva.total_candles as f64;
@@ -609,11 +603,11 @@ impl TradingModel {
     }
 
     /// Get nearest support superzone relative to a specific price
-    pub fn nearest_support_superzone(&self, price: f64) -> Option<&SuperZone> {
+    pub fn nearest_support_superzone(&self, price: Price) -> Option<&SuperZone> {
         self.zones
             .sticky_superzones
             .iter()
-            .filter(|sz| *sz.price_center < price)
+            .filter(|sz| sz.price_center.value() < price.value())
             .min_by(|a, b| {
                 a.distance_to(price)
                     .partial_cmp(&b.distance_to(price))
@@ -622,11 +616,11 @@ impl TradingModel {
     }
 
     /// Get nearest resistance superzone relative to a specific price
-    pub fn nearest_resistance_superzone(&self, price: f64) -> Option<&SuperZone> {
+    pub fn nearest_resistance_superzone(&self, price: Price) -> Option<&SuperZone> {
         self.zones
             .sticky_superzones
             .iter()
-            .filter(|sz| *sz.price_center > price)
+            .filter(|sz| sz.price_center.value() > price.value())
             .min_by(|a, b| {
                 a.distance_to(price)
                     .partial_cmp(&b.distance_to(price))
@@ -636,7 +630,7 @@ impl TradingModel {
 
     /// Find all superzones containing the given price
     /// Returns a vec of (superzone_id, zone_type) tuples for all matching zones
-    pub fn find_superzones_at_price(&self, price: f64) -> Vec<(usize, ZoneType)> {
+    pub fn find_superzones_at_price(&self, price: Price) -> Vec<(usize, ZoneType)> {
         let mut zones = Vec::new();
 
         // Check sticky superzones

@@ -3,7 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 
-use crate::config::{VolatilityPct, VolRatio, BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice, Price};
+use crate::config::{VolatilityPct, VolRatio, BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice, PriceLike};
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 
@@ -215,11 +215,11 @@ impl OhlcvTimeSeries {
         let mut count = 0;
 
         for i in start_idx..end_idx {
-            let close = *self.close_prices[i];
-            if close > f64::EPSILON {
-                let high = *self.high_prices[i];
-                let low = *self.low_prices[i];
-                sum_vol += (high - low) / close;
+            let close = self.close_prices[i];
+            if close.is_positive() {
+                let high = self.high_prices[i].value();
+                let low = self.low_prices[i].value();
+                sum_vol += (high - low) / close.value();
                 count += 1;
             }
         }
@@ -273,7 +273,7 @@ impl TimeSeriesSlice<'_> {
         n_chunks: usize,
         pair_name: String,
         time_decay_factor: f64,
-        price_range: (Price, Price), // User-defined price range
+        price_range: (LowPrice, HighPrice), // User-defined price range
     ) -> CVACore {
 
         let (min_price, max_price) = price_range;
@@ -288,8 +288,8 @@ impl TimeSeriesSlice<'_> {
         for (start, end) in &self.ranges {
             for i in *start..*end {
                 let candle = self.series_data.get_candle(i);
-                if *candle.close_price > f64::EPSILON {
-                    volatility_sum += (*candle.high_price - *candle.low_price) / *candle.close_price;
+                if candle.close_price.is_positive() {
+                    volatility_sum += (candle.high_price.value() - candle.low_price.value()) / candle.close_price.value();
                 }
             }
         }
@@ -346,8 +346,8 @@ impl TimeSeriesSlice<'_> {
         let clamp = |price: f64| price.max(price_min).min(price_max);
 
         // 1. FULL CANDLE (Sticky Zones) - Keep Volume Weighting
-        let candle_low = clamp(*candle.low_price);
-        let candle_high = clamp(*candle.high_price);
+        let candle_low = clamp(candle.low_price.value());
+        let candle_high = clamp(candle.high_price.value());
         cva_core.distribute_conserved_volume(
             ScoreType::FullCandleTVW,
             candle_low.into(),

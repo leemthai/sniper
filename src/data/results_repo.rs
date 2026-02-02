@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use serde::{Deserialize, Serialize};
+// use chrono::{DateTime, Utc};
 
 use crate::config::Price;
 
@@ -23,6 +24,9 @@ use crate::models::trading_view::{TradeDirection, TradeOutcome};
 
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::PriceLike;
 
 /// A finalized trade record ready for persistent storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,8 +182,8 @@ impl ResultsRepositoryTrait for ResultsRepository {
         .bind(install_id)
         .bind(result.pair)
         .bind(direction_str)
-        .bind(*result.entry_price)
-        .bind(*result.exit_price)
+        .bind(result.entry_price.value())
+        .bind(result.exit_price.value())
         .bind(outcome_str)
         .bind(result.entry_time)
         .bind(result.exit_time)

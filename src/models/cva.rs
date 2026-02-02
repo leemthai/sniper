@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::config::{VolatilityPct, Price, PriceRange};
+use crate::config::{VolatilityPct, Price, PriceRange, LowPrice, HighPrice};
 
 /// Lean CVA results containing only actively used metrics
 /// Memory footprint: ~3.2KB per 100 zones vs 14.4KB with full CVAResults
@@ -149,8 +149,8 @@ impl CVACore {
 
     // Updated Constructor to match src/models/timeseries.rs usage
     pub fn new(
-        min_price: Price,
-        max_price: Price,
+        min_price: LowPrice,
+        max_price: HighPrice,
         zone_count: usize,
         pair_name: String,
         time_decay_factor: f64,
@@ -160,7 +160,7 @@ impl CVACore {
         volatility_pct: VolatilityPct,
     ) -> Self {
         
-        let price_range = PriceRange::new(min_price, max_price, zone_count);
+        let price_range : PriceRange<Price> = PriceRange::new(min_price.into(), max_price.into(), zone_count);
         let n_slices = price_range.n_chunks;
 
         CVACore {

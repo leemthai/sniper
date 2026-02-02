@@ -16,7 +16,7 @@ use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{DF, DurationMs, OptimizationStrategy, PhPct, Price, StationId, StopPrice, TargetPrice, TradeProfile, TunerStation, constants};
+use crate::config::{DF, DurationMs, OptimizationStrategy, PhPct, Price, StationId, StopPrice, TargetPrice, TradeProfile, TunerStation, constants, LowPrice, HighPrice, PriceLike};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -32,7 +32,6 @@ use crate::TradingModel;
 use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::{AppInstant, TimeUtils};
 
-use crate::utils::maths_utils::{calculate_percent_diff};
 #[cfg(debug_assertions)]
 use {crate::ui::ui_text::UI_TEXT};
 
@@ -212,7 +211,7 @@ fn simulate_target(
     crate::trace_time!("Worker: Simulate Target", 500, {
         // let profile = &ctx.config.journey.profile;
 
-        let direction = if *target_price > *ctx.current_price {
+        let direction = if target_price.value() > ctx.current_price.value() {
             TradeDirection::Long
         } else {
             TradeDirection::Short
@@ -252,7 +251,7 @@ fn simulate_target(
 
             let opp = TradeOpportunity {
                 id: uuid,
-                created_at: TimeUtils::now_timestamp_ms(),
+                created_at: TimeUtils::now_utc(),
                 source_ph_pct: ctx.ph_pct,
                 pair_name: ctx.pair_name.to_string(),
                 direction,
@@ -358,7 +357,7 @@ fn apply_diversity_filter(
 
     for cand in candidates {
         // Determine Region Index
-        let offset = *cand.opportunity.target_price - range_min;
+        let offset = cand.opportunity.target_price.value() - range_min;
         // Clamp index to 0..regions-1 (handle edge cases where price == max)
         let idx = ((offset / bucket_size).floor() as usize).min(regions - 1);
 
@@ -441,8 +440,8 @@ struct PathfinderContext<'a> {
     duration_candles: usize,
     duration_ms: DurationMs,
     ph_pct: PhPct,
-    price_min: Price,
-    price_max: Price,
+    price_min: LowPrice,
+    price_max: HighPrice,
 }
 
 fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
@@ -468,9 +467,9 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
             let start_price = ctx.ohlcv.close_prices[*start_idx];
             let end_price = ctx.ohlcv.close_prices[end_idx];
 
-            if *end_price > *start_price {
+            if end_price.value() > start_price.value() {
                 up_votes += 1;
-            } else if *end_price < *start_price {
+            } else if end_price.value() < start_price.value() {
                 down_votes += 1;
             }
         }
@@ -511,23 +510,23 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
     }
 
     // Pre-calculate ranges and booleans to avoid repeated math in the loop
-    let long_start = *ctx.current_price * (1.0 + *price_buffer_pct);
-    let short_end = *ctx.current_price * (1.0 - *price_buffer_pct);
+    let long_start = ctx.current_price.value() * (1.0 + *price_buffer_pct);
+    let short_end = ctx.current_price.value() * (1.0 - *price_buffer_pct);
 
     // Combine PH constraints with Bias constraints
-    let long_active = (*ctx.price_max > long_start) && bias_long;
-    let short_active = (*ctx.price_min < short_end) && bias_short;
+    let long_active = (ctx.price_max.value() > long_start) && bias_long;
+    let short_active = (ctx.price_min.value() < short_end) && bias_short;
     // log::error!("{}: long active is {} short active is {}", ctx.pair_name, long_active, short_active);
 
     // Calculate step sizes
     let long_step_size = if long_active {
-        (*ctx.price_max - long_start) / steps as f64
+        (ctx.price_max.value() - long_start) / steps as f64
     } else {
         0.0
     };
 
     let short_step_size = if short_active {
-        (short_end - *ctx.price_min) / steps as f64
+        (short_end - ctx.price_min.value()) / steps as f64
     } else {
         0.0
     };
@@ -555,7 +554,7 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
 
                 // 2. Short Scout Logic
                 if short_active {
-                    let target = *ctx.price_min + (i as f64 * short_step_size);
+                    let target = ctx.price_min.value() + (i as f64 * short_step_size);
                     if let Some(res) = simulate_target(
                         ctx,
                         TargetPrice::new(target),
@@ -623,7 +622,7 @@ fn run_drill_phase(
     crate::trace_time!("Pathfinder: Phase B (Drill)", 2000, {
         let mut drill_targets = Vec::new();
 
-        let grid_step_pct = (*ctx.price_max - *ctx.price_min) / *ctx.current_price / steps as f64;
+        let grid_step_pct = (ctx.price_max.value() - ctx.price_min.value()) / ctx.current_price.value() / steps as f64;
         let drill_offset_pct = grid_step_pct * drill_offset_factor;
         let dedup_radius = grid_step_pct * 100.0;
 
@@ -658,13 +657,10 @@ fn run_drill_phase(
             let mut is_distinct = true;
             for &picked_idx in &drill_targets {
                 let picked: &CandidateResult = &candidates[picked_idx];
-                let diff = calculate_percent_diff(
-                    *candidate.opportunity.target_price,
-                    *picked.opportunity.target_price,
-                );
+                let pct_diff = candidate.opportunity.target_price.percent_diff(&picked.opportunity.target_price);
 
                 if candidate.opportunity.direction == picked.opportunity.direction
-                    && diff < dedup_radius
+                    && pct_diff < dedup_radius
                 {
                     is_distinct = false;
                     break;
@@ -699,7 +695,7 @@ fn run_drill_phase(
             .par_iter()
             .flat_map(|&scout_idx| {
                 let scout = &candidates[scout_idx];
-                let base_target = *scout.opportunity.target_price;
+                let base_target = scout.opportunity.target_price.value();
                 let mut local_batch = Vec::with_capacity(3);
 
                 // A. Promote Scout
@@ -769,7 +765,8 @@ pub fn run_pathfinder_simulations(
     station_id: StationId,
     cva_opt: Option<&CVACore>,
 ) -> PathfinderResult {
-    if *current_price <= 0.0 {
+
+    if !current_price.is_positive() {
         return PathfinderResult {
             opportunities: Vec::new(),
             trend_lookback: 0,
@@ -854,8 +851,8 @@ pub fn run_pathfinder_simulations(
     let final_opps: Vec<TradeOpportunity> = apply_diversity_filter(
         drill_results,
         ctx.pair_name,
-        *ctx.price_min,
-        *ctx.price_max,
+        ctx.price_min.value(),
+        ctx.price_max.value(),
         strategy,
     );
     // Return everything
@@ -888,11 +885,11 @@ fn run_stop_loss_tournament(
         let mut best_result: Option<(SimulationResult, StopPrice, f64)> = None; // (Result, Stop, Ratio)
         let mut valid_variants = Vec::new();
 
-        let target_dist_abs = (*target_price - *current_price).abs();
+        let target_dist_abs = (target_price.value() - current_price.value()).abs();
 
         // 1. Safety Check: Volatility Floor.
         let vol_floor_pct = *current_state.volatility_pct * 2.0;
-        let min_stop_dist = *current_price * vol_floor_pct;
+        let min_stop_dist = current_price.value() * vol_floor_pct;
 
         // Logging setup
         #[cfg(debug_assertions)]
@@ -932,8 +929,8 @@ fn run_stop_loss_tournament(
             }
 
             let candidate_stop = match direction {
-                TradeDirection::Long => StopPrice::new(*current_price - stop_dist),
-                TradeDirection::Short => StopPrice::new(*current_price + stop_dist),
+                TradeDirection::Long => StopPrice::new(current_price.value() - stop_dist),
+                TradeDirection::Short => StopPrice::new(current_price.value() + stop_dist),
             };
 
             // 3. Simulation
@@ -979,7 +976,7 @@ fn run_stop_loss_tournament(
 
                 #[cfg(debug_assertions)]
                 if DF.log_pathfinder {
-                    let risk_pct = calculate_percent_diff(*candidate_stop, *current_price);
+                    let risk_pct = candidate_stop.percent_diff(&current_price);
                     let status_icon = if is_worthwhile { "✅" } else { "🔻" };
                     log::info!(
                         "   [R:R {:.1}] {} Stop: {} | {}: {} | ROI: {} | AROI: {} | Risk: {:.2}%",
@@ -1153,7 +1150,7 @@ fn resolve_analysis_price(
         ts.close_prices
             .last()
             .copied()
-            .map(|p| Price::new(*p))
+            .map(|p| Price::new(p.value()))
             .ok_or_else(|| "Worker: Data exists but prices are empty".to_string())
     } else {
         Err(format!("Worker: No data found for {}", req.pair_name))

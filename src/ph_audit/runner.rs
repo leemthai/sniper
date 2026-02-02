@@ -3,7 +3,7 @@ use strum::IntoEnumIterator;
 
 use crate::analysis::pair_analysis;
 
-use crate::config::{OptimizationStrategy, StationId, constants, PhPct, Price};
+use crate::config::{OptimizationStrategy, StationId, constants, PhPct, Price, PriceLike};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -16,7 +16,7 @@ use super::{config, reporter::AuditReporter};
 
 pub fn execute_audit(
     ts_collection: &TimeSeriesCollection,
-    current_prices: &HashMap<String, f64>, // NEW: Live prices from Ticker
+    current_prices: &HashMap<String, Price>, // NEW: Live prices from Ticker
 ) {
     println!("=== STARTING MULTI-STRATEGY SPECTRUM AUDIT ===");
 
@@ -42,7 +42,7 @@ pub fn execute_audit(
             continue;
         };
 
-        if live_price <= f64::EPSILON {
+        if !live_price.is_positive() {
             println!("Skipping {} (Live Price is Zero)", pair);
             continue;
         }
@@ -55,7 +55,7 @@ pub fn execute_audit(
             for &ph_pct in config::PH_LEVELS {
                 run_single_simulation(
                     pair,
-                    Price::new(live_price),
+                    live_price,
                     &strategy,
                     PhPct::new(ph_pct),
                     ts_collection,
@@ -119,7 +119,7 @@ fn run_single_simulation(
     let top_5_b = opportunities.iter().take(5);
     let avg_stop: Option<f64> = if count > 0 {
         let sum: f64 = top_5_b.clone()
-            .map(|o| (*o.stop_price - *o.start_price).abs() / *o.start_price)
+            .map(|o| (o.stop_price.value() - o.start_price.value()).abs() / o.start_price.value())
             .sum();
         Some(sum / top_5_b.count() as f64)
     } else {

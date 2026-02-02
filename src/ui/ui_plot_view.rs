@@ -6,7 +6,7 @@ use egui_plot::{Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotUi, 
 
 use crate::analysis::range_gap_finder::DisplaySegment;
 
-use crate::config::{Price, CandleResolution};
+use crate::config::{Price, CandleResolution, PriceLike};
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::engine::SniperEngine;
@@ -209,8 +209,8 @@ impl PlotView {
         // 1. Calculate Standard Union (PH + Price)
         // We intentionally ignore model.segments for the *Final* calculation to keep Sniper View,
         // but we calculate them below for the Debug Log you requested.
-        let final_min = ph_min.min(*current_price);
-        let final_max = ph_max.max(*current_price);
+        let final_min = ph_min.min(current_price.value());
+        let final_max = ph_max.max(current_price.value());
 
         // 2. Apply Configured Padding
         let range = final_max - final_min;
@@ -271,14 +271,15 @@ impl PlotView {
     }
 
     // Helper: Enforces sane zoom/pan limits when the user is in Manual Mode
-    fn enforce_manual_safety_limits(plot_ui: &mut PlotUi, current_price: f64) {
+    fn enforce_manual_safety_limits(plot_ui: &mut PlotUi, current_price: Price) {
+
         let bounds = plot_ui.plot_bounds();
         let mut min = *bounds.range_y().start();
         let mut max = *bounds.range_y().end();
         let mut range = max - min;
         let mut changed = false;
 
-        let base_price = current_price.max(1.0);
+        let base_price = current_price.value().max(1.0);
 
         // --- 1. ZOOM LIMITS (Range) ---
         let min_allowed_range = base_price * 0.00001; // 0.001%
@@ -392,7 +393,7 @@ impl PlotView {
                 } else {
                     Self::enforce_manual_safety_limits(
                         plot_ui,
-                        *current_pair_price.unwrap_or_default(), // (Price::new(ph_min)),
+                        current_pair_price.unwrap_or_default(),
                     );
                 }
 

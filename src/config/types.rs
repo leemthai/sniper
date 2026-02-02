@@ -263,6 +263,14 @@ impl std::fmt::Display for Prob {
     }
 }
 
+use chrono::Duration as ChronoDuration;
+
+impl From<DurationMs> for ChronoDuration {
+    fn from(d: DurationMs) -> Self {
+        ChronoDuration::milliseconds(d.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
 #[serde(transparent)]
 pub struct DurationMs(i64);
@@ -360,10 +368,18 @@ impl std::fmt::Display for Sigma {
 pub trait PriceLike {
     fn value(&self) -> f64;
 
-    const MIN_EPSILON: f64 = 1e-10;
+    const MIN_EPSILON: f64 = 1e-12;
 
     fn is_positive(&self) -> bool {
         self.value() > Self::MIN_EPSILON
+    }
+
+    fn percent_diff<R: PriceLike>(&self, reference: &R) -> f64 {
+        if !reference.is_positive() {
+            return 0.0;
+        }
+
+        (self.value() - reference.value()).abs() / reference.value() * 100.0
     }
 
     /// Formats a price with "Trader Precision" adaptive decimals.
@@ -434,12 +450,12 @@ macro_rules! define_price_type {
             }
         }
 
-        impl Deref for $name {
-            type Target = f64;
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
+        // impl Deref for $name {
+        //     type Target = f64;
+        //     fn deref(&self) -> &Self::Target {
+        //         &self.0
+        //     }
+        // }
 
         impl PriceLike for $name {
             fn value(&self) -> f64 {
@@ -450,6 +466,22 @@ macro_rules! define_price_type {
         impl std::fmt::Display for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", self.format_price())
+            }
+        }
+    };
+}
+
+macro_rules! impl_price_compare {
+    ($a:ty, $b:ty) => {
+        impl PartialEq<$b> for $a {
+            fn eq(&self, other: &$b) -> bool {
+                self.value() == other.value()
+            }
+        }
+
+        impl PartialOrd<$b> for $a {
+            fn partial_cmp(&self, other: &$b) -> Option<std::cmp::Ordering> {
+                self.value().partial_cmp(&other.value())
             }
         }
     };
@@ -471,8 +503,20 @@ impl_into_price!(ClosePrice);
 impl_into_price!(TargetPrice);
 impl_into_price!(StopPrice);
 
+impl_price_compare!(LowPrice, HighPrice);
+impl_price_compare!(HighPrice, LowPrice);
+
+impl_price_compare!(LowPrice, Price);
+impl_price_compare!(HighPrice, Price);
+impl_price_compare!(Price, LowPrice);
+impl_price_compare!(Price, HighPrice);
+impl_price_compare!(OpenPrice, Price);
+impl_price_compare!(ClosePrice, Price);
+impl_price_compare!(TargetPrice, Price);
+impl_price_compare!(StopPrice, Price);
+
 #[derive(serde::Deserialize, serde::Serialize, Default, Debug, Clone)]
-pub struct PriceRange<T> {
+pub struct PriceRange<T: PriceLike> {
     pub start: T,
     pub end: T,
     pub n_chunks: usize,

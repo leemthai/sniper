@@ -7,7 +7,7 @@ use crate::domain::candle::Candle;
 // WASM imports
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::{BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice},
+    crate::config::{BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice, PriceLike},
     sqlx::ConnectOptions,
     sqlx::{
         Pool, QueryBuilder, Row, Sqlite,
@@ -136,10 +136,10 @@ impl MarketDataStorage for SqliteStorage {
                 b.push_bind(pair)
                     .push_bind(interval)
                     .push_bind(c.timestamp_ms)
-                    .push_bind(*c.open_price)
-                    .push_bind(*c.high_price)
-                    .push_bind(*c.low_price)
-                    .push_bind(*c.close_price)
+                    .push_bind(c.open_price.value())
+                    .push_bind(c.high_price.value())
+                    .push_bind(c.low_price.value())
+                    .push_bind(c.close_price.value())
                     .push_bind(*c.base_asset_volume)
                     .push_bind(*c.quote_asset_volume);
             });

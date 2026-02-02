@@ -9,7 +9,7 @@ use {
     std::path::PathBuf,
     std::thread,
     std::time::{Duration, Instant},
-    zone_sniper::config::{constants, DEMO, PERSISTENCE},
+    zone_sniper::config::{constants, DEMO, PERSISTENCE, Price, PriceLike},
     zone_sniper::data::price_stream::PriceStreamManager,
     zone_sniper::data::storage::{MarketDataStorage, SqliteStorage},
     zone_sniper::data::timeseries::cache_file::CacheFile,
@@ -109,7 +109,7 @@ async fn main() -> Result<()> {
 #[cfg(not(target_arch = "wasm32"))]
 fn fetch_current_prices_for_demo_pairs(
     demo_pairs: &[&str],
-) -> Result<HashMap<String, f64>> {
+) -> Result<HashMap<String, Price>> {
     let stream = PriceStreamManager::new();
 
     let symbols: Vec<String> = demo_pairs.iter().map(|s| s.to_string()).collect();
@@ -125,7 +125,7 @@ fn fetch_current_prices_for_demo_pairs(
     let start = Instant::now();
 
     loop {
-        let mut prices: HashMap<String, f64> = HashMap::new();
+        let mut prices: HashMap<String, Price> = HashMap::new();
 
         for symbol in &symbols {
             if let Some(price) = stream.get_price(symbol) {
@@ -152,7 +152,7 @@ fn fetch_current_prices_for_demo_pairs(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn write_demo_prices_json(prices: &HashMap<String, f64>) -> Result<()> {
+fn write_demo_prices_json(prices: &HashMap<String, Price>) -> Result<()> {
     let output_path = PathBuf::from(PERSISTENCE.kline.directory).join("demo_prices.json");
 
     if let Some(parent) = output_path.parent() {
@@ -166,7 +166,7 @@ fn write_demo_prices_json(prices: &HashMap<String, f64>) -> Result<()> {
 
     let mut json_map: HashMap<String, Value> = HashMap::new();
     for (pair, price) in prices {
-        json_map.insert(pair.to_uppercase(), Value::from(*price));
+        json_map.insert(pair.to_uppercase(), Value::from(price.value()));
     }
 
     let json = serde_json::to_string_pretty(&json_map)

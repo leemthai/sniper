@@ -8,11 +8,11 @@ use std::collections::HashMap;
 use crate::config::PhPct;
 
 #[cfg(debug_assertions)]
-use crate::config::{DF};
+use crate::config::DF;
+
+use crate::config::PriceLike;
 
 use crate::models::trading_view::TradeOpportunity;
-
-use crate::utils::maths_utils::calculate_percent_diff;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OpportunityLedger {
@@ -43,8 +43,8 @@ impl OpportunityLedger {
             .values()
             .filter(|op| op.pair_name == new_opp.pair_name && op.direction == new_opp.direction)
             .map(|op| {
-                let diff = calculate_percent_diff(*op.target_price,*new_opp.target_price);
-                (op.id.clone(), diff)
+                let pct_diff = op.target_price.percent_diff(&new_opp.target_price);
+                (op.id.clone(), pct_diff)
             })
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
 
@@ -144,9 +144,9 @@ impl OpportunityLedger {
                     }
 
                     // Same strategy and stationId so preserve the best one
-                    let diff_pct = calculate_percent_diff(*a.target_price, *b.target_price);
+                    let pct_diff = a.target_price.percent_diff(&b.target_price);
 
-                    if diff_pct < *tolerance_pct {
+                    if pct_diff < *tolerance_pct {
                         let score_a = a.calculate_quality_score();
                         let score_b = b.calculate_quality_score();
                         let (_winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
@@ -166,7 +166,7 @@ impl OpportunityLedger {
                                 } else {
                                     &_winner.id
                                 },
-                                diff_pct
+                                pct_diff
                             );
                         }
                         to_remove.push(loser.id.clone());

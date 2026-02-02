@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 
 use crate::analysis::market_state::MarketState;
 
-use crate::config::{DF, SimilaritySettings, RoiPct, Prob, TargetPrice, StopPrice, Price};
+use crate::config::{DF, SimilaritySettings, RoiPct, Prob, TargetPrice, StopPrice, Price, PriceLike};
 
 use crate::models::OhlcvTimeSeries;
 use crate::models::trading_view::TradeDirection;
@@ -164,8 +164,8 @@ fn generate_momentum_optimized(
         let prev_idx = curr_idx - lookback;
         let c = ts.close_prices[curr_idx];
         let p = ts.close_prices[prev_idx];
-        if *p > 0.0 {
-            results[i] = ((*c - *p) / *p) as f32;
+        if p.is_positive() {
+            results[i] = ((c.value() - p.value()) / p.value()) as f32;
         }
     }
 
@@ -229,8 +229,8 @@ fn generate_volatility_optimized(
         let h = ts.high_prices[idx];
         let l = ts.low_prices[idx];
         let c = ts.close_prices[idx];
-        if *c > 0.0 {
-            raw_vols[i] = (*h - *l) / *c;
+        if c.is_positive() {
+            raw_vols[i] = (h.value() - l.value()) / c.value();
         }
     }
 
@@ -423,12 +423,12 @@ impl ScenarioSimulator {
             // Pre-calculate theoretical max PnL for Hit/Stop
             let (win_pnl_pct, lose_pnl_pct) = match direction {
                 TradeDirection::Long => (
-                    (*target_price - *entry_price) / *entry_price,
-                    (*stop_price - *entry_price) / *entry_price,
+                    (target_price.value() - entry_price.value()) / entry_price.value(),
+                    (stop_price.value() - entry_price.value()) / entry_price.value(),
                 ),
                 TradeDirection::Short => (
-                    (*entry_price - *target_price) / *entry_price,
-                    (*entry_price - *stop_price) / *entry_price,
+                    (entry_price.value() - target_price.value()) / entry_price.value(),
+                    (entry_price.value() - stop_price.value()) / entry_price.value(),
                 ),
             };
 
@@ -475,8 +475,8 @@ impl ScenarioSimulator {
             let avg_candle_count = accumulated_candle_count / valid_samples as f64;
 
             // R:R
-            let risk = (*entry_price - *stop_price).abs();
-            let reward = (*target_price - *entry_price).abs();
+            let risk = (entry_price.value() - stop_price.value()).abs();
+            let reward = (target_price.value() - entry_price.value()).abs();
             let risk_reward_ratio = if risk > f64::EPSILON {
                 reward / risk
             } else {
@@ -570,9 +570,9 @@ impl ScenarioSimulator {
                     let start_candle = ts.get_candle(start_idx);
                     let hist_entry = start_candle.close_price;
 
-                    let stop_dist = (*stop - *current_price) / *current_price;
-                    let scale = *hist_entry / *current_price;
-                    let hist_stop = *stop * scale;
+                    let stop_dist = (stop.value() - current_price.value()) / current_price.value();
+                    let scale = hist_entry.value() / current_price.value();
+                    let hist_stop = stop.value() * scale;
 
                     log::error!("--- SIMD vs SCALAR MISMATCH FORENSICS ---");
                     log::error!(
@@ -595,9 +595,9 @@ impl ScenarioSimulator {
                         // DYNAMIC FORENSICS BASED ON DIRECTION
                         match direction {
                             TradeDirection::Long => {
-                                let low_change = (*c.low_price - *hist_entry) / *hist_entry;
+                                let low_change = (c.low_price.value() - hist_entry.value()) / hist_entry.value();
                                 let scalar_hit = low_change <= stop_dist; // stop_dist is usually negative for Long
-                                let simd_hit = *c.low_price <= hist_stop;
+                                let simd_hit = c.low_price.value() <= hist_stop;
 
                                 log::error!(
                                     "At Index {} (SIMD Stop): Low = {}",
@@ -618,9 +618,9 @@ impl ScenarioSimulator {
                                 );
                             }
                             TradeDirection::Short => {
-                                let high_change = (*c.high_price - *hist_entry) / *hist_entry;
+                                let high_change = (c.high_price.value() - hist_entry.value()) / hist_entry.value();
                                 let scalar_hit = high_change >= stop_dist; // stop_dist is positive for Short
-                                let simd_hit = *c.high_price >= hist_stop;
+                                let simd_hit = c.high_price.value() >= hist_stop;
 
                                 log::error!(
                                     "At Index {} (SIMD Stop): High = {}",
@@ -673,8 +673,8 @@ impl ScenarioSimulator {
         let hist_entry = start_candle.close_price;
 
         // Calculate Target/Stop as % distance from entry
-        let target_dist = (*target - *current_price) / *current_price;
-        let stop_dist = (*stop - *current_price) / *current_price;
+        let target_dist = (target.value() - current_price.value()) / current_price.value();
+        let stop_dist = (stop.value() - current_price.value()) / current_price.value();
         let mut final_pnl = 0.0;
 
         // Iterate forward from the historical start point
@@ -686,9 +686,9 @@ impl ScenarioSimulator {
 
             let c = ts.get_candle(idx);
 
-            let low_change = (*c.low_price - *hist_entry) / *hist_entry;
-            let high_change = (*c.high_price - *hist_entry) / *hist_entry;
-            let close_change = (*c.close_price - *hist_entry) / *hist_entry;
+            let low_change = (c.low_price.value() - hist_entry.value()) / hist_entry.value();
+            let high_change = (c.high_price.value() - hist_entry.value()) / hist_entry.value();
+            let close_change = (c.close_price.value() - hist_entry.value()) / hist_entry.value();
 
             let (hit_target, hit_stop) = match direction {
                 TradeDirection::Long => {
@@ -733,10 +733,10 @@ impl ScenarioSimulator {
 
         let start_candle = ts.get_candle(start_idx);
         let hist_entry_price = start_candle.close_price;
-        let scale = *hist_entry_price / *current_price;
+        let scale = hist_entry_price.value() / current_price.value();
 
-        let hist_target = *target * scale;
-        let hist_stop = *stop * scale;
+        let hist_target = target.value() * scale;
+        let hist_stop = stop.value() * scale;
 
         let offset_start = start_idx + 1;
         let search_end = (start_idx + duration).min(len - 1) + 1;
@@ -819,7 +819,7 @@ impl ScenarioSimulator {
         // 3. Time Out
         let final_idx = offset_start + search_len - 1;
         let final_close = ts.close_prices[final_idx];
-        let close_change = (*final_close - *hist_entry_price) / *hist_entry_price;
+        let close_change = (final_close.value() - hist_entry_price.value()) / hist_entry_price.value();
 
         let final_pnl = match direction {
             TradeDirection::Long => close_change,

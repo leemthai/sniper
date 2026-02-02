@@ -1,4 +1,4 @@
-use crate::config::{PhPct, Price};
+use crate::config::{HighPrice, LowPrice, PhPct, Price, PriceLike};
 use crate::models::OhlcvTimeSeries;
 
 /// Automatically select discontinuous slice ranges based on price relevancy.
@@ -7,30 +7,30 @@ pub fn auto_select_ranges(
     timeseries: &OhlcvTimeSeries,
     current_price: Price,
     ph_pct: PhPct,
-) -> (Vec<(usize, usize)>, (Price, Price)) {
+) -> (Vec<(usize, usize)>, (LowPrice, HighPrice)) {
     // 1. Calculate the user-defined price range
     let (price_min, price_max) = calculate_price_range(current_price, ph_pct);
 
     // 2. Find all ranges where price is relevant
     let ranges = crate::trace_time!("Scan All Candles", 3_000, {
-        find_relevant_ranges(timeseries, *price_min, *price_max)
+        find_relevant_ranges(timeseries, price_min, price_max)
     });
 
     (ranges, (price_min, price_max))
 }
 
 /// Calculates the price range considered "relevant" to the current price.
-pub fn calculate_price_range(current_price: Price, threshold: PhPct) -> (Price, Price) {
-    let min = *current_price * (1.0 - *threshold);
-    let max = *current_price * (1.0 + *threshold);
-    (Price::new(min), Price::new(max))
+pub fn calculate_price_range(current_price: Price, threshold: PhPct) -> (LowPrice, HighPrice) {
+    let min = current_price.value() * (1.0 - *threshold);
+    let max = current_price.value() * (1.0 + *threshold);
+    (LowPrice::new(min), HighPrice::new(max))
 }
 
 /// Find all discontinuous ranges of candles where price is within the relevancy range.
 fn find_relevant_ranges(
     timeseries: &OhlcvTimeSeries,
-    price_min: f64,
-    price_max: f64,
+    price_min: LowPrice,
+    price_max: HighPrice,
 ) -> Vec<(usize, usize)> {
     let mut ranges: Vec<(usize, usize)> = Vec::new();
     let mut range_start: Option<usize> = None;
@@ -41,7 +41,8 @@ fn find_relevant_ranges(
 
         // Check if candle overlaps with relevant price range.
         // Overlap exists if candle_low <= range_max AND candle_high >= range_min.
-        let is_relevant = *candle.low_price <= price_max && *candle.high_price >= price_min;
+        let is_relevant = candle.low_price.value() <= price_max.value()
+            && candle.high_price.value() >= price_min.value();
 
         if is_relevant {
             // Start a new range if we're not in one
@@ -72,20 +73,3 @@ fn find_relevant_ranges(
 
     ranges
 }
-
-// Calculate the earliest timestamp (in ms since epoch) where relevant data begins
-// pub fn calculate_relevant_start_timestamp(
-//     timeseries: &OhlcvTimeSeries,
-//     current_price: f64,
-//     ph_pct: f64,
-// ) -> i64 {
-//     let (ranges, _) = auto_select_ranges(timeseries, current_price, ph_pct);
-
-//     if let Some((start_idx, _)) = ranges.first() {
-//         // Calculate timestamp based on index and interval
-//         let start_offset = *start_idx as i64 * timeseries.pair_interval.interval_ms;
-//         timeseries.first_kline_timestamp_ms + start_offset
-//     } else {
-//         0
-//     }
-// }

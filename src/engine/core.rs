@@ -8,8 +8,7 @@ use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::R
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
 
-
-use crate::config::{OptimizationStrategy, StationId, constants, PhPct, QuoteVol, Price};
+use crate::config::{OptimizationStrategy, PhPct, Price, QuoteVol, StationId, constants, PriceLike};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
@@ -66,12 +65,12 @@ pub struct SniperEngine {
     /// Logic: (Pair, Price, PH, Strategy, StationId, Mode)
     // Update the VecDeque type to hold the runtime variables
     pub queue: VecDeque<(
-        String, // pair_name
-        Option<Price>, // price
-        PhPct, // ph_pct
+        String,               // pair_name
+        Option<Price>,        // price
+        PhPct,                // ph_pct
         OptimizationStrategy, // strategy
-        StationId, // StationId
-        JobMode, // Mode
+        StationId,            // StationId
+        JobMode,              // Mode
     )>,
 }
 
@@ -166,13 +165,10 @@ impl SniperEngine {
     pub fn request_trade_context(&mut self, pair_name: String, target_ph: PhPct) {
         // 2. Set Override (so the worker picks it up)
         self.shared_config.insert_ph(pair_name.clone(), target_ph);
-        let station_id = self
-            .shared_config
-            .get_station(&pair_name)
-            .expect(&format!(
-                "PAIR {} with ph_pct {} UNEXPECTEDLY not found in shared_config {:?}",
-                pair_name, target_ph, self.shared_config
-            )); // This should now crash if None is encountered. Better than reverting to default I think
+        let station_id = self.shared_config.get_station(&pair_name).expect(&format!(
+            "PAIR {} with ph_pct {} UNEXPECTEDLY not found in shared_config {:?}",
+            pair_name, target_ph, self.shared_config
+        )); // This should now crash if None is encountered. Better than reverting to default I think
         #[cfg(debug_assertions)]
         if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
             log::info!(
@@ -286,7 +282,7 @@ impl SniperEngine {
     /// GARBAGE COLLECTION: Removes finished trades and archives them.
     /// If a wick hits our Stop Loss mid-candle, we want to kill the trade immediately.
     pub fn prune_ledger(&mut self) {
-        let now_ms = TimeUtils::now_timestamp_ms();
+        let time_now_utc = TimeUtils::now_utc();
         let mut dead_trades: Vec<TradeResult> = Vec::new();
         let mut ids_to_remove: Vec<String> = Vec::new();
 
@@ -310,15 +306,15 @@ impl SniperEngine {
                     continue;
                 };
 
-                let outcome = op.check_exit_condition(current_high, current_low, now_ms);
+                let outcome = op.check_exit_condition(current_high, current_low, time_now_utc);
                 let mut exit_price = 0.0;
 
                 if let Some(ref reason) = outcome {
                     exit_price = match reason {
-                        TradeOutcome::TargetHit => *op.target_price,
-                        TradeOutcome::StopHit => *op.stop_price,
-                        TradeOutcome::Timeout => *current_price,
-                        TradeOutcome::ManualClose => *current_price,
+                        TradeOutcome::TargetHit => op.target_price.value(),
+                        TradeOutcome::StopHit => op.stop_price.value(),
+                        TradeOutcome::Timeout => current_price.value(),
+                        TradeOutcome::ManualClose => current_price.value(),
                     };
                 }
 
@@ -326,10 +322,10 @@ impl SniperEngine {
                 if let Some(reason) = outcome {
                     let pnl = match op.direction {
                         TradeDirection::Long => {
-                            (exit_price - *op.start_price) / *op.start_price * 100.0
+                            (exit_price - op.start_price.value()) / op.start_price.value() * 100.0
                         }
                         TradeDirection::Short => {
-                            (*op.start_price - exit_price) / *op.start_price * 100.0
+                            (op.start_price.value() - exit_price) / op.start_price.value() * 100.0
                         }
                     };
 
@@ -351,8 +347,8 @@ impl SniperEngine {
                         entry_price: op.start_price,
                         exit_price: exit_price.into(),
                         outcome: reason,
-                        entry_time: op.created_at,
-                        exit_time: now_ms,
+                        entry_time: op.created_at.timestamp_millis(),
+                        exit_time: time_now_utc.timestamp_millis(),
                         final_pnl_pct: pnl,
                         model_snapshot: None,
                     };
@@ -421,15 +417,13 @@ impl SniperEngine {
             for (pair, _state) in &self.pairs_states {
                 // 2. Get Context (Price)
                 // STRICT MODE: Do not default to 0.0. If no price, skip the pair.
-                let price_opt = if let Some(map) = overrides {
-                    map.get(pair).copied().map(|p| *p).or_else(|| self.price_stream.get_price(pair))
-                } else {
-                    self.price_stream.get_price(pair)
-                };
+                let price_opt = overrides
+                    .and_then(|map| map.get(pair).copied())
+                    .or_else(|| self.price_stream.get_price(pair));
 
                 let current_price = match price_opt {
-                    Some(p) if p > f64::EPSILON => p,
-                    _ => continue, // Skip this pair completely until we have data
+                    Some(p) if p.is_positive() => p,
+                    _ => continue,
                 };
 
                 // 3. Calculate Volume & Market State (From TimeSeries)
@@ -477,7 +471,7 @@ impl SniperEngine {
                             market_state: Some(op.market_state),
                             opportunity_count_total: total_ops,
                             opportunity: Some(op.clone()),
-                            current_price: Price::new(current_price),
+                            current_price: current_price,
                         });
                     }
                 } else {
@@ -488,7 +482,7 @@ impl SniperEngine {
                         market_state: None,
                         opportunity_count_total: 0,
                         opportunity: None,
-                        current_price: Price::new(current_price),
+                        current_price: current_price,
                     });
                 }
             }
@@ -562,7 +556,7 @@ impl SniperEngine {
             .and_then(|state| state.model.clone())
     }
 
-    pub fn get_price(&self, pair: &str) -> Option<f64> {
+    pub fn get_price(&self, pair: &str) -> Option<Price> {
         self.price_stream.get_price(pair)
     }
 
@@ -609,7 +603,6 @@ impl SniperEngine {
     /// The trigger_global_recalc function is a "Reset Button" for the engine's work queue. Its purpose is to cancel any
     /// pending jobs and immediately schedule a fresh analysis for every single pair using the current global settings.
     pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
-
         self.queue.clear();
 
         let mut all_pairs = self.shared_config.get_all_pairs();
@@ -619,43 +612,38 @@ impl SniperEngine {
 
         // We can't use a closure easily due to borrow checker rules with self,
         // so we just iterate logic directly.
-        let push_pair = |pair: String,
-                         target_queue: &mut VecDeque<_>,
-                         config: &SharedConfiguration| {
+        let push_pair =
+            |pair: String, target_queue: &mut VecDeque<_>, config: &SharedConfiguration| {
+                // 1. Lookup PH (Specific to pair)
+                let ph_pct = config
+                    .get_ph(&pair)
+                    .expect("We must have value for ph_pct for this pair at all times");
 
-            // 1. Lookup PH (Specific to pair)
-            let ph_pct = config.get_ph(&pair).expect("We must have value for ph_pct for this pair at all times");
+                // 2. Lookup Station (Specific to pair)
+                let station = config.get_station(&pair).expect(&format!(
+                    "trigger_global_recalc must have station set for pair {}",
+                    pair
+                ));
 
-            // 2. Lookup Station (Specific to pair)
-            let station = config.get_station(&pair).expect(&format!("trigger_global_recalc must have station set for pair {}", pair));
-
-            target_queue.push_back((
-                pair,
-                None, // Live Price
-                ph_pct,
-                strat,   // Respects User Choice
-                station, // Respects User Choice
-                JobMode::FullAnalysis,
-            ));
-        };
+                target_queue.push_back((
+                    pair,
+                    None, // Live Price
+                    ph_pct,
+                    strat,   // Respects User Choice
+                    station, // Respects User Choice
+                    JobMode::FullAnalysis,
+                ));
+            };
 
         if let Some(vip) = priority_pair {
             if let Some(pos) = all_pairs.iter().position(|p| p == &vip) {
                 all_pairs.remove(pos);
             }
-            push_pair(
-                vip,
-                &mut self.queue,
-                &self.shared_config,
-            );
+            push_pair(vip, &mut self.queue, &self.shared_config);
         }
 
         for pair in all_pairs {
-            push_pair(
-                pair,
-                &mut self.queue,
-                &self.shared_config,
-            );
+            push_pair(pair, &mut self.queue, &self.shared_config);
         }
     }
 
@@ -755,16 +743,13 @@ impl SniperEngine {
                     let in_queue = self.queue.iter().any(|(p, _, _, _, _, _)| p == &pair_name);
 
                     if !state.is_calculating && !in_queue {
-                        // FIX: Handle Startup Case (0.0)
-                        // If we have no previous price, just sync state and DO NOT trigger.
-                        // The startup job (trigger_global_recalc) is already handling the calc.
-                        if state.last_update_price.abs() < f64::EPSILON {
-                            state.last_update_price = Price::new(current_price);
+                        if state.last_update_price.value() == 0.0 {
+                            state.last_update_price = current_price;
                             continue;
                         }
 
-                        let diff = (current_price - *state.last_update_price).abs();
-                        let pct_diff = diff / *state.last_update_price;
+                        let price_diff = (current_price - state.last_update_price).abs();
+                        let pct_diff = price_diff / state.last_update_price.value();
 
                         if pct_diff > *threshold {
                             #[cfg(debug_assertions)]

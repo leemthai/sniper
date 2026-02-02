@@ -1,3 +1,5 @@
+use chrono::Duration;
+
 use eframe::egui::{
     Align, CentralPanel, Color32, ComboBox, Context, FontId, Frame, Grid, Layout, Order, RichText,
     Sense, SidePanel, TopBottomPanel, Ui, Window,
@@ -10,12 +12,12 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{OptimizationStrategy, TICKER, constants, VolatilityPct, MomentumPct};
+use crate::config::{MomentumPct, OptimizationStrategy, TICKER, VolatilityPct, constants};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
-use crate::config::{PriceLike, CandleResolution};
+use crate::config::{CandleResolution, PriceLike};
 
 use crate::domain::pair_interval::PairInterval;
 
@@ -29,12 +31,11 @@ use crate::models::trading_view::{
 use crate::ui::app::ScrollBehavior;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color};
-use crate::ui::{time_tuner, time_tuner::TunerAction};
 use crate::ui::ui_panels::CandleRangePanel;
 use crate::ui::ui_plot_view::PlotInteraction;
+use crate::ui::{time_tuner, time_tuner::TunerAction};
 
 use crate::utils::TimeUtils;
-use crate::utils::maths_utils::{calculate_percent_diff};
 
 use super::app::ZoneSniperApp;
 
@@ -74,8 +75,8 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.target_price)
                         .unwrap_or_default();
-                    val_a
-                        .total_cmp(&val_b)
+                    val_a.value()
+                        .total_cmp(&val_b.value())
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
 
@@ -226,7 +227,10 @@ impl ZoneSniperApp {
             .show(ctx, |ui| {
                 let sim = &op.simulation;
                 let state = &op.market_state;
-                ui.heading(format!("{}: {}", UI_TEXT.opp_exp_current_opp, op.target_price));
+                ui.heading(format!(
+                    "{}: {}",
+                    UI_TEXT.opp_exp_current_opp, op.target_price
+                ));
 
                 // "Setup Type: LONG" (with encoded color)
                 ui.horizontal(|ui| {
@@ -315,13 +319,9 @@ impl ZoneSniperApp {
                     );
 
                     ui.label(
-                        RichText::new(format!(
-                            " ({} {})",
-                            UI_TEXT.opp_exp_trend_length,
-                            ph_pct,
-                        ))
-                        .small()
-                        .color(PLOT_CONFIG.color_text_subdued),
+                        RichText::new(format!(" ({} {})", UI_TEXT.opp_exp_trend_length, ph_pct,))
+                            .small()
+                            .color(PLOT_CONFIG.color_text_subdued),
                     );
                 });
 
@@ -361,8 +361,8 @@ impl ZoneSniperApp {
                     &format!("{}", calc_price),
                     PLOT_CONFIG.color_text_neutral,
                 );
-                let target_dist = calculate_percent_diff(*op.target_price, *calc_price);
-                let stop_dist = calculate_percent_diff(*op.stop_price, *calc_price);
+                let target_dist = op.target_price.percent_diff(&calc_price);
+                let stop_dist = op.stop_price.percent_diff(&calc_price);
 
                 // TARGET ROW
                 ui.horizontal(|ui| {
@@ -1053,12 +1053,12 @@ impl ZoneSniperApp {
 
                         // Right: Age (Pushed to edge)
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let now = TimeUtils::now_timestamp_ms();
-                            let age_ms = now.saturating_sub(op.created_at);
-                            let age_str = if age_ms < 60_000 {
+                            let now = TimeUtils::now_utc();
+                            let age = now - op.created_at;
+                            let age_str = if age < Duration::minutes(1) {
                                 "New".to_string()
                             } else {
-                                TimeUtils::format_duration(age_ms)
+                                TimeUtils::format_duration(age.num_milliseconds())
                             };
 
                             ui.label(
@@ -1416,7 +1416,7 @@ impl ZoneSniperApp {
 
                             // Live Stats (Mini)
                             // We can safely borrow self here for get_display_price because 'pair_opt' owns the string now
-                            let current_price = self.get_display_price(&pair).unwrap_or_default(); 
+                            let current_price = self.get_display_price(&pair).unwrap_or_default();
                             let roi_pct = op.live_roi(current_price);
                             let color = get_outcome_color(*roi_pct);
 
@@ -1431,8 +1431,7 @@ impl ZoneSniperApp {
                             ui.label(
                                 RichText::new(format!(
                                     "{} {}",
-                                    UI_TEXT.label_source_ph,
-                                    op.source_ph_pct
+                                    UI_TEXT.label_source_ph, op.source_ph_pct
                                 ))
                                 .small()
                                 .color(PLOT_CONFIG.color_text_subdued),
@@ -1475,10 +1474,8 @@ impl ZoneSniperApp {
 
     /// Handles events from the Time Tuner UI (Left Panel).
     pub fn handle_tuner_action(&mut self, action: TunerAction) {
-
         match action {
             TunerAction::StationSelected(station_id) => {
-
                 self.active_station_id = station_id;
                 #[cfg(debug_assertions)]
                 if DF.log_active_station_id {
@@ -1494,7 +1491,8 @@ impl ZoneSniperApp {
                     let pair_name = pair.clone();
 
                     // Save the preference immediately
-                    self.shared_config.insert_station(pair_name.clone(), station_id);
+                    self.shared_config
+                        .insert_station(pair_name.clone(), station_id);
                     #[cfg(debug_assertions)]
                     if DF.log_station_overrides {
                         log::info!(
@@ -1521,7 +1519,9 @@ impl ZoneSniperApp {
                         // D. Update Engine
                         if let Some(engine) = &mut self.engine {
                             // Create specific config for this pair's override
-                            engine.shared_config.insert_ph(pair_name.clone(), best_ph_pct);
+                            engine
+                                .shared_config
+                                .insert_ph(pair_name.clone(), best_ph_pct);
 
                             // Update global context & Fire
                             // engine.update_config(self.app_config.clone());
@@ -1713,7 +1713,7 @@ impl ZoneSniperApp {
             let current_index = op
                 .variants
                 .iter()
-                .position(|v| (v.stop_price - active_stop_price).abs() < f64::EPSILON)
+                .position(|v| v.stop_price == active_stop_price)
                 .unwrap_or(0)
                 + 1;
 
@@ -1734,7 +1734,7 @@ impl ZoneSniperApp {
                 let mut should_close = false;
 
                 for (i, variant) in op.variants.iter().enumerate() {
-                    let risk_pct = calculate_percent_diff(*variant.stop_price, *op.start_price);
+                    let risk_pct = variant.stop_price.percent_diff(&op.start_price);
                     let win_rate = variant.simulation.success_rate;
 
                     let text = format!(
@@ -1748,7 +1748,7 @@ impl ZoneSniperApp {
                         risk_pct
                     );
 
-                    let is_current = (variant.stop_price - active_stop_price).abs() < f64::EPSILON;
+                    let is_current = variant.stop_price == active_stop_price;
 
                     if ui.selectable_label(is_current, text).clicked() {
                         // 1. Construct the specific variant opportunity
@@ -1967,8 +1967,8 @@ impl ZoneSniperApp {
             if let Some(pair) = &self.selected_pair {
                 if let Some(model) = engine.get_model(pair) {
                     let cva = &model.cva;
-                    let zone_size = (cva.price_range.end - cva.price_range.start)
-                        / cva.zone_count as f64;
+                    let zone_size =
+                        (cva.price_range.end - cva.price_range.start) / cva.zone_count as f64;
                     ui.metric(
                         &UI_TEXT.sp_zone_size,
                         &format!("{}", zone_size),

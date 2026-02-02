@@ -1,5 +1,5 @@
 use crate::models::trading_view::{TradingModel, ZoneType};
-
+use crate::config::Price;
 use crate::utils::time_utils::{AppInstant, now};
 
 /// Context and state for a single trading pair
@@ -7,7 +7,7 @@ use crate::utils::time_utils::{AppInstant, now};
 #[derive(Debug, Clone)]
 pub struct PairContext {
     pub pair_name: String,
-    pub current_price: f64,
+    pub current_price: Price,
     pub current_zones: Vec<(usize, ZoneType)>,
     pub trading_model: TradingModel,
     pub last_updated: AppInstant,
@@ -16,7 +16,7 @@ pub struct PairContext {
 
 impl PairContext {
     /// Create a new context for a pair with initial price
-    pub fn new(trading_model: TradingModel, initial_price: f64) -> Self {
+    pub fn new(trading_model: TradingModel, initial_price: Price) -> Self {
         let current_zones = trading_model.find_superzones_at_price(initial_price);
 
         Self {
@@ -38,13 +38,13 @@ impl PairContext {
 
     /// Check if this context needs updating based on new price
     /// Returns true if price has crossed into a different superzone
-    pub fn needs_update(&self, new_price: f64) -> bool {
+    pub fn needs_update(&self, new_price: Price) -> bool {
         // Update needed if superzone changed or we don't know current superzone
         self.trading_model.find_superzones_at_price(new_price) != self.current_zones
     }
 
     /// Update context with new price and regenerate signals
-    pub fn update(&mut self, new_price: f64) {
+    pub fn update(&mut self, new_price: Price) {
         // let old_zones = self.current_zones.clone();
         self.current_price = new_price;
         let new_zones = self.trading_model.find_superzones_at_price(new_price);
