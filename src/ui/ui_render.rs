@@ -15,7 +15,7 @@ use crate::config::{OptimizationStrategy, TICKER, constants, VolatilityPct, Mome
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
-use crate::config::{PriceLike};
+use crate::config::{PriceLike, CandleResolution};
 
 use crate::domain::pair_interval::PairInterval;
 
@@ -26,7 +26,7 @@ use crate::models::trading_view::{
     NavigationTarget, SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
 };
 
-use crate::ui::app::{CandleResolution, ScrollBehavior};
+use crate::ui::app::ScrollBehavior;
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color};
 use crate::ui::{time_tuner, time_tuner::TunerAction};
@@ -147,12 +147,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.avg_duration_ms)
+                        .map(|o| *o.avg_duration_ms)
                         .unwrap_or(i64::MAX);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.avg_duration_ms)
+                        .map(|o| *o.avg_duration_ms)
                         .unwrap_or(i64::MAX);
                     val_b
                         .cmp(&val_a)
@@ -244,13 +244,12 @@ impl ZoneSniperApp {
                 // We use the data captured in the opportunity, not the global config
                 let ph_pct = op.source_ph_pct;
                 let max_time_ms = op.max_duration_ms;
-                let max_time_str = TimeUtils::format_duration(max_time_ms);
+                let max_time_str = TimeUtils::format_duration(*max_time_ms);
 
                 // For interval display, we use the global config as a fallback if not in state
-                // (Assuming 5m candles usually)
-                let interval_ms = constants::INTERVAL_WIDTH_MS;
+                let interval_ms = constants::BASE_INTERVAL.as_millis() as i64;
                 let max_candles = if interval_ms > 0 {
-                    max_time_ms / interval_ms
+                    *max_time_ms / interval_ms
                 } else {
                     0
                 };
@@ -274,7 +273,7 @@ impl ZoneSniperApp {
 
                 ui.metric(
                     &UI_TEXT.label_avg_duration,
-                    &TimeUtils::format_duration(op.avg_duration_ms),
+                    &TimeUtils::format_duration(*op.avg_duration_ms),
                     PLOT_CONFIG.color_text_neutral,
                 );
 
@@ -1172,7 +1171,7 @@ impl ZoneSniperApp {
                     self.down_from_top(ui);
                     // Avg Duration Only
                     ui.label(
-                        RichText::new(TimeUtils::format_duration(op.avg_duration_ms))
+                        RichText::new(TimeUtils::format_duration(*op.avg_duration_ms))
                             .small()
                             .color(PLOT_CONFIG.color_text_neutral),
                     );

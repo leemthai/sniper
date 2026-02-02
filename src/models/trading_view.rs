@@ -8,7 +8,7 @@ use crate::analysis::range_gap_finder::{DisplaySegment, RangeGapFinder};
 use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
-use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants, PhPct, RoiPct, AroiPct, QuoteVol, Price, TargetPrice, StopPrice, PriceLike};
+use crate::config::{OptimizationStrategy, StationId, TradeProfile, ZoneClassificationConfig, ZoneParams, constants, PhPct, RoiPct, AroiPct, QuoteVol, Price, TargetPrice, StopPrice, PriceLike, DurationMs};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -22,17 +22,17 @@ use crate::utils::maths_utils::{calculate_stats, normalize_max, smooth_data};
 
 impl OptimizationStrategy {
     /// Calculate a score based on the strategy
-    pub fn calculate_score(&self, roi_pct: RoiPct, duration_ms: f64) -> f64 {
+    pub fn calculate_score(&self, roi_pct: RoiPct, duration: DurationMs) -> f64 {
         match self {
             OptimizationStrategy::MaxROI => *roi_pct,
             OptimizationStrategy::MaxAROI => {
                 // ROI acts as a hard filter (via Gatekeeper), but we maximize speed here
-                *TradeProfile::calculate_annualized_roi(roi_pct, duration_ms)
+                *TradeProfile::calculate_annualized_roi(roi_pct, duration)
             },
             OptimizationStrategy::Balanced => {
 
                 // GEOMETRIC MEAN (Efficiency Score)
-                let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, duration_ms);
+                let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, duration);
                 
                 // If trade is losing, score is negative.
                 if *roi_pct <= 0.0 {
@@ -155,8 +155,8 @@ pub struct TradeOpportunity {
     pub target_price: TargetPrice,
     pub stop_price: StopPrice,
     
-    pub max_duration_ms: i64,
-    pub avg_duration_ms: i64,
+    pub max_duration_ms: DurationMs,
+    pub avg_duration_ms: DurationMs,
 
     pub strategy: OptimizationStrategy,
     pub station_id: StationId,
@@ -187,7 +187,7 @@ impl TradeOpportunity {
     pub fn calculate_quality_score(&self) -> f64 {
         self.strategy.calculate_score(
             self.expected_roi(), 
-            self.avg_duration_ms as f64, 
+            self.avg_duration_ms, 
         )
     }
 
@@ -201,7 +201,7 @@ impl TradeOpportunity {
     ) -> Option<TradeOutcome> {
 
         // 1. Check Expiry (Hard Limit)
-        if current_time > (self.created_at + self.max_duration_ms) {
+        if current_time > (self.created_at + *self.max_duration_ms) {
             return Some(TradeOutcome::Timeout);
         }
 
@@ -238,7 +238,7 @@ impl TradeOpportunity {
     /// Checks if the SNAPSHOT (Creation) status was worthwhile.
     pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
         let roi = self.expected_roi();
-        let aroi = TradeProfile::calculate_annualized_roi(roi, self.avg_duration_ms as f64);
+        let aroi = TradeProfile::calculate_annualized_roi(roi, self.avg_duration_ms);
         profile.is_worthwhile(roi, aroi)
     }
 
@@ -269,7 +269,7 @@ impl TradeOpportunity {
     /// Calculates Annualized ROI based on LIVE price and AVERAGE duration.
     pub fn live_annualized_roi(&self, current_price: Price) -> AroiPct {
         let roi = self.live_roi(current_price);
-        TradeProfile::calculate_annualized_roi(roi, self.avg_duration_ms as f64)
+        TradeProfile::calculate_annualized_roi(roi, self.avg_duration_ms)
     }
 }
 

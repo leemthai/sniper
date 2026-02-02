@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::config::Price;
 use crate::models::trading_view::TradingModel;
 use crate::models::horizon_profile::HorizonProfile;
 
@@ -17,7 +18,7 @@ pub struct PairState {
     pub last_candle_count: usize,
 
     /// Metadata for the trigger system
-    pub last_update_price: f64,
+    pub last_update_price: Price,
     pub last_update_time: AppInstant,
 
     /// Is a worker currently crunching this pair?
@@ -33,7 +34,7 @@ impl PairState {
             model: None,
             profile: None,
             last_candle_count: 0,
-            last_update_price: 0.0,
+            last_update_price: Price::default(),
             last_update_time: AppInstant::now(),
             is_calculating: false,
             last_error: None,

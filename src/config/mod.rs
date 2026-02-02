@@ -31,6 +31,7 @@ pub use types::{
     VolRatio,
     Sigma,
     Weight,
+    DurationMs,
     BaseVol,
     QuoteVol,
     Price,
@@ -43,6 +44,7 @@ pub use types::{
     PriceDelta,
     PriceLike,
     PriceRange,
+    CandleResolution,
 };
 pub use tuner::{StationId, TunerStation, TimeTunerConfig};
 pub use binance::{BINANCE, BinanceApiConfig};

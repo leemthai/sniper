@@ -6,7 +6,7 @@ use egui_plot::{Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotUi, 
 
 use crate::analysis::range_gap_finder::DisplaySegment;
 
-use crate::config::Price;
+use crate::config::{Price, CandleResolution};
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::engine::SniperEngine;
@@ -15,7 +15,6 @@ use crate::models::cva::{CVACore, ScoreType};
 use crate::models::timeseries::find_matching_ohlcv;
 use crate::models::trading_view::{TradeOpportunity, TradingModel};
 
-use crate::ui::app::CandleResolution;
 use crate::ui::app::PlotVisibility;
 
 use crate::ui::ui_text::UI_TEXT;
@@ -87,8 +86,7 @@ fn create_time_axis(
     let segments = model.segments.clone();
     let gap_width = PLOT_CONFIG.segment_gap_width;
 
-    // KEY CHANGE: Use Interval MS (Time) instead of Step Size (Count)
-    let agg_interval_ms = resolution.interval_ms();
+    let agg_interval_ms = resolution.duration().as_millis() as i64;
 
     AxisHints::new(Axis::X)
         .label(&UI_TEXT.plot_x_axis)
@@ -162,7 +160,7 @@ impl PlotView {
         resolution: CandleResolution,
     ) -> (f64, f64, f64) {
         let gap_size = PLOT_CONFIG.segment_gap_width;
-        let agg_interval_ms = resolution.interval_ms();
+        let agg_interval_ms = resolution.duration().as_millis() as i64;
 
         // Helper: Calculate visual width using UTC Grid logic
         // This must match CandlestickLayer logic exactly.

@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
 
@@ -9,7 +8,7 @@ use eframe::egui::{
 };
 use eframe::{Frame, Storage};
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumIter;
+// use strum_macros::EnumIter;
 
 #[cfg(not(target_arch = "wasm32"))]
 use {crate::data::ledger_io, std::thread, tokio::runtime::Runtime};
@@ -18,7 +17,7 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{DF, OptimizationStrategy, PhPct, Price, StationId, constants};
+use crate::config::{DF, OptimizationStrategy, PhPct, Price, StationId, constants, CandleResolution};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -119,66 +118,6 @@ impl Default for PlotVisibility {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
-pub enum CandleResolution {
-    M5,
-    M15,
-    H1,
-    H4,
-    D1,
-    D3,
-    W1,
-    M1,
-}
-
-impl Default for CandleResolution {
-    fn default() -> Self {
-        Self::D1
-    } // Default to 1D candles for plot candles
-}
-
-impl fmt::Display for CandleResolution {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::M5 => write!(f, "5m"),
-            Self::M15 => write!(f, "15m"),
-            Self::H1 => write!(f, "1h"),
-            Self::H4 => write!(f, "4h"),
-            Self::D1 => write!(f, "1D"),
-            Self::D3 => write!(f, "3D"),
-            Self::W1 => write!(f, "1W"),
-            Self::M1 => write!(f, "1M"),
-        }
-    }
-}
-
-impl CandleResolution {
-    pub fn step_size(&self) -> usize {
-        match self {
-            Self::M5 => 1,
-            Self::M15 => 3,  // 3 * 5m
-            Self::H1 => 12,  // 12 * 5m
-            Self::H4 => 48,  // 48 * 5m
-            Self::D1 => 288, // 288 * 5m
-            Self::D3 => 288 * 3,
-            Self::W1 => 288 * 7,
-            Self::M1 => 288 * 30,
-        }
-    }
-
-    pub fn interval_ms(&self) -> i64 {
-        match self {
-            Self::M5 => TimeUtils::MS_IN_5_MIN,
-            Self::M15 => TimeUtils::MS_IN_15_MIN,
-            Self::H1 => TimeUtils::MS_IN_H,
-            Self::H4 => TimeUtils::MS_IN_4_H,
-            Self::D1 => TimeUtils::MS_IN_D,
-            Self::D3 => TimeUtils::MS_IN_3_D,
-            Self::W1 => TimeUtils::MS_IN_W,
-            Self::M1 => TimeUtils::MS_IN_1_M,
-        }
-    }
-}
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
@@ -367,7 +306,7 @@ impl ZoneSniperApp {
             // 3. Get Data
             let ts_guard = e.timeseries.read().unwrap();
             let ohlcv =
-                find_matching_ohlcv(&ts_guard.series_data, pair, constants::INTERVAL_WIDTH_MS)
+                find_matching_ohlcv(&ts_guard.series_data, pair, constants::BASE_INTERVAL.as_millis() as i64)
                     .ok()?;
 
             // 4. Run Worker Logic
@@ -822,7 +761,7 @@ impl ZoneSniperApp {
                 );
 
                 // Subtitle / Info
-                let interval_str = TimeUtils::interval_to_string(constants::INTERVAL_WIDTH_MS);
+                let interval_str = TimeUtils::interval_to_string(constants::BASE_INTERVAL.as_millis() as i64);
                 ui.label(
                     RichText::new(format!(
                         "{} {} {}",
@@ -987,7 +926,7 @@ impl ZoneSniperApp {
                             if let Ok(ohlcv) = find_matching_ohlcv(
                                 &ts_guard.series_data,
                                 &pair,
-                                constants::INTERVAL_WIDTH_MS,
+                                constants::BASE_INTERVAL.as_millis() as i64,
                             ) {
                                 if let Some(price) = e.price_stream.get_price(&pair) {
                                     if price > f64::EPSILON {

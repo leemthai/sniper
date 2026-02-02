@@ -1,15 +1,15 @@
 use std::time::Duration;
-use crate::utils::TimeUtils;
-use crate::config::types::{JourneySettings, TradeProfile, OptimalSearchSettings, SimilaritySettings, ZoneClassificationConfig, ZoneParams};
 
 // Top Level Constants
-pub const INTERVAL_WIDTH_MS: i64 = TimeUtils::MS_IN_5_MIN;
+pub const BASE_INTERVAL: Duration = Duration::from_secs(5 * 60); // 5 minutes. Used throughout app from this point forwards.
+
 pub const ZONE_COUNT: usize = 256;
 pub const TIME_DECAY_FACTOR: f64 = 1.5;
 pub const TUNER_SCAN_STEPS: usize = 4;
 
 pub mod journey {
-    use super::*;
+    use crate::config::{JourneySettings, OptimalSearchSettings, TradeProfile};
+    use std::time::Duration;
 
     pub const SAMPLE_COUNT: usize = 50;
     pub const RISK_REWARD_TESTS: &[f64] = &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0];
@@ -18,7 +18,7 @@ pub mod journey {
     pub const MIN_JOURNEY_DURATION: Duration = Duration::from_secs(3600);
 
     pub mod profile {
-        use crate::config::{RoiPct, AroiPct, Weight};
+        use crate::config::{AroiPct, RoiPct, Weight};
         pub const MIN_ROI: RoiPct = RoiPct::new(0.001);
         pub const MIN_AROI: AroiPct = AroiPct::new(0.20);
         pub const WEIGHT_ROI: Weight = Weight::new(1.0);
@@ -70,8 +70,7 @@ pub mod journey {
 }
 
 pub mod similarity {
-    use super::*;
-    use crate::config::Weight;
+    use crate::config::{SimilaritySettings, Weight};
     pub const WEIGHT_VOLATILITY: Weight = Weight::new(10.0);
     pub const WEIGHT_MOMENTUM: Weight = Weight::new(5.0);
     pub const WEIGHT_VOLUME: Weight = Weight::new(1.0);
@@ -86,12 +85,9 @@ pub mod similarity {
 }
 
 pub mod zones {
-    use super::*;
-    use crate::config::Sigma;
-
+    use crate::config::{ZoneClassificationConfig, ZoneParams};
     pub mod sticky {
-        use super::*;
-        use crate::config::PhPct;
+        use crate::config::{PhPct, Sigma};
         pub const SMOOTH_PCT: PhPct = PhPct::new(0.02);
         pub const GAP_PCT: PhPct = PhPct::new(0.01);
         pub const VIABILITY_PCT: PhPct = PhPct::new(0.001);
@@ -99,8 +95,7 @@ pub mod zones {
     }
 
     pub mod reversal {
-        use super::*;
-        use crate::config::PhPct;
+        use crate::config::{PhPct, Sigma};
         pub const SMOOTH_PCT: PhPct = PhPct::new(0.005);
         pub const GAP_PCT: PhPct = PhPct::new(0.0);
         pub const VIABILITY_PCT: PhPct = PhPct::new(0.0005);
@@ -124,16 +119,16 @@ pub mod zones {
 }
 
 pub mod cva {
-    use super::*;
     use crate::config::PhPct;
+    use crate::utils::TimeUtils;
     pub const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
     pub const MIN_CANDLES_FOR_ANALYSIS: usize = 500;
     pub const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
 }
 
 pub mod tuner {
-    use crate::config::{TunerStation, StationId, TimeTunerConfig};
     use crate::config::PhPct;
+    use crate::config::{StationId, TimeTunerConfig, TunerStation};
 
     pub const STATIONS: &[TunerStation] = &[
         TunerStation {
@@ -170,7 +165,5 @@ pub mod tuner {
         },
     ];
 
-    pub const CONFIG: TimeTunerConfig = TimeTunerConfig {
-        stations: STATIONS,
-    };
+    pub const CONFIG: TimeTunerConfig = TimeTunerConfig { stations: STATIONS };
 }

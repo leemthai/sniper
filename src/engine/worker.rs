@@ -16,7 +16,7 @@ use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
 use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
 
-use crate::config::{DF, OptimizationStrategy, StationId, TradeProfile, TunerStation, constants, PhPct, TargetPrice, StopPrice, Price};
+use crate::config::{DF, DurationMs, OptimizationStrategy, PhPct, Price, StationId, StopPrice, TargetPrice, TradeProfile, TunerStation, constants};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -111,19 +111,17 @@ pub fn tune_to_station(
         let count = result.opportunities.len();
         if count > 0 {
             // Calculate Average Duration of top results (in Hours)
-            let avg_dur_ms = result
+            let duration_hours = result
                 .opportunities
                 .iter()
-                .map(|o| o.avg_duration_ms)
+                .map(|o| *o.avg_duration_ms)
                 .sum::<i64>() as f64
-                / count as f64;
-
-            let dur_hours = avg_dur_ms / 3_600_000.0;
+                / count as f64 / 3_600_000.0;
 
             // Calculate Representative Score (Top Score)
             let top_score = result.opportunities[0].calculate_quality_score();
 
-            results.push((ph, top_score, dur_hours, count));
+            results.push((ph, top_score, duration_hours, count));
 
             #[cfg(debug_assertions)]
             if DF.log_tuner {
@@ -132,7 +130,7 @@ pub fn tune_to_station(
                     ph * 100.0,
                     count,
                     top_score,
-                    dur_hours
+                    duration_hours
                 );
             }
         } else {
@@ -231,16 +229,16 @@ fn simulate_target(
             risk_tests,
             &constants::journey::DEFAULT.profile,
             ctx.strategy,
-            constants::INTERVAL_WIDTH_MS,
+            constants::BASE_INTERVAL.as_millis() as i64,
             limit_samples,
             0,
         );
 
         if let Some((result, stop_price, variants)) = best_sl_opt {
-            let avg_dur_ms = (result.avg_candle_count * constants::INTERVAL_WIDTH_MS as f64) as i64;
+            let avg_dur_ms = (result.avg_candle_count * constants::BASE_INTERVAL.as_millis() as i64 as f64) as i64;
             let score = ctx.strategy.calculate_score(
                 result.avg_pnl_pct,
-                avg_dur_ms as f64,
+                DurationMs::new(avg_dur_ms),
             );
 
             let unique_string = format!("{}_{}_{}", ctx.pair_name, source_id_suffix, direction);
@@ -261,8 +259,8 @@ fn simulate_target(
                 start_price: ctx.current_price,
                 target_price,
                 stop_price,
-                max_duration_ms: ctx.duration_ms as i64,
-                avg_duration_ms: avg_dur_ms,
+                max_duration_ms: ctx.duration_ms,
+                avg_duration_ms: DurationMs::new(avg_dur_ms),
                 strategy: ctx.strategy,
                 station_id: ctx.station_id,
                 market_state: ctx.current_state,
@@ -317,11 +315,11 @@ fn apply_diversity_filter(
             for (i, c) in debug_view.iter().take(5).enumerate() {
                 let roi = c.opportunity.expected_roi();
                 let dur_ms = c.opportunity.avg_duration_ms;
-                let dur_str = TimeUtils::format_duration(dur_ms);
-                let aroi = TradeProfile::calculate_annualized_roi(roi, dur_ms as f64);
+                let dur_str = TimeUtils::format_duration(*dur_ms);
+                let aroi = TradeProfile::calculate_annualized_roi(roi, dur_ms);
 
                 log::info!(
-                    "   #{}: Score {:.1} | ROI {:.2}% | AROI {:.0}% | Time {}",
+                    "   #{}: Score {:.1} | ROI {} | AROI {} | Time {}",
                     i + 1,
                     c.score,
                     roi,
@@ -441,7 +439,7 @@ struct PathfinderContext<'a> {
     strategy: OptimizationStrategy,
     station_id: StationId,
     duration_candles: usize,
-    duration_ms: u64,
+    duration_ms: DurationMs,
     ph_pct: PhPct,
     price_min: Price,
     price_max: Price,
@@ -790,10 +788,10 @@ pub fn run_pathfinder_simulations(
     let duration = AdaptiveParameters::calculate_dynamic_journey_duration(
         ph_pct,
         avg_volatility,
-        constants::INTERVAL_WIDTH_MS,
+        DurationMs::new(constants::BASE_INTERVAL.as_millis() as i64),
         &constants::journey::DEFAULT,
     );
-    let duration_candles = duration_to_candles(duration, constants::INTERVAL_WIDTH_MS);
+    let duration_candles = duration_to_candles(duration, constants::BASE_INTERVAL.as_millis() as i64);
 
     let matches_opt = ScenarioSimulator::find_historical_matches(
         ohlcv.pair_interval.name(),
@@ -829,7 +827,7 @@ pub fn run_pathfinder_simulations(
         strategy,
         station_id,
         duration_candles,
-        duration_ms: duration.as_millis() as u64,
+        duration_ms: DurationMs::new(duration.as_millis() as i64),
         ph_pct,
         price_min,
         price_max,
@@ -952,11 +950,10 @@ fn run_stop_loss_tournament(
                 // Metrics
                 let roi_pct = result.avg_pnl_pct;
 
-                // --- FIX: UNIT CONVERSION (Candles -> MS) ---
-                let duration_real_ms = result.avg_candle_count * interval_ms as f64;
+                let duration_real_ms = ((result.avg_candle_count * interval_ms as f64) as f64) as i64;
 
                 // Calculate AROI for the Gatekeeper & Judge
-                let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, duration_real_ms);
+                let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, DurationMs::new(duration_real_ms));
 
                 // GATEKEEPER: Check both ROI and AROI against profile
                 let is_worthwhile = profile.is_worthwhile(roi_pct, aroi_pct);
@@ -971,7 +968,7 @@ fn run_stop_loss_tournament(
                     });
 
                     // JUDGE: Calculate Score based on Strategy (using CORRECT Time units)
-                    let score = strategy.calculate_score(roi_pct, duration_real_ms);
+                    let score = strategy.calculate_score(roi_pct, DurationMs::new(duration_real_ms));
 
                     // Track Best
                     if score > best_score {
@@ -1042,7 +1039,7 @@ fn fetch_local_timeseries(req: &JobRequest) -> Result<TimeSeriesCollection, Stri
         .map_err(|_| "Failed to acquire RwLock".to_string())?;
 
     let target_pair = &req.pair_name;
-    let interval = constants::INTERVAL_WIDTH_MS;
+    let interval = constants::BASE_INTERVAL.as_millis() as i64;
 
     // Find and clone specifically what we need
     if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, target_pair, interval) {
@@ -1105,7 +1102,7 @@ fn perform_standard_analysis(
                             find_matching_ohlcv(
                                 &ts_collection.series_data,
                                 &req.pair_name,
-                                constants::INTERVAL_WIDTH_MS,
+                                constants::BASE_INTERVAL.as_millis() as i64,
                             )
                             .unwrap(),
                             // &req.config
@@ -1145,13 +1142,13 @@ fn resolve_analysis_price(
     ts_collection: &TimeSeriesCollection,
 ) -> Result<Price, String> {
     if let Some(p) = req.current_price {
-        return Ok(Price::new(p));
+        return Ok(p);
     }
 
     if let Ok(ts) = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        constants::INTERVAL_WIDTH_MS,
+        constants::BASE_INTERVAL.as_millis() as i64,
     ) {
         ts.close_prices
             .last()
@@ -1171,7 +1168,7 @@ fn calculate_exact_candle_count(
     let ohlcv_result = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        constants::INTERVAL_WIDTH_MS,
+        constants::BASE_INTERVAL.as_millis() as i64,
     );
 
     if let Ok(ohlcv) = ohlcv_result {
@@ -1195,7 +1192,7 @@ fn build_success_result(
     let ohlcv = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        constants::INTERVAL_WIDTH_MS,
+        constants::BASE_INTERVAL.as_millis() as i64,
     )
     .expect("OHLCV data missing despite CVA success");
 

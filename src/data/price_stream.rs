@@ -76,7 +76,7 @@ pub struct PriceStreamManager {
 fn build_combined_stream_url(symbols: &[String]) -> String {
     use crate::config::constants;
 
-    let interval = crate::utils::TimeUtils::interval_to_string(constants::INTERVAL_WIDTH_MS);
+    let interval = crate::utils::TimeUtils::interval_to_string(constants::BASE_INTERVAL.as_millis() as i64);
 
     // CHANGE: Only subscribe to kline
     let streams: Vec<String> = symbols

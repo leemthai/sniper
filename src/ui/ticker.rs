@@ -98,7 +98,7 @@ impl TickerState {
                     if let Ok(ohlcv) = timeseries::find_matching_ohlcv(
                         &ts_guard.series_data,
                         &pair,
-                        constants::INTERVAL_WIDTH_MS,
+                        constants::BASE_INTERVAL.as_millis() as i64,
                     ) {
                         // Find index closest to 24h ago
                         let idx_result = ohlcv.timestamps.binary_search(&day_ago_ms);

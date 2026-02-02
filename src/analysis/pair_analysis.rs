@@ -21,7 +21,7 @@ pub fn pair_analysis_pure(
     let ohlcv_time_series = find_matching_ohlcv(
         &timeseries_data.series_data,
         &pair_name,
-        constants::INTERVAL_WIDTH_MS,
+        constants::BASE_INTERVAL.as_millis() as i64,
     )
     .with_context(|| format!("No OHLCV data found for {}", pair_name))?;
 

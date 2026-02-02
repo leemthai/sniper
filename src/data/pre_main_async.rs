@@ -172,7 +172,7 @@ pub async fn fetch_pair_data(
         }
 
         // 3. Run in Parallel
-        let interval = constants::INTERVAL_WIDTH_MS;
+        let interval = constants::BASE_INTERVAL.as_millis() as i64;
 
         let results = stream::iter(supply_pairs)
             .enumerate()

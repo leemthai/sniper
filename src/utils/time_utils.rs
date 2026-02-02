@@ -21,6 +21,8 @@ pub fn now() -> AppInstant {
 
 pub struct TimeUtils;
 
+// Leave all this in place because used for DB-access, Binance API access maybe as well. Can't fold this into CandleResolution stuff
+
 impl TimeUtils {
     pub const MS_IN_S: i64 = 1000;
     pub const MS_IN_MIN: i64 = Self::MS_IN_S * 60;

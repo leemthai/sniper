@@ -28,7 +28,7 @@ pub fn execute_audit(
         if find_matching_ohlcv(
             &ts_collection.series_data,
             pair,
-            constants::INTERVAL_WIDTH_MS,
+            constants::BASE_INTERVAL.as_millis() as i64,
         )
         .is_err()
         {
@@ -80,7 +80,7 @@ fn run_single_simulation(
     ts_collection: &TimeSeriesCollection,
     reporter: &mut AuditReporter,
 ) {
-    let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, constants::INTERVAL_WIDTH_MS).unwrap(); // Unwrap is safe here because we checked existence in the main loop
+    let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, constants::BASE_INTERVAL.as_millis() as i64).unwrap(); // Unwrap is safe here because we checked existence in the main loop
     let start_time = AppInstant::now();
 
     // C. Run Pipeline (Using worker internals)
@@ -112,7 +112,7 @@ fn run_single_simulation(
     // DISPLAY LOGIC: Convert ms to hours for CSV readability
     let durations_hours: Vec<f64> = opportunities.iter()
         .take(5)
-        .map(|o| o.avg_duration_ms as f64 / 3_600_000.0) 
+        .map(|o| *o.avg_duration_ms as f64 / 3_600_000.0) 
         .collect();
     
     // Avg Stop Loss %

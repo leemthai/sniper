@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::utils::maths_utils::remap;
-use crate::config::{JourneySettings, PhPct, VolatilityPct};
+use crate::config::{JourneySettings, PhPct, VolatilityPct, DurationMs};
 
 pub struct AdaptiveParameters;
 
@@ -9,7 +9,7 @@ impl AdaptiveParameters {
 
     /// Calculates Max Duration using Diffusive Market Physics (Random Walk).
     /// Formula: Candles = (Ratio + Bias)^2
-    pub fn calculate_dynamic_journey_duration(ph_pct: PhPct, avg_volatility_pct: VolatilityPct, interval_ms: i64, journey: &JourneySettings) -> Duration {
+    pub fn calculate_dynamic_journey_duration(ph_pct: PhPct, avg_volatility_pct: VolatilityPct, interval_ms: DurationMs, journey: &JourneySettings) -> Duration {
         
         // 2. Ratio: How many "Volatility Units" is the target away?
         let ratio = *ph_pct / avg_volatility_pct.as_safe_divisor();
@@ -22,7 +22,7 @@ impl AdaptiveParameters {
         let candles = (ratio + 3.0).powi(2);
         
         // 4. Convert to Time
-        let total_ms = candles * interval_ms as f64;
+        let total_ms = candles * *interval_ms as f64;
         
         Duration::from_millis(total_ms as u64).clamp(
             journey.min_journey_duration, 

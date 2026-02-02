@@ -10,7 +10,7 @@ use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 
 use crate::analysis::range_gap_finder::GapReason;
 
-use crate::config::{Price, OpenPrice, ClosePrice, LowPrice, HighPrice};
+use crate::config::{Price, OpenPrice, ClosePrice, LowPrice, HighPrice, CandleResolution, constants};
 
 use crate::config::plot::PLOT_CONFIG;
 
@@ -18,7 +18,7 @@ use crate::models::OhlcvTimeSeries;
 use crate::models::cva::ScoreType;
 use crate::models::trading_view::{SuperZone, TradeOpportunity, TradingModel};
 
-use crate::ui::app::{CandleResolution, PlotVisibility};
+use crate::ui::app::{PlotVisibility};
 use crate::ui::styles::{DirectionColor, apply_opacity};
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
@@ -191,7 +191,7 @@ impl PlotLayer for CandlestickLayer {
         // (assuming segments are contiguous in view space, or ui_plot_view handles the gaps between segments via separate logic.
         //  If ui_plot_view sums up segment widths, we need to replicate that.)
         let mut segment_start_visual_x = 0.0;
-        let agg_interval_ms = ctx.resolution.interval_ms();
+        let agg_interval_ms = ctx.resolution.duration().as_millis() as i64;
 
         // 1. Optimization Setup
         let view_width_steps = (ctx.x_max - ctx.x_min).abs();
@@ -599,6 +599,7 @@ impl PlotLayer for ReversalZoneLayer {
 pub struct SegmentSeparatorLayer;
 
 impl PlotLayer for SegmentSeparatorLayer {
+
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
         if ctx.trading_model.segments.is_empty() {
             return;
@@ -606,7 +607,7 @@ impl PlotLayer for SegmentSeparatorLayer {
 
         let gap_width = PLOT_CONFIG.segment_gap_width;
         let mut visual_x = 0.0;
-        let step_size = ctx.resolution.step_size();
+        let step_size = ctx.resolution.steps_from(constants::BASE_INTERVAL);
 
         // Foreground Painter + Clipping
         let painter = plot_ui
@@ -614,7 +615,6 @@ impl PlotLayer for SegmentSeparatorLayer {
             .layer_painter(LayerId::new(Order::Foreground, Id::new("separators")))
             .with_clip_rect(ctx.clip_rect);
 
-        // let stroke = Stroke::new(1.0, PLOT_CONFIG.color_separator);
         let y_top = ctx.clip_rect.top();
         let y_bot = ctx.clip_rect.bottom();
 

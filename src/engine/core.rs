@@ -7,6 +7,8 @@ use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::R
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
+
+
 use crate::config::{OptimizationStrategy, StationId, constants, PhPct, QuoteVol, Price};
 
 use crate::data::price_stream::PriceStreamManager;
@@ -65,7 +67,7 @@ pub struct SniperEngine {
     // Update the VecDeque type to hold the runtime variables
     pub queue: VecDeque<(
         String, // pair_name
-        Option<f64>, // price
+        Option<Price>, // price
         PhPct, // ph_pct
         OptimizationStrategy, // strategy
         StationId, // StationId
@@ -256,7 +258,7 @@ impl SniperEngine {
                             }
                             self.force_recalc(
                                 &pair_name,
-                                Some(*candle.close),
+                                Some(candle.close.into()),
                                 ph_pct,
                                 self.engine_strategy,
                                 station_id,
@@ -295,7 +297,7 @@ impl SniperEngine {
         for (id, op) in &self.engine_ledger.opportunities {
             // A. Get Data context
             let pair = &op.pair_name;
-            let interval_ms = constants::INTERVAL_WIDTH_MS;
+            let interval_ms = constants::BASE_INTERVAL.as_millis() as i64;
 
             if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, pair, interval_ms) {
                 let Some(current_price) = series.close_prices.last().copied() else {
@@ -661,7 +663,7 @@ impl SniperEngine {
     pub fn force_recalc(
         &mut self,
         pair: &str,
-        price_override: Option<f64>,
+        price_override: Option<Price>,
         ph_pct: PhPct,
         strategy: OptimizationStrategy,
         station_id: StationId,
@@ -757,12 +759,12 @@ impl SniperEngine {
                         // If we have no previous price, just sync state and DO NOT trigger.
                         // The startup job (trigger_global_recalc) is already handling the calc.
                         if state.last_update_price.abs() < f64::EPSILON {
-                            state.last_update_price = current_price;
+                            state.last_update_price = Price::new(current_price);
                             continue;
                         }
 
-                        let diff = (current_price - state.last_update_price).abs();
-                        let pct_diff = diff / state.last_update_price;
+                        let diff = (current_price - *state.last_update_price).abs();
+                        let pct_diff = diff / *state.last_update_price;
 
                         if pct_diff > *threshold {
                             #[cfg(debug_assertions)]
@@ -832,7 +834,7 @@ impl SniperEngine {
     fn dispatch_job(
         &mut self,
         pair: String,
-        price_override: Option<f64>,
+        price_override: Option<Price>,
         ph_pct: PhPct,
         strategy: OptimizationStrategy,
         station_id: StationId,
@@ -841,7 +843,7 @@ impl SniperEngine {
         if let Some(state) = self.pairs_states.get_mut(&pair) {
             // 1. Resolve Price
             // Priority: Override -> Live Stream -> None (Worker will fetch from DB)
-            let live_price = self.price_stream.get_price(&pair);
+            let live_price = self.price_stream.get_price(&pair).map(Price::from);
             let final_price_opt = price_override.or(live_price);
 
             // Update State Metadata

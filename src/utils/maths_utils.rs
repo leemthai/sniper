@@ -2,18 +2,6 @@ use argminmax::ArgMinMax;
 use std::f64;
 use std::time::Duration;
 
-/// Calculates the span of time (in days) covered by a timestamp range.
-pub fn calculate_history_days(min_ts: i64, max_ts: i64) -> f64 {
-    let span_ms = max_ts.saturating_sub(min_ts);
-    span_ms as f64 / (1000.0 * 60.0 * 60.0 * 24.0)
-}
-
-/// Calculates the duration (in days) of the actual data present (candle count).
-pub fn calculate_evidence_days(count: usize, interval_ms: i64) -> f64 {
-    let evidence_ms = count as f64 * interval_ms as f64;
-    evidence_ms / (1000.0 * 60.0 * 60.0 * 24.0)
-}
-
 /// Formats a float to occupy EXACTLY `width` characters.
 /// Adjusts decimal precision automatically.
 /// Returns None if the integer part is too large to fit.
@@ -102,16 +90,6 @@ pub fn format_fixed_chars(val: f64, width: usize) -> Option<String> {
 pub fn duration_to_candles(duration: Duration, interval_ms: i64) -> usize {
     if interval_ms <= 0 { return 0; }
     (duration.as_millis() as i64 / interval_ms) as usize
-}
-
-
-/// Given an interval size, how many intervals total in a given range,
-/// This assumes the range is exclusive, and hence why we need to add 1
-/// i.e `range_end` is start of the last interval, not the end
-#[inline]
-pub fn intervals(range_start: i64, range_end: i64, interval: i64) -> i64 {
-    debug_assert_eq!((range_end - range_start) % interval, 0);
-    ((range_end - range_start) / interval) + 1
 }
 
 

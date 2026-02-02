@@ -1,11 +1,71 @@
 //! Analysis and computation constants (Immutable Blueprints)
 
 use serde::{Deserialize, Serialize};
-use std::ops::{Deref, Sub};
+use std::ops::{Add, Deref, Sub};
 use std::time::Duration;
 use strum_macros::{Display, EnumIter};
 
 use crate::ui::config::UI_TEXT;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
+pub enum CandleResolution {
+    M5,
+    M15,
+    H1,
+    H4,
+    D1,
+    D3,
+    W1,
+    M1,
+}
+
+impl Default for CandleResolution {
+    fn default() -> Self {
+        Self::D1 // Default to 1D candles for plot candles
+    }
+}
+
+impl CandleResolution {
+    pub fn duration(&self) -> Duration {
+        match self {
+            Self::M5 => Duration::from_secs(5 * 60),
+            Self::M15 => Duration::from_secs(15 * 60),
+            Self::H1 => Duration::from_secs(60 * 60),
+            Self::H4 => Duration::from_secs(4 * 60 * 60),
+            Self::D1 => Duration::from_secs(24 * 60 * 60),
+            Self::D3 => Duration::from_secs(3 * 24 * 60 * 60),
+            Self::W1 => Duration::from_secs(7 * 24 * 60 * 60),
+            Self::M1 => Duration::from_secs(30 * 24 * 60 * 60), // approx
+        }
+    }
+}
+
+impl std::fmt::Display for CandleResolution {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::M5 => write!(f, "5m"),
+            Self::M15 => write!(f, "15m"),
+            Self::H1 => write!(f, "1h"),
+            Self::H4 => write!(f, "4h"),
+            Self::D1 => write!(f, "1D"),
+            Self::D3 => write!(f, "3D"),
+            Self::W1 => write!(f, "1W"),
+            Self::M1 => write!(f, "1M"),
+        }
+    }
+}
+
+impl From<CandleResolution> for Duration {
+    fn from(res: CandleResolution) -> Self {
+        res.duration()
+    }
+}
+
+impl CandleResolution {
+    pub fn steps_from(&self, base: Duration) -> u64 {
+        self.duration().as_secs() / base.as_secs()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -205,6 +265,40 @@ impl std::fmt::Display for Prob {
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
 #[serde(transparent)]
+pub struct DurationMs(i64);
+
+impl DurationMs {
+    const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
+
+    pub const fn new(ms: i64) -> Self {
+        Self(ms)
+    }
+
+    /// Converts duration to a float number of years (for annualized math).
+    pub fn to_years_f64(&self) -> f64 {
+        if self.0 <= 0 {
+            0.0
+        } else {
+            self.0 as f64 / Self::MS_IN_YEAR
+        }
+    }
+}
+
+impl Deref for DurationMs {
+    type Target = i64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for DurationMs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}ms", self.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
 pub struct VolRatio(f64);
 
 impl VolRatio {
@@ -324,6 +418,14 @@ macro_rules! define_price_type {
             }
         }
 
+        impl Add for $name {
+            type Output = f64;
+
+            fn add(self, rhs: Self) -> Self::Output {
+                self.value() + rhs.value()
+            }
+        }
+
         impl Sub for $name {
             type Output = f64;
 
@@ -378,7 +480,11 @@ pub struct PriceRange<T> {
 
 impl<T: PriceLike> PriceRange<T> {
     pub fn new(start: T, end: T, n_chunks: usize) -> Self {
-        Self { start, end, n_chunks }
+        Self {
+            start,
+            end,
+            n_chunks,
+        }
     }
 
     pub fn min_max(&self) -> (f64, f64) {
@@ -400,11 +506,7 @@ impl<T: PriceLike> PriceRange<T> {
         (low, high)
     }
 
-    pub fn count_intersecting_chunks(
-        &self,
-        low: T,
-        high: T,
-    ) -> usize {
+    pub fn count_intersecting_chunks(&self, low: T, high: T) -> usize {
         let mut x_low = low.value();
         let mut x_high = high.value();
 
@@ -413,7 +515,7 @@ impl<T: PriceLike> PriceRange<T> {
         }
 
         let first = ((x_low - self.start.value()) / self.chunk_size()).floor() as isize;
-        let last  = ((x_high - self.start.value()) / self.chunk_size()).floor() as isize;
+        let last = ((x_high - self.start.value()) / self.chunk_size()).floor() as isize;
 
         let first = first.max(0);
         let last = last.min((self.n_chunks - 1) as isize);
@@ -425,8 +527,6 @@ impl<T: PriceLike> PriceRange<T> {
         (last - first + 1) as usize
     }
 }
-
-
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
 #[serde(transparent)]
@@ -603,14 +703,13 @@ pub struct TradeProfile {
 }
 
 impl TradeProfile {
-    pub const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
-
-    pub fn calculate_annualized_roi(roi: RoiPct, duration_ms: f64) -> AroiPct {
-        if duration_ms < 1000.0 {
+    pub fn calculate_annualized_roi(roi: RoiPct, duration: DurationMs) -> AroiPct {
+        let years = duration.to_years_f64();
+        if years <= 0.0000001 {
             return AroiPct::new(0.0);
         }
-        let factors_per_year = Self::MS_IN_YEAR / duration_ms;
-        AroiPct::new(*roi * factors_per_year)
+        let factor = 1.0 / years;
+        AroiPct::new(*roi * factor)
     }
     /// Returns true if both ROI and AROI meet the minimum thresholds defined in this profile.
     pub fn is_worthwhile(&self, roi_pct: RoiPct, aroi_pct: AroiPct) -> bool {
