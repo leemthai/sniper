@@ -75,13 +75,15 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|o| o.target_price)
                         .unwrap_or_default();
-                    val_a.value()
+                    val_a
+                        .value()
                         .total_cmp(&val_b.value())
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
 
                 SortColumn::QuoteVolume24h => a
-                    .quote_volume_24h.value()
+                    .quote_volume_24h
+                    .value()
                     .total_cmp(&b.quote_volume_24h.value())
                     .then_with(|| a.pair_name.cmp(&b.pair_name)),
 
@@ -96,7 +98,8 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|m| m.volatility_pct)
                         .unwrap_or(VolatilityPct::new(0.0));
-                    va.value().total_cmp(&vb.value())
+                    va.value()
+                        .total_cmp(&vb.value())
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::Momentum => {
@@ -110,7 +113,8 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|m| m.momentum_pct)
                         .unwrap_or(MomentumPct::new(0.0));
-                    ma.value().total_cmp(&mb.value())
+                    ma.value()
+                        .total_cmp(&mb.value())
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
 
@@ -508,7 +512,8 @@ impl ZoneSniperApp {
                         .italics(),
                     );
 
-                    let win_count = (sim.success_rate.value() * sim.sample_size as f64).round() as usize;
+                    let win_count =
+                        (sim.success_rate.value() * sim.sample_size as f64).round() as usize;
 
                     ui.label(
                         RichText::new(format!(
@@ -1530,7 +1535,7 @@ impl ZoneSniperApp {
                                 &pair_name,
                                 None,
                                 best_ph_pct,
-                                self.saved_strategy,
+                                self.shared_config.get_strategy(),
                                 station_id,
                                 JobMode::FullAnalysis,
                                 "USER TUNE TIME BUTTON",
@@ -1579,6 +1584,54 @@ impl ZoneSniperApp {
             });
     }
 
+    fn ui_optimization_strategy(&mut self, ui: &mut Ui) {
+        ui.label(format!(
+            "{} {}",
+            UI_TEXT.label_goal,
+            UI_TEXT.icon_strategy
+        ));
+
+        // Read current value
+        let current_strategy = self.shared_config.get_strategy(); // egui mutates a temporary UI variable (to show if updated or not)
+        let mut selected_strategy = current_strategy;
+
+        // Selected text (icon + display)
+        let selected_text =
+            format!("{} {}", selected_strategy.icon(), selected_strategy);
+
+        // ComboBox
+        ComboBox::from_label("Optimization strategy")
+            .selected_text(selected_text)
+            .width(100.0)
+            .show_ui(ui, |ui| {
+                for strategy in OptimizationStrategy::iter() {
+                    let text = format!("{} {}", strategy.icon(), strategy);
+                    ui.selectable_value(
+                        &mut selected_strategy,
+                        strategy,
+                        text,
+                    );
+                }
+            });
+
+        // Commit if changed
+        if selected_strategy != current_strategy {
+            #[cfg(debug_assertions)]
+            if DF.log_strategy_selection {
+                log::info!(
+                    "Changing strategy from {} to {}",
+                    current_strategy,
+                    selected_strategy
+                );
+            }
+
+            self.shared_config.set_strategy(selected_strategy);
+            self.handle_strategy_selection();
+        }
+
+        ui.separator();
+    }
+
     pub(super) fn render_top_panel(&mut self, ctx: &Context) {
         let frame = UI_CONFIG.top_panel_frame();
 
@@ -1603,28 +1656,7 @@ impl ZoneSniperApp {
                     ui.add_space(10.0);
                     ui.separator();
 
-                    // OPTIMIZATION GOAL SELECTOR
-                    // ui.label(format!("{}:", UI_TEXT.label_goal));
-                    ui.label(format!("{} {}", UI_TEXT.label_goal, UI_TEXT.icon_strategy));
-                    let current_goal = self.saved_strategy;
-                    let selected_text = format!("{} {}", current_goal.icon(), current_goal);
-
-                    ComboBox::from_id_salt("opt_goal_selector")
-                        .selected_text(selected_text)
-                        .width(100.0)
-                        .show_ui(ui, |ui| {
-                            for goal in OptimizationStrategy::iter() {
-                                let item_text = format!("{} {}", goal.icon(), goal);
-                                if ui
-                                    .selectable_value(&mut self.saved_strategy, goal, item_text)
-                                    .clicked()
-                                {
-                                    self.handle_strategy_change();
-                                }
-                            }
-                        });
-
-                    ui.separator();
+                    self.ui_optimization_strategy(ui);
 
                     // 2. LAYER VISIBILITY
                     ui.checkbox(&mut self.plot_visibility.sticky, &UI_TEXT.tb_sticky);

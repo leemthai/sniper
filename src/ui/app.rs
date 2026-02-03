@@ -17,8 +17,7 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{
-    CandleResolution, DF, OptimizationStrategy, PhPct, Price, StationId, constants, PriceLike,
+use crate::config::{CandleResolution, DF, PhPct, Price, StationId, constants, PriceLike,
 };
 
 use crate::data::fetch_pair_data;
@@ -137,7 +136,7 @@ pub struct ZoneSniperApp {
     pub tf_sort_col: SortColumn,
     pub tf_sort_dir: SortDirection,
 
-    pub saved_strategy: OptimizationStrategy,
+    // pub saved_strategy: OptimizationStrategy,
     pub saved_opportunity_id: Option<String>,
 
     #[serde(skip)]
@@ -212,7 +211,7 @@ impl Default for ZoneSniperApp {
             show_candle_range: false,
             tf_sort_col: SortColumn::LiveRoi, // Default to Money
             tf_sort_dir: SortDirection::Descending, // Highest first
-            saved_strategy: OptimizationStrategy::default(),
+            // saved_strategy: OptimizationStrategy::default(),
             saved_opportunity_id: None,
         }
     }
@@ -266,27 +265,17 @@ impl ZoneSniperApp {
     }
 
     /// Handles a change in global strategy (Optimization Goal).
-    pub fn handle_strategy_change(&mut self) {
-        // 1. Guard: Check if the strategy ACTUALLY changed.
-        if self
-            .engine
-            .as_ref()
-            .map_or(false, |e| e.engine_strategy != self.saved_strategy)
-        {
-            return;
-        }
-
-        // 2. Prepare Data (Solve Borrow Checker)
+    /// Note: currently has no guard in place to check if this strategy is different from previous strategy
+    pub fn handle_strategy_selection(&mut self) {
+        
+        // Prepare Data (Solve Borrow Checker)
         // We must extract the priority pair string BEFORE mutably borrowing the engine.
-        // We don't need 'get_display_price' here because 'trigger_global_recalc'
-        // handles price resolution internally (using live price or existing overrides).
         let priority_pair = self.selected_pair.clone();
 
-        // 3. Execute Update
+        // Execute Update
         if let Some(e) = &mut self.engine {
             // Global Invalidation
-            // Since the "Rules of the Game" changed, every pair needs to be re-judged.
-            // We pass the current pair as priority so the user sees the active screen update first.
+            // Since strategy has changed, every pair needs to be re-judged. We pass the current pair as priority so the user sees the active screen update first.
             e.trigger_global_recalc(priority_pair);
         }
     }
@@ -314,7 +303,7 @@ impl ZoneSniperApp {
             .ok()?;
 
             // 4. Run Worker Logic
-            return worker::tune_to_station(ohlcv, price, station, self.saved_strategy);
+            return worker::tune_to_station(ohlcv, price, station, self.shared_config.get_strategy());
         }
         None
     }
@@ -938,7 +927,7 @@ impl ZoneSniperApp {
                                         ohlcv,
                                         price,
                                         station_def,
-                                        self.saved_strategy,
+                                        e.shared_config.get_strategy(),
                                     )
                                 } else {
                                     log::warn!(
@@ -1221,6 +1210,7 @@ impl ZoneSniperApp {
         &mut self,
         timeseries: &TimeSeriesCollection,
     ) -> (Vec<String>, HashSet<String>, String) {
+
         // Get List of ACTUAL loaded pairs
         let available_pairs = timeseries.unique_pair_names();
         let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();

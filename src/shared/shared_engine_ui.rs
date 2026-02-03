@@ -1,4 +1,4 @@
-use crate::config::{PhPct, StationId};
+use crate::config::{OptimizationStrategy, PhPct, StationId};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
@@ -9,6 +9,7 @@ pub struct UIEngineSharedData {
     pub station_overrides: HashMap<String, StationId>,
     pub ph_overrides: HashMap<String, PhPct>,
     // Add other shared configurations here as needed in the future
+    pub strategy: OptimizationStrategy,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -18,7 +19,17 @@ pub struct SharedConfiguration {
 
 impl SharedConfiguration {
     pub fn new() -> Self {
-        Self { inner: Arc::new(RwLock::new(UIEngineSharedData::default())) }
+        Self {
+            inner: Arc::new(RwLock::new(UIEngineSharedData::default())),
+        }
+    }
+
+    pub fn get_strategy(&self) -> OptimizationStrategy {
+        self.inner.read().unwrap().strategy
+    }
+
+    pub fn set_strategy(&self, strategy: OptimizationStrategy) {
+        self.inner.write().unwrap().strategy = strategy;
     }
 
     // --- Pair Registry ---
@@ -60,7 +71,12 @@ impl SharedConfiguration {
 
     // --- Read Accessors ---
     pub fn get_station(&self, key: &str) -> Option<StationId> {
-        self.inner.read().unwrap().station_overrides.get(key).copied()
+        self.inner
+            .read()
+            .unwrap()
+            .station_overrides
+            .get(key)
+            .copied()
     }
 
     pub fn get_ph(&self, key: &str) -> Option<PhPct> {
@@ -69,7 +85,11 @@ impl SharedConfiguration {
 
     // --- Write Accessors ---
     pub fn insert_station(&self, key: String, value: StationId) {
-        self.inner.write().unwrap().station_overrides.insert(key, value);
+        self.inner
+            .write()
+            .unwrap()
+            .station_overrides
+            .insert(key, value);
     }
 
     pub fn insert_ph(&self, key: String, value: PhPct) {
@@ -85,17 +105,22 @@ impl SharedConfiguration {
             .entry(key)
             .or_insert(StationId::default());
     }
-    
+
     // Ensure default PH if needed
     pub fn ensure_ph_default(&self, key: String, default_value: PhPct) {
-        self.inner.write().unwrap().ph_overrides.entry(key).or_insert(default_value);
+        self.inner
+            .write()
+            .unwrap()
+            .ph_overrides
+            .entry(key)
+            .or_insert(default_value);
     }
-    
+
     // Utility to get all station overrides
     pub fn get_all_stations(&self) -> HashMap<String, StationId> {
         self.inner.read().unwrap().station_overrides.clone()
     }
-    
+
     // Utility to get all PH overrides
     pub fn get_all_phs(&self) -> HashMap<String, PhPct> {
         self.inner.read().unwrap().ph_overrides.clone()

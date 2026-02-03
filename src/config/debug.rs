@@ -35,6 +35,8 @@ pub struct LogFlags {
     /// Verify SIMD produces near-same results as scalar version
     pub log_simd: bool,
 
+    pub log_strategy_selection: bool,
+
     // These two need moving out to somehwere else!!!!!!!!!
     // Limit how many pairs are loaded in Debug mode.
     pub max_pairs_load: usize,
@@ -43,11 +45,14 @@ pub struct LogFlags {
 }
 
 pub const DF: LogFlags = LogFlags {
+    log_selected_opportunity: false,
+    log_strategy_selection: true,
+
     log_tuner: false,
-    log_station_overrides: true,
-    log_active_station_id: true,
-    log_candle_update: true,
-    log_ph_vals: true,
+    log_station_overrides: false,
+    log_active_station_id: false,
+    log_candle_update: false,
+    log_ph_vals: false,
 
     log_performance: false,
     log_price_stream_updates: false,
@@ -58,7 +63,6 @@ pub const DF: LogFlags = LogFlags {
     log_pathfinder: false,
     log_zones: false,
     log_selected_pair: false,
-    log_selected_opportunity: false,
     log_simd: false,
 
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]

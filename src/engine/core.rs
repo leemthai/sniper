@@ -8,7 +8,9 @@ use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::R
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
 
-use crate::config::{OptimizationStrategy, PhPct, Price, QuoteVol, StationId, constants, PriceLike};
+use crate::config::{
+    OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, StationId, constants,
+};
 
 use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
@@ -28,12 +30,22 @@ use super::messages::{JobMode, JobRequest, JobResult};
 use super::state::PairState;
 use super::worker;
 
+#[derive(Debug, Clone)]
+pub struct EngineJob {
+    pub pair: String,
+    pub price_override: Option<Price>,
+    pub ph_pct: PhPct,
+    pub strategy: OptimizationStrategy,
+    pub station_id: StationId,
+    pub mode: JobMode,
+}
+
 pub struct SniperEngine {
     /// Pair registry
-    pub pairs_states: HashMap<String, PairState>, // Keep track of the state of all pairs (not partof SharedConfiguration)
+    pub pairs_states: HashMap<String, PairState>, // Keep track of the state of all pairs (not part of SharedConfiguration)
 
     pub shared_config: SharedConfiguration, // Share information between ui and engine (for variables either side can update via Arc<RwLock)
-    pub engine_strategy: OptimizationStrategy,
+    // pub engine_strategy: OptimizationStrategy,
 
     // The ledger
     pub engine_ledger: OpportunityLedger,
@@ -62,16 +74,7 @@ pub struct SniperEngine {
     result_tx: Sender<JobResult>,
 
     /// This is job queue runtime variables
-    /// Logic: (Pair, Price, PH, Strategy, StationId, Mode)
-    // Update the VecDeque type to hold the runtime variables
-    pub queue: VecDeque<(
-        String,               // pair_name
-        Option<Price>,        // price
-        PhPct,                // ph_pct
-        OptimizationStrategy, // strategy
-        StationId,            // StationId
-        JobMode,              // Mode
-    )>,
+    pub queue: VecDeque<EngineJob>,
 }
 
 impl SniperEngine {
@@ -140,7 +143,7 @@ impl SniperEngine {
         Self {
             pairs_states,
             shared_config,
-            engine_strategy: OptimizationStrategy::default(),
+            // engine_strategy: OptimizationStrategy::default(),
             engine_ledger: OpportunityLedger::new(),
             timeseries: timeseries_arc, // Pass the Arc<RwLock> we created
             price_stream,
@@ -183,7 +186,7 @@ impl SniperEngine {
             &pair_name,
             None,
             target_ph,
-            self.engine_strategy,
+            self.shared_config.get_strategy(),
             station_id,
             JobMode::ContextOnly,
             "TRADE CONTEXT",
@@ -256,7 +259,7 @@ impl SniperEngine {
                                 &pair_name,
                                 Some(candle.close.into()),
                                 ph_pct,
-                                self.engine_strategy,
+                                self.shared_config.get_strategy(),
                                 station_id,
                                 JobMode::FullAnalysis,
                                 "CANDLE CLOSE TRIGGER",
@@ -306,7 +309,11 @@ impl SniperEngine {
                     continue;
                 };
 
-                let outcome = op.check_exit_condition(Price::from(current_high), Price::from(current_low), time_now_utc);
+                let outcome = op.check_exit_condition(
+                    Price::from(current_high),
+                    Price::from(current_low),
+                    time_now_utc,
+                );
                 let mut exit_price = Price::new(0.0);
 
                 if let Some(ref reason) = outcome {
@@ -608,7 +615,7 @@ impl SniperEngine {
         let mut all_pairs = self.shared_config.get_all_pairs();
 
         // Snapshot: Takes a snapshot of self.engine_strategy so the loop uses a consistent strategy
-        let strat = self.engine_strategy;
+        let strategy = self.shared_config.get_strategy();
 
         // We can't use a closure easily due to borrow checker rules with self,
         // so we just iterate logic directly.
@@ -625,14 +632,14 @@ impl SniperEngine {
                     pair
                 ));
 
-                target_queue.push_back((
+                target_queue.push_back(EngineJob {
                     pair,
-                    None, // Live Price
+                    price_override: None, // Live Price
                     ph_pct,
-                    strat,   // Respects User Choice
-                    station, // Respects User Choice
-                    JobMode::FullAnalysis,
-                ));
+                    strategy,            // Respects User Choice
+                    station_id: station, // Respects User Choice
+                    mode: JobMode::FullAnalysis,
+                });
             };
 
         if let Some(vip) = priority_pair {
@@ -647,7 +654,6 @@ impl SniperEngine {
         }
     }
 
-    /// Force a single recalc with optional price override
     pub fn force_recalc(
         &mut self,
         pair: &str,
@@ -658,35 +664,31 @@ impl SniperEngine {
         mode: JobMode,
         _reason: &str,
     ) {
-        // Check if calculating
+        // Check if currently calculating
         let is_calculating = self
             .pairs_states
             .get(pair)
             .map(|s| s.is_calculating)
             .unwrap_or(false);
 
-        // Check if already in queue (by Name)
-        // We use a manual iterator check because contains() fails on tuples
-        let in_queue = self.queue.iter().any(|(p, _, _, _, _, _)| p == pair);
+        // Check if already in queue (by pair name)
+        let in_queue = self.queue.iter().any(|job| job.pair == pair);
 
+        // Enqueue only if safe
         if !is_calculating && !in_queue {
-            self.queue.push_front((
-                pair.to_string(),
+            self.queue.push_front(EngineJob {
+                pair: pair.to_string(),
                 price_override,
                 ph_pct,
                 strategy,
                 station_id,
                 mode,
-            ));
+            });
         }
     }
 
     fn handle_job_result(&mut self, result: JobResult) {
         if let Some(state) = self.pairs_states.get_mut(&result.pair_name) {
-            // 1. Always update profile if present (Success OR Failure)
-            // if let Some(p) = result.profile {
-            //     state.profile = Some(p);
-            // }
 
             // 2. Always update the authoritative candle count
             state.last_candle_count = result.candle_count;
@@ -733,14 +735,13 @@ impl SniperEngine {
     }
 
     fn check_automatic_triggers(&mut self) {
-
         let pairs: Vec<String> = self.shared_config.get_all_pairs();
         let threshold = constants::cva::PRICE_RECALC_THRESHOLD_PCT;
 
         for pair_name in pairs {
             if let Some(current_price) = self.price_stream.get_price(&pair_name) {
                 if let Some(state) = self.pairs_states.get_mut(&pair_name) {
-                    let in_queue = self.queue.iter().any(|(p, _, _, _, _, _)| p == &pair_name);
+                    let in_queue = self.queue.iter().any(|job| job.pair == pair_name);
 
                     if !state.is_calculating && !in_queue {
                         if state.last_update_price.value() == 0.0 {
@@ -779,14 +780,14 @@ impl SniperEngine {
                                         self.shared_config,
                                     );
                                 }
-                                self.dispatch_job(
-                                    pair_name.clone(),
-                                    None,
+                                self.dispatch_job(EngineJob {
+                                    pair: pair_name.clone(),
+                                    price_override: None,
                                     ph_pct,
-                                    self.engine_strategy,
+                                    strategy: self.shared_config.get_strategy(),
                                     station_id,
-                                    JobMode::FullAnalysis,
-                                );
+                                    mode: JobMode::FullAnalysis,
+                                });
                                 // }
                             }
                         }
@@ -801,35 +802,27 @@ impl SniperEngine {
             return;
         }
 
-        // Peek at front (tuple index 0 is pair name)
-        if let Some((pair, _, _, _, _, _)) = self.queue.front() {
-            if let Some(state) = self.pairs_states.get(pair) {
+        // Peek at front job
+        if let Some(job) = self.queue.front() {
+            if let Some(state) = self.pairs_states.get(&job.pair) {
                 if state.is_calculating {
                     return; // Busy
                 }
             }
         }
 
-        if let Some((pair, price_opt, ph_pct, strategy, station_id, mode)) = self.queue.pop_front()
-        {
-            self.dispatch_job(pair, price_opt, ph_pct, strategy, station_id, mode);
+        // Pop and dispatch
+        if let Some(job) = self.queue.pop_front() {
+            self.dispatch_job(job);
         }
     }
 
-    fn dispatch_job(
-        &mut self,
-        pair: String,
-        price_override: Option<Price>,
-        ph_pct: PhPct,
-        strategy: OptimizationStrategy,
-        station_id: StationId,
-        mode: JobMode,
-    ) {
-        if let Some(state) = self.pairs_states.get_mut(&pair) {
+    fn dispatch_job(&mut self, job: EngineJob) {
+        if let Some(state) = self.pairs_states.get_mut(&job.pair) {
             // 1. Resolve Price
             // Priority: Override -> Live Stream -> None (Worker will fetch from DB)
-            let live_price = self.price_stream.get_price(&pair).map(Price::from);
-            let final_price_opt = price_override.or(live_price);
+            let live_price = self.price_stream.get_price(&job.pair).map(Price::from);
+            let final_price_opt = job.price_override.or(live_price);
 
             // Update State Metadata
             state.is_calculating = true;
@@ -842,15 +835,15 @@ impl SniperEngine {
 
             // 4. Send Request
             let req = JobRequest {
-                pair_name: pair,
+                pair_name: job.pair,
                 current_price: final_price_opt,
                 // config: self.app_constants.clone(),
                 timeseries: self.timeseries.clone(),
                 existing_profile,
-                ph_pct,
-                strategy,
-                station_id,
-                mode: mode,
+                ph_pct: job.ph_pct,
+                strategy: job.strategy,
+                station_id: job.station_id,
+                mode: job.mode,
             };
 
             let _ = self.job_tx.send(req);
