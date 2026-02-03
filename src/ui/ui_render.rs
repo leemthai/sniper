@@ -81,8 +81,8 @@ impl ZoneSniperApp {
                 }
 
                 SortColumn::QuoteVolume24h => a
-                    .quote_volume_24h
-                    .total_cmp(&b.quote_volume_24h)
+                    .quote_volume_24h.value()
+                    .total_cmp(&b.quote_volume_24h.value())
                     .then_with(|| a.pair_name.cmp(&b.pair_name)),
 
                 SortColumn::Volatility => {
@@ -96,7 +96,7 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|m| m.volatility_pct)
                         .unwrap_or(VolatilityPct::new(0.0));
-                    va.total_cmp(&vb)
+                    va.value().total_cmp(&vb.value())
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
                 SortColumn::Momentum => {
@@ -110,7 +110,7 @@ impl ZoneSniperApp {
                         .as_ref()
                         .map(|m| m.momentum_pct)
                         .unwrap_or(MomentumPct::new(0.0));
-                    ma.total_cmp(&mb)
+                    ma.value().total_cmp(&mb.value())
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
 
@@ -118,12 +118,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| *o.live_roi(a.current_price))
+                        .map(|o| o.live_roi(a.current_price).value())
                         .unwrap_or(f64::NEG_INFINITY);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| *o.live_roi(b.current_price))
+                        .map(|o| o.live_roi(b.current_price).value())
                         .unwrap_or(f64::NEG_INFINITY);
                     val_a
                         .total_cmp(&val_b)
@@ -133,12 +133,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| *o.live_annualized_roi(a.current_price))
+                        .map(|o| o.live_annualized_roi(a.current_price).value())
                         .unwrap_or(f64::NEG_INFINITY);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| *o.live_annualized_roi(b.current_price))
+                        .map(|o| o.live_annualized_roi(b.current_price).value())
                         .unwrap_or(f64::NEG_INFINITY);
                     val_a
                         .total_cmp(&val_b)
@@ -148,12 +148,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| *o.avg_duration_ms)
+                        .map(|o| o.avg_duration_ms.value())
                         .unwrap_or(i64::MAX);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| *o.avg_duration_ms)
+                        .map(|o| o.avg_duration_ms.value())
                         .unwrap_or(i64::MAX);
                     val_b
                         .cmp(&val_a)
@@ -248,12 +248,12 @@ impl ZoneSniperApp {
                 // We use the data captured in the opportunity, not the global config
                 let ph_pct = op.source_ph_pct;
                 let max_time_ms = op.max_duration_ms;
-                let max_time_str = TimeUtils::format_duration(*max_time_ms);
+                let max_time_str = TimeUtils::format_duration(max_time_ms.value());
 
                 // For interval display, we use the global config as a fallback if not in state
                 let interval_ms = constants::BASE_INTERVAL.as_millis() as i64;
                 let max_candles = if interval_ms > 0 {
-                    *max_time_ms / interval_ms
+                    max_time_ms.value() / interval_ms
                 } else {
                     0
                 };
@@ -262,7 +262,7 @@ impl ZoneSniperApp {
                 ui.label_subheader(&UI_TEXT.opp_exp_expectancy);
                 let roi_pct = op.live_roi(calc_price);
                 let aroi_pct = op.live_annualized_roi(calc_price);
-                let roi_color = get_outcome_color(*roi_pct);
+                let roi_color = get_outcome_color(roi_pct.value());
 
                 ui.metric(
                     &format!("{}", UI_TEXT.label_roi),
@@ -277,7 +277,7 @@ impl ZoneSniperApp {
 
                 ui.metric(
                     &UI_TEXT.label_avg_duration,
-                    &TimeUtils::format_duration(*op.avg_duration_ms),
+                    &TimeUtils::format_duration(op.avg_duration_ms.value()),
                     PLOT_CONFIG.color_text_neutral,
                 );
 
@@ -315,7 +315,7 @@ impl ZoneSniperApp {
                     ui.label(
                         RichText::new(format!("{}", state.momentum_pct))
                             .small()
-                            .color(get_momentum_color(*state.momentum_pct)),
+                            .color(get_momentum_color(state.momentum_pct.value())),
                     );
 
                     ui.label(
@@ -333,7 +333,7 @@ impl ZoneSniperApp {
                             .small()
                             .color(PLOT_CONFIG.color_text_subdued),
                     );
-                    let vol_color = if *state.relative_volume > 1.0 {
+                    let vol_color = if state.relative_volume.value() > 1.0 {
                         PLOT_CONFIG.color_warning
                     } else {
                         PLOT_CONFIG.color_text_subdued
@@ -508,11 +508,11 @@ impl ZoneSniperApp {
                         .italics(),
                     );
 
-                    let win_count = (*sim.success_rate * sim.sample_size as f64).round() as usize;
+                    let win_count = (sim.success_rate.value() * sim.sample_size as f64).round() as usize;
 
                     ui.label(
                         RichText::new(format!(
-                            "{} {} {} {} {} {} {} {:.1}% {} {}",
+                            "{} {} {} {} {} {} {} {} {} {}",
                             UI_TEXT.opp_exp_cases_one,
                             win_count,
                             UI_TEXT.opp_exp_cases_two,
@@ -1090,7 +1090,7 @@ impl ZoneSniperApp {
             if let Some(op) = &row.opportunity {
                 let roi_pct = op.live_roi(row.current_price);
                 let aroi_pct = op.live_annualized_roi(row.current_price);
-                let roi_color = get_outcome_color(*roi_pct);
+                let roi_color = get_outcome_color(roi_pct.value());
 
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
@@ -1151,7 +1151,7 @@ impl ZoneSniperApp {
                             .small()
                             .color(PLOT_CONFIG.color_info),
                     );
-                    let mom_color = get_momentum_color(*ms.momentum_pct);
+                    let mom_color = get_momentum_color(ms.momentum_pct.value());
                     ui.label(
                         RichText::new(format!("{}", ms.momentum_pct))
                             .small()
@@ -1171,7 +1171,7 @@ impl ZoneSniperApp {
                     self.down_from_top(ui);
                     // Avg Duration Only
                     ui.label(
-                        RichText::new(TimeUtils::format_duration(*op.avg_duration_ms))
+                        RichText::new(TimeUtils::format_duration(op.avg_duration_ms.value()))
                             .small()
                             .color(PLOT_CONFIG.color_text_neutral),
                     );
@@ -1418,7 +1418,7 @@ impl ZoneSniperApp {
                             // We can safely borrow self here for get_display_price because 'pair_opt' owns the string now
                             let current_price = self.get_display_price(&pair).unwrap_or_default();
                             let roi_pct = op.live_roi(current_price);
-                            let color = get_outcome_color(*roi_pct);
+                            let color = get_outcome_color(roi_pct.value());
 
                             ui.label(
                                 RichText::new(format!("{} {}", UI_TEXT.label_roi, roi_pct))

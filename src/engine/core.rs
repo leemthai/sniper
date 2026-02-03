@@ -306,15 +306,15 @@ impl SniperEngine {
                     continue;
                 };
 
-                let outcome = op.check_exit_condition(current_high, current_low, time_now_utc);
-                let mut exit_price = 0.0;
+                let outcome = op.check_exit_condition(Price::from(current_high), Price::from(current_low), time_now_utc);
+                let mut exit_price = Price::new(0.0);
 
                 if let Some(ref reason) = outcome {
                     exit_price = match reason {
-                        TradeOutcome::TargetHit => op.target_price.value(),
-                        TradeOutcome::StopHit => op.stop_price.value(),
-                        TradeOutcome::Timeout => current_price.value(),
-                        TradeOutcome::ManualClose => current_price.value(),
+                        TradeOutcome::TargetHit => Price::from(op.target_price),
+                        TradeOutcome::StopHit => Price::from(op.stop_price),
+                        TradeOutcome::Timeout => Price::from(current_price),
+                        TradeOutcome::ManualClose => Price::from(current_price),
                     };
                 }
 
@@ -322,10 +322,10 @@ impl SniperEngine {
                 if let Some(reason) = outcome {
                     let pnl = match op.direction {
                         TradeDirection::Long => {
-                            (exit_price - op.start_price.value()) / op.start_price.value() * 100.0
+                            (exit_price - Price::from(op.start_price)) / op.start_price * 100.0
                         }
                         TradeDirection::Short => {
-                            (op.start_price.value() - exit_price) / op.start_price.value() * 100.0
+                            (op.start_price - exit_price) / op.start_price * 100.0
                         }
                     };
 
@@ -345,7 +345,7 @@ impl SniperEngine {
                         pair: pair.clone(),
                         direction: op.direction.clone(),
                         entry_price: op.start_price,
-                        exit_price: exit_price.into(),
+                        exit_price: exit_price,
                         outcome: reason,
                         entry_time: op.created_at.timestamp_millis(),
                         exit_time: time_now_utc.timestamp_millis(),
@@ -749,9 +749,9 @@ impl SniperEngine {
                         }
 
                         let price_diff = (current_price - state.last_update_price).abs();
-                        let pct_diff = price_diff / state.last_update_price.value();
+                        let pct_diff = price_diff / state.last_update_price;
 
-                        if pct_diff > *threshold {
+                        if pct_diff > threshold.value() {
                             #[cfg(debug_assertions)]
                             if DF.log_engine {
                                 log::info!(

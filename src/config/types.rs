@@ -1,7 +1,7 @@
 //! Analysis and computation constants (Immutable Blueprints)
 
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Deref, Sub};
+use std::ops::{Add, Div, Mul, Sub};
 use std::time::Duration;
 use strum_macros::{Display, EnumIter};
 
@@ -86,6 +86,11 @@ impl PhPct {
         Self(v)
     }
 
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
+    }
+
     pub fn format_pct(&self) -> String {
         format!("{:.2}%", self.0 * 100.0)
     }
@@ -94,13 +99,6 @@ impl PhPct {
 impl Default for PhPct {
     fn default() -> Self {
         Self::DEFAULT
-    }
-}
-
-impl Deref for PhPct {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -122,6 +120,11 @@ impl VolatilityPct {
         Self(v)
     }
 
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
+    }
+
     pub fn as_safe_divisor(&self) -> f64 {
         self.0.max(Self::MIN_EPSILON)
     }
@@ -133,13 +136,6 @@ impl VolatilityPct {
         } else {
             Self::new(0.0)
         }
-    }
-}
-
-impl Deref for VolatilityPct {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -158,6 +154,11 @@ impl MomentumPct {
         Self(val)
     }
 
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
+    }
+
     /// Calculates Momentum %: (Current - Previous) / Previous
     pub fn calculate(current_close: f64, prev_close: f64) -> Self {
         if prev_close > f64::EPSILON {
@@ -165,13 +166,6 @@ impl MomentumPct {
         } else {
             Self::new(0.0)
         }
-    }
-}
-
-impl Deref for MomentumPct {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -192,15 +186,13 @@ impl RoiPct {
         Self(val)
     }
 
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
+    }
+
     pub fn is_positive(&self) -> bool {
         self.0 > Self::MIN_EPSILON
-    }
-}
-
-impl Deref for RoiPct {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -218,12 +210,10 @@ impl AroiPct {
     pub const fn new(val: f64) -> Self {
         Self(val)
     }
-}
 
-impl Deref for AroiPct {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
     }
 }
 
@@ -248,12 +238,9 @@ impl Prob {
         };
         Self(v)
     }
-}
 
-impl Deref for Prob {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub fn value(self) -> f64 {
+        self.0
     }
 }
 
@@ -282,6 +269,9 @@ impl DurationMs {
         Self(ms)
     }
 
+    pub fn value(self) -> i64 {
+        self.0
+    }
     /// Converts duration to a float number of years (for annualized math).
     pub fn to_years_f64(&self) -> f64 {
         if self.0 <= 0 {
@@ -289,13 +279,6 @@ impl DurationMs {
         } else {
             self.0 as f64 / Self::MS_IN_YEAR
         }
-    }
-}
-
-impl Deref for DurationMs {
-    type Target = i64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -315,6 +298,11 @@ impl VolRatio {
         Self(v)
     }
 
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
+    }
+
     /// Calculates the ratio between current and average volume.
     /// Handles division by zero by returning 1.0 (neutral).
     pub fn calculate(current_vol: f64, avg_vol: f64) -> Self {
@@ -323,13 +311,6 @@ impl VolRatio {
         } else {
             Self::new(1.0)
         }
-    }
-}
-
-impl Deref for VolRatio {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -349,12 +330,10 @@ impl Sigma {
         let v = if val < 0.0 { 0.0 } else { val };
         Self(v)
     }
-}
 
-impl Deref for Sigma {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
     }
 }
 
@@ -414,6 +393,16 @@ macro_rules! impl_into_price {
     };
 }
 
+macro_rules! impl_from_price {
+    ($to:ident) => {
+        impl From<Price> for $to {
+            fn from(p: Price) -> Self {
+                $to::new(p.value())
+            }
+        }
+    };
+}
+
 macro_rules! define_price_type {
     ($name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
@@ -450,16 +439,56 @@ macro_rules! define_price_type {
             }
         }
 
-        // impl Deref for $name {
-        //     type Target = f64;
-        //     fn deref(&self) -> &Self::Target {
-        //         &self.0
-        //     }
-        // }
+        impl Div for $name {
+            type Output = f64;
+
+            fn div(self, rhs: Self) -> Self::Output {
+                self.value() / rhs.value()
+            }
+        }
+
+        impl Div<$name> for f64 {
+            type Output = f64;
+
+            fn div(self, rhs: $name) -> Self::Output {
+                self / rhs.value()
+            }
+        }
 
         impl PriceLike for $name {
             fn value(&self) -> f64 {
                 self.0
+            }
+        }
+
+        impl Div<f64> for $name {
+            type Output = $name;
+
+            fn div(self, rhs: f64) -> Self::Output {
+                $name::new(self.value() / rhs)
+            }
+        }
+
+        impl Mul<$name> for f64 {
+            type Output = $name;
+
+            fn mul(self, rhs: $name) -> Self::Output {
+                $name::new(self * rhs.value())
+            }
+        }
+
+        impl $name {
+            #[inline]
+            pub fn abs(self) -> f64 {
+                self.value().abs()
+            }
+        }
+
+        impl Mul<f64> for $name {
+            type Output = $name;
+
+            fn mul(self, rhs: f64) -> Self::Output {
+                $name::new(self.value() * rhs)
             }
         }
 
@@ -496,12 +525,32 @@ define_price_type!(ClosePrice);
 define_price_type!(TargetPrice);
 define_price_type!(StopPrice);
 
+impl Price {
+    #[inline]
+    pub fn clamp(self, min: Price, max: Price) -> Price {
+        if self < min {
+            min
+        } else if self > max {
+            max
+        } else {
+            self
+        }
+    }
+}
+
 impl_into_price!(OpenPrice);
 impl_into_price!(HighPrice);
 impl_into_price!(LowPrice);
 impl_into_price!(ClosePrice);
 impl_into_price!(TargetPrice);
 impl_into_price!(StopPrice);
+
+impl_from_price!(LowPrice);
+impl_from_price!(HighPrice);
+impl_from_price!(OpenPrice);
+impl_from_price!(ClosePrice);
+impl_from_price!(TargetPrice);
+impl_from_price!(StopPrice);
 
 impl_price_compare!(LowPrice, HighPrice);
 impl_price_compare!(HighPrice, LowPrice);
@@ -580,12 +629,10 @@ impl PriceDelta {
     pub const fn new(val: f64) -> Self {
         Self(val) // Deltas can be negative
     }
-}
 
-impl Deref for PriceDelta {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
     }
 }
 
@@ -636,17 +683,11 @@ impl BaseVol {
         Self(v)
     }
 
-    /// Returns the volume as a weight for math (alias for deref)
-    pub fn as_weight(&self) -> f64 {
+    #[inline]
+    pub fn value(self) -> f64 {
         self.0
     }
-}
 
-impl Deref for BaseVol {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
 }
 
 impl std::fmt::Display for BaseVol {
@@ -664,12 +705,10 @@ impl QuoteVol {
         let v = if val < 0.0 { 0.0 } else { val };
         Self(v)
     }
-}
 
-impl Deref for QuoteVol {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
     }
 }
 
@@ -701,12 +740,10 @@ impl Weight {
         let v = if val < 0.0 { 0.0 } else { val };
         Self(v)
     }
-}
 
-impl Deref for Weight {
-    type Target = f64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
     }
 }
 
@@ -753,11 +790,11 @@ impl TradeProfile {
             return AroiPct::new(0.0);
         }
         let factor = 1.0 / years;
-        AroiPct::new(*roi * factor)
+        AroiPct::new(roi.value() * factor)
     }
     /// Returns true if both ROI and AROI meet the minimum thresholds defined in this profile.
     pub fn is_worthwhile(&self, roi_pct: RoiPct, aroi_pct: AroiPct) -> bool {
-        *roi_pct >= *self.min_roi_pct && *aroi_pct >= *self.min_aroi_pct
+        roi_pct >= self.min_roi_pct && aroi_pct >= self.min_aroi_pct
     }
 }
 

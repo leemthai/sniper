@@ -156,7 +156,7 @@ pub fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
 }
 
 #[inline]
-pub fn calculate_stats(data: &[f64]) -> (f64, f64) {
+pub fn mean_and_stddev(data: &[f64]) -> (f64, f64) {
     let count = data.len();
     if count == 0 {
         return (0.0, 0.0);
@@ -175,6 +175,7 @@ pub fn calculate_stats(data: &[f64]) -> (f64, f64) {
     (mean, variance.sqrt())
 }
 
+/// Linearly maps a value from one range to another while preserving its relative proportion.
 pub fn remap(val: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
     let t = (val - in_min) / (in_max - in_min);
     out_min + t * (out_max - out_min)

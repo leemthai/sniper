@@ -1,4 +1,4 @@
-use crate::config::{BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice, PriceLike};
+use crate::config::{BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice, PriceLike, Price};
 
 // Define the CandleType enum
 #[derive(Debug, PartialEq)]
@@ -45,7 +45,7 @@ impl Candle {
 
     // A method to determine the type of candle
     pub fn get_type(&self) -> CandleType {
-        if self.close_price.value() >= self.open_price.value() {
+        if Price::from(self.close_price) >= Price::from(self.open_price) {
             CandleType::Bullish
         } else {
             CandleType::Bearish

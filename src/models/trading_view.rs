@@ -11,7 +11,7 @@ use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
 use crate::config::{
-    AroiPct, DurationMs, OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, RoiPct,
+    AroiPct, DurationMs, OptimizationStrategy, PhPct, Price, QuoteVol, RoiPct,
     StationId, StopPrice, TargetPrice, TradeProfile, ZoneClassificationConfig, ZoneParams,
     constants,
 };
@@ -24,30 +24,30 @@ use crate::models::cva::{CVACore, ScoreType};
 
 use crate::ui::config::UI_TEXT;
 
-use crate::utils::maths_utils::{calculate_stats, normalize_max, smooth_data};
+use crate::utils::maths_utils::{mean_and_stddev, normalize_max, smooth_data};
 
 impl OptimizationStrategy {
     /// Calculate a score based on the strategy
     pub fn calculate_score(&self, roi_pct: RoiPct, duration: DurationMs) -> f64 {
         match self {
-            OptimizationStrategy::MaxROI => *roi_pct,
+            OptimizationStrategy::MaxROI => roi_pct.value(),
             OptimizationStrategy::MaxAROI => {
                 // ROI acts as a hard filter (via Gatekeeper), but we maximize speed here
-                *TradeProfile::calculate_annualized_roi(roi_pct, duration)
+                TradeProfile::calculate_annualized_roi(roi_pct, duration).value()
             }
             OptimizationStrategy::Balanced => {
                 // GEOMETRIC MEAN (Efficiency Score)
                 let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, duration);
 
                 // If trade is losing, score is negative.
-                if *roi_pct <= 0.0 {
-                    return *roi_pct; // Simple fallback for losers
+                if !roi_pct.is_positive() {
+                    return roi_pct.value(); // Simple fallback for losers
                 }
 
                 // If ROI is positive but AROI is massive (tiny duration), sqrt dampens it.
                 // If ROI is massive but AROI is low (long duration), sqrt dampens it.
                 // It peaks when BOTH are healthy.
-                (*roi_pct * *aroi_pct).sqrt()
+                (roi_pct.value() * aroi_pct.value()).sqrt()
             }
         }
     }
@@ -196,8 +196,8 @@ impl TradeOpportunity {
     /// Determines if the trade is dead based on current price action and time.
     pub fn check_exit_condition(
         &self,
-        current_high: impl PriceLike,
-        current_low: impl PriceLike,
+        current_high: Price,
+        current_low: Price,
         current_time: DateTime<Utc>,
     ) -> Option<TradeOutcome> {
         // 1. Check Expiry (Hard Limit)
@@ -209,18 +209,18 @@ impl TradeOpportunity {
         match self.direction {
             TradeDirection::Long => {
                 // Pessimistic: Check Stop first
-                if current_low.value() <= self.stop_price.value() {
+                if current_low <= Price::from(self.stop_price) {
                     return Some(TradeOutcome::StopHit);
                 }
-                if current_high.value() >= self.target_price.value() {
+                if current_high >= Price::from(self.target_price) {
                     return Some(TradeOutcome::TargetHit);
                 }
             }
             TradeDirection::Short => {
-                if current_high.value() >= self.stop_price.value() {
+                if current_high >= Price::from(self.stop_price) {
                     return Some(TradeOutcome::StopHit);
                 }
-                if current_low.value() <= self.target_price.value() {
+                if current_low <= Price::from(self.target_price) {
                     return Some(TradeOutcome::TargetHit);
                 }
             }
@@ -256,13 +256,13 @@ impl TradeOpportunity {
         // Long: (Current - Start) / Start
         // Short: (Start - Current) / Start
         let price_drift_pct = match self.direction {
-            TradeDirection::Long => (current_price - self.start_price) / self.start_price.value(),
-            TradeDirection::Short => (self.start_price - current_price) / self.start_price.value(),
+            TradeDirection::Long => (current_price - self.start_price) / self.start_price,
+            TradeDirection::Short => (self.start_price - current_price) / self.start_price,
         };
 
         // 3. Adjust the ROI
         // If price moved +1% in our favor, our expected return improves by +1% (simplification)
-        RoiPct::new(*base_roi + price_drift_pct)
+        RoiPct::new(base_roi.value() + price_drift_pct)
     }
 
     /// Calculates Annualized ROI based on LIVE price and AVERAGE duration.
@@ -324,7 +324,7 @@ impl SuperZone {
 
         let price_bottom = first.price_bottom;
         let price_top = last.price_top;
-        let price_center = (price_bottom.value() + price_top.value()) / 2.0;
+        let price_center = (price_bottom + price_top) / 2.0;
 
         Self {
             id: first.index,
@@ -338,12 +338,12 @@ impl SuperZone {
 
     /// Check if a price is within this superzone
     pub fn contains(&self, price: Price) -> bool {
-        price.value() >= self.price_bottom.value() && price.value() <= self.price_top.value()
+        price >= self.price_bottom && price <= self.price_top
     }
 
     /// Distance from price to superzone center
     pub fn distance_to(&self, price: Price) -> Price {
-        Price::new((self.price_center.value() - price.value()).abs())
+        Price::new((self.price_center - price).abs())
     }
 }
 
@@ -458,7 +458,7 @@ impl TradingModel {
                     raw_data
                         .iter()
                         .map(|&x| {
-                            if (x / resource_total) >= *params.viability_pct {
+                            if (x / resource_total) >= params.viability_pct.value() {
                                 x
                             } else {
                                 0.0
@@ -471,19 +471,19 @@ impl TradingModel {
 
                 // STEP 2: SMOOTH
                 let smooth_window =
-                    ((zone_count as f64 * *params.smooth_pct).ceil() as usize).max(1) | 1;
+                    ((zone_count as f64 * params.smooth_pct.value()).ceil() as usize).max(1) | 1;
                 let smoothed = smooth_data(&viable_data, smooth_window);
 
                 // STEP 3: NORMALIZE (Max)
                 let normalized = normalize_max(&smoothed);
 
                 // STEP 4: ADAPTIVE THRESHOLD (Relative)
-                let (mean, std_dev) = calculate_stats(&normalized);
+                let (mean, std_dev) = mean_and_stddev(&normalized);
 
                 // Threshold = Mean + (Sigma * StdDev)
                 // We clamp it between 0.05 and 0.95 to prevent
                 // "Selecting Everything" (if flat) or "Selecting Nothing" (if extreme outliers).
-                let adaptive_threshold = (mean + (*params.sigma * std_dev)).clamp(0.05, 0.95);
+                let adaptive_threshold = (mean + (params.sigma.value() * std_dev)).clamp(0.05, 0.95);
 
                 // --- DIAGNOSTIC LOGGING ---
                 #[cfg(debug_assertions)]
@@ -504,7 +504,7 @@ impl TradingModel {
                         _layer_name,
                         cva.pair_name,
                         resource_total,
-                        resource_total * *params.viability_pct,
+                        resource_total * params.viability_pct.value(),
                         mean,
                         std_dev,
                         params.sigma
@@ -529,7 +529,7 @@ impl TradingModel {
                 // --------------------------
 
                 // STEP 5: FIND TARGETS
-                let gap = (zone_count as f64 * *params.gap_pct).ceil() as usize;
+                let gap = (zone_count as f64 * params.gap_pct.value()).ceil() as usize;
                 // Note: We use 'normalized' data against the adaptive threshold.
                 // We SKIP the 'Sharpening/Contrast' step because Z-Score handles the filtering statistically.
                 let targets = find_target_zones(&normalized, adaptive_threshold, gap);
@@ -607,7 +607,7 @@ impl TradingModel {
         self.zones
             .sticky_superzones
             .iter()
-            .filter(|sz| sz.price_center.value() < price.value())
+            .filter(|sz| sz.price_center < price)
             .min_by(|a, b| {
                 a.distance_to(price)
                     .partial_cmp(&b.distance_to(price))
@@ -620,7 +620,7 @@ impl TradingModel {
         self.zones
             .sticky_superzones
             .iter()
-            .filter(|sz| sz.price_center.value() > price.value())
+            .filter(|sz| sz.price_center > price)
             .min_by(|a, b| {
                 a.distance_to(price)
                     .partial_cmp(&b.distance_to(price))

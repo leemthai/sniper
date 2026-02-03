@@ -74,13 +74,13 @@ pub fn tune_to_station(
     {
         if DF.log_tuner {
             log::info!(
-                "📻 TUNER START [{}]: Station '{}' (Target: {:.1}-{:.1}h) | Scan Range: {:.1}%-{:.1}% | Strategy: {}",
+                "📻 TUNER START [{}]: Station '{}' (Target: {:.1}-{:.1}h) | Scan Range: {}-{} | Strategy: {}",
                 ohlcv.pair_interval.name(),
                 station.name,
                 station.target_min_hours,
                 station.target_max_hours,
-                *station.scan_ph_min * 100.0,
-                *station.scan_ph_max * 100.0,
+                station.scan_ph_min,
+                station.scan_ph_max,
                 strategy
             );
         }
@@ -90,12 +90,12 @@ pub fn tune_to_station(
     let steps = constants::TUNER_SCAN_STEPS;
     let mut scan_points = Vec::with_capacity(steps);
     if steps > 1 {
-        let step_size = (*station.scan_ph_max - *station.scan_ph_min) / (steps - 1) as f64;
+        let step_size = (station.scan_ph_max.value() - station.scan_ph_min.value()) / (steps - 1) as f64;
         for i in 0..steps {
-            scan_points.push(*station.scan_ph_min + (i as f64 * step_size));
+            scan_points.push(station.scan_ph_min.value() + (i as f64 * step_size));
         }
     } else {
-        scan_points.push(*station.scan_ph_min); // Fallback
+        scan_points.push(station.scan_ph_min.value()); // Fallback
     }
 
     // 2. Run Simulations
@@ -113,7 +113,7 @@ pub fn tune_to_station(
             let duration_hours = result
                 .opportunities
                 .iter()
-                .map(|o| *o.avg_duration_ms)
+                .map(|o| o.avg_duration_ms.value())
                 .sum::<i64>() as f64
                 / count as f64 / 3_600_000.0;
 
@@ -211,7 +211,7 @@ fn simulate_target(
     crate::trace_time!("Worker: Simulate Target", 500, {
         // let profile = &ctx.config.journey.profile;
 
-        let direction = if target_price.value() > ctx.current_price.value() {
+        let direction = if Price::from(target_price) > ctx.current_price {
             TradeDirection::Long
         } else {
             TradeDirection::Short
@@ -285,8 +285,8 @@ fn simulate_target(
 fn apply_diversity_filter(
     candidates: Vec<CandidateResult>,
     _pair_name: &str,
-    range_min: f64,
-    range_max: f64,
+    range_min: Price,
+    range_max: Price,
     _strategy: OptimizationStrategy,
 ) -> Vec<TradeOpportunity> {
     if candidates.is_empty() {
@@ -314,7 +314,7 @@ fn apply_diversity_filter(
             for (i, c) in debug_view.iter().take(5).enumerate() {
                 let roi = c.opportunity.expected_roi();
                 let dur_ms = c.opportunity.avg_duration_ms;
-                let dur_str = TimeUtils::format_duration(*dur_ms);
+                let dur_str = TimeUtils::format_duration(dur_ms.value());
                 let aroi = TradeProfile::calculate_annualized_roi(roi, dur_ms);
 
                 log::info!(
@@ -335,7 +335,7 @@ fn apply_diversity_filter(
         .map(|c| c.score)
         .fold(f64::NEG_INFINITY, f64::max);
 
-    let qualifying_score = global_best_score * *cutoff_ratio;
+    let qualifying_score = global_best_score * cutoff_ratio.value();
 
     #[cfg(debug_assertions)]
     if DF.log_pathfinder {
@@ -357,7 +357,7 @@ fn apply_diversity_filter(
 
     for cand in candidates {
         // Determine Region Index
-        let offset = cand.opportunity.target_price.value() - range_min;
+        let offset = Price::from(cand.opportunity.target_price) - range_min;
         // Clamp index to 0..regions-1 (handle edge cases where price == max)
         let idx = ((offset / bucket_size).floor() as usize).min(regions - 1);
 
@@ -467,9 +467,9 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
             let start_price = ctx.ohlcv.close_prices[*start_idx];
             let end_price = ctx.ohlcv.close_prices[end_idx];
 
-            if end_price.value() > start_price.value() {
+            if end_price > start_price {
                 up_votes += 1;
-            } else if end_price.value() < start_price.value() {
+            } else if end_price < start_price {
                 down_votes += 1;
             }
         }
@@ -510,23 +510,23 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
     }
 
     // Pre-calculate ranges and booleans to avoid repeated math in the loop
-    let long_start = ctx.current_price.value() * (1.0 + *price_buffer_pct);
-    let short_end = ctx.current_price.value() * (1.0 - *price_buffer_pct);
+    let long_start = ctx.current_price * (1.0 + price_buffer_pct.value());
+    let short_end = ctx.current_price * (1.0 - price_buffer_pct.value());
 
     // Combine PH constraints with Bias constraints
-    let long_active = (ctx.price_max.value() > long_start) && bias_long;
-    let short_active = (ctx.price_min.value() < short_end) && bias_short;
+    let long_active = (ctx.price_max > long_start) && bias_long;
+    let short_active = (ctx.price_min < short_end) && bias_short;
     // log::error!("{}: long active is {} short active is {}", ctx.pair_name, long_active, short_active);
 
     // Calculate step sizes
     let long_step_size = if long_active {
-        (ctx.price_max.value() - long_start) / steps as f64
+        (Price::from(ctx.price_max) - long_start) / steps as f64
     } else {
         0.0
     };
 
     let short_step_size = if short_active {
-        (short_end - ctx.price_min.value()) / steps as f64
+        (short_end - Price::from(ctx.price_min)) / steps as f64
     } else {
         0.0
     };
@@ -540,7 +540,7 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
 
                 // 1. Long Scout Logic
                 if long_active {
-                    let target = long_start + (i as f64 * long_step_size);
+                    let target = long_start + Price::from(i as f64 * long_step_size);
                     if let Some(res) = simulate_target(
                         ctx,
                         TargetPrice::new(target),
@@ -554,7 +554,7 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
 
                 // 2. Short Scout Logic
                 if short_active {
-                    let target = ctx.price_min.value() + (i as f64 * short_step_size);
+                    let target = Price::from(ctx.price_min) + Price::from(i as f64 * short_step_size);
                     if let Some(res) = simulate_target(
                         ctx,
                         TargetPrice::new(target),
@@ -622,13 +622,13 @@ fn run_drill_phase(
     crate::trace_time!("Pathfinder: Phase B (Drill)", 2000, {
         let mut drill_targets = Vec::new();
 
-        let grid_step_pct = (ctx.price_max.value() - ctx.price_min.value()) / ctx.current_price.value() / steps as f64;
+        let grid_step_pct = (Price::from(ctx.price_max) - Price::from(ctx.price_min)) / ctx.current_price / steps as f64;
         let drill_offset_pct = grid_step_pct * drill_offset_factor;
         let dedup_radius = grid_step_pct * 100.0;
 
         // NEW: Adaptive Cutoff Score
         let best_score = candidates[0].score;
-        let score_threshold = best_score * *drill_cutoff_pct;
+        let score_threshold = best_score * drill_cutoff_pct.value();
 
         #[cfg(debug_assertions)]
         if DF.log_pathfinder {
@@ -695,13 +695,13 @@ fn run_drill_phase(
             .par_iter()
             .flat_map(|&scout_idx| {
                 let scout = &candidates[scout_idx];
-                let base_target = scout.opportunity.target_price.value();
+                let base_target: Price = scout.opportunity.target_price.into();
                 let mut local_batch = Vec::with_capacity(3);
 
                 // A. Promote Scout
                 if let Some(res) = simulate_target(
                     ctx,
-                    TargetPrice::new(base_target),
+                    TargetPrice::from(base_target),
                     &scout.source_desc,
                     full_risks,
                     full_samples,
@@ -713,7 +713,7 @@ fn run_drill_phase(
                 // B. Drill Up
                 if let Some(res) = simulate_target(
                     ctx,
-                    TargetPrice::new(base_target * (1.0 + drill_offset_pct)),
+                    TargetPrice::from(base_target * (1.0 + drill_offset_pct)),
                     &format!("drill_{}_up", scout_idx),
                     full_risks,
                     full_samples,
@@ -723,7 +723,7 @@ fn run_drill_phase(
                 // C. Drill Down
                 if let Some(res) = simulate_target(
                     ctx,
-                    TargetPrice::new(base_target * (1.0 - drill_offset_pct)),
+                    TargetPrice::from(base_target * (1.0 - drill_offset_pct)),
                     &format!("drill_{}_down", scout_idx),
                     full_risks,
                     full_samples,
@@ -851,8 +851,8 @@ pub fn run_pathfinder_simulations(
     let final_opps: Vec<TradeOpportunity> = apply_diversity_filter(
         drill_results,
         ctx.pair_name,
-        ctx.price_min.value(),
-        ctx.price_max.value(),
+        Price::from(ctx.price_min),
+        Price::from(ctx.price_max),
         strategy,
     );
     // Return everything
@@ -885,10 +885,10 @@ fn run_stop_loss_tournament(
         let mut best_result: Option<(SimulationResult, StopPrice, f64)> = None; // (Result, Stop, Ratio)
         let mut valid_variants = Vec::new();
 
-        let target_dist_abs = (target_price.value() - current_price.value()).abs();
+        let target_dist_abs = (Price::from(target_price) - current_price).abs();
 
         // 1. Safety Check: Volatility Floor.
-        let vol_floor_pct = *current_state.volatility_pct * 2.0;
+        let vol_floor_pct = current_state.volatility_pct.value() * 2.0;
         let min_stop_dist = current_price.value() * vol_floor_pct;
 
         // Logging setup
@@ -929,8 +929,8 @@ fn run_stop_loss_tournament(
             }
 
             let candidate_stop = match direction {
-                TradeDirection::Long => StopPrice::new(current_price.value() - stop_dist),
-                TradeDirection::Short => StopPrice::new(current_price.value() + stop_dist),
+                TradeDirection::Long => StopPrice::from(current_price - Price::new(stop_dist)),
+                TradeDirection::Short => StopPrice::from(current_price + Price::new(stop_dist)),
             };
 
             // 3. Simulation
@@ -1056,7 +1056,7 @@ fn perform_standard_analysis(
     tx: Sender<JobResult>,
 ) {
     let ph_pct = req.ph_pct;
-    let base_label = format!("{} @ {:.2}%", req.pair_name, *ph_pct * 100.0);
+    let base_label = format!("{} @ {}", req.pair_name, ph_pct);
 
     crate::trace_time!(&format!("Total JOB [{}]", base_label), 10_000, {
         let start = AppInstant::now();

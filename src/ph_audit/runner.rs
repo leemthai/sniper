@@ -112,14 +112,14 @@ fn run_single_simulation(
     // DISPLAY LOGIC: Convert ms to hours for CSV readability
     let durations_hours: Vec<f64> = opportunities.iter()
         .take(5)
-        .map(|o| *o.avg_duration_ms as f64 / 3_600_000.0) 
+        .map(|o| o.avg_duration_ms.value() as f64 / 3_600_000.0) 
         .collect();
     
     // Avg Stop Loss %
     let top_5_b = opportunities.iter().take(5);
     let avg_stop: Option<f64> = if count > 0 {
         let sum: f64 = top_5_b.clone()
-            .map(|o| (o.stop_price.value() - o.start_price.value()).abs() / o.start_price.value())
+            .map(|o| (Price::from(o.stop_price) - o.start_price).abs() / o.start_price)
             .sum();
         Some(sum / top_5_b.count() as f64)
     } else {

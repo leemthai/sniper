@@ -11,7 +11,7 @@ use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 use crate::analysis::range_gap_finder::GapReason;
 
 use crate::config::{
-    CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, constants, PriceLike
+    CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike, constants,
 };
 
 use crate::config::plot::PLOT_CONFIG;
@@ -63,8 +63,8 @@ impl PlotLayer for OpportunityLayer {
                 // Map key points to screen space
                 let current_pos_screen =
                     plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, current_price.value()));
-                let target_pos_screen =
-                    plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, op.target_price.value()));
+                let target_pos_screen = plot_ui
+                    .screen_from_plot(PlotPoint::new(x_center_plot, op.target_price.value()));
                 let sl_pos_screen =
                     plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, op.stop_price.value()));
 
@@ -161,8 +161,12 @@ impl PlotLayer for HorizonLinesLayer {
         let x_right = ctx.clip_rect.right();
 
         // Map Prices to Screen Y
-        let y_screen_max = plot_ui.screen_from_plot(PlotPoint::new(0.0, ph_max.value())).y;
-        let y_screen_min = plot_ui.screen_from_plot(PlotPoint::new(0.0, ph_min.value())).y;
+        let y_screen_max = plot_ui
+            .screen_from_plot(PlotPoint::new(0.0, ph_max.value()))
+            .y;
+        let y_screen_min = plot_ui
+            .screen_from_plot(PlotPoint::new(0.0, ph_min.value()))
+            .y;
 
         // Top Line
         draw_dashed_line(
@@ -326,7 +330,7 @@ fn draw_split_candle(
 ) {
     let (ph_min, ph_max) = ph_bounds;
 
-    let is_bullish = close.value() >= open.value();
+    let is_bullish = Price::from(close) >= Price::from(open);
     let base_color = if is_bullish {
         PLOT_CONFIG.candle_bullish_color
     } else {
@@ -336,27 +340,32 @@ fn draw_split_candle(
     let ghost_color = base_color.linear_multiply(0.2);
 
     // --- 1. WICKS ---
+    let open_p: Price = open.into();
+    let close_p: Price = close.into();
+    let high_p: Price = high.into();
+    let low_p: Price = low.into();
+    let ph_min_p: Price = ph_min.into();
+    let ph_max_p: Price = ph_max.into();
 
     // A. Bottom Ghost Wick (Below ph_min)
     // Range: [low, min(high, ph_min)]
-    let bg_wick_top = high.value().min(ph_min.value());
-    let bg_wick_bot = low.value();
+    let bg_wick_top = if high_p < ph_min_p { high_p } else { ph_min_p };
+    let bg_wick_bot = low_p;
     if bg_wick_top > bg_wick_bot {
         draw_wick_line(ui, x, bg_wick_top, bg_wick_bot, ghost_color, min_x);
     }
-
     // B. Top Ghost Wick (Above ph_max)
     // Range: [max(low, ph_max), high]
-    let tg_wick_top = high.value();
-    let tg_wick_bot = low.value().max(ph_max.value());
+    let tg_wick_top = high_p;
+    let tg_wick_bot = if low_p > ph_max_p { low_p } else { ph_max_p };
     if tg_wick_top > tg_wick_bot {
         draw_wick_line(ui, x, tg_wick_top, tg_wick_bot, ghost_color, min_x);
     }
 
     // C. Solid Wick (Inside Zone)
     // Range: [max(low, ph_min), min(high, ph_max)]
-    let solid_wick_top = high.value().min(ph_max.value());
-    let solid_wick_bot = low.value().max(ph_min.value());
+    let solid_wick_top = if open_p > close_p { open_p } else { close_p };
+    let solid_wick_bot = if open_p > close_p { close_p } else { open_p };
     if solid_wick_top > solid_wick_bot {
         draw_wick_line(ui, x, solid_wick_top, solid_wick_bot, base_color, min_x);
     }
@@ -406,15 +415,18 @@ fn draw_split_candle(
 }
 
 #[inline]
-fn draw_wick_line(ui: &mut PlotUi, x: f64, top: f64, bottom: f64, color: Color32, min_x: f64) {
-    if x < min_x || top <= bottom + f64::EPSILON {
+fn draw_wick_line(ui: &mut PlotUi, x: f64, top: Price, bottom: Price, color: Color32, min_x: f64) {
+    if x < min_x || top <= bottom {
         return;
     }
 
     ui.line(
-        Line::new("", PlotPoints::new(vec![[x, bottom], [x, top]]))
-            .color(color)
-            .width(PLOT_CONFIG.candle_wick_width),
+        Line::new(
+            "",
+            PlotPoints::new(vec![[x, bottom.value()], [x, top.value()]]),
+        )
+        .color(color)
+        .width(PLOT_CONFIG.candle_wick_width),
     );
 }
 
@@ -517,7 +529,6 @@ pub struct StickyZoneLayer;
 
 impl PlotLayer for StickyZoneLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
-        
         if !ctx.visibility.sticky {
             return;
         }
@@ -691,7 +702,9 @@ impl PlotLayer for PriceLineLayer {
             let width = PLOT_CONFIG.current_price_line_width; // Use standard width
 
             // Map Price to Screen Y
-            let y_screen = plot_ui.screen_from_plot(PlotPoint::new(0.0, price.value())).y;
+            let y_screen = plot_ui
+                .screen_from_plot(PlotPoint::new(0.0, price.value()))
+                .y;
 
             // Draw Simple Solid Line across width
             painter.line_segment(
@@ -746,22 +759,25 @@ fn draw_superzone(
     let z_x_max = x_max - margin;
     let z_x_center = z_x_min + (actual_width / 2.0);
 
+    let top_p = superzone.price_top.value();
+    let bottom_p = superzone.price_bottom.value();
+
     let points_vec = match shape {
         ZoneShape::Rectangle => vec![
-            [z_x_min, superzone.price_bottom.value()],
-            [z_x_max, superzone.price_bottom.value()],
-            [z_x_max, superzone.price_top.value()],
-            [z_x_min, superzone.price_top.value()],
+            [z_x_min, bottom_p],
+            [z_x_max, bottom_p],
+            [z_x_max, top_p],
+            [z_x_min, top_p],
         ],
         ZoneShape::TriangleUp => vec![
-            [z_x_min, superzone.price_bottom.value()], // Bottom Left
-            [z_x_max, superzone.price_bottom.value()], // Bottom Right
-            [z_x_center, superzone.price_top.value()], // Top Point
+            [z_x_min, bottom_p], // Bottom Left
+            [z_x_max, bottom_p], // Bottom Right
+            [z_x_center, top_p], // Top Point
         ],
         ZoneShape::TriangleDown => vec![
-            [z_x_min, superzone.price_top.value()],       // Top Left
-            [z_x_max, superzone.price_top.value()],       // Top Right
-            [z_x_center, superzone.price_bottom.value()], // Bottom Point
+            [z_x_min, top_p],       // Top Left
+            [z_x_max, top_p],       // Top Right
+            [z_x_center, bottom_p], // Bottom Point
         ],
     };
 
@@ -778,8 +794,8 @@ fn draw_superzone(
 
     // Manual Hit Test
     if let Some(pointer) = plot_ui.pointer_coordinate() {
-        if pointer.y >= superzone.price_bottom.value()
-            && pointer.y <= superzone.price_top.value()
+        if pointer.y >= bottom_p
+            && pointer.y <= top_p
             && pointer.x >= z_x_min
             && pointer.x <= z_x_max
         {

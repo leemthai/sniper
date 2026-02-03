@@ -50,7 +50,7 @@ impl OpportunityLedger {
 
         // 3. Evaluate Match using Configured Tolerance
         if let Some((id, diff_pct)) = closest_match {
-            if diff_pct < *tolerance_pct {
+            if diff_pct < tolerance_pct.value() {
                 // LOGGING (Drift Detection)
                 #[cfg(debug_assertions)]
                 {
@@ -146,7 +146,7 @@ impl OpportunityLedger {
                     // Same strategy and stationId so preserve the best one
                     let pct_diff = a.target_price.percent_diff(&b.target_price);
 
-                    if pct_diff < *tolerance_pct {
+                    if pct_diff < tolerance_pct.value() {
                         let score_a = a.calculate_quality_score();
                         let score_b = b.calculate_quality_score();
                         let (_winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
@@ -186,7 +186,7 @@ impl OpportunityLedger {
             // LOGGING  EVOLVE
             #[cfg(debug_assertions)]
             if DF.log_ledger {
-                if (*existing.expected_roi() - *new_opp.expected_roi()).abs() > 0.1 {
+                if (existing.expected_roi().value() - new_opp.expected_roi().value()).abs() > 0.1 {
                     log::info!(
                         "LEDGER EVOLVE [{}]: ID {} kept. Target: {:.2} -> {:.2} | ROI {} -> {} (Win: {}->{}) | SL: {:.2} -> {:.2}",
                         new_opp.pair_name,

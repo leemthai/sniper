@@ -56,11 +56,11 @@ impl AuditReporter {
         let stop_str = avg_stop_pct.map(|v| format!("{:.4}%", v * 100.0)).unwrap_or_else(|| "".to_string());
 
         let row = format!(
-            "{},{},{},{:.1}%,{},{},{},{},{},{},{},{}{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{}{}",
             ts,
             pair,
             strategy,
-            *ph_pct * 100.0,
+            ph_pct,
             trend_k,
             sim_k,
             total_candles,

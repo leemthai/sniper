@@ -140,8 +140,8 @@ impl MarketDataStorage for SqliteStorage {
                     .push_bind(c.high_price.value())
                     .push_bind(c.low_price.value())
                     .push_bind(c.close_price.value())
-                    .push_bind(*c.base_asset_volume)
-                    .push_bind(*c.quote_asset_volume);
+                    .push_bind(c.base_asset_volume.value())
+                    .push_bind(c.quote_asset_volume.value());
             });
 
             let query = query_builder.build();

@@ -544,8 +544,8 @@ impl ZoneSniperApp {
             return;
         }
 
-        let change = current_price.value() * percent;
-        let new_price = current_price.value() + change;
+        let change = current_price * percent;
+        let new_price = current_price + change;
 
         self.simulated_prices
             .insert(pair.clone(), Price::new(new_price));
@@ -578,20 +578,20 @@ impl ZoneSniperApp {
                 let target = match self.sim_direction {
                     SimDirection::Up => superzones
                         .iter()
-                        .filter(|sz| sz.price_center.value() > current_price.value())
+                        .filter(|sz| sz.price_center > current_price)
                         .min_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
                     SimDirection::Down => superzones
                         .iter()
-                        .filter(|sz| sz.price_center.value() < current_price.value())
+                        .filter(|sz| sz.price_center < current_price)
                         .max_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
                 };
 
                 if let Some(target_zone) = target {
                     let jump_price = match self.sim_direction {
-                        SimDirection::Up => target_zone.price_center.value() * 1.0001,
-                        SimDirection::Down => target_zone.price_center.value() * 0.9999,
+                        SimDirection::Up => target_zone.price_center * 1.0001,
+                        SimDirection::Down => target_zone.price_center * 0.9999,
                     };
-                    self.simulated_prices.insert(pair, Price::new(jump_price));
+                    self.simulated_prices.insert(pair, jump_price);
                 }
             }
         }

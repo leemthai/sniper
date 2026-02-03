@@ -1,13 +1,12 @@
 // use std::collections::HashMap;
 use eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2};
 
-use crate::config::{TICKER, constants, Price, PriceLike};
+use crate::config::{Price, PriceLike, TICKER, constants};
 use crate::engine::SniperEngine;
 
 use crate::models::timeseries;
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
-
 
 pub struct TickerItem {
     pub symbol: String,
@@ -42,7 +41,6 @@ impl Default for TickerState {
 }
 
 impl TickerState {
-
     pub fn update_data(&mut self, engine: &SniperEngine) {
         // In WASM, we don't update from engine, we use static demo text
         if cfg!(target_arch = "wasm32") {
@@ -220,14 +218,15 @@ impl TickerState {
 
     // Helper: Single source of truth for % calculation
     fn calculate_pct(&self, item: &TickerItem) -> f64 {
-        let old_price = item.price.value() - item.change;
+        let price_p: Price = item.price;
+        let old_price = price_p.value() - item.change;
+
         if old_price.abs() > f64::EPSILON {
             (item.change / old_price) * 100.0
         } else {
             0.0
         }
     }
-
 
     pub fn render(&mut self, ui: &mut Ui) -> Option<String> {
         // Calculate EXACT delta time since last frame
