@@ -45,8 +45,10 @@ pub struct LogFlags {
 }
 
 pub const DF: LogFlags = LogFlags {
+    log_engine: true,
+
     log_selected_opportunity: false,
-    log_strategy_selection: true,
+    log_strategy_selection: false,
 
     log_tuner: false,
     log_station_overrides: false,
@@ -59,7 +61,6 @@ pub const DF: LogFlags = LogFlags {
     log_simulation_events: false,
     log_ledger: false,
     log_results_repo: false,
-    log_engine: false,
     log_pathfinder: false,
     log_zones: false,
     log_selected_pair: false,

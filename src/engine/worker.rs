@@ -657,7 +657,7 @@ fn run_drill_phase(
             let mut is_distinct = true;
             for &picked_idx in &drill_targets {
                 let picked: &CandidateResult = &candidates[picked_idx];
-                let pct_diff = candidate.opportunity.target_price.percent_diff(&picked.opportunity.target_price);
+                let pct_diff = candidate.opportunity.target_price.percent_diff_0_100(&picked.opportunity.target_price);
 
                 if candidate.opportunity.direction == picked.opportunity.direction
                     && pct_diff < dedup_radius
@@ -976,7 +976,7 @@ fn run_stop_loss_tournament(
 
                 #[cfg(debug_assertions)]
                 if DF.log_pathfinder {
-                    let risk_pct = candidate_stop.percent_diff(&current_price);
+                    let risk_pct = candidate_stop.percent_diff_0_100(&current_price);
                     let status_icon = if is_worthwhile { "✅" } else { "🔻" };
                     log::info!(
                         "   [R:R {:.1}] {} Stop: {} | {}: {} | ROI: {} | AROI: {} | Risk: {:.2}%",

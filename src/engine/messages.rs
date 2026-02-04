@@ -2,7 +2,6 @@ use std::sync::{Arc, RwLock};
 use crate::config::{OptimizationStrategy, StationId, PhPct, Price};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::models::cva::CVACore;
-use crate::models::horizon_profile::HorizonProfile;
 use crate::models::trading_view::TradingModel;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,12 +16,14 @@ pub enum JobMode {
 }
 
 /// A request to calculate a model for a specific pair
+/// /// Invariant:
+/// - Each JobRequest is immutable
+/// - Exactly one JobRequest per pair may be in-flight
 #[derive(Debug, Clone)]
 pub struct JobRequest {
     pub pair_name: String,
     pub current_price: Option<Price>,
     pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
-    pub existing_profile: Option<HorizonProfile>,
     pub ph_pct: PhPct,
     pub strategy: OptimizationStrategy,
     pub station_id: StationId,

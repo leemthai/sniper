@@ -440,7 +440,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         cp_init_engine: "Initializing Engine".to_string(),
         cp_please_select_pair: "Please select a pair.".to_string(),
         cp_analyzing: "Analyzing".to_string(),
-        cp_calculating_zones: "Calculating Zones...".to_string(),
+        cp_calculating_zones: "Engine is busy calculating... please wait...".to_string(),
         cp_queued: "Queued".to_string(),
         cp_wait_thread: "Waiting for worker thread...".to_string(),
         cp_wait_prices: "Waiting for Prices...".to_string(),

@@ -91,9 +91,9 @@ impl PhPct {
         self.0
     }
 
-    pub fn format_pct(&self) -> String {
-        format!("{:.2}%", self.0 * 100.0)
-    }
+    // pub fn format_pct(&self) -> String {
+    //     format!("{:.2}%", self.0 * 100.0)
+    // }
 }
 
 impl Default for PhPct {
@@ -104,7 +104,7 @@ impl Default for PhPct {
 
 impl std::fmt::Display for PhPct {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:.4}", self.0)
+        write!(f, "{:.4}%", self.0 * 100.)
     }
 }
 
@@ -353,12 +353,20 @@ pub trait PriceLike {
         self.value() > Self::MIN_EPSILON
     }
 
-    fn percent_diff<R: PriceLike>(&self, reference: &R) -> f64 {
+    fn percent_diff_0_100<R: PriceLike>(&self, reference: &R) -> f64 {
         if !reference.is_positive() {
             return 0.0;
         }
 
         (self.value() - reference.value()).abs() / reference.value() * 100.0
+    }
+
+    fn percent_diff_0_1<R: PriceLike>(&self, reference: &R) -> f64 {
+        if !reference.is_positive() {
+            return 0.0;
+        }
+
+        (self.value() - reference.value()).abs() / reference.value()
     }
 
     /// Formats a price with "Trader Precision" adaptive decimals.
@@ -687,7 +695,6 @@ impl BaseVol {
     pub fn value(self) -> f64 {
         self.0
     }
-
 }
 
 impl std::fmt::Display for BaseVol {

@@ -365,8 +365,8 @@ impl ZoneSniperApp {
                     &format!("{}", calc_price),
                     PLOT_CONFIG.color_text_neutral,
                 );
-                let target_dist = op.target_price.percent_diff(&calc_price);
-                let stop_dist = op.stop_price.percent_diff(&calc_price);
+                let target_dist = op.target_price.percent_diff_0_100(&calc_price);
+                let stop_dist = op.stop_price.percent_diff_0_100(&calc_price);
 
                 // TARGET ROW
                 ui.horizontal(|ui| {
@@ -1530,8 +1530,8 @@ impl ZoneSniperApp {
 
                             // Update global context & Fire
                             // engine.update_config(self.app_config.clone());
-                            // FIX: Use force_recalc to update ONLY this pair
-                            engine.force_recalc(
+                            // FIX: Use invalidate_pair_and_recalc to update ONLY this pair
+                            engine.invalidate_pair_and_recalc(
                                 &pair_name,
                                 None,
                                 best_ph_pct,
@@ -1766,7 +1766,7 @@ impl ZoneSniperApp {
                 let mut should_close = false;
 
                 for (i, variant) in op.variants.iter().enumerate() {
-                    let risk_pct = variant.stop_price.percent_diff(&op.start_price);
+                    let risk_pct = variant.stop_price.percent_diff_0_100(&op.start_price);
                     let win_rate = variant.simulation.success_rate;
 
                     let text = format!(

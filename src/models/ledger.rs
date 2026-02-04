@@ -43,7 +43,7 @@ impl OpportunityLedger {
             .values()
             .filter(|op| op.pair_name == new_opp.pair_name && op.direction == new_opp.direction)
             .map(|op| {
-                let pct_diff = op.target_price.percent_diff(&new_opp.target_price);
+                let pct_diff = op.target_price.percent_diff_0_100(&new_opp.target_price);
                 (op.id.clone(), pct_diff)
             })
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
@@ -144,7 +144,7 @@ impl OpportunityLedger {
                     }
 
                     // Same strategy and stationId so preserve the best one
-                    let pct_diff = a.target_price.percent_diff(&b.target_price);
+                    let pct_diff = a.target_price.percent_diff_0_100(&b.target_price);
 
                     if pct_diff < tolerance_pct.value() {
                         let score_a = a.calculate_quality_score();

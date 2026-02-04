@@ -16,6 +16,7 @@ use crate::data::price_stream::PriceStreamManager;
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
 use crate::data::timeseries::TimeSeriesCollection;
 
+use crate::models::horizon_profile::HorizonProfile;
 use crate::models::ledger::OpportunityLedger;
 use crate::models::timeseries::{LiveCandle, find_matching_ohlcv};
 use crate::models::trading_view::{
@@ -27,10 +28,34 @@ use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 
 use super::messages::{JobMode, JobRequest, JobResult};
-use super::state::PairState;
 use super::worker;
 
+/// Represents the state of a single pair in the engine.
 #[derive(Debug, Clone)]
+pub struct PairRuntime {
+    pub model: Option<Arc<TradingModel>>,
+    pub horizon_profile: Option<HorizonProfile>,
+
+    /// Metadata for the trigger system
+    pub last_update_price: Price,
+    /// Is a worker currently crunching this pair?
+    pub is_calculating: bool,
+    /// Last error (if any) to show in UI
+    pub last_error: Option<String>,
+}
+
+impl PairRuntime {
+    pub fn new() -> Self {
+        Self {
+            model: None,
+            horizon_profile: None,
+            last_update_price: Price::default(),
+            is_calculating: false,
+            last_error: None,
+        }
+    }
+}
+
 pub struct EngineJob {
     pub pair: String,
     pub price_override: Option<Price>,
@@ -42,7 +67,7 @@ pub struct EngineJob {
 
 pub struct SniperEngine {
     /// Pair registry
-    pub pairs_states: HashMap<String, PairState>, // Keep track of the state of all pairs (not part of SharedConfiguration)
+    pub pairs_states: HashMap<String, PairRuntime>, // Keep track of the state of all pairs (not part of SharedConfiguration)
 
     pub shared_config: SharedConfiguration, // Share information between ui and engine (for variables either side can update via Arc<RwLock)
     // pub engine_strategy: OptimizationStrategy,
@@ -78,8 +103,29 @@ pub struct SniperEngine {
 }
 
 impl SniperEngine {
+    fn enqueue_or_replace(&mut self, job: EngineJob) {
+        // Remove any existing queued job for the same pair
+        if let Some(pos) = self.queue.iter().position(|j| j.pair == job.pair) {
+            #[cfg(debug_assertions)]
+            if DF.log_engine {
+                log::info!("ENGINE QUEUE: Replacing queued job for pair [{}]", job.pair);
+            }
+            self.queue.remove(pos);
+        } else {
+            #[cfg(debug_assertions)]
+            if DF.log_engine {
+                log::info!("ENGINE QUEUE: Enqueuing new job for pair [{}]", job.pair);
+            }
+        }
+
+        self.queue.push_back(job);
+    }
+
     /// Initialize the engine, spawn workers, and start the price stream.
-    pub fn new(timeseries: TimeSeriesCollection, shared_config: SharedConfiguration) -> Self {
+    pub(crate) fn new(
+        timeseries: TimeSeriesCollection,
+        shared_config: SharedConfiguration,
+    ) -> Self {
         // 1. Create Channels
         let (candle_tx, candle_rx) = channel();
         let (job_tx, job_rx) = channel::<JobRequest>();
@@ -97,7 +143,7 @@ impl SniperEngine {
         let mut pairs_states = HashMap::new();
         {
             for pair in shared_config.get_all_pairs().clone() {
-                pairs_states.insert(pair, PairState::new());
+                pairs_states.insert(pair, PairRuntime::new());
             }
         }
 
@@ -162,40 +208,303 @@ impl SniperEngine {
         }
     }
 
-    /// INTENT: The User clicked a specific Trade Opportunity.
-    /// Action: Calculate CVA Zones for this specific PH so the chart looks right,
-    /// but DO NOT re-run simulations (preserve the trade list).
-    pub fn request_trade_context(&mut self, pair_name: String, target_ph: PhPct) {
-        // 2. Set Override (so the worker picks it up)
-        self.shared_config.insert_ph(pair_name.clone(), target_ph);
-        let station_id = self.shared_config.get_station(&pair_name).expect(&format!(
-            "PAIR {} with ph_pct {} UNEXPECTEDLY not found in shared_config {:?}",
-            pair_name, target_ph, self.shared_config
-        )); // This should now crash if None is encountered. Better than reverting to default I think
-        #[cfg(debug_assertions)]
-        if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
-            log::info!(
-                "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in request_trade_context() and the full shared_config is {:?}",
-                station_id,
-                &pair_name,
-                self.shared_config,
-            );
-        }
-        // 3. Dispatch Context-Only Job
-        self.force_recalc(
-            &pair_name,
-            None,
-            target_ph,
-            self.shared_config.get_strategy(),
-            station_id,
-            JobMode::ContextOnly,
-            "TRADE CONTEXT",
-        )
-        // }
+    /// Generates the master list for the Trade Finder.
+    pub(crate) fn get_trade_finder_rows(
+        &self,
+        overrides: Option<&HashMap<String, Price>>,
+    ) -> Vec<TradeFinderRow> {
+        crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
+            let mut rows = Vec::new();
+
+            let now_ms = TimeUtils::now_timestamp_ms();
+            let day_ms = 86_400_000;
+
+            // 1. Group Ledger Opportunities by Pair for fast lookup
+            let mut ops_by_pair: HashMap<String, Vec<&TradeOpportunity>> = HashMap::new();
+            for op in self.engine_ledger.get_all() {
+                ops_by_pair
+                    .entry(op.pair_name.clone())
+                    .or_default()
+                    .push(op);
+            }
+
+            let ts_guard = self.timeseries.read().unwrap();
+
+            for (pair, _state) in &self.pairs_states {
+                // 2. Get Context (Price)
+                // STRICT MODE: Do not default to 0.0. If no price, skip the pair.
+                let price_opt = overrides
+                    .and_then(|map| map.get(pair).copied())
+                    .or_else(|| self.price_stream.get_price(pair));
+
+                let current_price = match price_opt {
+                    Some(p) if p.is_positive() => p,
+                    _ => continue,
+                };
+
+                // 3. Calculate Volume & Market State (From TimeSeries)
+                // We do this for every pair regardless of whether it has ops
+                let mut vol_24h = QuoteVol::new(0.0);
+
+                if let Some(ts) = ts_guard
+                    .series_data
+                    .iter()
+                    .find(|t| t.pair_interval.name() == pair)
+                {
+                    let count = ts.klines();
+                    if count > 0 {
+                        let current_idx = count - 1;
+                        // m_state = MarketState::calculate(ts, current_idx, lookback);
+                        for i in (0..=current_idx).rev() {
+                            let c = ts.get_candle(i);
+                            if now_ms - c.timestamp_ms > day_ms {
+                                break;
+                            }
+                            vol_24h += c.quote_asset_volume;
+                        }
+                    }
+                }
+
+                // 4. Retrieve & Explode Opportunities (From Ledger)
+                // Default to empty slice if no ops found for this pair
+                let raw_ops = ops_by_pair.get(pair).map(|v| v.as_slice()).unwrap_or(&[]);
+
+                // Filter worthwhile trades (Static ROI check)
+                let valid_ops: Vec<&TradeOpportunity> = raw_ops
+                    .iter()
+                    .filter(|&&op| op.expected_roi().is_positive())
+                    .map(|&op| op)
+                    .collect();
+
+                let total_ops = valid_ops.len();
+
+                if total_ops > 0 {
+                    // Create a ROW for EACH Opportunity
+                    for op in valid_ops {
+                        rows.push(TradeFinderRow {
+                            pair_name: pair.clone(),
+                            quote_volume_24h: vol_24h,
+                            market_state: Some(op.market_state),
+                            opportunity_count_total: total_ops,
+                            opportunity: Some(op.clone()),
+                            current_price: current_price,
+                        });
+                    }
+                } else {
+                    // No valid trades, push 1 placeholder row (for "All Pairs" view)
+                    rows.push(TradeFinderRow {
+                        pair_name: pair.clone(),
+                        quote_volume_24h: vol_24h,
+                        market_state: None,
+                        opportunity_count_total: 0,
+                        opportunity: None,
+                        current_price: current_price,
+                    });
+                }
+            }
+            rows
+        })
     }
 
-    /// Process incoming live candles every 5 mins
-    pub fn process_live_data(&mut self) {
+    /// THE GAME LOOP.
+    pub(crate) fn update(&mut self) {
+        // Ingest Live Data (The Heartbeat)
+        let t1 = AppInstant::now();
+        self.process_live_data();
+        let d1 = t1.elapsed().as_micros();
+
+        // WASM ONLY: Process jobs manually in the main thread
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Non-blocking check for work
+            if let Ok(req) = self.job_rx.try_recv() {
+                // Run sync calculation
+                worker::process_request_sync(req, self.result_tx.clone());
+            }
+        }
+
+        // Maintenance loop - checks for drifting trades that have overlapped and merges them.
+        let journey_settings = &constants::journey::DEFAULT;
+
+        if t1.duration_since(self.last_ledger_maintenance).as_secs()
+            >= journey_settings.optimization.prune_interval_sec
+        {
+            // Pass the Tolerance AND the Profile (Strategy)
+            self.engine_ledger
+                .prune_collisions(journey_settings.optimization.fuzzy_match_tolerance);
+            self.last_ledger_maintenance = t1;
+        }
+
+        // Results
+        let t2 = AppInstant::now();
+        while let Ok(result) = self.result_rx.try_recv() {
+            self.handle_job_result(result);
+        }
+        let d2 = t2.elapsed().as_micros();
+
+        // Enqueue any pairs that have changed price sigificantly
+        let t3 = AppInstant::now();
+        self.trigger_recalcs_on_price_changes();
+        let d3 = t3.elapsed().as_micros();
+
+        // Queue
+        let t4 = AppInstant::now();
+        self.process_queue();
+        let d4 = t4.elapsed().as_micros();
+
+        // Log if total is significant (> 10ms)
+        let total = d1 + d2 + d3 + d4;
+        if total > 100_000 {
+            log::warn!(
+                "🐢 ENGINE SLOW: Live: {}us | Results: {}us | Triggers: {}us | Queue: {}us",
+                d1,
+                d2,
+                d3,
+                d4
+            );
+        }
+    }
+
+    /// Accessor for UI
+    pub(crate) fn get_model(&self, pair: &str) -> Option<Arc<TradingModel>> {
+        self.pairs_states
+            .get(pair)
+            .and_then(|state| state.model.clone())
+    }
+
+    pub(crate) fn get_price(&self, pair: &str) -> Option<Price> {
+        self.price_stream.get_price(pair)
+    }
+
+    pub(crate) fn set_stream_suspended(&self, suspended: bool) {
+        if suspended {
+            self.price_stream.suspend();
+        } else {
+            self.price_stream.resume();
+        }
+    }
+
+    pub(crate) fn get_all_pair_names(&self) -> Vec<String> {
+        self.timeseries.read().unwrap().unique_pair_names()
+    }
+
+    pub(crate) fn get_queue_len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub(crate) fn get_worker_status_msg(&self) -> Option<String> {
+        let calculating_pair = self
+            .pairs_states
+            .iter()
+            .find(|(_, state)| state.is_calculating)
+            .map(|(name, _)| name.clone());
+
+        if let Some(pair) = calculating_pair {
+            Some(format!("Processing {}", pair))
+        } else if !self.queue.is_empty() {
+            Some(format!("Queued: {}", self.queue.len()))
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn get_pair_status(&self, pair: &str) -> (bool, Option<String>) {
+        if let Some(state) = self.pairs_states.get(pair) {
+            (state.is_calculating, state.last_error.clone())
+        } else {
+            (false, None)
+        }
+    }
+
+    /// The trigger_global_recalc function is a "Reset Button" for the engine's work queue. Its purpose is to cancel any
+    /// pending jobs and immediately schedule a fresh analysis for every single pair using the current global settings.
+    pub(crate) fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
+        self.queue.clear();
+
+        let mut all_pairs = self.shared_config.get_all_pairs();
+
+        // Snapshot: Takes a snapshot of self.engine_strategy so the loop uses a consistent strategy
+        let strategy = self.shared_config.get_strategy();
+
+        // We can't use a closure easily due to borrow checker rules with self,
+        // so we just iterate logic directly.
+        let push_pair =
+            |pair: String, target_queue: &mut VecDeque<_>, config: &SharedConfiguration| {
+                // 1. Lookup PH (Specific to pair)
+                let ph_pct = config
+                    .get_ph(&pair)
+                    .expect("We must have value for ph_pct for this pair at all times");
+
+                // 2. Lookup Station (Specific to pair)
+                let station = config.get_station(&pair).expect(&format!(
+                    "trigger_global_recalc must have station set for pair {}",
+                    pair
+                ));
+
+                target_queue.push_back(EngineJob {
+                    pair,
+                    price_override: None, // Live Price
+                    ph_pct,
+                    strategy,            // Respects User Choice
+                    station_id: station, // Respects User Choice
+                    mode: JobMode::FullAnalysis,
+                });
+            };
+
+        if let Some(vip) = priority_pair {
+            if let Some(pos) = all_pairs.iter().position(|p| p == &vip) {
+                all_pairs.remove(pos);
+            }
+            push_pair(vip, &mut self.queue, &self.shared_config);
+        }
+
+        for pair in all_pairs {
+            push_pair(pair, &mut self.queue, &self.shared_config);
+        }
+    }
+
+    /// Forces a recalculation for a single pair.
+    ///
+    /// Semantics:
+    /// - Applies to ONE pair only.
+    /// - Does NOT clear or reorder the global queue.
+    /// - Any existing queued job for this pair is replaced with a fresh one.
+    /// - Jobs for other pairs are never affected.
+    /// - Execution still flows through the normal queue (no direct dispatch).
+    ///
+    /// This is used when the caller knows the current model for this pair
+    /// is stale (e.g. user action, parameter change).
+
+    pub(crate) fn invalidate_pair_and_recalc(
+        &mut self,
+        pair: &str,
+        price_override: Option<Price>,
+        ph_pct: PhPct,
+        strategy: OptimizationStrategy,
+        station_id: StationId,
+        mode: JobMode,
+        _reason: &str,
+    ) {
+        #[cfg(debug_assertions)]
+        if DF.log_engine {
+            log::info!(
+                "ENGINE: invalidate_pair_and_recalc → scheduling fresh job for [{}]",
+                pair
+            );
+        }
+
+        self.enqueue_or_replace(EngineJob {
+            pair: pair.to_string(),
+            price_override,
+            ph_pct,
+            strategy,
+            station_id,
+            mode,
+        });
+    }
+
+    fn process_live_data(&mut self) {
+        // Process incoming live candles every 5 mins
         // 1. Check if we have data
         // We use a loop to drain the channel so we don't lag behind
         let mut updates = Vec::new();
@@ -255,15 +564,21 @@ impl SniperEngine {
                                     self.shared_config,
                                 );
                             }
-                            self.force_recalc(
-                                &pair_name,
-                                Some(candle.close.into()),
-                                ph_pct,
-                                self.shared_config.get_strategy(),
-                                station_id,
-                                JobMode::FullAnalysis,
-                                "CANDLE CLOSE TRIGGER",
-                            );
+                            #[cfg(debug_assertions)]
+                            if DF.log_engine {
+                                log::info!(
+                                    "Enqueing job for {} because a candle has closed:",
+                                    pair_name
+                                )
+                            }
+                            self.enqueue_or_replace(EngineJob {
+                                pair: pair_name.clone(),
+                                price_override: Some(candle.close.into()),
+                                ph_pct: ph_pct,
+                                strategy: self.shared_config.get_strategy(),
+                                station_id: station_id,
+                                mode: JobMode::FullAnalysis,
+                            });
                             // }
                         } else {
                             #[cfg(debug_assertions)]
@@ -282,9 +597,9 @@ impl SniperEngine {
         self.prune_ledger();
     }
 
-    /// GARBAGE COLLECTION: Removes finished trades and archives them.
-    /// If a wick hits our Stop Loss mid-candle, we want to kill the trade immediately.
-    pub fn prune_ledger(&mut self) {
+    fn prune_ledger(&mut self) {
+        // GARBAGE COLLECTION: Removes finished trades and archives them.
+        // If a wick hits our Stop Loss mid-candle, we want to kill the trade immediately.
         let time_now_utc = TimeUtils::now_utc();
         let mut dead_trades: Vec<TradeResult> = Vec::new();
         let mut ids_to_remove: Vec<String> = Vec::new();
@@ -399,300 +714,8 @@ impl SniperEngine {
         }
     }
 
-    /// Generates the master list for the Trade Finder.
-    pub fn get_trade_finder_rows(
-        &self,
-        overrides: Option<&HashMap<String, Price>>,
-    ) -> Vec<TradeFinderRow> {
-        crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
-            let mut rows = Vec::new();
-
-            let now_ms = TimeUtils::now_timestamp_ms();
-            let day_ms = 86_400_000;
-
-            // 1. Group Ledger Opportunities by Pair for fast lookup
-            let mut ops_by_pair: HashMap<String, Vec<&TradeOpportunity>> = HashMap::new();
-            for op in self.engine_ledger.get_all() {
-                ops_by_pair
-                    .entry(op.pair_name.clone())
-                    .or_default()
-                    .push(op);
-            }
-
-            let ts_guard = self.timeseries.read().unwrap();
-
-            for (pair, _state) in &self.pairs_states {
-                // 2. Get Context (Price)
-                // STRICT MODE: Do not default to 0.0. If no price, skip the pair.
-                let price_opt = overrides
-                    .and_then(|map| map.get(pair).copied())
-                    .or_else(|| self.price_stream.get_price(pair));
-
-                let current_price = match price_opt {
-                    Some(p) if p.is_positive() => p,
-                    _ => continue,
-                };
-
-                // 3. Calculate Volume & Market State (From TimeSeries)
-                // We do this for every pair regardless of whether it has ops
-                let mut vol_24h = QuoteVol::new(0.0);
-
-                if let Some(ts) = ts_guard
-                    .series_data
-                    .iter()
-                    .find(|t| t.pair_interval.name() == pair)
-                {
-                    let count = ts.klines();
-                    if count > 0 {
-                        let current_idx = count - 1;
-                        // m_state = MarketState::calculate(ts, current_idx, lookback);
-                        for i in (0..=current_idx).rev() {
-                            let c = ts.get_candle(i);
-                            if now_ms - c.timestamp_ms > day_ms {
-                                break;
-                            }
-                            vol_24h += c.quote_asset_volume;
-                        }
-                    }
-                }
-
-                // 4. Retrieve & Explode Opportunities (From Ledger)
-                // Default to empty slice if no ops found for this pair
-                let raw_ops = ops_by_pair.get(pair).map(|v| v.as_slice()).unwrap_or(&[]);
-
-                // Filter worthwhile trades (Static ROI check)
-                let valid_ops: Vec<&TradeOpportunity> = raw_ops
-                    .iter()
-                    .filter(|&&op| op.expected_roi().is_positive())
-                    .map(|&op| op)
-                    .collect();
-
-                let total_ops = valid_ops.len();
-
-                if total_ops > 0 {
-                    // Create a ROW for EACH Opportunity
-                    for op in valid_ops {
-                        rows.push(TradeFinderRow {
-                            pair_name: pair.clone(),
-                            quote_volume_24h: vol_24h,
-                            market_state: Some(op.market_state),
-                            opportunity_count_total: total_ops,
-                            opportunity: Some(op.clone()),
-                            current_price: current_price,
-                        });
-                    }
-                } else {
-                    // No valid trades, push 1 placeholder row (for "All Pairs" view)
-                    rows.push(TradeFinderRow {
-                        pair_name: pair.clone(),
-                        quote_volume_24h: vol_24h,
-                        market_state: None,
-                        opportunity_count_total: 0,
-                        opportunity: None,
-                        current_price: current_price,
-                    });
-                }
-            }
-            rows
-        })
-    }
-
-    /// THE GAME LOOP.
-    pub fn update(&mut self) {
-        // Ingest Live Data (The Heartbeat)
-        let t1 = AppInstant::now();
-        self.process_live_data();
-        let d1 = t1.elapsed().as_micros();
-
-        // WASM ONLY: Process jobs manually in the main thread
-        #[cfg(target_arch = "wasm32")]
-        {
-            // Non-blocking check for work
-            if let Ok(req) = self.job_rx.try_recv() {
-                // Run sync calculation
-                worker::process_request_sync(req, self.result_tx.clone());
-            }
-        }
-
-        // Maintenance loop - checks for drifting trades that have overlapped and merges them.
-        let journey_settings = &constants::journey::DEFAULT;
-
-        if t1.duration_since(self.last_ledger_maintenance).as_secs()
-            >= journey_settings.optimization.prune_interval_sec
-        {
-            // Pass the Tolerance AND the Profile (Strategy)
-            self.engine_ledger
-                .prune_collisions(journey_settings.optimization.fuzzy_match_tolerance);
-            self.last_ledger_maintenance = t1;
-        }
-
-        // Results
-        let t2 = AppInstant::now();
-        while let Ok(result) = self.result_rx.try_recv() {
-            self.handle_job_result(result);
-        }
-        let d2 = t2.elapsed().as_micros();
-
-        // Triggers
-        let t3 = AppInstant::now();
-        self.check_automatic_triggers();
-        let d3 = t3.elapsed().as_micros();
-
-        // Queue
-        let t4 = AppInstant::now();
-        self.process_queue();
-        let d4 = t4.elapsed().as_micros();
-
-        // Log if total is significant (> 10ms)
-        let total = d1 + d2 + d3 + d4;
-        if total > 100_000 {
-            log::warn!(
-                "🐢 ENGINE SLOW: Live: {}us | Results: {}us | Triggers: {}us | Queue: {}us",
-                d1,
-                d2,
-                d3,
-                d4
-            );
-        }
-    }
-
-    /// Accessor for UI
-    pub fn get_model(&self, pair: &str) -> Option<Arc<TradingModel>> {
-        self.pairs_states
-            .get(pair)
-            .and_then(|state| state.model.clone())
-    }
-
-    pub fn get_price(&self, pair: &str) -> Option<Price> {
-        self.price_stream.get_price(pair)
-    }
-
-    pub fn set_stream_suspended(&self, suspended: bool) {
-        if suspended {
-            self.price_stream.suspend();
-        } else {
-            self.price_stream.resume();
-        }
-    }
-
-    pub fn get_all_pair_names(&self) -> Vec<String> {
-        self.timeseries.read().unwrap().unique_pair_names()
-    }
-
-    pub fn get_queue_len(&self) -> usize {
-        self.queue.len()
-    }
-
-    pub fn get_worker_status_msg(&self) -> Option<String> {
-        let calculating_pair = self
-            .pairs_states
-            .iter()
-            .find(|(_, state)| state.is_calculating)
-            .map(|(name, _)| name.clone());
-
-        if let Some(pair) = calculating_pair {
-            Some(format!("Processing {}", pair))
-        } else if !self.queue.is_empty() {
-            Some(format!("Queued: {}", self.queue.len()))
-        } else {
-            None
-        }
-    }
-
-    pub fn get_pair_status(&self, pair: &str) -> (bool, Option<String>) {
-        if let Some(state) = self.pairs_states.get(pair) {
-            (state.is_calculating, state.last_error.clone())
-        } else {
-            (false, None)
-        }
-    }
-
-    /// The trigger_global_recalc function is a "Reset Button" for the engine's work queue. Its purpose is to cancel any
-    /// pending jobs and immediately schedule a fresh analysis for every single pair using the current global settings.
-    pub fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
-        self.queue.clear();
-
-        let mut all_pairs = self.shared_config.get_all_pairs();
-
-        // Snapshot: Takes a snapshot of self.engine_strategy so the loop uses a consistent strategy
-        let strategy = self.shared_config.get_strategy();
-
-        // We can't use a closure easily due to borrow checker rules with self,
-        // so we just iterate logic directly.
-        let push_pair =
-            |pair: String, target_queue: &mut VecDeque<_>, config: &SharedConfiguration| {
-                // 1. Lookup PH (Specific to pair)
-                let ph_pct = config
-                    .get_ph(&pair)
-                    .expect("We must have value for ph_pct for this pair at all times");
-
-                // 2. Lookup Station (Specific to pair)
-                let station = config.get_station(&pair).expect(&format!(
-                    "trigger_global_recalc must have station set for pair {}",
-                    pair
-                ));
-
-                target_queue.push_back(EngineJob {
-                    pair,
-                    price_override: None, // Live Price
-                    ph_pct,
-                    strategy,            // Respects User Choice
-                    station_id: station, // Respects User Choice
-                    mode: JobMode::FullAnalysis,
-                });
-            };
-
-        if let Some(vip) = priority_pair {
-            if let Some(pos) = all_pairs.iter().position(|p| p == &vip) {
-                all_pairs.remove(pos);
-            }
-            push_pair(vip, &mut self.queue, &self.shared_config);
-        }
-
-        for pair in all_pairs {
-            push_pair(pair, &mut self.queue, &self.shared_config);
-        }
-    }
-
-    pub fn force_recalc(
-        &mut self,
-        pair: &str,
-        price_override: Option<Price>,
-        ph_pct: PhPct,
-        strategy: OptimizationStrategy,
-        station_id: StationId,
-        mode: JobMode,
-        _reason: &str,
-    ) {
-        // Check if currently calculating
-        let is_calculating = self
-            .pairs_states
-            .get(pair)
-            .map(|s| s.is_calculating)
-            .unwrap_or(false);
-
-        // Check if already in queue (by pair name)
-        let in_queue = self.queue.iter().any(|job| job.pair == pair);
-
-        // Enqueue only if safe
-        if !is_calculating && !in_queue {
-            self.queue.push_front(EngineJob {
-                pair: pair.to_string(),
-                price_override,
-                ph_pct,
-                strategy,
-                station_id,
-                mode,
-            });
-        }
-    }
-
     fn handle_job_result(&mut self, result: JobResult) {
         if let Some(state) = self.pairs_states.get_mut(&result.pair_name) {
-
-            // 2. Always update the authoritative candle count
-            state.last_candle_count = result.candle_count;
-
             match result.result {
                 Ok(model) => {
                     // Sync to Ledger ---
@@ -703,20 +726,29 @@ impl SniperEngine {
                             constants::journey::optimization::FUZZY_MATCH_TOLERANCE,
                         );
                     }
-
                     // Success: Update State
                     state.model = Some(model.clone());
-
-                    // Success: Update State
-                    state.model = Some(model.clone());
+                    #[cfg(debug_assertions)]
+                    if DF.log_engine {
+                        log::info!(
+                            "ENGINE STATE: [{}] is_calculating = false (job complete) in OK branch of handle_job_result()",
+                            result.pair_name
+                        );
+                    }
                     state.is_calculating = false;
-                    state.last_update_time = AppInstant::now();
                     state.last_error = None;
                 }
                 Err(e) => {
                     // Failure: Clear Model, Set Error
                     log::error!("Worker failed for {}: {}", result.pair_name, e);
                     state.last_error = Some(e);
+                    #[cfg(debug_assertions)]
+                    if DF.log_engine {
+                        log::info!(
+                            "ENGINE STATE: [{}] is_calculating = false (job complete) (in Err branch of handle_job_result()",
+                            result.pair_name
+                        );
+                    }
                     state.is_calculating = false;
 
                     // Critical: Clear old model so UI shows error screen, not ghost data
@@ -726,73 +758,121 @@ impl SniperEngine {
         }
     }
 
-    // Add Accessor
-    pub fn get_candle_count(&self, pair: &str) -> usize {
-        self.pairs_states
-            .get(pair)
-            .map(|s| s.last_candle_count)
-            .unwrap_or(0)
+    #[cfg(debug_assertions)]
+    fn log_queue(&self, context: &str) {
+        if !DF.log_engine {
+            return;
+        }
+
+        let pairs: Vec<&str> = self.queue.iter().map(|j| j.pair.as_str()).collect();
+
+        log::info!(
+            "ENGINE QUEUE STATUS [{}]: len={} {:?}",
+            context,
+            pairs.len(),
+            pairs
+        );
     }
 
-    fn check_automatic_triggers(&mut self) {
+    fn trigger_recalcs_on_price_changes(&mut self) {
         let pairs: Vec<String> = self.shared_config.get_all_pairs();
         let threshold = constants::cva::PRICE_RECALC_THRESHOLD_PCT;
 
         for pair_name in pairs {
-            if let Some(current_price) = self.price_stream.get_price(&pair_name) {
+            let Some(current_price) = self.price_stream.get_price(&pair_name) else {
+                continue;
+            };
+
+            // ---- read-only phase (NO mutable borrows) ----
+            let should_trigger = {
+                let Some(state) = self.pairs_states.get_mut(&pair_name) else {
+                    continue;
+                };
+
+                if state.last_update_price.value() == 0.0 {
+                    #[cfg(debug_assertions)]
+                    if DF.log_engine {
+                        log::info!(
+                            "ENGINE PRICE BOOTSTRAP: [{}] initializing last_update_price = {} in trigger_recalcs_on_price_change()",
+                            pair_name,
+                            current_price,
+                        );
+                    }
+                    state.last_update_price = current_price;
+                    continue;
+                } else {
+                    let pct_diff = current_price.percent_diff_0_1(&state.last_update_price);
+                    let triggered = pct_diff > threshold.value();
+
+                    #[cfg(debug_assertions)]
+                    if triggered && DF.log_engine {
+                        log::info!(
+                            "ENGINE AUTO (PRICE TRIGGER): [{}] last={} current={} diff={:.5}% threshold={}",
+                            pair_name,
+                            state.last_update_price,
+                            current_price,
+                            pct_diff * 100.0,
+                            threshold,
+                        );
+                    }
+
+                    triggered
+                }
+            };
+
+            if !should_trigger {
+                // even though we aren't triggering, we still need to bootstrap last_update_price
                 if let Some(state) = self.pairs_states.get_mut(&pair_name) {
-                    let in_queue = self.queue.iter().any(|job| job.pair == pair_name);
-
-                    if !state.is_calculating && !in_queue {
-                        if state.last_update_price.value() == 0.0 {
-                            state.last_update_price = current_price;
-                            continue;
-                        }
-
-                        let price_diff = (current_price - state.last_update_price).abs();
-                        let pct_diff = price_diff / state.last_update_price;
-
-                        if pct_diff > threshold.value() {
-                            #[cfg(debug_assertions)]
-                            if DF.log_engine {
-                                log::info!(
-                                    "ENGINE AUTO: [{}] moved {:.4}% with threshold {}. Triggering Recalc.",
-                                    pair_name,
-                                    pct_diff * 100.0,
-                                    threshold,
-                                );
-                            }
-
-                            if let Some(ph_pct) = self.shared_config.get_ph(&pair_name) {
-                                let station_id = self
-                                    .shared_config
-                                    .get_station(&pair_name)
-                                .   expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in shared_config {:?}", pair_name, ph_pct, self.shared_config)); // This should now crash if None is encountered. Better than reverting to default I think
-                                #[cfg(debug_assertions)]
-                                if DF.log_active_station_id
-                                    || DF.log_candle_update
-                                    || DF.log_ph_vals
-                                {
-                                    log::info!(
-                                        "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in check_automatic_triggers() and the full shared_config is {:?}",
-                                        station_id,
-                                        &pair_name,
-                                        self.shared_config,
-                                    );
-                                }
-                                self.dispatch_job(EngineJob {
-                                    pair: pair_name.clone(),
-                                    price_override: None,
-                                    ph_pct,
-                                    strategy: self.shared_config.get_strategy(),
-                                    station_id,
-                                    mode: JobMode::FullAnalysis,
-                                });
-                                // }
-                            }
-                        }
+                    if state.last_update_price.value() == 0.0 {
+                        state.last_update_price = current_price;
                     }
                 }
+                continue;
+            }
+
+            // We are doing a new job for this pair so get its details out.........
+            let ph_pct = match self.shared_config.get_ph(&pair_name) {
+                Some(v) => v,
+                None => {
+                    #[cfg(debug_assertions)]
+                    if DF.log_engine {
+                        log::error!(
+                            "Was intending to enqueue a job for {} but ph value not available",
+                            { pair_name }
+                        );
+                    };
+                    continue;
+                }
+            };
+
+            let station_id = self.shared_config.get_station(&pair_name).expect(&format!(
+                "PAIR {} with ph_pct {} unexpectedly missing station_id",
+                pair_name, ph_pct
+            ));
+
+            #[cfg(debug_assertions)]
+            if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
+                log::info!(
+                    "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in trigger_recalcs_on_price_changes()",
+                    station_id,
+                    pair_name,
+                );
+            }
+
+            self.enqueue_or_replace(EngineJob {
+                pair: pair_name.clone(),
+                price_override: None,
+                ph_pct,
+                strategy: self.shared_config.get_strategy(),
+                station_id,
+                mode: JobMode::FullAnalysis,
+            });
+            #[cfg(debug_assertions)]
+            self.log_queue("AFTER price-trigger enqueue");
+
+            // ---- mutation phase ----
+            if let Some(state) = self.pairs_states.get_mut(&pair_name) {
+                state.last_update_price = current_price;
             }
         }
     }
@@ -802,36 +882,67 @@ impl SniperEngine {
             return;
         }
 
-        // Peek at front job
-        if let Some(job) = self.queue.front() {
-            if let Some(state) = self.pairs_states.get(&job.pair) {
-                if state.is_calculating {
-                    return; // Busy
-                }
-            }
-        }
-
         // Pop and dispatch
         if let Some(job) = self.queue.pop_front() {
+            #[cfg(debug_assertions)]
+            if DF.log_engine {
+                log::info!("ENGINE QUEUE: dispatching job for [{}]", job.pair);
+            }
+
             self.dispatch_job(job);
         }
     }
 
     fn dispatch_job(&mut self, job: EngineJob) {
         if let Some(state) = self.pairs_states.get_mut(&job.pair) {
-            // 1. Resolve Price
-            // Priority: Override -> Live Stream -> None (Worker will fetch from DB)
+            // Resolve Price
             let live_price = self.price_stream.get_price(&job.pair).map(Price::from);
             let final_price_opt = job.price_override.or(live_price);
 
-            // Update State Metadata
-            state.is_calculating = true;
-            if let Some(p) = final_price_opt {
-                state.last_update_price = p;
+            // 🔴 THIS IS THE FIX for the engine violation - refuse to queue a new job for the same pair if already being calculated
+            // Why do we do that? Because any job enqueued for a pair that is already calculating is guaranteed to be stale by the time it runs,
+            // so it wastes work and risks overwriting newer state with older assumptions.
+
+            if state.is_calculating {
+                #[cfg(debug_assertions)]
+                if DF.log_engine {
+                    log::info!(
+                        "ENGINE SKIP: [{}] already calculating, dropping dispatched job",
+                        job.pair
+                    );
+                }
+                return;
+            }
+            // 🔴 END FIX
+
+            #[cfg(debug_assertions)]
+            if DF.log_engine {
+                log::info!(
+                    "ENGINE STATE: [{}] is_calculating = true (dispatch)",
+                    job.pair
+                );
+            }
+            #[cfg(debug_assertions)]
+            if DF.log_engine && state.is_calculating {
+                log::error!(
+                    "ENGINE VIOLATION: [{}] dispatched while already calculating - this should literally never happen",
+                    job.pair
+                );
             }
 
-            // 2. Capture Cache (Smart Profiling Optimization)
-            let existing_profile = state.profile.clone();
+            state.is_calculating = true;
+
+            if let Some(p) = final_price_opt {
+                #[cfg(debug_assertions)]
+                if DF.log_engine {
+                    log::info!(
+                        "ENGINE DISPATCH: [{}] committing last_update_price = {}",
+                        job.pair,
+                        p,
+                    );
+                }
+                state.last_update_price = p;
+            }
 
             // 4. Send Request
             let req = JobRequest {
@@ -839,7 +950,7 @@ impl SniperEngine {
                 current_price: final_price_opt,
                 // config: self.app_constants.clone(),
                 timeseries: self.timeseries.clone(),
-                existing_profile,
+                // horizon_profile,
                 ph_pct: job.ph_pct,
                 strategy: job.strategy,
                 station_id: job.station_id,
