@@ -90,7 +90,6 @@ impl PhPct {
     pub fn value(self) -> f64 {
         self.0
     }
-
 }
 
 impl Default for PhPct {
@@ -126,7 +125,6 @@ impl Pct {
     pub fn value(self) -> f64 {
         self.0
     }
-
 }
 
 impl std::fmt::Display for Pct {
@@ -134,7 +132,6 @@ impl std::fmt::Display for Pct {
         write!(f, "{:.4}%", self.0 * 100.)
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
 #[serde(transparent)]
@@ -292,6 +289,7 @@ pub struct DurationMs(i64);
 
 impl DurationMs {
     const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
+    const MS_IN_HOURS: f64 = 3_600_000.0;
 
     pub const fn new(ms: i64) -> Self {
         Self(ms)
@@ -300,8 +298,21 @@ impl DurationMs {
     pub fn value(self) -> i64 {
         self.0
     }
+
+    pub fn scale(self, factor: f64) -> Self {
+        DurationMs::new((self.0 as f64 * factor).round() as i64)
+    }
+
+    pub fn to_hours(&self) -> f64 {
+        if self.0 <= 0 {
+            0.0
+        } else {
+            self.0 as f64 / Self::MS_IN_HOURS
+        }
+    }
+
     /// Converts duration to a float number of years (for annualized math).
-    pub fn to_years_f64(&self) -> f64 {
+    pub fn to_years(&self) -> f64 {
         if self.0 <= 0 {
             0.0
         } else {
@@ -681,7 +692,7 @@ impl std::fmt::Display for PriceDelta {
 
 // --- ENUMS (Definitions) ---
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter, Ord, PartialOrd)]
 pub enum OptimizationStrategy {
     #[strum(to_string = "Max ROI")]
     MaxROI,
@@ -820,7 +831,7 @@ pub struct TradeProfile {
 
 impl TradeProfile {
     pub fn calculate_annualized_roi(roi: RoiPct, duration: DurationMs) -> AroiPct {
-        let years = duration.to_years_f64();
+        let years = duration.to_years();
         if years <= 0.0000001 {
             return AroiPct::new(0.0);
         }
@@ -844,7 +855,7 @@ pub struct OptimalSearchSettings {
     pub diversity_cut_off: PhPct,
     pub max_results: usize,
     pub price_buffer_pct: PhPct,
-    pub fuzzy_match_tolerance: PhPct,
+    pub fuzzy_match_tolerance: Pct,
     pub prune_interval_sec: u64,
 }
 

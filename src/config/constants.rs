@@ -26,7 +26,7 @@ pub mod journey {
     }
 
     pub mod optimization {
-        use crate::config::PhPct;
+        use crate::config::{PhPct, Pct};
         pub const SCOUT_STEPS: usize = 20;
         pub const DRILL_TOP_N: usize = 5;
         pub const DRILL_OFFSET_FACTOR: f64 = 0.25;
@@ -36,7 +36,7 @@ pub mod journey {
         pub const DIVERSITY_CUT_OFF: PhPct = PhPct::new(0.5);
         pub const MAX_RESULTS: usize = 5;
         pub const PRICE_BUFFER_PCT: PhPct = PhPct::new(0.005);
-        pub const FUZZY_MATCH_TOLERANCE: PhPct = PhPct::new(0.5);
+        pub const FUZZY_MATCH_TOLERANCE: Pct = Pct::new(0.5);
         pub const PRUNE_INTERVAL_SEC: u64 = 10;
     }
 
@@ -122,7 +122,7 @@ pub mod cva {
     use crate::config::PhPct;
     use crate::utils::TimeUtils;
     // pub const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
-    pub const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.001); // TEMP value just 1/10th of 1% now so should happen regularly......
+    pub const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.001); // TEMP put this value in for testing purposes if you want rapid re-triggering caused by prices...
     pub const MIN_CANDLES_FOR_ANALYSIS: usize = 500;
     pub const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
 }

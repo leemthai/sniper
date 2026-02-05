@@ -11,9 +11,8 @@ use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
 use crate::config::{
-    AroiPct, DurationMs, OptimizationStrategy, PhPct, Price, QuoteVol, RoiPct,
-    StationId, StopPrice, TargetPrice, TradeProfile, ZoneClassificationConfig, ZoneParams,
-    constants,
+    AroiPct, DurationMs, OptimizationStrategy, PhPct, Price, QuoteVol, RoiPct, StationId,
+    StopPrice, TargetPrice, TradeProfile, ZoneClassificationConfig, ZoneParams, constants,
 };
 
 #[cfg(debug_assertions)]
@@ -159,8 +158,8 @@ pub struct TradeOpportunity {
     pub target_price: TargetPrice,
     pub stop_price: StopPrice,
 
-    pub max_duration_ms: DurationMs,
-    pub avg_duration_ms: DurationMs,
+    pub max_duration: DurationMs,
+    pub avg_duration: DurationMs,
 
     pub strategy: OptimizationStrategy,
     pub station_id: StationId,
@@ -170,6 +169,30 @@ pub struct TradeOpportunity {
 
     pub simulation: SimulationResult,
     pub variants: Vec<TradeVariant>,
+}
+
+impl TradeOpportunity {
+    /// Returns true if two opportunities are allowed to be compared / merged.
+    ///
+    /// LEDGER INVARIANT:
+    /// Opportunities are comparable IFF they belong to the same
+    /// pair, direction, strategy, and station.
+    #[inline]
+    pub fn is_comparable_to(&self, other: &TradeOpportunity) -> bool {
+        self.pair_name == other.pair_name
+            && self.direction == other.direction
+            && self.strategy == other.strategy
+            && self.station_id == other.station_id
+    }
+
+    #[cfg(debug_assertions)]
+    #[inline]
+    pub fn assert_comparable_to(&self, other: &TradeOpportunity) {
+        debug_assert!(
+            self.is_comparable_to(other),
+            "Ledger invariant violated: attempted to compare non-comparable opportunities"
+        );
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,7 +212,7 @@ impl TradeOpportunity {
     /// Used for "Auto-Tuning" and finding the best setups.
     pub fn calculate_quality_score(&self) -> f64 {
         self.strategy
-            .calculate_score(self.expected_roi(), self.avg_duration_ms)
+            .calculate_score(self.expected_roi(), self.avg_duration)
     }
 
     /// Centralized "Referee" Logic.
@@ -201,7 +224,7 @@ impl TradeOpportunity {
         current_time: DateTime<Utc>,
     ) -> Option<TradeOutcome> {
         // 1. Check Expiry (Hard Limit)
-        if current_time > self.created_at + ChronoDuration::from(self.max_duration_ms) {
+        if current_time > self.created_at + ChronoDuration::from(self.max_duration) {
             return Some(TradeOutcome::Timeout);
         }
 
@@ -237,7 +260,7 @@ impl TradeOpportunity {
     /// Checks if the SNAPSHOT (Creation) status was worthwhile.
     pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
         let roi = self.expected_roi();
-        let aroi = TradeProfile::calculate_annualized_roi(roi, self.avg_duration_ms);
+        let aroi = TradeProfile::calculate_annualized_roi(roi, self.avg_duration);
         profile.is_worthwhile(roi, aroi)
     }
 
@@ -268,7 +291,7 @@ impl TradeOpportunity {
     /// Calculates Annualized ROI based on LIVE price and AVERAGE duration.
     pub fn live_annualized_roi(&self, current_price: Price) -> AroiPct {
         let roi = self.live_roi(current_price);
-        TradeProfile::calculate_annualized_roi(roi, self.avg_duration_ms)
+        TradeProfile::calculate_annualized_roi(roi, self.avg_duration)
     }
 }
 
@@ -483,7 +506,8 @@ impl TradingModel {
                 // Threshold = Mean + (Sigma * StdDev)
                 // We clamp it between 0.05 and 0.95 to prevent
                 // "Selecting Everything" (if flat) or "Selecting Nothing" (if extreme outliers).
-                let adaptive_threshold = (mean + (params.sigma.value() * std_dev)).clamp(0.05, 0.95);
+                let adaptive_threshold =
+                    (mean + (params.sigma.value() * std_dev)).clamp(0.05, 0.95);
 
                 // --- DIAGNOSTIC LOGGING ---
                 #[cfg(debug_assertions)]
@@ -603,7 +627,7 @@ impl TradingModel {
     }
 
     /// Get nearest support superzone relative to a specific price
-    pub fn nearest_support_superzone(&self, price: Price) -> Option<&SuperZone> {
+    fn nearest_support_superzone(&self, price: Price) -> Option<&SuperZone> {
         self.zones
             .sticky_superzones
             .iter()
@@ -616,7 +640,7 @@ impl TradingModel {
     }
 
     /// Get nearest resistance superzone relative to a specific price
-    pub fn nearest_resistance_superzone(&self, price: Price) -> Option<&SuperZone> {
+    fn nearest_resistance_superzone(&self, price: Price) -> Option<&SuperZone> {
         self.zones
             .sticky_superzones
             .iter()

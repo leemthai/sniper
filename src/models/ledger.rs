@@ -4,12 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-use crate::config::PhPct;
-
 #[cfg(debug_assertions)]
-use crate::config::DF;
+use crate::config::{DF, OptimizationStrategy};
 
-use crate::config::PriceLike;
+use crate::config::{Pct, PriceLike};
 
 use crate::models::trading_view::TradeOpportunity;
 
@@ -26,9 +24,54 @@ impl OpportunityLedger {
         }
     }
 
+    #[cfg(debug_assertions)]
+    /// DEBUG: Summarizes how many TradeOpportunities exist per OptimizationStrategy.
+    /// This inspects the ledger directly (ground truth), not the UI.
+    pub fn debug_log_strategy_summary(&self) {
+        if !DF.log_ledger {
+            return;
+        }
+
+        use std::collections::BTreeMap;
+
+        let ops: Vec<_> = self.opportunities.values().cloned().collect();
+
+        if ops.is_empty() {
+            log::info!("📒 LEDGER STRATEGY SUMMARY: Ledger is empty");
+            return;
+        }
+
+        let mut counts: BTreeMap<OptimizationStrategy, usize> = BTreeMap::new();
+
+        for op in &ops {
+            *counts.entry(op.strategy).or_insert(0) += 1;
+        }
+
+        log::info!(
+            "📒 LEDGER STRATEGY SUMMARY: {} total opportunities",
+            ops.len()
+        );
+
+        for (strategy, count) in counts {
+            log::info!("   • {:?}: {} ops", strategy, count);
+        }
+
+        // // Optional: detailed per-op trace (comment out if too noisy)
+        // log::info!("📒 LEDGER STRATEGY DETAILS:");
+        // for op in ops {
+        //     log::info!(
+        //         "   [{}] {} {:?} @ {}",
+        //         op.id,
+        //         op.pair_name,
+        //         op.strategy,
+        //         op.target_price
+        //     );
+        // }
+    }
+
     /// Intelligently updates the ledger.
     /// Returns: (IsNew, ActiveID)
-    pub fn evolve(&mut self, new_opp: TradeOpportunity, tolerance_pct: PhPct) -> (bool, String) {
+    pub fn evolve(&mut self, new_opp: TradeOpportunity, tolerance_pct: Pct) -> (bool, String) {
         // 1. Try Exact ID Match (Fast Path)
         let exact_id = new_opp.id.clone();
         if self.opportunities.contains_key(&exact_id) {
@@ -40,18 +83,17 @@ impl OpportunityLedger {
         let closest_match = self
             .opportunities
             .values()
-            .filter(|op| op.pair_name == new_opp.pair_name && op.direction == new_opp.direction)
+            .filter(|op| op.is_comparable_to(&new_opp))
             .map(|op| {
-                let pct_diff = op
-                    .target_price
-                    .percent_diff_from_0_1(&new_opp.target_price);
+                let pct_diff =
+                    Pct::new(op.target_price.percent_diff_from_0_1(&new_opp.target_price));
                 (op.id.clone(), pct_diff)
             })
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
 
         // 3. Evaluate Match using Configured Tolerance
         if let Some((id, diff_pct)) = closest_match {
-            if diff_pct < tolerance_pct.value() {
+            if diff_pct < tolerance_pct {
                 // LOGGING (Drift Detection)
                 #[cfg(debug_assertions)]
                 {
@@ -70,6 +112,7 @@ impl OpportunityLedger {
                             );
                         }
                     }
+                    self.debug_log_strategy_summary();
                 }
 
                 self.update_existing(&id, new_opp);
@@ -114,13 +157,28 @@ impl OpportunityLedger {
         self.opportunities.remove(id);
     }
 
-    /// Scans for overlapping trades.
-    /// POLICY: Strategy Segregation.
-    /// 1. Trades from different strategies (e.g. ROI vs AROI) NEVER merge. They coexist.
-    /// 2. Trades from the SAME strategy with overlapping targets are merged.
-    /// 3. The winner is decided by the Score of that specific strategy.
-    pub fn prune_collisions(&mut self, tolerance_pct: PhPct) {
-        let mut to_remove = Vec::new();
+    /// Scans for overlapping trades and resolves collisions.
+    ///
+    /// POLICY: Comparable-Trade Collision Resolution.
+    ///
+    /// Only *comparable* trades are ever considered for merging.
+    /// Two trades are comparable if and only if they share:
+    ///   - the same trading pair (`pair_name`)
+    ///   - the same direction (long / short)
+    ///   - the same optimization strategy
+    ///   - the same station (`station_id`)
+    ///
+    /// Collision Rules:
+    /// 1. Trades from different strategies NEVER merge; they always coexist.
+    /// 2. Trades from the same strategy *and* comparable context with overlapping
+    ///    target prices (within tolerance) are considered colliding.
+    /// 3. For colliding trades, the winner is selected using the quality score
+    ///    defined by that specific strategy.
+    /// 4. Non-winning trades are removed from the ledger; winners are preserved.
+    pub fn prune_collisions(&mut self, tolerance_pct: Pct) {
+        let mut to_remove: Vec<String> = Vec::new();
+
+        // Snapshot for stable comparison
         let ops: Vec<_> = self.opportunities.values().cloned().collect();
 
         for i in 0..ops.len() {
@@ -128,60 +186,63 @@ impl OpportunityLedger {
                 let a = &ops[i];
                 let b = &ops[j];
 
+                // Skip if either already marked for removal
                 if to_remove.contains(&a.id) || to_remove.contains(&b.id) {
                     continue;
                 }
 
-                if a.pair_name == b.pair_name && a.direction == b.direction {
-                    // SEGREGATION: Different strategies = Different trades.
-                    if a.strategy != b.strategy {
-                        continue;
-                    }
-                    if a.station_id != b.station_id {
-                        continue;
-                    }
-
-                    // Same strategy and stationId so preserve the best one
-                    let pct_diff =
-                        PhPct::new(a.target_price.percent_diff_from_0_1(&b.target_price));
-                    #[cfg(debug_assertions)]
-                    if DF.log_ledger {
-                        log::info!(
-                            "Comparing calculated value of pct_diff of {} with tolerance of {}",
-                            pct_diff,
-                            tolerance_pct
-                        );
-                    }
-
-                    if pct_diff < tolerance_pct {
-                        let score_a = a.calculate_quality_score();
-                        let score_b = b.calculate_quality_score();
-                        let (_winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
-
-                        #[cfg(debug_assertions)]
-                        if DF.log_ledger {
-                            log::info!(
-                                "🧹 LEDGER PRUNE [Strategy: {}]: Merging duplicate trade {} into {}. (Diff {})",
-                                a.strategy,
-                                if loser.id.len() > 8 {
-                                    &loser.id[..8]
-                                } else {
-                                    &loser.id
-                                },
-                                if _winner.id.len() > 8 {
-                                    &_winner.id[..8]
-                                } else {
-                                    &_winner.id
-                                },
-                                pct_diff
-                            );
-                        }
-                        to_remove.push(loser.id.clone());
-                    }
+                // 🔐 COMPARABILITY GATE
+                // Non-comparable opportunities must never collide
+                if !a.is_comparable_to(b) {
+                    continue;
                 }
+
+                // Compute target drift
+                let pct_diff = Pct::new(a.target_price.percent_diff_from_0_1(&b.target_price));
+
+                #[cfg(debug_assertions)]
+                if DF.log_ledger {
+                    log::info!(
+                        "LEDGER COLLISION CHECK [{} | {}]: drift={} tolerance={}",
+                        a.strategy,
+                        a.pair_name,
+                        pct_diff,
+                        tolerance_pct
+                    );
+                }
+
+                // Only collide if within tolerance
+                if pct_diff >= tolerance_pct {
+                    continue;
+                }
+
+                // 🧨 DESTRUCTIVE DECISION BOUNDARY
+                #[cfg(debug_assertions)]
+                TradeOpportunity::assert_comparable_to(a, b);
+
+                let score_a = a.calculate_quality_score();
+                let score_b = b.calculate_quality_score();
+
+                let (winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
+
+                #[cfg(debug_assertions)]
+                if DF.log_ledger {
+                    log::info!(
+                        "🧹 LEDGER PRUNE [Strategy: {} | Station: {:?}]: {} removed in favor of {} (Δ={})",
+                        winner.strategy,
+                        winner.station_id,
+                        &loser.id[..loser.id.len().min(8)],
+                        &winner.id[..winner.id.len().min(8)],
+                        pct_diff
+                    );
+                    self.debug_log_strategy_summary();
+                }
+
+                to_remove.push(loser.id.clone());
             }
         }
 
+        // Apply removals to the real ledger
         for id in to_remove {
             self.opportunities.remove(&id);
         }
@@ -212,6 +273,7 @@ impl OpportunityLedger {
                         new_opp.stop_price
                     );
                 }
+                self.debug_log_strategy_summary();
             }
 
             // CRITICAL: Preserve Identity

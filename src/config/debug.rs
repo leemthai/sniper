@@ -46,8 +46,8 @@ pub struct LogFlags {
 
 pub const DF: LogFlags = LogFlags {
     log_engine: false,
-    log_ledger: false,
-    log_pathfinder: true,
+    log_ledger: true,
+    log_pathfinder: false,
 
     log_selected_opportunity: false,
     log_strategy_selection: false,
@@ -72,7 +72,7 @@ pub const DF: LogFlags = LogFlags {
     // These two need moving out to somehwere else!!!!!!!!!
     // Default to a small number for quick UI testing. Change this to 1000 when you want to stress-test the model i.e all pairs.
     max_pairs_load: 12, // 40, // 25, // 60,
-    wipe_ledger_on_startup: false,
+    wipe_ledger_on_startup: true,
 };
 
 // use crate::config::DF

@@ -132,12 +132,12 @@ impl PlotLayer for OpportunityLayer {
 
             None => {
                 // --- CASE C: NO SELECTION ---
-                // User has no active trade selected (maybe none available for this pair)
+                // User has no active trade selected (maybe none available for this pair OR the user has never selected an opportunity)
                 // We draw NOTHING.
-                log::warn!(
-                    "No active trade selected - means no available for {}. Can only occur if ctx.selected_opportunity is None",
-                    current_pair
-                );
+                // log::warn!(
+                //     "No active trade selected - means no available for {}. Can only occur if ctx.selected_opportunity is None",
+                //     current_pair
+                // );
             }
         }
     }

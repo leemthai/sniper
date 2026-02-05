@@ -1,11 +1,15 @@
 use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Sender};
+
 
 // Only import thread crate on non-WASM target
 #[cfg(not(target_arch = "wasm32"))]
-use std::thread;
+use {
+    std::thread,
+    std::sync::mpsc::{Receiver}
+};
 
 use uuid::Uuid;
 
@@ -40,7 +44,7 @@ use {crate::ui::ui_text::UI_TEXT};
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
-pub fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult>) {
+pub(crate) fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult>) {
     thread::spawn(move || {
         for req in rx {
             process_request_sync(req, tx.clone());
@@ -48,11 +52,11 @@ pub fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult>) {
     });
 }
 
-/// WASM ONLY: No-op.
-/// The Engine holds the receiver and processes jobs manually in the update loop.
-#[cfg(target_arch = "wasm32")]
-pub fn spawn_worker_thread(_rx: Receiver<JobRequest>, _tx: Sender<JobResult>) {
-    // Do nothing.
+// Public so Audit can see it)
+pub(crate) struct PathfinderResult {
+    pub opportunities: Vec<TradeOpportunity>,
+    pub trend_lookback: usize, // Trend_K
+    pub sim_duration: usize,   // Sim_K
 }
 
 struct CandidateResult {
@@ -64,7 +68,7 @@ struct CandidateResult {
 
 /// Runs the "Scan & Fit" algorithm to find the optimal Price Horizon
 /// that produces trades within the Station's target time range.
-pub fn tune_to_station(
+pub(crate) fn tune_to_station(
     ohlcv: &OhlcvTimeSeries,
     current_price: Price,
     station: &TunerStation,
@@ -128,7 +132,7 @@ pub fn tune_to_station(
             let duration_hours = result
                 .opportunities
                 .iter()
-                .map(|o| o.avg_duration_ms.value())
+                .map(|o| o.avg_duration.value())
                 .sum::<i64>() as f64
                 / count as f64
                 / 3_600_000.0;
@@ -222,6 +226,132 @@ pub fn tune_to_station(
     Some(best_match.ph)
 }
 
+pub(crate) fn run_pathfinder_simulations(
+    ohlcv: &OhlcvTimeSeries,
+    current_price: Price,
+    ph_pct: PhPct,
+    strategy: OptimizationStrategy,
+    station_id: StationId,
+    cva_opt: Option<&CVACore>,
+) -> PathfinderResult {
+
+    if !current_price.is_positive() {
+        return PathfinderResult {
+            opportunities: Vec::new(),
+            trend_lookback: 0,
+            sim_duration: 0,
+        };
+    }
+
+    // Volatility range is clamped to available klines to avoid underflow
+
+    let max_idx = ohlcv.klines().saturating_sub(1);
+    let vol_lookback = constants::journey::optimization::VOLATILITY_LOOKBACK.min(max_idx);
+    let start_vol = ohlcv.klines().saturating_sub(vol_lookback);
+    let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol, ohlcv.klines());
+
+    // Matches
+    let trend_lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
+    let duration = AdaptiveParameters::calculate_dynamic_journey_duration(
+        ph_pct,
+        avg_volatility,
+        DurationMs::new(constants::BASE_INTERVAL.as_millis() as i64),
+        &constants::journey::DEFAULT,
+    );
+    let duration_candles =
+        duration_to_candles(duration, constants::BASE_INTERVAL.as_millis() as i64);
+
+    let matches_opt = ScenarioSimulator::find_historical_matches(
+        ohlcv.pair_interval.name(),
+        ohlcv,
+        max_idx,
+        &constants::similarity::DEFAULT,
+        constants::journey::SAMPLE_COUNT,
+        trend_lookback,
+        duration_candles,
+    );
+
+    let (matches, current_state) = match matches_opt {
+        Some(tuple) => (tuple.0, tuple.1),
+        None => {
+            return PathfinderResult {
+                opportunities: Vec::new(),
+                trend_lookback,
+                sim_duration: duration_candles,
+            };
+        }
+    };
+
+    let (price_min, price_max) = price_horizon::calculate_price_range(current_price, ph_pct);
+
+    // Build Context Object
+    let ctx = PathfinderContext {
+        pair_name: ohlcv.pair_interval.name(),
+        ohlcv,
+        cva: cva_opt,
+        matches,
+        current_state: current_state,
+        current_price,
+        strategy,
+        station_id,
+        duration_candles,
+        duration: DurationMs::new(duration.as_millis() as i64),
+        ph_pct,
+        price_min,
+        price_max,
+    };
+
+    #[cfg(debug_assertions)]
+    if DF.log_pathfinder {
+        log::info!(
+            "🎯 PATHFINDER START [{}] Price: {} | PH Range: {} - {} ({}) | Vol: {}",
+            ctx.pair_name,
+            ctx.current_price,
+            ctx.price_min,
+            ctx.price_max,
+            ctx.ph_pct,
+            avg_volatility
+        );
+    }
+
+    // 2. Run Pipeline
+    let scouts = run_scout_phase(&ctx);
+    let drill_results = run_drill_phase(&ctx, scouts);
+
+    // 3. Final Filter
+    let final_opps: Vec<TradeOpportunity> = apply_diversity_filter(
+        drill_results,
+        ctx.pair_name,
+        Price::from(ctx.price_min),
+        Price::from(ctx.price_max),
+        strategy,
+    );
+    // Return everything
+    PathfinderResult {
+        opportunities: final_opps,
+        trend_lookback,
+        sim_duration: duration_candles,
+    }
+}
+
+pub(crate) fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
+    // 1. ACQUIRE DATA (Clone & Release)
+    let ts_local = match fetch_local_timeseries(&req) {
+        Ok(ts) => ts,
+        Err(e) => {
+            let _ = tx.send(JobResult {
+                pair_name: req.pair_name.clone(),
+                duration_ms: 0,
+                result: Err(e),
+                cva: None,
+                candle_count: 0,
+            });
+            return;
+        }
+    };
+    perform_standard_analysis(&req, &ts_local, tx);
+}
+
 /// Helper: Runs the simulation tournament for a specific target price.
 fn simulate_target(
     ctx: &PathfinderContext,
@@ -231,7 +361,8 @@ fn simulate_target(
     limit_samples: usize,
 ) -> Option<CandidateResult> {
     crate::trace_time!("Worker: Simulate Target", 500, {
-        // let profile = &ctx.config.journey.profile;
+
+        let interval_duration = DurationMs::new(constants::BASE_INTERVAL.as_millis() as i64);
 
         let direction = if Price::from(target_price) > ctx.current_price {
             TradeDirection::Long
@@ -250,18 +381,16 @@ fn simulate_target(
             risk_tests,
             &constants::journey::DEFAULT.profile,
             ctx.strategy,
-            constants::BASE_INTERVAL.as_millis() as i64,
+            interval_duration,
             limit_samples,
             0,
         );
 
         if let Some((result, stop_price, variants)) = best_sl_opt {
-            let avg_dur_ms = (result.avg_candle_count
-                * constants::BASE_INTERVAL.as_millis() as i64 as f64)
-                as i64;
+            let avg_duration = interval_duration.scale(result.avg_candle_count);
             let score = ctx
                 .strategy
-                .calculate_score(result.avg_pnl_pct, DurationMs::new(avg_dur_ms));
+                .calculate_score(result.avg_pnl_pct, avg_duration);
 
             let unique_string = format!("{}_{}_{}", ctx.pair_name, source_id_suffix, direction);
             let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, unique_string.as_bytes()).to_string();
@@ -281,8 +410,8 @@ fn simulate_target(
                 start_price: ctx.current_price,
                 target_price,
                 stop_price,
-                max_duration_ms: ctx.duration_ms,
-                avg_duration_ms: DurationMs::new(avg_dur_ms),
+                max_duration: ctx.duration,
+                avg_duration: avg_duration,
                 strategy: ctx.strategy,
                 station_id: ctx.station_id,
                 market_state: ctx.current_state,
@@ -305,6 +434,7 @@ fn simulate_target(
 /// 1. Divides the price range into N regions.
 /// 2. Finds the best trade in each region (Local Winner).
 /// 3. Filters Local Winners against the Global Best Score (Qualifying Round).
+/// /// Invariant: range_max > range_min (degenerate price ranges are rejected upstream)
 fn apply_diversity_filter(
     candidates: Vec<CandidateResult>,
     _pair_name: &str,
@@ -312,6 +442,7 @@ fn apply_diversity_filter(
     range_max: Price,
     _strategy: OptimizationStrategy,
 ) -> Vec<TradeOpportunity> {
+
     if candidates.is_empty() {
         return Vec::new();
     }
@@ -330,15 +461,15 @@ fn apply_diversity_filter(
             debug_view.sort_by(|a, b| {
                 b.score
                     .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .unwrap_or(Ordering::Equal)
             });
 
             log::info!("⚖️ BALANCED SCOREBOARD [{}] (Top 5 Inputs):", _pair_name);
             for (i, c) in debug_view.iter().take(5).enumerate() {
                 let roi = c.opportunity.expected_roi();
-                let dur_ms = c.opportunity.avg_duration_ms;
-                let dur_str = TimeUtils::format_duration(dur_ms.value());
-                let aroi = TradeProfile::calculate_annualized_roi(roi, dur_ms);
+                let duration = c.opportunity.avg_duration;
+                let dur_str = TimeUtils::format_duration(duration.value());
+                let aroi = TradeProfile::calculate_annualized_roi(roi, duration);
 
                 log::info!(
                     "   #{}: Score {:.1} | ROI {} | AROI {} | Time {}",
@@ -461,7 +592,7 @@ struct PathfinderContext<'a> {
     strategy: OptimizationStrategy,
     station_id: StationId,
     duration_candles: usize,
-    duration_ms: DurationMs,
+    duration: DurationMs,
     ph_pct: PhPct,
     price_min: LowPrice,
     price_max: HighPrice,
@@ -815,119 +946,6 @@ fn run_drill_phase(
     candidates
 }
 
-// Public so Audit can see it)
-pub struct PathfinderResult {
-    pub opportunities: Vec<TradeOpportunity>,
-    pub trend_lookback: usize, // Trend_K
-    pub sim_duration: usize,   // Sim_K
-}
-
-pub fn run_pathfinder_simulations(
-    ohlcv: &OhlcvTimeSeries,
-    current_price: Price,
-    ph_pct: PhPct,
-    strategy: OptimizationStrategy,
-    station_id: StationId,
-    cva_opt: Option<&CVACore>,
-) -> PathfinderResult {
-    if !current_price.is_positive() {
-        return PathfinderResult {
-            opportunities: Vec::new(),
-            trend_lookback: 0,
-            sim_duration: 0,
-        };
-    }
-
-    // Volatility range is clamped to available klines to avoid underflow
-
-    let max_idx = ohlcv.klines().saturating_sub(1);
-    let vol_lookback = constants::journey::optimization::VOLATILITY_LOOKBACK.min(max_idx);
-    let start_vol = ohlcv.klines().saturating_sub(vol_lookback);
-    let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol, ohlcv.klines());
-
-    // Matches
-    let trend_lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
-    let duration = AdaptiveParameters::calculate_dynamic_journey_duration(
-        ph_pct,
-        avg_volatility,
-        DurationMs::new(constants::BASE_INTERVAL.as_millis() as i64),
-        &constants::journey::DEFAULT,
-    );
-    let duration_candles =
-        duration_to_candles(duration, constants::BASE_INTERVAL.as_millis() as i64);
-
-    let matches_opt = ScenarioSimulator::find_historical_matches(
-        ohlcv.pair_interval.name(),
-        ohlcv,
-        max_idx,
-        &constants::similarity::DEFAULT,
-        constants::journey::SAMPLE_COUNT,
-        trend_lookback,
-        duration_candles,
-    );
-
-    let (matches, current_state) = match matches_opt {
-        Some(tuple) => (tuple.0, tuple.1),
-        None => {
-            return PathfinderResult {
-                opportunities: Vec::new(),
-                trend_lookback,
-                sim_duration: duration_candles,
-            };
-        }
-    };
-
-    let (price_min, price_max) = price_horizon::calculate_price_range(current_price, ph_pct);
-
-    // Build Context Object
-    let ctx = PathfinderContext {
-        pair_name: ohlcv.pair_interval.name(),
-        ohlcv,
-        cva: cva_opt,
-        matches,
-        current_state: current_state,
-        current_price,
-        strategy,
-        station_id,
-        duration_candles,
-        duration_ms: DurationMs::new(duration.as_millis() as i64),
-        ph_pct,
-        price_min,
-        price_max,
-    };
-
-    #[cfg(debug_assertions)]
-    if DF.log_pathfinder {
-        log::info!(
-            "🎯 PATHFINDER START [{}] Price: {} | PH Range: {} - {} ({}) | Vol: {}",
-            ctx.pair_name,
-            ctx.current_price,
-            ctx.price_min,
-            ctx.price_max,
-            ctx.ph_pct,
-            avg_volatility
-        );
-    }
-
-    // 2. Run Pipeline
-    let scouts = run_scout_phase(&ctx);
-    let drill_results = run_drill_phase(&ctx, scouts);
-
-    // 3. Final Filter
-    let final_opps: Vec<TradeOpportunity> = apply_diversity_filter(
-        drill_results,
-        ctx.pair_name,
-        Price::from(ctx.price_min),
-        Price::from(ctx.price_max),
-        strategy,
-    );
-    // Return everything
-    PathfinderResult {
-        opportunities: final_opps,
-        trend_lookback,
-        sim_duration: duration_candles,
-    }
-}
 
 /// Runs a gated R:R stop-loss tournament, selecting the highest-scoring viable stop per strategy.
 fn run_stop_loss_tournament(
@@ -941,7 +959,7 @@ fn run_stop_loss_tournament(
     risk_tests: &[f64],
     profile: &TradeProfile,
     strategy: OptimizationStrategy,
-    interval_ms: i64,
+    duration_ms: DurationMs,
     limit_samples: usize,
     _zone_idx: usize,
 ) -> Option<(SimulationResult, StopPrice, Vec<TradeVariant>)> {
@@ -1017,13 +1035,12 @@ fn run_stop_loss_tournament(
                 // Metrics
                 let roi_pct = result.avg_pnl_pct;
 
-                let duration_real_ms =
-                    (result.avg_candle_count * interval_ms as f64).round() as i64;
+                let duration_real = duration_ms.scale(result.avg_candle_count);
 
                 // Calculate AROI for the Gatekeeper & Judge
                 let aroi_pct = TradeProfile::calculate_annualized_roi(
                     roi_pct,
-                    DurationMs::new(duration_real_ms),
+                    duration_real,
                 );
 
                 // GATEKEEPER: Check both ROI and AROI against profile
@@ -1040,7 +1057,7 @@ fn run_stop_loss_tournament(
 
                     // JUDGE: Calculate Score based on Strategy (using CORRECT Time units)
                     let score =
-                        strategy.calculate_score(roi_pct, DurationMs::new(duration_real_ms));
+                        strategy.calculate_score(roi_pct, duration_real);
 
                     // Track Best
                     if score > best_score {
@@ -1084,24 +1101,6 @@ fn run_stop_loss_tournament(
             None
         }
     })
-}
-
-pub fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
-    // 1. ACQUIRE DATA (Clone & Release)
-    let ts_local = match fetch_local_timeseries(&req) {
-        Ok(ts) => ts,
-        Err(e) => {
-            let _ = tx.send(JobResult {
-                pair_name: req.pair_name.clone(),
-                duration_ms: 0,
-                result: Err(e),
-                cva: None,
-                candle_count: 0,
-            });
-            return;
-        }
-    };
-    perform_standard_analysis(&req, &ts_local, tx);
 }
 
 fn fetch_local_timeseries(req: &JobRequest) -> Result<TimeSeriesCollection, String> {

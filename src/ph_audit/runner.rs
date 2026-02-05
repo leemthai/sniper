@@ -112,7 +112,7 @@ fn run_single_simulation(
     // DISPLAY LOGIC: Convert ms to hours for CSV readability
     let durations_hours: Vec<f64> = opportunities.iter()
         .take(5)
-        .map(|o| o.avg_duration_ms.value() as f64 / 3_600_000.0) 
+        .map(|o| o.avg_duration.to_hours()) 
         .collect();
     
     // Avg Stop Loss %

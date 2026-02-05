@@ -152,12 +152,12 @@ impl ZoneSniperApp {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.avg_duration_ms.value())
+                        .map(|o| o.avg_duration.value())
                         .unwrap_or(i64::MAX);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.avg_duration_ms.value())
+                        .map(|o| o.avg_duration.value())
                         .unwrap_or(i64::MAX);
                     val_b
                         .cmp(&val_a)
@@ -251,7 +251,7 @@ impl ZoneSniperApp {
                 // --- CALCULATIONS ---
                 // We use the data captured in the opportunity, not the global config
                 let ph_pct = op.source_ph_pct;
-                let max_time_ms = op.max_duration_ms;
+                let max_time_ms = op.max_duration;
                 let max_time_str = TimeUtils::format_duration(max_time_ms.value());
 
                 // For interval display, we use the global config as a fallback if not in state
@@ -281,7 +281,7 @@ impl ZoneSniperApp {
 
                 ui.metric(
                     &UI_TEXT.label_avg_duration,
-                    &TimeUtils::format_duration(op.avg_duration_ms.value()),
+                    &TimeUtils::format_duration(op.avg_duration.value()),
                     PLOT_CONFIG.color_text_neutral,
                 );
 
@@ -1176,7 +1176,7 @@ impl ZoneSniperApp {
                     self.down_from_top(ui);
                     // Avg Duration Only
                     ui.label(
-                        RichText::new(TimeUtils::format_duration(op.avg_duration_ms.value()))
+                        RichText::new(TimeUtils::format_duration(op.avg_duration.value()))
                             .small()
                             .color(PLOT_CONFIG.color_text_neutral),
                     );
