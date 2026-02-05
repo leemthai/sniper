@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-
 use crate::config::PhPct;
 
 #[cfg(debug_assertions)]
@@ -43,7 +42,9 @@ impl OpportunityLedger {
             .values()
             .filter(|op| op.pair_name == new_opp.pair_name && op.direction == new_opp.direction)
             .map(|op| {
-                let pct_diff = op.target_price.percent_diff_0_100(&new_opp.target_price);
+                let pct_diff = op
+                    .target_price
+                    .percent_diff_from_0_1(&new_opp.target_price);
                 (op.id.clone(), pct_diff)
             })
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
@@ -106,9 +107,7 @@ impl OpportunityLedger {
 
     pub fn find_first_for_pair(&self, pair_name: Option<String>) -> Option<&TradeOpportunity> {
         let name = pair_name?;
-        self.opportunities
-            .values()
-            .find(|op| op.pair_name == name)
+        self.opportunities.values().find(|op| op.pair_name == name)
     }
 
     pub fn remove(&mut self, id: &str) {
@@ -121,7 +120,6 @@ impl OpportunityLedger {
     /// 2. Trades from the SAME strategy with overlapping targets are merged.
     /// 3. The winner is decided by the Score of that specific strategy.
     pub fn prune_collisions(&mut self, tolerance_pct: PhPct) {
-
         let mut to_remove = Vec::new();
         let ops: Vec<_> = self.opportunities.values().cloned().collect();
 
@@ -144,9 +142,18 @@ impl OpportunityLedger {
                     }
 
                     // Same strategy and stationId so preserve the best one
-                    let pct_diff = a.target_price.percent_diff_0_100(&b.target_price);
+                    let pct_diff =
+                        PhPct::new(a.target_price.percent_diff_from_0_1(&b.target_price));
+                    #[cfg(debug_assertions)]
+                    if DF.log_ledger {
+                        log::info!(
+                            "Comparing calculated value of pct_diff of {} with tolerance of {}",
+                            pct_diff,
+                            tolerance_pct
+                        );
+                    }
 
-                    if pct_diff < tolerance_pct.value() {
+                    if pct_diff < tolerance_pct {
                         let score_a = a.calculate_quality_score();
                         let score_b = b.calculate_quality_score();
                         let (_winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
@@ -154,7 +161,7 @@ impl OpportunityLedger {
                         #[cfg(debug_assertions)]
                         if DF.log_ledger {
                             log::info!(
-                                "🧹 LEDGER PRUNE [Strategy: {}]: Merging duplicate trade {} into {}. (Diff {:.3}%)",
+                                "🧹 LEDGER PRUNE [Strategy: {}]: Merging duplicate trade {} into {}. (Diff {})",
                                 a.strategy,
                                 if loser.id.len() > 8 {
                                     &loser.id[..8]

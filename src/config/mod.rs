@@ -22,6 +22,7 @@ pub use types::{
     ZoneParams,
     SimilaritySettings,
     ZoneClassificationConfig,
+    Pct,
     PhPct,
     VolatilityPct,
     MomentumPct,

@@ -103,24 +103,6 @@ pub struct SniperEngine {
 }
 
 impl SniperEngine {
-    fn enqueue_or_replace(&mut self, job: EngineJob) {
-        // Remove any existing queued job for the same pair
-        if let Some(pos) = self.queue.iter().position(|j| j.pair == job.pair) {
-            #[cfg(debug_assertions)]
-            if DF.log_engine {
-                log::info!("ENGINE QUEUE: Replacing queued job for pair [{}]", job.pair);
-            }
-            self.queue.remove(pos);
-        } else {
-            #[cfg(debug_assertions)]
-            if DF.log_engine {
-                log::info!("ENGINE QUEUE: Enqueuing new job for pair [{}]", job.pair);
-            }
-        }
-
-        self.queue.push_back(job);
-    }
-
     /// Initialize the engine, spawn workers, and start the price stream.
     pub(crate) fn new(
         timeseries: TimeSeriesCollection,
@@ -214,6 +196,7 @@ impl SniperEngine {
         overrides: Option<&HashMap<String, Price>>,
     ) -> Vec<TradeFinderRow> {
         crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
+
             let mut rows = Vec::new();
 
             let now_ms = TimeUtils::now_timestamp_ms();
@@ -376,6 +359,7 @@ impl SniperEngine {
         self.price_stream.get_price(pair)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn set_stream_suspended(&self, suspended: bool) {
         if suspended {
             self.price_stream.suspend();
@@ -474,7 +458,6 @@ impl SniperEngine {
     ///
     /// This is used when the caller knows the current model for this pair
     /// is stale (e.g. user action, parameter change).
-
     pub(crate) fn invalidate_pair_and_recalc(
         &mut self,
         pair: &str,
@@ -548,9 +531,6 @@ impl SniperEngine {
                                     pair_name
                                 );
                             }
-                            // TEMP why is this producing station_id of "Swing" for all pairs..... ?????????? hmmm...dunno. intersting
-                            // i.e why does this fail sometimes.... ??????
-                            // Must mean the pair_name is not in the hashmap right? But I thought it was guaranteed full.... ??????
                             let station_id = self
                                 .shared_config
                                 .get_station(&pair_name)
@@ -801,17 +781,17 @@ impl SniperEngine {
                     state.last_update_price = current_price;
                     continue;
                 } else {
-                    let pct_diff = current_price.percent_diff_0_1(&state.last_update_price);
-                    let triggered = pct_diff > threshold.value();
+                    let pct_diff = PhPct::new(current_price.percent_diff_from_0_1(&state.last_update_price));
+                    let triggered = pct_diff > threshold;
 
                     #[cfg(debug_assertions)]
                     if triggered && DF.log_engine {
                         log::info!(
-                            "ENGINE AUTO (PRICE TRIGGER): [{}] last={} current={} diff={:.5}% threshold={}",
+                            "ENGINE AUTO (PRICE TRIGGER): [{}] last={} current={} diff={} threshold={}",
                             pair_name,
                             state.last_update_price,
                             current_price,
-                            pct_diff * 100.0,
+                            pct_diff,
                             threshold,
                         );
                     }
@@ -959,5 +939,23 @@ impl SniperEngine {
 
             let _ = self.job_tx.send(req);
         }
+    }
+
+    fn enqueue_or_replace(&mut self, job: EngineJob) {
+        // Remove any existing queued job for the same pair
+        if let Some(pos) = self.queue.iter().position(|j| j.pair == job.pair) {
+            #[cfg(debug_assertions)]
+            if DF.log_engine {
+                log::info!("ENGINE QUEUE: Replacing queued job for pair [{}]", job.pair);
+            }
+            self.queue.remove(pos);
+        } else {
+            #[cfg(debug_assertions)]
+            if DF.log_engine {
+                log::info!("ENGINE QUEUE: Enqueuing new job for pair [{}]", job.pair);
+            }
+        }
+
+        self.queue.push_back(job);
     }
 }

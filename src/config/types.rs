@@ -91,9 +91,6 @@ impl PhPct {
         self.0
     }
 
-    // pub fn format_pct(&self) -> String {
-    //     format!("{:.2}%", self.0 * 100.0)
-    // }
 }
 
 impl Default for PhPct {
@@ -107,6 +104,37 @@ impl std::fmt::Display for PhPct {
         write!(f, "{:.4}%", self.0 * 100.)
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct Pct(f64);
+
+impl Pct {
+    // A 'general' % clamped between 0 and 1
+    pub const fn new(val: f64) -> Self {
+        let v = if val < 0.0 {
+            0.0
+        } else if val > 1.0 {
+            1.0
+        } else {
+            val
+        };
+        Self(v)
+    }
+
+    #[inline]
+    pub fn value(self) -> f64 {
+        self.0
+    }
+
+}
+
+impl std::fmt::Display for Pct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.4}%", self.0 * 100.)
+    }
+}
+
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
 #[serde(transparent)]
@@ -353,15 +381,15 @@ pub trait PriceLike {
         self.value() > Self::MIN_EPSILON
     }
 
-    fn percent_diff_0_100<R: PriceLike>(&self, reference: &R) -> f64 {
-        if !reference.is_positive() {
-            return 0.0;
-        }
+    // fn percent_diff_from_0_100<R: PriceLike>(&self, reference: &R) -> f64 {
+    //     if !reference.is_positive() {
+    //         return 0.0;
+    //     }
 
-        (self.value() - reference.value()).abs() / reference.value() * 100.0
-    }
+    //     (self.value() - reference.value()).abs() / reference.value() * 100.0
+    // }
 
-    fn percent_diff_0_1<R: PriceLike>(&self, reference: &R) -> f64 {
+    fn percent_diff_from_0_1<R: PriceLike>(&self, reference: &R) -> f64 {
         if !reference.is_positive() {
             return 0.0;
         }

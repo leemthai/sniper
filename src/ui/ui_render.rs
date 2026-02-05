@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{MomentumPct, OptimizationStrategy, TICKER, VolatilityPct, constants};
+use crate::config::{MomentumPct, OptimizationStrategy, TICKER, VolatilityPct, constants, Pct};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -365,8 +365,8 @@ impl ZoneSniperApp {
                     &format!("{}", calc_price),
                     PLOT_CONFIG.color_text_neutral,
                 );
-                let target_dist = op.target_price.percent_diff_0_100(&calc_price);
-                let stop_dist = op.stop_price.percent_diff_0_100(&calc_price);
+                let target_dist = Pct::new(op.target_price.percent_diff_from_0_1(&calc_price));
+                let stop_dist = Pct::new(op.stop_price.percent_diff_from_0_1(&calc_price));
 
                 // TARGET ROW
                 ui.horizontal(|ui| {
@@ -382,7 +382,7 @@ impl ZoneSniperApp {
                             .color(PLOT_CONFIG.color_profit),
                     );
                     ui.label(
-                        RichText::new(format!("(+{:.2}%)", target_dist))
+                        RichText::new(format!("({})", target_dist))
                             .small()
                             .color(PLOT_CONFIG.color_profit),
                     );
@@ -403,7 +403,7 @@ impl ZoneSniperApp {
                     );
                     ui.label(
                         RichText::new(format!(
-                            "({} {:.2}% / {} {:.2}%)",
+                            "({} {} / {} {})",
                             UI_TEXT.label_target_text,
                             target_dist,
                             UI_TEXT.label_stop_loss_short,
@@ -1766,11 +1766,11 @@ impl ZoneSniperApp {
                 let mut should_close = false;
 
                 for (i, variant) in op.variants.iter().enumerate() {
-                    let risk_pct = variant.stop_price.percent_diff_0_100(&op.start_price);
+                    let risk_pct = Pct::new(variant.stop_price.percent_diff_from_0_1(&op.start_price));
                     let win_rate = variant.simulation.success_rate;
 
                     let text = format!(
-                        "{}. {} {}   {} {}   {} -{:.2}%",
+                        "{}. {} {}   {} {}   {} -{}",
                         i + 1,
                         UI_TEXT.label_roi,
                         variant.roi_pct,
