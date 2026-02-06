@@ -1,10 +1,10 @@
-use eframe::egui::{Ui, Layout, Align, Button};
-use crate::config::{TimeTunerConfig, StationId};
+use crate::config::{StationId, TimeTunerConfig};
+use eframe::egui::{Align, Button, Layout, Ui, vec2};
 
 #[derive(Debug)]
 pub enum TunerAction {
     StationSelected(StationId),
-    ConfigureTuner, 
+    ConfigureTuner,
 }
 
 pub fn render(
@@ -17,8 +17,11 @@ pub fn render(
 
     ui.vertical(|ui| {
         if let Some(name) = pair {
+            let headline = format!("Generate new {} trades in YOUR style:", name);
+            let y_height = 35.0;
+
             if let Some(station_id) = active_station_id {
-                ui.heading(format!("Time Tuner for {}", name));
+                ui.heading(headline);
                 ui.add_space(4.0);
 
                 // --- ROW 1: STATION BUTTONS ---
@@ -36,27 +39,33 @@ pub fn render(
                             Button::new(station.name)
                         };
 
-                        if ui.add(btn).clicked() {
+                        let response = ui.add_sized(vec2(90.0, y_height), btn);
+
+                        if response.clicked() {
                             action = Some(TunerAction::StationSelected(station.id));
                         }
                     }
 
                     // Gear Icon (Right Aligned)
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button("⚙").on_hover_text("Configure Time Ranges").clicked() {
+                        if ui
+                            .add_sized(vec2(35.0, y_height), Button::new("⚙"))
+                            .on_hover_text("Configure Time Ranges")
+                            .clicked()
+                        {
                             action = Some(TunerAction::ConfigureTuner);
                         }
                     });
                 });
             } else {
-                ui.heading(format!("Time Tuner for {}", name));
+                ui.heading(headline);
                 ui.add_space(4.0);
-                ui.label("No active station selected");
+                ui.label("No active style selected");
             }
         } else {
-            ui.heading("Time Tuner");
+            ui.heading("Trading Style");
             ui.add_space(4.0);
-            ui.label("UI not available unless a pair is selected");
+            ui.label("UI not available unless a trading pair is selected");
         }
 
         ui.add_space(4.0);

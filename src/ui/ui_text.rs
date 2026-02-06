@@ -277,7 +277,7 @@ pub struct UiText {
 // THE SINGLETON
 pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
     UiText {
-        label_goal: "Goal".to_string(),
+        label_goal: "Trading Goal".to_string(),
         icon_strategy: ICON_STRATEGY.to_string(),
         icon_strategy_roi: ICON_STRATEGY_ROI.to_string(),
         icon_strategy_aroi: ICON_STRATEGY_AROI.to_string(),

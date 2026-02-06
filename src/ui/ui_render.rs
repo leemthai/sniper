@@ -1555,17 +1555,17 @@ impl ZoneSniperApp {
     }
 
     fn ui_optimization_strategy(&mut self, ui: &mut Ui) {
-        ui.label(format!("{} {}", UI_TEXT.label_goal, UI_TEXT.icon_strategy));
+        ui.label(format!("{}", UI_TEXT.label_goal));
 
         // Read current value
-        let current_strategy = self.shared_config.get_strategy(); // egui mutates a temporary UI variable (to show if updated or not)
+        let current_strategy = self.shared_config.get_strategy();
         let mut selected_strategy = current_strategy;
 
         // Selected text (icon + display)
         let selected_text = format!("{} {}", selected_strategy.icon(), selected_strategy);
 
         // ComboBox
-        ComboBox::from_label("Optimization strategy")
+        ComboBox::from_id_salt("Optimization strategy")
             .selected_text(selected_text)
             .width(100.0)
             .show_ui(ui, |ui| {

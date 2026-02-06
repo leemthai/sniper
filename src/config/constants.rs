@@ -134,8 +134,10 @@ pub mod tuner {
     pub const STATIONS: &[TunerStation] = &[
         TunerStation {
             id: StationId::Scalp,
-            name: "⚡ SCALP",
-            short_name: "⚡",
+            // name: "⚡ SCALP",
+            // short_name: "⚡",
+            name: "\u{f00d5} SCALP",
+            short_name: "\u{f00d5}",
             target_min_hours: 1.0,
             target_max_hours: 6.0,
             scan_ph_min: PhPct::new(0.01),
@@ -152,8 +154,10 @@ pub mod tuner {
         },
         TunerStation {
             id: StationId::Swing,
-            name: "🌊 SWING",
-            short_name: "🌊",
+            // name: "🌊 SWING",
+            // short_name: "🌊",
+            name: "\u{f095b} SWING",
+            short_name: "\u{f095b}",
             target_min_hours: 24.0,
             target_max_hours: 120.0,
             scan_ph_min: PhPct::new(0.05),
@@ -161,8 +165,8 @@ pub mod tuner {
         },
         TunerStation {
             id: StationId::Macro,
-            name: "\u{ef08} MACRO",
-            short_name: "\u{ef08}",
+            name: "\u{eda7} INVEST",
+            short_name: "\u{eda7}",
             target_min_hours: 336.0,
             target_max_hours: 2160.0,
             scan_ph_min: PhPct::new(0.15),
