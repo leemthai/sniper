@@ -224,20 +224,20 @@ impl OpportunityLedger {
 
                 let score_a = a.calculate_quality_score();
                 let score_b = b.calculate_quality_score();
-
-                let (winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
-
+                let (_winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
                 #[cfg(debug_assertions)]
-                if DF.log_ledger {
-                    log::info!(
-                        "🧹 LEDGER PRUNE [Strategy: {} | Station: {:?}]: {} removed in favor of {} (Δ={})",
-                        winner.strategy,
-                        winner.station_id,
-                        &loser.id[..loser.id.len().min(8)],
-                        &winner.id[..winner.id.len().min(8)],
-                        pct_diff
-                    );
-                    self.debug_log_strategy_summary();
+                {
+                    if DF.log_ledger {
+                        log::info!(
+                            "🧹 LEDGER PRUNE [Strategy: {} | Station: {:?}]: {} removed in favor of {} (Δ={})",
+                            _winner.strategy,
+                            _winner.station_id,
+                            &loser.id[..loser.id.len().min(8)],
+                            &_winner.id[.._winner.id.len().min(8)],
+                            pct_diff
+                        );
+                        self.debug_log_strategy_summary();
+                    }
                 }
 
                 to_remove.push(loser.id.clone());

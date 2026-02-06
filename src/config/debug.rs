@@ -11,11 +11,11 @@ pub struct LogFlags {
     /// Log ledger activity
     pub log_ledger: bool,
     pub log_results_repo: bool,
-    pub log_engine: bool,
+    pub log_engine_core: bool,
 
     pub log_tuner: bool,
     pub log_station_overrides: bool, 
-    pub log_ph_vals: bool,
+    pub log_ph_overrides: bool,
     
     pub log_pathfinder: bool,
     pub log_zones: bool,
@@ -36,34 +36,36 @@ pub struct LogFlags {
 
     pub log_strategy_selection: bool,
 
+    pub log_startup_prices: bool,
+
     // These two need moving out to somehwere else!!!!!!!!!
     // Limit how many pairs are loaded in Debug mode.
     pub max_pairs_load: usize,
-    // Nuke button for the Ledger
+    // Nuke ledger automatically on start-up
     pub wipe_ledger_on_startup: bool, 
 }
 
 pub const DF: LogFlags = LogFlags {
 
     log_station_overrides: true,
-    log_ph_vals: true,
+    log_ph_overrides: true,
+    log_tuner: true,
+
+    log_startup_prices: true,
     
-    log_engine: false,
+    log_engine_core: false, // exclusively core.rs stuff
     log_ledger: false,
     log_pathfinder: false,
 
     log_selected_opportunity: false,
+    log_selected_pair: false,
     log_strategy_selection: false,
-
-    log_tuner: false,
     log_candle_update: false,
-
     log_performance: false,
     log_price_stream_updates: false,
     log_simulation_events: false,
     log_results_repo: false,
     log_zones: false,
-    log_selected_pair: false,
     log_simd: false,
 
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
@@ -72,7 +74,7 @@ pub const DF: LogFlags = LogFlags {
     // These two need moving out to somehwere else!!!!!!!!!
     // Default to a small number for quick UI testing. Change this to 1000 when you want to stress-test the model i.e all pairs.
     max_pairs_load: 12, // 40, // 25, // 60,
-    wipe_ledger_on_startup: true,
+    wipe_ledger_on_startup: false,
 };
 
 // use crate::config::DF

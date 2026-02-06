@@ -469,7 +469,7 @@ impl SniperEngine {
         _reason: &str,
     ) {
         #[cfg(debug_assertions)]
-        if DF.log_engine {
+        if DF.log_engine_core {
             log::info!(
                 "ENGINE: invalidate_pair_and_recalc → scheduling fresh job for [{}]",
                 pair
@@ -523,20 +523,12 @@ impl SniperEngine {
                         // 3. Trigger Recalc
                         let pair_name = candle.symbol;
                         if let Some(ph_pct) = self.shared_config.get_ph(&pair_name) {
-                            #[cfg(debug_assertions)]
-                            if DF.log_ph_vals {
-                                log::info!(
-                                    "READING ph_pct value of {} from shared_config for pair {}",
-                                    ph_pct,
-                                    pair_name
-                                );
-                            }
                             let station_id = self
                                 .shared_config
                                 .get_station(&pair_name)
                                 .expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in shared_config {:?}", pair_name, ph_pct, self.shared_config)); // This should now crash if None is encountered. Better than reverting to default I think
                             #[cfg(debug_assertions)]
-                            if DF.log_engine {
+                            if DF.log_engine_core {
                                 log::info!(
                                     "Enqueing job for {} because a candle has closed:",
                                     pair_name
@@ -553,9 +545,9 @@ impl SniperEngine {
                             // }
                         } else {
                             #[cfg(debug_assertions)]
-                            if DF.log_ph_vals {
+                            if DF.log_ph_overrides {
                                 log::info!(
-                                    "FAILED to READ ph_pct from shared_config for pair {}. Therefore not updating this pair",
+                                    "FAILED to READ ph_pct value from shared_config for pair {}. Therefore not updating this pair",
                                     pair_name
                                 );
                             }
@@ -700,7 +692,7 @@ impl SniperEngine {
                     // Success: Update State
                     state.model = Some(model.clone());
                     #[cfg(debug_assertions)]
-                    if DF.log_engine {
+                    if DF.log_engine_core {
                         log::info!(
                             "ENGINE STATE: [{}] is_calculating = false (job complete) in OK branch of handle_job_result()",
                             result.pair_name
@@ -714,7 +706,7 @@ impl SniperEngine {
                     log::error!("Worker failed for {}: {}", result.pair_name, e);
                     state.last_error = Some(e);
                     #[cfg(debug_assertions)]
-                    if DF.log_engine {
+                    if DF.log_engine_core {
                         log::info!(
                             "ENGINE STATE: [{}] is_calculating = false (job complete) (in Err branch of handle_job_result()",
                             result.pair_name
@@ -731,7 +723,7 @@ impl SniperEngine {
 
     #[cfg(debug_assertions)]
     fn _log_queue(&self, context: &str) {
-        if !DF.log_engine {
+        if !DF.log_engine_core {
             return;
         }
 
@@ -762,7 +754,7 @@ impl SniperEngine {
 
                 if state.last_update_price.value() == 0.0 {
                     #[cfg(debug_assertions)]
-                    if DF.log_engine {
+                    if DF.log_engine_core {
                         log::info!(
                             "ENGINE PRICE BOOTSTRAP: [{}] initializing last_update_price = {} in trigger_recalcs_on_price_change()",
                             pair_name,
@@ -776,7 +768,7 @@ impl SniperEngine {
                     let triggered = pct_diff > threshold;
 
                     #[cfg(debug_assertions)]
-                    if triggered && DF.log_engine {
+                    if triggered && DF.log_engine_core {
                         log::info!(
                             "ENGINE AUTO (PRICE TRIGGER): [{}] last={} current={} diff={} threshold={}",
                             pair_name,
@@ -806,7 +798,7 @@ impl SniperEngine {
                 Some(v) => v,
                 None => {
                     #[cfg(debug_assertions)]
-                    if DF.log_engine {
+                    if DF.log_engine_core {
                         log::error!(
                             "Was intending to enqueue a job for {} but ph value not available",
                             { pair_name }
@@ -845,7 +837,7 @@ impl SniperEngine {
         // Pop and dispatch
         if let Some(job) = self.queue.pop_front() {
             #[cfg(debug_assertions)]
-            if DF.log_engine {
+            if DF.log_engine_core {
                 log::info!("ENGINE QUEUE: dispatching job for [{}]", job.pair);
             }
 
@@ -865,7 +857,7 @@ impl SniperEngine {
 
             if state.is_calculating {
                 #[cfg(debug_assertions)]
-                if DF.log_engine {
+                if DF.log_engine_core {
                     log::info!(
                         "ENGINE SKIP: [{}] already calculating, dropping dispatched job",
                         job.pair
@@ -876,14 +868,14 @@ impl SniperEngine {
             // 🔴 END FIX
 
             #[cfg(debug_assertions)]
-            if DF.log_engine {
+            if DF.log_engine_core {
                 log::info!(
                     "ENGINE STATE: [{}] is_calculating = true (dispatch)",
                     job.pair
                 );
             }
             #[cfg(debug_assertions)]
-            if DF.log_engine && state.is_calculating {
+            if DF.log_engine_core && state.is_calculating {
                 log::error!(
                     "ENGINE VIOLATION: [{}] dispatched while already calculating - this should literally never happen",
                     job.pair
@@ -894,7 +886,7 @@ impl SniperEngine {
 
             if let Some(p) = final_price_opt {
                 #[cfg(debug_assertions)]
-                if DF.log_engine {
+                if DF.log_engine_core {
                     log::info!(
                         "ENGINE DISPATCH: [{}] committing last_update_price = {}",
                         job.pair,
@@ -925,13 +917,13 @@ impl SniperEngine {
         // Remove any existing queued job for the same pair
         if let Some(pos) = self.queue.iter().position(|j| j.pair == job.pair) {
             #[cfg(debug_assertions)]
-            if DF.log_engine {
+            if DF.log_engine_core {
                 log::info!("ENGINE QUEUE: Replacing queued job for pair [{}]", job.pair);
             }
             self.queue.remove(pos);
         } else {
             #[cfg(debug_assertions)]
-            if DF.log_engine {
+            if DF.log_engine_core {
                 log::info!("ENGINE QUEUE: Enqueuing new job for pair [{}]", job.pair);
             }
         }

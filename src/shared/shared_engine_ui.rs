@@ -1,7 +1,11 @@
-use crate::config::{OptimizationStrategy, PhPct, StationId};
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
+
+use crate::config::{OptimizationStrategy, PhPct, StationId};
+#[cfg(debug_assertions)]
+use crate::config::DF;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UIEngineSharedData {
@@ -58,6 +62,13 @@ impl SharedConfiguration {
                 .entry(pair)
                 .or_insert(StationId::default());
         }
+        #[cfg(debug_assertions)]
+        if DF.log_station_overrides {
+            log::info!(
+                "LOG_STATION_OVERRIDES ensuring all station_overrides have at least default values: {:?}",
+                data
+            );
+        }
     }
 
     /// Iterates through all registered pairs and ensures they have a PH value.
@@ -66,6 +77,13 @@ impl SharedConfiguration {
         let keys: Vec<String> = data.pairs.iter().cloned().collect();
         for pair in keys {
             data.ph_overrides.entry(pair).or_insert(default_ph);
+        }
+        #[cfg(debug_assertions)]
+        if DF.log_ph_overrides {
+            log::info!(
+                "LOG_PH_OVERRIDES ensuring all ph_overrides have at least default values: {:?}",
+                data
+            );
         }
     }
 
@@ -107,16 +125,6 @@ impl SharedConfiguration {
     pub fn insert_ph(&self, key: String, value: PhPct) {
         self.inner.write().unwrap().ph_overrides.insert(key, value);
     }
-
-    // Ensure default for station
-    // pub fn ensure_station_default(&self, key: String) {
-    //     self.inner
-    //         .write()
-    //         .unwrap()
-    //         .station_overrides
-    //         .entry(key)
-    //         .or_insert(StationId::default());
-    // }
 
     // Ensure default PH if needed
     pub fn ensure_ph_default(&self, key: String, default_value: PhPct) {

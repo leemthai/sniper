@@ -121,9 +121,9 @@ pub mod zones {
 pub mod cva {
     use crate::config::PhPct;
     use crate::utils::TimeUtils;
-    // pub const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
-    pub const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.001); // TEMP put this value in for testing purposes if you want rapid re-triggering caused by prices...
-    pub const MIN_CANDLES_FOR_ANALYSIS: usize = 500;
+    pub const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
+    // pub const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.001); // TEMP put this value in for testing purposes if you want rapid re-triggering caused by prices...
+    pub const MIN_CANDLES_FOR_ANALYSIS: usize = 250;
     pub const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
 }
 

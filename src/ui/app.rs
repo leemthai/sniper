@@ -17,8 +17,12 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{CandleResolution, DF, PhPct, Price, StationId, constants, PriceLike,
-};
+use crate::config::{CandleResolution, PhPct, Price, PriceLike, StationId, constants};
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::config::{Pct};
+
+use crate::config::DF;
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -136,7 +140,6 @@ pub struct ZoneSniperApp {
     pub tf_sort_col: SortColumn,
     pub tf_sort_dir: SortDirection,
 
-    // pub saved_strategy: OptimizationStrategy,
     pub saved_opportunity_id: Option<String>,
 
     #[serde(skip)]
@@ -212,7 +215,7 @@ impl Default for ZoneSniperApp {
 }
 
 impl ZoneSniperApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, args: Cli) -> Self {
+    pub(crate) fn new(cc: &eframe::CreationContext<'_>, args: Cli) -> Self {
         let mut app: ZoneSniperApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
@@ -259,24 +262,17 @@ impl ZoneSniperApp {
     }
 
     /// Handles a change in global strategy (Optimization Goal).
-    /// Note: currently has no guard in place to check if this strategy is different from previous strategy
-    pub fn handle_strategy_selection(&mut self) {
-        
-        // Prepare Data (Solve Borrow Checker)
-        // We must extract the priority pair string BEFORE mutably borrowing the engine.
+    pub(crate) fn handle_strategy_selection(&mut self) {
         let priority_pair = self.selected_pair.clone();
-
-        // Execute Update
         if let Some(e) = &mut self.engine {
-            // Global Invalidation
-            // Since strategy has changed, every pair needs to be re-judged. We pass the current pair as priority so the user sees the active screen update first.
+            // Global Invalidation. Since strategy has changed, every pair needs to be re-judged. We pass the current pair as priority so the user sees the active screen update first.
             e.trigger_global_recalc(priority_pair);
         }
     }
 
-    /// Helper: Runs the Auto-Tune algorithm for a specific pair and station.
+    /// Runs the Auto-Tune algorithm for a specific pair and station.
     /// Returns Some(new_ph) if successful. Returns None if data/price is missing.
-    pub fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<PhPct> {
+    pub(crate) fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<PhPct> {
         if let Some(e) = &self.engine {
             // 1. Get Config for the requested Station
             let station = constants::tuner::CONFIG
@@ -297,34 +293,33 @@ impl ZoneSniperApp {
             .ok()?;
 
             // 4. Run Worker Logic
-            return worker::tune_to_station(ohlcv, price, station, self.shared_config.get_strategy());
+            return worker::tune_to_station(
+                ohlcv,
+                price,
+                station,
+                self.shared_config.get_strategy(),
+            );
         }
         None
     }
 
-    /// Updates Global State to point to this pair, but does NOT auto-select a trade opportunity
-    pub fn handle_pair_selection(&mut self, new_pair_name: String) {
-        // This does *NOT* update self.opportunity_selection at all!
-        // What it does do: update self.selected_pair
-
+    /// Updates self.selected_pair (and weirdly sets auto_scale_y = true)
+    pub(crate) fn handle_pair_selection(&mut self, new_pair_name: String) {
         self.auto_scale_y = true; // TEMP completely the wrong place for plot code.
-
+        let _old_pair_name = self.selected_pair.replace(new_pair_name.clone());
         #[cfg(debug_assertions)]
-        {
-            let old_pair_name = self.selected_pair.replace(new_pair_name.clone());
-            if DF.log_selected_pair {
-                log::info!(
-                    "SELECTED PAIR: set in handle_pair_selection to {} (from {}) ",
-                    new_pair_name,
-                    old_pair_name.as_deref().unwrap_or("None"),
-                );
-            }
+        if DF.log_selected_pair {
+            log::info!(
+                "SELECTED PAIR: set in handle_pair_selection to {} (from {}) ",
+                new_pair_name,
+                _old_pair_name.as_deref().unwrap_or("None"),
+            );
         }
     }
 
     /// Sets the scroll target based on the current selection state.
     /// Logic: Prefer Opportunity ID -> Fallback to Pair Name.
-    pub fn update_scroll_to_selection(&mut self) {
+    pub(crate) fn update_scroll_to_selection(&mut self) {
         self.scroll_target = if let Some(op) = &self.selected_opportunity {
             Some(NavigationTarget::Opportunity(op.id.clone()))
         } else {
@@ -332,11 +327,11 @@ impl ZoneSniperApp {
         };
     }
 
-    /// Smart navigation via Name Click (Ticker, Lists, Startup).
+    /// Smart navigation via Pair Name (not Opportunity) Click (wherever pair name click is possible)
     /// - Checks Ledger for best Op.
     /// - If found: Selects that specific Op.
     /// - If not: Selects the Pair (Market View).
-    pub fn jump_to_pair(&mut self, pair: String) {
+    pub(crate) fn jump_to_pair(&mut self, pair: String) {
         // 1. Same Pair Check (Preserve Context)
         if self.selected_pair.as_deref() == Some(&pair) {
             self.update_scroll_to_selection();
@@ -370,7 +365,7 @@ impl ZoneSniperApp {
     }
 
     /// Selects a specific opportunity
-    pub fn select_specific_opportunity(
+    pub(crate) fn select_specific_opportunity(
         &mut self,
         op: TradeOpportunity,
         scroll: ScrollBehavior,
@@ -399,57 +394,18 @@ impl ZoneSniperApp {
         }
     }
 
-    pub fn get_nav_state(&mut self) -> NavigationState {
+    pub(crate) fn get_nav_state(&mut self) -> NavigationState {
         let pair = self.selected_pair.clone().unwrap_or("DEFAULT".to_string());
         *self.nav_states.entry(pair).or_default()
     }
 
-    pub fn set_nav_state(&mut self, state: NavigationState) {
+    pub(crate) fn set_nav_state(&mut self, state: NavigationState) {
         if let Some(pair) = self.selected_pair.clone() {
             self.nav_states.insert(pair, state);
         }
     }
 
-    /// Helper to load and configure custom fonts (Nerd Fonts)
-    fn configure_fonts(ctx: &Context) {
-        let mut fonts = FontDefinitions::default();
-
-        // 1. Load the MONO Font (For Data/Tables)
-        // Keep scale at 0.85 or tweak as needed
-        let mut font_data_mono =
-            FontData::from_static(include_bytes!("../fonts/HackNerdFont-Regular.ttf"));
-        font_data_mono.tweak.scale = 0.85;
-
-        // 2. Load the PROPO Font (For General UI)
-        // This is the new file you downloaded
-        let mut font_data_propo =
-            FontData::from_static(include_bytes!("../fonts/HackNerdFontPropo-Regular.ttf"));
-        font_data_propo.tweak.scale = 0.85; // Match scale so they look consistent
-
-        // 3. Register them
-        fonts
-            .font_data
-            .insert("hack_mono".to_owned(), Arc::new(font_data_mono));
-        fonts
-            .font_data
-            .insert("hack_propo".to_owned(), Arc::new(font_data_propo));
-
-        // 4. Prioritize!
-        // A. MONOSPACE Family -> Use "hack_mono"
-        if let Some(family) = fonts.families.get_mut(&FontFamily::Monospace) {
-            family.insert(0, "hack_mono".to_owned());
-        }
-
-        // B. PROPORTIONAL Family -> Use "hack_propo"
-        if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
-            family.insert(0, "hack_propo".to_owned());
-        }
-
-        // 5. Apply
-        ctx.set_fonts(fonts);
-    }
-
-    pub fn is_simulation_mode(&self) -> bool {
+    pub(crate) fn is_simulation_mode(&self) -> bool {
         // WASM is always offline/simulation
         #[cfg(target_arch = "wasm32")]
         return true;
@@ -462,9 +418,7 @@ impl ZoneSniperApp {
         }
     }
 
-    pub fn mark_all_journeys_stale(&mut self, _reason: &str) {}
-
-    pub fn get_display_price(&self, pair: &str) -> Option<Price> {
+    pub(crate) fn get_display_price(&self, pair: &str) -> Option<Price> {
         if let Some(sim_price) = self.simulated_prices.get(pair) {
             return Some(*sim_price);
         }
@@ -840,6 +794,9 @@ impl ZoneSniperApp {
         }
     }
 
+    /// Writes a value into each self.shared_config.ph_overrides for each pair (for current station_id)
+    /// HUGE issue for this function is that tuning is *not* done unless we have a price for the pair. And often that fails
+    /// So we get through without doing the tuning and just use default (i.e untuned) PH values to run the initial phase (not good)
     fn handle_tuning_phase(&mut self, ctx: &Context, mut state: TuningState) -> AppState {
         CentralPanel::default().show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
@@ -861,10 +818,14 @@ impl ZoneSniperApp {
         let mut processed = 0;
 
         if let Some(e) = &mut self.engine {
+
+            // Wait for connection health to be good enough (50%) before continuing
+            #[cfg(not(target_arch = "wasm32"))]
+            e.price_stream.wait_for_health_threshold(Pct::new(0.5));
+
             while processed < chunk_size && !state.todo_list.is_empty() {
                 if let Some(pair) = state.todo_list.pop() {
                     // A. Determine Station for each pair
-
                     let station_id = self.shared_config.get_station(&pair).expect(&format!(
                         "handle_tuning_phase stations should all be full, especially for pair {}",
                         pair
@@ -872,7 +833,7 @@ impl ZoneSniperApp {
                     #[cfg(debug_assertions)]
                     if DF.log_station_overrides {
                         log::info!(
-                            "🔧 Reading station_id from app.shared_config '{:?}' for [{}] in handle_tuning_phase()",
+                            "🔧 READING station_overrides from app.shared_config '{:?}' for [{}] in handle_tuning_phase()",
                             station_id,
                             &pair,
                         );
@@ -906,7 +867,7 @@ impl ZoneSniperApp {
                                     None
                                 }
                             } else {
-                                if DF.log_ph_vals {
+                                if DF.log_ph_overrides {
                                     log::warn!(
                                         "Can't tune because we have no matching_ohlcv for {}",
                                         &pair
@@ -920,18 +881,19 @@ impl ZoneSniperApp {
                         if let Some(ph) = best_ph {
                             e.shared_config.insert_ph(pair.clone(), ph);
                             #[cfg(debug_assertions)]
-                            if DF.log_ph_vals {
+                            if DF.log_ph_overrides {
                                 log::info!(
-                                    "PH VALS: For pair {} setting shared_config PH during tuning phase to: {}",
+                                    "WRITING ph value {} for pair {} during tuning phase",
                                     &pair,
                                     ph
                                 );
                             }
                         } else {
                             #[cfg(debug_assertions)]
-                            if DF.log_ph_vals {
+                            if DF.log_ph_overrides {
                                 log::info!(
-                                    "There is no ph value set for {} so can't apply result in handle_tuning_phase. But why?",
+                                    "No ph value set yet for {} so can't apply result in handle_tuning_phase. But why? Just means best_ph never set.
+                                    Can happen if phase above fails for any reason  e.g. no price obtained. So this means we can get through this function without having tuned",
                                     pair
                                 )
                             }
@@ -946,16 +908,6 @@ impl ZoneSniperApp {
 
         // 3. Update State or Finish
         state.completed += processed;
-
-        #[cfg(debug_assertions)]
-        if let Some(e) = &self.engine {
-            if DF.log_ph_vals {
-                log::info!(
-                    "Near bottom of handle_tuning_phase we have shared_config PH overrides of {:?}",
-                    e.shared_config.get_all_phs()
-                );
-            }
-        }
 
         if state.todo_list.is_empty() {
             // 1. Ignite the Engine (Run CVA + Pathfinder for ALL pairs with new settings)
@@ -986,10 +938,8 @@ impl ZoneSniperApp {
     /// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
     fn check_loading_completion(&mut self) -> Option<AppState> {
-
         // Access rx without borrowing self for long
         if let Some(rx) = &self.data_rx {
-
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
                 let (available_pairs, valid_set, final_pair) =
@@ -1049,8 +999,6 @@ impl ZoneSniperApp {
                         }
                     }
                 }
-                // -------------------------
-
                 self.engine = Some(e);
 
                 if let Some(id) = &self.saved_opportunity_id {
@@ -1141,12 +1089,11 @@ impl ZoneSniperApp {
         None
     }
 
-    /// Helper: Resolves the startup pair and initializes station overrides.
+    /// Helper: Resolves the startup pair and initializes station overrides. called just from check_loading_completion.
     fn resolve_startup_state(
         &mut self,
         timeseries: &TimeSeriesCollection,
     ) -> (Vec<String>, HashSet<String>, String) {
-
         // Get List of ACTUAL loaded pairs
         let available_pairs = timeseries.unique_pair_names();
         let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
@@ -1161,25 +1108,10 @@ impl ZoneSniperApp {
             .filter(|p| valid_set.contains(*p))
             .cloned();
 
-        // Ensure self.station_overrides is setup with at least default value for all valid pairs.
-        #[cfg(debug_assertions)]
-        if DF.log_station_overrides {
-            log::info!(
-                "Pre initialization of app.shared_config was {:?}",
-                self.shared_config
-            );
-        }
         self.shared_config.ensure_all_stations_initialized();
         self.shared_config
             .ensure_all_phs_initialized(PhPct::default());
 
-        #[cfg(debug_assertions)]
-        if DF.log_station_overrides {
-            log::info!(
-                "Post intiialization app.shared_config is {:?}",
-                self.shared_config
-            );
-        }
         let start_pair = if let Some(p) = valid_startup_pair {
             p // Saved pair is valid
         } else {
@@ -1208,6 +1140,45 @@ impl ZoneSniperApp {
         self.selected_pair = Some(start_pair.clone()); // Guaranteed to have a selected_pair after this
 
         (available_pairs, valid_set, start_pair)
+    }
+
+    /// Helper to load and configure custom fonts (Nerd Fonts)
+    fn configure_fonts(ctx: &Context) {
+        let mut fonts = FontDefinitions::default();
+
+        // 1. Load the MONO Font (For Data/Tables)
+        // Keep scale at 0.85 or tweak as needed
+        let mut font_data_mono =
+            FontData::from_static(include_bytes!("../fonts/HackNerdFont-Regular.ttf"));
+        font_data_mono.tweak.scale = 0.85;
+
+        // 2. Load the PROPO Font (For General UI)
+        // This is the new file you downloaded
+        let mut font_data_propo =
+            FontData::from_static(include_bytes!("../fonts/HackNerdFontPropo-Regular.ttf"));
+        font_data_propo.tweak.scale = 0.85; // Match scale so they look consistent
+
+        // 3. Register them
+        fonts
+            .font_data
+            .insert("hack_mono".to_owned(), Arc::new(font_data_mono));
+        fonts
+            .font_data
+            .insert("hack_propo".to_owned(), Arc::new(font_data_propo));
+
+        // 4. Prioritize!
+        // A. MONOSPACE Family -> Use "hack_mono"
+        if let Some(family) = fonts.families.get_mut(&FontFamily::Monospace) {
+            family.insert(0, "hack_mono".to_owned());
+        }
+
+        // B. PROPORTIONAL Family -> Use "hack_propo"
+        if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
+            family.insert(0, "hack_propo".to_owned());
+        }
+
+        // 5. Apply
+        ctx.set_fonts(fonts);
     }
 
     // --- AUDIT HELPER ---
@@ -1277,7 +1248,7 @@ impl ZoneSniperApp {
 }
 
 /// Sets up custom visuals for the entire application
-pub fn setup_custom_visuals(ctx: &Context) {
+fn setup_custom_visuals(ctx: &Context) {
     let mut visuals = Visuals::dark();
 
     // Customize the dark theme
@@ -1324,12 +1295,10 @@ impl eframe::App for ZoneSniperApp {
         let mut next_state = None;
 
         // --- FIX: GLOBAL CURSOR STRATEGY ---
-        // Disable text selection globally.
-        // This stops the I-Beam cursor appearing on labels/buttons unless it is a text edit box. THis also prevents text from being selectable
+        // Disable text selection globally. This stops the I-Beam cursor appearing on labels/buttons unless it is a text edit box. THis also prevents text from being selectable
         ctx.style_mut(|s| s.interaction.selectable_labels = false);
 
-        // --- PHASE A: LOADING STATE ---
-        // We use a scope block to limit the borrow of 'self.state'
+        // --- PHASE A: LOADING STATE --- We use a scope block to limit the borrow of 'self.state'
         {
             if let AppState::Loading(state) = &mut self.state {
                 // 1. Update Progress (Pass fields individually to avoid conflict)
@@ -1342,6 +1311,7 @@ impl eframe::App for ZoneSniperApp {
         // Only run this check if we are currently loading
         if matches!(self.state, AppState::Loading(_)) {
             next_state = self.check_loading_completion();
+            // log::warn!("WHERE DOES CHECK_LOADING_COMPLETION ARRIVE IN THE PROCESS?");
         }
 
         // --- PHASE B: TRANSITION ---

@@ -1,4 +1,4 @@
-use crate::config::Price;
+    use crate::config::{Price, Pct};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::models::timeseries::LiveCandle;
@@ -18,7 +18,7 @@ use tokio::time::sleep;
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::{BINANCE, BinanceApiConfig},
+    crate::config::{BINANCE, BinanceApiConfig, },
     binance_sdk::{
         config::ConfigurationRestApi,
         spot::{
@@ -78,7 +78,8 @@ pub struct PriceStreamManager {
 fn build_combined_stream_url(symbols: &[String]) -> String {
     use crate::config::constants;
 
-    let interval = crate::utils::TimeUtils::interval_to_string(constants::BASE_INTERVAL.as_millis() as i64);
+    let interval =
+        crate::utils::TimeUtils::interval_to_string(constants::BASE_INTERVAL.as_millis() as i64);
 
     // CHANGE: Only subscribe to kline
     let streams: Vec<String> = symbols
@@ -108,46 +109,6 @@ impl PriceStreamManager {
     pub fn get_price(&self, symbol: &str) -> Option<Price> {
         let symbol_lower = symbol.to_lowercase();
         self.prices.lock().unwrap().get(&symbol_lower).copied()
-    }
-
-    pub fn set_candle_sender(&mut self, tx: Sender<LiveCandle>) {
-        self.candle_tx = Some(tx);
-    }
-
-    /// Suspend price updates (for simulation mode)
-    pub fn suspend(&self) {
-        *self.suspended.lock().unwrap() = true;
-        #[cfg(debug_assertions)]
-        if DF.log_simulation_events {
-            log::info!("🔇 WebSocket price updates suspended");
-        }
-    }
-
-    /// Resume price updates (exit simulation mode)
-    pub fn resume(&self) {
-        *self.suspended.lock().unwrap() = false;
-        #[cfg(debug_assertions)]
-        if DF.log_simulation_events {
-            log::info!("🔊 WebSocket price updates resumed");
-        }
-    }
-
-    /// Check if price updates are suspended
-    pub fn is_suspended(&self) -> bool {
-        *self.suspended.lock().unwrap()
-    }
-
-    /// Get overall connection health (percentage of connected streams)
-    pub fn connection_health(&self) -> f64 {
-        let status_map = self.connection_status.lock().unwrap();
-        if status_map.is_empty() {
-            return 0.0;
-        }
-        let connected = status_map
-            .values()
-            .filter(|&&s| s == ConnectionStatus::Connected)
-            .count();
-        (connected as f64 / status_map.len() as f64) * 100.0
     }
 
     pub fn subscribe_all(&self, symbols: Vec<String>) {
@@ -191,6 +152,73 @@ impl PriceStreamManager {
                 });
             });
         }
+    }
+
+    pub(crate) fn set_candle_sender(&mut self, tx: Sender<LiveCandle>) {
+        self.candle_tx = Some(tx);
+    }
+
+    /// Suspend price updates (enter simulation mode)
+    pub(crate) fn suspend(&self) {
+        *self.suspended.lock().unwrap() = true;
+        #[cfg(debug_assertions)]
+        if DF.log_simulation_events {
+            log::info!("🔇 WebSocket price updates suspended");
+        }
+    }
+
+    /// Resume price updates (exit simulation mode)
+    pub(crate) fn resume(&self) {
+        *self.suspended.lock().unwrap() = false;
+        #[cfg(debug_assertions)]
+        if DF.log_simulation_events {
+            log::info!("🔊 WebSocket price updates resumed");
+        }
+    }
+
+    /// Check if price updates are suspended
+    pub(crate) fn is_suspended(&self) -> bool {
+        *self.suspended.lock().unwrap()
+    }
+
+    /// Delay continuation (entire app) until price stream connection health reaches threshold % (0 to 100)
+    pub(crate) fn wait_for_health_threshold(&self, threshold_pct: Pct) {
+        loop {
+            let health = self.connection_health();
+            if health >= threshold_pct {
+                #[cfg(debug_assertions)]
+                if DF.log_startup_prices {
+                    log::info!(
+                        "Health is now {} so exiting",
+                        health,
+                        // threshold_pct
+                    );
+                }
+                break;
+            }
+            #[cfg(debug_assertions)]
+            if DF.log_startup_prices {
+                log::info!(
+                    "Health is {} but needs to be {} before exiting",
+                    health,
+                    threshold_pct
+                );
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    /// Get overall connection health (percentage of connected streams)
+    pub(crate) fn connection_health(&self) -> Pct {
+        let status_map = self.connection_status.lock().unwrap();
+        if status_map.is_empty() {
+            return Pct::new(0.0);
+        }
+        let connected = status_map
+            .values()
+            .filter(|&&s| s == ConnectionStatus::Connected)
+            .count();
+        Pct::new(connected as f64 / status_map.len() as f64)
     }
 }
 
@@ -239,8 +267,8 @@ impl PriceStreamManager {
         true
     }
 
-    pub fn connection_health(&self) -> f64 {
-        100.0
+    pub fn connection_health(&self) -> Pct {
+        Pct::new(100.0)
     }
 
     pub fn subscribe_all(&self, _symbols: Vec<String>) {}
@@ -315,7 +343,6 @@ async fn run_combined_price_stream(
     suspended_arc: Arc<Mutex<bool>>,
     candle_tx: Option<Sender<LiveCandle>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-
     let (ws_stream, _) = connect_async(url).await?;
 
     // Update status to connected
@@ -503,7 +530,9 @@ fn parse_and_send_kline(data: &serde_json::Value, tx: &Sender<LiveCandle>) {
         low: crate::config::LowPrice::new(k["l"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
         close: crate::config::ClosePrice::new(close),
         volume: crate::config::BaseVol::new(k["v"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
-        quote_vol: crate::config::QuoteVol::new(k["q"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
+        quote_vol: crate::config::QuoteVol::new(
+            k["q"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
+        ),
         is_closed,
     };
 

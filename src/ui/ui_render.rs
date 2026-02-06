@@ -1457,11 +1457,11 @@ impl ZoneSniperApp {
         ui.add_space(10.0);
     }
 
-    /// Handles events from the Time Tuner UI (Left Panel).
+    /// Handles events from the Time Tuner UI (Left Panel). including calling self.handle_tuner_action() which updates self.shared_config.ph_overrides for the given pair.
     pub fn handle_tuner_action(&mut self, action: TunerAction) {
         match action {
             TunerAction::StationSelected(station_id) => {
-                // Run Auto-Tune for the Active Pair
+                // Run Auto-Tune for selected pair
                 if let Some(pair) = &self.selected_pair {
                     let pair_name = pair.clone();
 
@@ -1494,6 +1494,10 @@ impl ZoneSniperApp {
                             engine
                                 .shared_config
                                 .insert_ph(pair_name.clone(), best_ph_pct);
+                            #[cfg(debug_assertions)]
+                            if DF.log_ph_overrides {
+                                log::info!("SETTING PH_OVERRIDES for {} to be {} in handle_tuner_action", pair, best_ph_pct);
+                            }
 
                             // Use invalidate_pair_and_recalc to update ONLY this pair
                             engine.invalidate_pair_and_recalc(
@@ -2067,17 +2071,17 @@ impl ZoneSniperApp {
 
     fn render_status_network(&self, ui: &mut Ui) {
         if let Some(engine) = &self.engine {
-            let health = engine.price_stream.connection_health();
-            let color = if health >= 90.0 {
+            let health: Pct = engine.price_stream.connection_health();
+            let color = if health >= Pct::new(0.9) {
                 PLOT_CONFIG.color_profit
-            } else if health >= 50.0 {
+            } else if health >= Pct::new(0.5) {
                 PLOT_CONFIG.color_warning
             } else {
                 PLOT_CONFIG.color_loss
             };
             ui.metric(
                 &UI_TEXT.sp_stream_status,
-                &format!("{:.0}% {}", health, UI_TEXT.label_connected),
+                &format!("{} {}", health, UI_TEXT.label_connected),
                 color,
             );
         }
