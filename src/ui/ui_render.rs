@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{MomentumPct, OptimizationStrategy, TICKER, VolatilityPct, constants, Pct};
+use crate::config::{MomentumPct, OptimizationStrategy, Pct, TICKER, VolatilityPct, constants};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -250,7 +250,7 @@ impl ZoneSniperApp {
 
                 // --- CALCULATIONS ---
                 // We use the data captured in the opportunity, not the global config
-                let ph_pct = op.source_ph_pct;
+                let ph_pct = op.ph_pct;
                 let max_time_ms = op.max_duration;
                 let max_time_str = TimeUtils::format_duration(max_time_ms.value());
 
@@ -820,7 +820,7 @@ impl ZoneSniperApp {
                 })
                 .body(|mut body| {
                     for (i, row) in rows.iter().enumerate() {
-                        body.row(50.0, |mut table_row| {
+                        body.row(55.0, |mut table_row| {
                             self.render_tf_table_row(&mut table_row, row, i);
                         });
                     }
@@ -1003,46 +1003,26 @@ impl ZoneSniperApp {
                             .color(PLOT_CONFIG.color_text_primary),
                     );
 
-                    // // 2. PH Badge (Context)
-                    // // Logic: Use Trade Source if available, otherwise use User's Current Setting
-                    // let ph_val_raw = if let Some(live_op) = &row.opportunity {
-                    //     live_op.opportunity.source_ph
-                    // } else {
-                    //     #[cfg(debug_assertions)]
-                    //     0.15
-                    //     // // Fallback: Check overrides -> Global Config
-                    //     // self.ph_overrides
-                    //     //     .get(&row.pair_name)
-                    //     //     .map(|c| c.threshold_pct)
-                    //     //     .unwrap_or(self.app_config.price_horizon.threshold_pct)
-                    // };
-
-                    // let ph_val = ph_val_raw * 100.0;
-                    // if let Some(ph_str) = format_fixed_chars(ph_val, 4) {
-                    //     ui.label(
-                    //         RichText::new(format!("@{}%", ph_str))
-                    //             .size(10.0)
-                    //             .color(PLOT_CONFIG.color_text_subdued),
-                    //     );
-                    // }
-
-                    // Direction Icon
+                    // Icons first
                     if let Some(op) = &row.opportunity {
-                        // let op = &live_op.opportunity;
-                        let dir_color = op.direction.color();
+                        // Station ID ICON
+                        ui.label(
+                            RichText::new(op.station_id.short_name())
+                                .size(14.0)
+                                .color(PLOT_CONFIG.color_text_neutral),
+                        );
+                        // --- STRATEGY ICON ---
+                        ui.label(
+                            RichText::new(op.strategy.icon())
+                                .size(14.0)
+                                .color(PLOT_CONFIG.color_text_neutral),
+                        );
+                        // DIRECTION ICON
                         let arrow = match op.direction {
                             TradeDirection::Long => &UI_TEXT.icon_long,
                             TradeDirection::Short => &UI_TEXT.icon_short,
                         };
-
-                        // --- STRATEGY ICON ---
-                        let strategy_icon = op.strategy.icon();
-                        ui.label(
-                            RichText::new(strategy_icon)
-                                .size(14.0)
-                                .color(PLOT_CONFIG.color_text_neutral),
-                        );
-                        ui.label(RichText::new(arrow).color(dir_color));
+                        ui.label(RichText::new(arrow).color(op.direction.color()));
                     }
                 });
 
@@ -1073,14 +1053,14 @@ impl ZoneSniperApp {
                             );
                         });
                     });
-                    // --- LINE 3: DEBUG UUID ---
+                    // --- LINE 3: DEBUG UUID and PH value of op........
                     #[cfg(debug_assertions)]
                     {
                         // Show first 8 chars of UUID
                         let uuid = &op.id;
                         let short_id = if uuid.len() > 8 { &uuid[..8] } else { uuid };
                         ui.label(
-                            RichText::new(format!("ID: {}", short_id))
+                            RichText::new(format!("ID: {} (PH: {})", short_id, op.ph_pct))
                                 .size(9.0)
                                 .color(Color32::from_rgb(255, 0, 255)), // Magenta
                         );
@@ -1436,7 +1416,7 @@ impl ZoneSniperApp {
                             ui.label(
                                 RichText::new(format!(
                                     "{} {}",
-                                    UI_TEXT.label_source_ph, op.source_ph_pct
+                                    UI_TEXT.label_source_ph, op.ph_pct
                                 ))
                                 .small()
                                 .color(PLOT_CONFIG.color_text_subdued),
@@ -1481,17 +1461,7 @@ impl ZoneSniperApp {
     pub fn handle_tuner_action(&mut self, action: TunerAction) {
         match action {
             TunerAction::StationSelected(station_id) => {
-                self.active_station_id = station_id;
-                #[cfg(debug_assertions)]
-                if DF.log_active_station_id {
-                    log::info!(
-                        "🔧 ACTIVE STATION SET '{:?}' for ID [{:?}]",
-                        self.active_station_id,
-                        station_id,
-                    );
-                }
-
-                // B. Run Auto-Tune for the Active Pair
+                // Run Auto-Tune for the Active Pair
                 if let Some(pair) = &self.selected_pair {
                     let pair_name = pair.clone();
 
@@ -1518,19 +1488,14 @@ impl ZoneSniperApp {
                             );
                         }
 
-                        // C. Apply Result to Config
-                        self.active_ph_pct = best_ph_pct;
-
-                        // D. Update Engine
+                        // Update Engine
                         if let Some(engine) = &mut self.engine {
                             // Create specific config for this pair's override
                             engine
                                 .shared_config
                                 .insert_ph(pair_name.clone(), best_ph_pct);
 
-                            // Update global context & Fire
-                            // engine.update_config(self.app_config.clone());
-                            // FIX: Use invalidate_pair_and_recalc to update ONLY this pair
+                            // Use invalidate_pair_and_recalc to update ONLY this pair
                             engine.invalidate_pair_and_recalc(
                                 &pair_name,
                                 None,
@@ -1560,11 +1525,12 @@ impl ZoneSniperApp {
             .resizable(false)
             .frame(frame)
             .show(ctx, |ui| {
-                // 1. TIME TUNER
+                // TIME TUNER
                 if let Some(action) = time_tuner::render(
                     ui,
                     &constants::tuner::CONFIG,
-                    self.active_station_id,
+                    self.shared_config
+                        .get_station_opt(self.selected_pair.clone()),
                     self.selected_pair.clone(),
                 ) {
                     self.handle_tuner_action(action);
@@ -1585,19 +1551,14 @@ impl ZoneSniperApp {
     }
 
     fn ui_optimization_strategy(&mut self, ui: &mut Ui) {
-        ui.label(format!(
-            "{} {}",
-            UI_TEXT.label_goal,
-            UI_TEXT.icon_strategy
-        ));
+        ui.label(format!("{} {}", UI_TEXT.label_goal, UI_TEXT.icon_strategy));
 
         // Read current value
         let current_strategy = self.shared_config.get_strategy(); // egui mutates a temporary UI variable (to show if updated or not)
         let mut selected_strategy = current_strategy;
 
         // Selected text (icon + display)
-        let selected_text =
-            format!("{} {}", selected_strategy.icon(), selected_strategy);
+        let selected_text = format!("{} {}", selected_strategy.icon(), selected_strategy);
 
         // ComboBox
         ComboBox::from_label("Optimization strategy")
@@ -1606,11 +1567,7 @@ impl ZoneSniperApp {
             .show_ui(ui, |ui| {
                 for strategy in OptimizationStrategy::iter() {
                     let text = format!("{} {}", strategy.icon(), strategy);
-                    ui.selectable_value(
-                        &mut selected_strategy,
-                        strategy,
-                        text,
-                    );
+                    ui.selectable_value(&mut selected_strategy, strategy, text);
                 }
             });
 
@@ -1766,7 +1723,8 @@ impl ZoneSniperApp {
                 let mut should_close = false;
 
                 for (i, variant) in op.variants.iter().enumerate() {
-                    let risk_pct = Pct::new(variant.stop_price.percent_diff_from_0_1(&op.start_price));
+                    let risk_pct =
+                        Pct::new(variant.stop_price.percent_diff_from_0_1(&op.start_price));
                     let win_rate = variant.simulation.success_rate;
 
                     let text = format!(

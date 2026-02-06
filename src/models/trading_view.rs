@@ -150,7 +150,7 @@ impl std::fmt::Display for TradeOutcome {
 pub struct TradeOpportunity {
     pub id: String,
     pub created_at: DateTime<Utc>,
-    pub source_ph_pct: PhPct,
+    pub ph_pct: PhPct,
 
     pub pair_name: String,
     pub direction: TradeDirection,

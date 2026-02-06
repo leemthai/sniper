@@ -135,6 +135,7 @@ pub mod tuner {
         TunerStation {
             id: StationId::Scalp,
             name: "⚡ SCALP",
+            short_name: "⚡",
             target_min_hours: 1.0,
             target_max_hours: 6.0,
             scan_ph_min: PhPct::new(0.01),
@@ -142,7 +143,8 @@ pub mod tuner {
         },
         TunerStation {
             id: StationId::Day,
-            name: "☀️ DAY",
+            name: "\u{f522} DAY",
+            short_name: "\u{f522}",
             target_min_hours: 6.0,
             target_max_hours: 24.0,
             scan_ph_min: PhPct::new(0.03),
@@ -151,6 +153,7 @@ pub mod tuner {
         TunerStation {
             id: StationId::Swing,
             name: "🌊 SWING",
+            short_name: "🌊",
             target_min_hours: 24.0,
             target_max_hours: 120.0,
             scan_ph_min: PhPct::new(0.05),
@@ -158,7 +161,8 @@ pub mod tuner {
         },
         TunerStation {
             id: StationId::Macro,
-            name: "🏔️ MACRO",
+            name: "\u{ef08} MACRO",
+            short_name: "\u{ef08}",
             target_min_hours: 336.0,
             target_max_hours: 2160.0,
             scan_ph_min: PhPct::new(0.15),

@@ -79,6 +79,18 @@ impl SharedConfiguration {
             .copied()
     }
 
+    /// impl AsRef<str>: Most flexible -  allows a single function to conveniently accept both owned Strings and borrowed &str slices
+    pub fn get_station_opt(&self, key: Option<impl AsRef<str>>) -> Option<StationId> {
+        key.and_then(|k| {
+            self.inner
+                .read()
+                .unwrap()
+                .station_overrides
+                .get(k.as_ref())
+                .copied()
+        })
+    }
+
     pub fn get_ph(&self, key: &str) -> Option<PhPct> {
         self.inner.read().unwrap().ph_overrides.get(key).copied()
     }
@@ -97,14 +109,14 @@ impl SharedConfiguration {
     }
 
     // Ensure default for station
-    pub fn ensure_station_default(&self, key: String) {
-        self.inner
-            .write()
-            .unwrap()
-            .station_overrides
-            .entry(key)
-            .or_insert(StationId::default());
-    }
+    // pub fn ensure_station_default(&self, key: String) {
+    //     self.inner
+    //         .write()
+    //         .unwrap()
+    //         .station_overrides
+    //         .entry(key)
+    //         .or_insert(StationId::default());
+    // }
 
     // Ensure default PH if needed
     pub fn ensure_ph_default(&self, key: String, default_value: PhPct) {

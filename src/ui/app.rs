@@ -142,10 +142,6 @@ pub struct ZoneSniperApp {
     #[serde(skip)]
     pub selected_opportunity: Option<TradeOpportunity>,
     #[serde(skip)]
-    pub active_station_id: StationId,
-    #[serde(skip)]
-    pub active_ph_pct: PhPct,
-    #[serde(skip)]
     pub scroll_target: Option<NavigationTarget>,
     #[serde(skip)]
     pub engine: Option<SniperEngine>,
@@ -185,8 +181,6 @@ impl Default for ZoneSniperApp {
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
             shared_config: SharedConfiguration::new(),
-            active_station_id: StationId::default(),
-            active_ph_pct: PhPct::default(),
             startup_tune_done: false,
             plot_visibility: PlotVisibility::default(),
             show_debug_help: false,
@@ -311,7 +305,7 @@ impl ZoneSniperApp {
     /// Updates Global State to point to this pair, but does NOT auto-select a trade opportunity
     pub fn handle_pair_selection(&mut self, new_pair_name: String) {
         // This does *NOT* update self.opportunity_selection at all!
-        // What it does do: (1) update self.selected_pair (2) update self.active_station_id
+        // What it does do: update self.selected_pair
 
         self.auto_scale_y = true; // TEMP completely the wrong place for plot code.
 
@@ -325,22 +319,6 @@ impl ZoneSniperApp {
                     old_pair_name.as_deref().unwrap_or("None"),
                 );
             }
-        }
-
-        self.active_station_id = self
-            .shared_config
-            .get_station(&new_pair_name)
-            .expect(&format!(
-                "handle_pair_selection expects a value for station id for pair {}",
-                new_pair_name
-            )); // Will crash if None. Deliberate choice
-        #[cfg(debug_assertions)]
-        if DF.log_active_station_id {
-            log::info!(
-                "🔧 ACTIVE STATION ID SET FROM OVERRIDES: '{:?}' for [{}] in handle_pair_selection",
-                self.active_station_id,
-                &new_pair_name,
-            );
         }
     }
 
@@ -402,17 +380,8 @@ impl ZoneSniperApp {
         if DF.log_selected_opportunity {
             log::info!("Call select_specific_opportunity because {}", _reason);
         }
-        // 1. Switch State (Pure UI)
+        // Switch State (Pure UI)
         self.handle_pair_selection(op.pair_name.clone());
-
-        self.active_ph_pct = op.source_ph_pct;
-        #[cfg(debug_assertions)]
-        if DF.log_tuner {
-            log::info!(
-                "TUNER OVERRIDE PH: ignore the Station's preference and enforce the Trade's origin PH: {}",
-                self.active_ph_pct
-            );
-        }
 
         // Update Selection
         self.selected_opportunity = Some(op.clone());
@@ -901,7 +870,7 @@ impl ZoneSniperApp {
                         pair
                     ));
                     #[cfg(debug_assertions)]
-                    if DF.log_active_station_id {
+                    if DF.log_station_overrides {
                         log::info!(
                             "🔧 Reading station_id from app.shared_config '{:?}' for [{}] in handle_tuning_phase()",
                             station_id,
@@ -957,17 +926,6 @@ impl ZoneSniperApp {
                                     &pair,
                                     ph
                                 );
-                            }
-                            if Some(&pair) == self.selected_pair.as_ref() {
-                                #[cfg(debug_assertions)]
-                                if DF.log_ph_vals {
-                                    log::info!(
-                                        "PH VALS: And because pair {} is selected, also set self.active_ph_pct to {}",
-                                        &pair,
-                                        ph,
-                                    );
-                                }
-                                self.active_ph_pct = ph;
                             }
                         } else {
                             #[cfg(debug_assertions)]
@@ -1028,28 +986,16 @@ impl ZoneSniperApp {
     /// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
     fn check_loading_completion(&mut self) -> Option<AppState> {
+
         // Access rx without borrowing self for long
         if let Some(rx) = &self.data_rx {
+
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
                 let (available_pairs, valid_set, final_pair) =
                     self.resolve_startup_state(&timeseries);
 
-                // Restore active station for the specific startup pair
-                self.active_station_id = self
-                    .shared_config
-                    .get_station(&final_pair.clone())
-                    .expect(&format!("check_loading_completion must have station id set for all pairs, including the final_pair which is {} ", final_pair));
-                #[cfg(debug_assertions)]
-                if DF.log_active_station_id {
-                    log::info!(
-                        "🔧 SETTING app.active_station_id to '{:?}' for [{}] in check_loading_completion()",
-                        self.active_station_id,
-                        final_pair,
-                    );
-                }
-
-                // 4. Initialize Engine with (pointer to) EXACTLY same SharedConfiguration as we have here. Just two pointers to shared memory.
+                // Initialize Engine with (pointer to) EXACTLY same SharedConfiguration as we have here. Just two pointers to shared memory.
                 let mut e = SniperEngine::new(timeseries, self.shared_config.clone());
 
                 // RESTORE LEDGER
@@ -1153,16 +1099,6 @@ impl ZoneSniperApp {
                                     );
                                 }
                             }
-                        }
-
-                        // TEMP no idea what to do with this shitcode yet.
-                        self.active_ph_pct = op.source_ph_pct;
-                        #[cfg(debug_assertions)]
-                        if DF.log_tuner {
-                            log::info!(
-                                "TUNER: set self.active_ph_pct to {:?} in check_loading_completion as start-up value",
-                                op.source_ph_pct
-                            );
                         }
                     }
                 } else {

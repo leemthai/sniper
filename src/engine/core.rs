@@ -325,7 +325,7 @@ impl SniperEngine {
         }
         let d2 = t2.elapsed().as_micros();
 
-        // Enqueue any pairs that have changed price sigificantly
+        // Enqueue any pairs that have changed price significantly
         let t3 = AppInstant::now();
         self.trigger_recalcs_on_price_changes();
         let d3 = t3.elapsed().as_micros();
@@ -536,15 +536,6 @@ impl SniperEngine {
                                 .get_station(&pair_name)
                                 .expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in shared_config {:?}", pair_name, ph_pct, self.shared_config)); // This should now crash if None is encountered. Better than reverting to default I think
                             #[cfg(debug_assertions)]
-                            if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
-                                log::info!(
-                                    "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in process_live_data() and the full shared_config is {:?}",
-                                    station_id,
-                                    &pair_name,
-                                    self.shared_config,
-                                );
-                            }
-                            #[cfg(debug_assertions)]
                             if DF.log_engine {
                                 log::info!(
                                     "Enqueing job for {} because a candle has closed:",
@@ -739,7 +730,7 @@ impl SniperEngine {
     }
 
     #[cfg(debug_assertions)]
-    fn log_queue(&self, context: &str) {
+    fn _log_queue(&self, context: &str) {
         if !DF.log_engine {
             return;
         }
@@ -830,15 +821,6 @@ impl SniperEngine {
                 pair_name, ph_pct
             ));
 
-            #[cfg(debug_assertions)]
-            if DF.log_active_station_id || DF.log_candle_update || DF.log_ph_vals {
-                log::info!(
-                    "🔧 ACTIVE STATION ID SET: '{:?}' for [{}] in trigger_recalcs_on_price_changes()",
-                    station_id,
-                    pair_name,
-                );
-            }
-
             self.enqueue_or_replace(EngineJob {
                 pair: pair_name.clone(),
                 price_override: None,
@@ -847,8 +829,6 @@ impl SniperEngine {
                 station_id,
                 mode: JobMode::FullAnalysis,
             });
-            #[cfg(debug_assertions)]
-            self.log_queue("AFTER price-trigger enqueue");
 
             // ---- mutation phase ----
             if let Some(state) = self.pairs_states.get_mut(&pair_name) {

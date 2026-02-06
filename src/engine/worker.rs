@@ -404,7 +404,7 @@ fn simulate_target(
             let opp = TradeOpportunity {
                 id: uuid,
                 created_at: TimeUtils::now_utc(),
-                source_ph_pct: ctx.ph_pct,
+                ph_pct: ctx.ph_pct,
                 pair_name: ctx.pair_name.to_string(),
                 direction,
                 start_price: ctx.current_price,

@@ -56,17 +56,19 @@ impl OpportunityLedger {
             log::info!("   • {:?}: {} ops", strategy, count);
         }
 
-        // // Optional: detailed per-op trace (comment out if too noisy)
-        // log::info!("📒 LEDGER STRATEGY DETAILS:");
-        // for op in ops {
-        //     log::info!(
-        //         "   [{}] {} {:?} @ {}",
-        //         op.id,
-        //         op.pair_name,
-        //         op.strategy,
-        //         op.target_price
-        //     );
-        // }
+        // Optional: detailed per-op trace
+        log::info!("📒 LEDGER STRATEGY DETAILS:");
+        for op in ops {
+            if op.pair_name == "PEPEUSDT" {
+                log::info!(
+                    "   [{}] {} {:?} @ {}",
+                    op.id,
+                    op.pair_name,
+                    op.strategy,
+                    op.target_price
+                );
+            }
+        }
     }
 
     /// Intelligently updates the ledger.

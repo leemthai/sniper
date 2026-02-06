@@ -15,7 +15,6 @@ pub struct LogFlags {
 
     pub log_tuner: bool,
     pub log_station_overrides: bool, 
-    pub log_active_station_id: bool,
     pub log_ph_vals: bool,
     
     pub log_pathfinder: bool,
@@ -45,18 +44,19 @@ pub struct LogFlags {
 }
 
 pub const DF: LogFlags = LogFlags {
+
+    log_station_overrides: true,
+    log_ph_vals: true,
+    
     log_engine: false,
-    log_ledger: true,
+    log_ledger: false,
     log_pathfinder: false,
 
     log_selected_opportunity: false,
     log_strategy_selection: false,
 
     log_tuner: false,
-    log_station_overrides: false,
-    log_active_station_id: false,
     log_candle_update: false,
-    log_ph_vals: false,
 
     log_performance: false,
     log_price_stream_updates: false,
