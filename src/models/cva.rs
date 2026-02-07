@@ -8,36 +8,36 @@ use crate::config::{VolatilityPct, Price, PriceRange, LowPrice, HighPrice};
 #[derive(Default, Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct CVACore {
     // Active metrics (volume-weighted)
-    pub candle_bodies_vw: Vec<f64>, // Mapped to FullCandleTVW
+    pub(crate) candle_bodies_vw: Vec<f64>, // Mapped to FullCandleTVW
 
-    pub low_wick_counts: Vec<f64>, 
-    pub high_wick_counts: Vec<f64>, 
+    pub(crate) low_wick_counts: Vec<f64>, 
+    pub(crate) high_wick_counts: Vec<f64>, 
 
-    pub total_candles: usize,
+    pub(crate) total_candles: usize,
 
-    pub included_ranges: Vec<(usize, usize)>,
+    pub(crate) included_ranges: Vec<(usize, usize)>,
 
     // Metadata
-    pub pair_name: String,
-    pub price_range: PriceRange<Price>,
-    pub zone_count: usize,
+    pub(crate) pair_name: String,
+    pub(crate) price_range: PriceRange<Price>,
+    pub(crate) zone_count: usize,
 
     // Metadata fields required by pair_analysis.rs and ui_plot_view.rs
-    pub start_timestamp_ms: i64,
-    pub end_timestamp_ms: i64,
-    pub time_decay_factor: f64,
+    pub(crate) start_timestamp_ms: i64,
+    pub(crate) end_timestamp_ms: i64,
+    pub(crate) time_decay_factor: f64,
 
     // NEW METRICS
-    pub relevant_candle_count: usize, // Number of candles inside the horizon
-    pub interval_ms: i64,             // e.g. 3600000 for 1h
-    pub volatility_pct: VolatilityPct, // Average (High-Low)/Close % for relevant candles
+    pub(crate) relevant_candle_count: usize, // Number of candles inside the horizon
+    pub(crate) interval_ms: i64,             // e.g. 3600000 for 1h
+    pub(crate) volatility_pct: VolatilityPct, // Average (High-Low)/Close % for relevant candles
 }
 
 /// Score types for the lean CVA model
 #[derive(
     Copy, Clone, PartialEq, Eq, Hash, Default, Debug, Serialize, Deserialize, strum_macros::EnumIter,
 )]
-pub enum ScoreType {
+pub(crate) enum ScoreType {
     #[default]
     FullCandleTVW, // Sticky (Volume * Time)
     LowWickCount,  // Reversal (Count * Time) - Renamed from LowWickVW
@@ -45,6 +45,7 @@ pub enum ScoreType {
 }
 
 impl fmt::Display for ScoreType {
+
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ScoreType::FullCandleTVW => write!(f, "Full Candle Temporal-Volume Weighted"),
@@ -55,7 +56,7 @@ impl fmt::Display for ScoreType {
 }
 
 impl CVACore {
-    pub fn get_scores_ref(&self, st: ScoreType) -> &Vec<f64> {
+    pub(crate) fn get_scores_ref(&self, st: ScoreType) -> &Vec<f64> {
         match st {
             ScoreType::FullCandleTVW => &self.candle_bodies_vw,
             ScoreType::LowWickCount => &self.low_wick_counts,
@@ -74,7 +75,7 @@ impl CVACore {
     /// Applies a score to a range of zones WITHOUT diluting it.
     /// Used for: Wicks / Rejection / Presence.
     /// If a wick covers 5 zones, all 5 zones get the full rejection score.
-    pub fn apply_rejection_impact(
+    pub(crate) fn apply_rejection_impact(
         &mut self,
         st: ScoreType,
         start_range: Price,
@@ -109,7 +110,7 @@ impl CVACore {
     }
 
 
-    pub fn distribute_conserved_volume(
+    pub(crate) fn distribute_conserved_volume(
         &mut self,
         st: ScoreType,
         start_range: Price,
@@ -148,7 +149,7 @@ impl CVACore {
     }
 
     // Updated Constructor to match src/models/timeseries.rs usage
-    pub fn new(
+    pub(crate) fn new(
         min_price: LowPrice,
         max_price: HighPrice,
         zone_count: usize,

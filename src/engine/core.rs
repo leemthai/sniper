@@ -13,10 +13,13 @@ use crate::config::{
 };
 
 use crate::data::price_stream::PriceStreamManager;
-use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait, TradeResult};
+use crate::data::results_repo::TradeResult;
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait};
+
 use crate::data::timeseries::TimeSeriesCollection;
 
-use crate::models::horizon_profile::HorizonProfile;
 use crate::models::ledger::OpportunityLedger;
 use crate::models::timeseries::{LiveCandle, find_matching_ohlcv};
 use crate::models::trading_view::{
@@ -32,23 +35,21 @@ use super::worker;
 
 /// Represents the state of a single pair in the engine.
 #[derive(Debug, Clone)]
-pub struct PairRuntime {
-    pub model: Option<Arc<TradingModel>>,
-    pub horizon_profile: Option<HorizonProfile>,
+pub(crate) struct PairRuntime {
+    pub(crate) model: Option<Arc<TradingModel>>,
 
     /// Metadata for the trigger system
-    pub last_update_price: Price,
+    pub(crate) last_update_price: Price,
     /// Is a worker currently crunching this pair?
-    pub is_calculating: bool,
+    pub(crate) is_calculating: bool,
     /// Last error (if any) to show in UI
-    pub last_error: Option<String>,
+    pub(crate) last_error: Option<String>,
 }
 
 impl PairRuntime {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             model: None,
-            horizon_profile: None,
             last_update_price: Price::default(),
             is_calculating: false,
             last_error: None,
@@ -56,37 +57,38 @@ impl PairRuntime {
     }
 }
 
-pub struct EngineJob {
-    pub pair: String,
-    pub price_override: Option<Price>,
-    pub ph_pct: PhPct,
-    pub strategy: OptimizationStrategy,
-    pub station_id: StationId,
-    pub mode: JobMode,
+pub(crate) struct EngineJob {
+    pub(crate) pair: String,
+    pub(crate) price_override: Option<Price>,
+    pub(crate) ph_pct: PhPct,
+    pub(crate) strategy: OptimizationStrategy,
+    pub(crate) station_id: StationId,
+    pub(crate) mode: JobMode,
 }
 
 pub struct SniperEngine {
     /// Pair registry
-    pub pairs_states: HashMap<String, PairRuntime>, // Keep track of the state of all pairs (not part of SharedConfiguration)
+    pub(crate) pairs_states: HashMap<String, PairRuntime>, // Keep track of the state of all pairs (not part of SharedConfiguration)
 
-    pub shared_config: SharedConfiguration, // Share information between ui and engine (for variables either side can update via Arc<RwLock)
+    pub(crate) shared_config: SharedConfiguration, // Share information between ui and engine (for variables either side can update via Arc<RwLock)
     // pub engine_strategy: OptimizationStrategy,
 
     // The ledger
-    pub engine_ledger: OpportunityLedger,
+    pub(crate) engine_ledger: OpportunityLedger,
     // Maintenance Timer (Runs in Release & Debug)
-    pub last_ledger_maintenance: AppInstant,
-    pub results_repo: Arc<dyn ResultsRepositoryTrait>,
+    pub(crate) last_ledger_maintenance: AppInstant,
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) results_repo: Arc<dyn ResultsRepositoryTrait>,
 
     /// Shared immutable data
-    pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
+    pub(crate) timeseries: Arc<RwLock<TimeSeriesCollection>>,
 
     // Live Data Channels
     candle_rx: Receiver<LiveCandle>,
-    pub candle_tx: Sender<LiveCandle>, // Public so App can grab it easily
 
     /// Live Data Feed
-    pub price_stream: Arc<PriceStreamManager>,
+    pub(crate) price_stream: Arc<PriceStreamManager>,
 
     // Common Channels
     job_tx: Sender<JobRequest>,     // UI writes to this
@@ -99,7 +101,7 @@ pub struct SniperEngine {
     result_tx: Sender<JobResult>,
 
     /// This is job queue runtime variables
-    pub queue: VecDeque<EngineJob>,
+    pub(crate) queue: VecDeque<EngineJob>,
 }
 
 impl SniperEngine {
@@ -109,7 +111,7 @@ impl SniperEngine {
         shared_config: SharedConfiguration,
     ) -> Self {
         // 1. Create Channels
-        let (candle_tx, candle_rx) = channel();
+        let (_candle_tx, candle_rx) = channel();
         let (job_tx, job_rx) = channel::<JobRequest>();
         let (result_tx, result_rx) = channel::<JobResult>();
 
@@ -130,30 +132,28 @@ impl SniperEngine {
         }
 
         // 4. Initialize Price Stream
-        // "If compiling for WASM, ignore the fact that this is mutable but not mutated."
-        #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
-        let mut price_manager = PriceStreamManager::new();
+        let price_stream = {
+            #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+            let mut price_manager = PriceStreamManager::new();
 
-        #[cfg(not(target_arch = "wasm32"))]
-        price_manager.set_candle_sender(candle_tx.clone());
+            #[cfg(not(target_arch = "wasm32"))]
+            price_manager.set_candle_sender(_candle_tx.clone());
 
-        let price_stream = Arc::new(price_manager);
-        price_stream.subscribe_all(shared_config.get_all_pairs().clone());
+            let price_stream = Arc::new(price_manager);
+            price_stream.subscribe_all(shared_config.get_all_pairs().clone());
+            price_stream
+        };
 
-        // 5. Initialize Results Repository
-        // Construct path: "data_dir/results.db"
-        #[cfg(not(target_arch = "wasm32"))]
-        let db_path = Path::new(PERSISTENCE.kline.directory)
-            .parent()
-            .unwrap_or(Path::new("."))
-            .join("results.sqlite");
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let db_path_str = db_path.to_str().unwrap_or("results.sqlite");
-
-        // We use block_on in native to init the DB async
+        // Initialize Results Repository (native only)
         #[cfg(not(target_arch = "wasm32"))]
         let repo = {
+            let db_path = Path::new(PERSISTENCE.kline.directory)
+                .parent()
+                .unwrap_or(Path::new("."))
+                .join("results.sqlite");
+
+            let db_path_str = db_path.to_str().unwrap_or("results.sqlite");
+
             let rt = Runtime::new().unwrap();
             rt.block_on(async {
                 ResultsRepository::new(db_path_str)
@@ -165,18 +165,14 @@ impl SniperEngine {
             })
         };
 
-        #[cfg(target_arch = "wasm32")]
-        let repo = ResultsRepository::new("").unwrap();
-        // 5. Construct Engine
+        // Construct Engine
         Self {
             pairs_states,
             shared_config,
-            // engine_strategy: OptimizationStrategy::default(),
             engine_ledger: OpportunityLedger::new(),
-            timeseries: timeseries_arc, // Pass the Arc<RwLock> we created
+            timeseries: timeseries_arc,
             price_stream,
             candle_rx,
-            candle_tx,
             job_tx,
             result_rx,
             // WASM: Store the handles so they don't get dropped
@@ -185,6 +181,7 @@ impl SniperEngine {
             #[cfg(target_arch = "wasm32")]
             result_tx,
             queue: VecDeque::new(),
+            #[cfg(not(target_arch = "wasm32"))]
             results_repo: Arc::new(repo),
             last_ledger_maintenance: AppInstant::now(),
         }
@@ -196,7 +193,6 @@ impl SniperEngine {
         overrides: Option<&HashMap<String, Price>>,
     ) -> Vec<TradeFinderRow> {
         crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
-
             let mut rows = Vec::new();
 
             let now_ms = TimeUtils::now_timestamp_ms();
@@ -764,7 +760,8 @@ impl SniperEngine {
                     state.last_update_price = current_price;
                     continue;
                 } else {
-                    let pct_diff = PhPct::new(current_price.percent_diff_from_0_1(&state.last_update_price));
+                    let pct_diff =
+                        PhPct::new(current_price.percent_diff_from_0_1(&state.last_update_price));
                     let triggered = pct_diff > threshold;
 
                     #[cfg(debug_assertions)]

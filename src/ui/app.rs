@@ -51,7 +51,7 @@ pub enum ScrollBehavior {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct NavigationState {
+pub(crate) struct NavigationState {
     pub current_segment_idx: Option<usize>, // None = Show All
     pub last_viewed_segment_idx: usize,
 }
@@ -66,14 +66,14 @@ impl Default for NavigationState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TuningState {
-    pub todo_list: Vec<String>,
-    pub total: usize,
-    pub completed: usize,
+pub(crate) struct TuningState {
+    pub(crate) todo_list: Vec<String>,
+    pub(crate) total: usize,
+    pub(crate) completed: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AppState {
+pub(crate) enum AppState {
     Loading(LoadingState),
     Tuning(TuningState),
     Running,
@@ -86,7 +86,7 @@ impl Default for AppState {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct LoadingState {
+pub(crate) struct LoadingState {
     pub pairs: BTreeMap<usize, (String, SyncStatus)>,
     pub total_pairs: usize,
     pub completed: usize,
@@ -94,7 +94,7 @@ pub struct LoadingState {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct PlotVisibility {
+pub(crate) struct PlotVisibility {
     pub sticky: bool,
     pub low_wicks: bool,
     pub high_wicks: bool,
@@ -126,52 +126,50 @@ impl Default for PlotVisibility {
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct ZoneSniperApp {
-    pub selected_pair: Option<String>,
-    pub shared_config: SharedConfiguration,
-    pub plot_visibility: PlotVisibility,
-    pub show_debug_help: bool,
-    pub show_ph_help: bool,
-    pub candle_resolution: CandleResolution,
-    pub show_candle_range: bool,
-    pub startup_tune_done: bool,
+    pub(crate) selected_pair: Option<String>,
+    pub(crate) shared_config: SharedConfiguration,
+    pub(crate) plot_visibility: PlotVisibility,
+    pub(crate) show_debug_help: bool,
+    pub(crate) show_ph_help: bool,
+    pub(crate) candle_resolution: CandleResolution,
+    pub(crate) show_candle_range: bool,
+    pub(crate) startup_tune_done: bool,
 
     // TradeFinder State
-    pub tf_scope_match_base: bool, // True = Current Base Pairs, False = All
-    pub tf_sort_col: SortColumn,
-    pub tf_sort_dir: SortDirection,
+    pub(crate) tf_scope_match_base: bool, // True = Current Base Pairs, False = All
+    pub(crate) tf_sort_col: SortColumn,
+    pub(crate) tf_sort_dir: SortDirection,
 
-    pub saved_opportunity_id: Option<String>,
+    pub(crate) saved_opportunity_id: Option<String>,
 
     #[serde(skip)]
-    pub selected_opportunity: Option<TradeOpportunity>,
+    pub(crate) selected_opportunity: Option<TradeOpportunity>,
     #[serde(skip)]
-    pub scroll_target: Option<NavigationTarget>,
+    pub(crate) scroll_target: Option<NavigationTarget>,
     #[serde(skip)]
-    pub engine: Option<SniperEngine>,
+    pub(crate) engine: Option<SniperEngine>,
     #[serde(skip)]
-    pub plot_view: PlotView,
+    pub(crate) plot_view: PlotView,
     #[serde(skip)]
-    pub state: AppState,
+    pub(crate) state: AppState,
     #[serde(skip)]
-    pub progress_rx: Option<Receiver<ProgressEvent>>,
+    pub(crate) progress_rx: Option<Receiver<ProgressEvent>>,
     #[serde(skip)]
-    pub data_rx: Option<Receiver<(TimeSeriesCollection, &'static str)>>,
+    pub(crate) data_rx: Option<Receiver<(TimeSeriesCollection, &'static str)>>,
     #[serde(skip)]
-    pub sim_step_size: SimStepSize,
+    pub(crate) sim_step_size: SimStepSize,
     #[serde(skip)]
-    pub sim_direction: SimDirection,
+    pub(crate) sim_direction: SimDirection,
     #[serde(skip)]
-    pub simulated_prices: HashMap<String, Price>,
+    pub(crate) simulated_prices: HashMap<String, Price>,
     #[serde(skip)]
-    pub nav_states: HashMap<String, NavigationState>,
+    pub(crate) nav_states: HashMap<String, NavigationState>,
     #[serde(skip)]
-    pub auto_scale_y: bool,
+    pub(crate) auto_scale_y: bool,
     #[serde(skip)]
-    pub ticker_state: TickerState,
+    pub(crate) ticker_state: TickerState,
     #[serde(skip)]
-    pub last_frame_time: Option<AppInstant>,
-    #[serde(skip)]
-    pub show_opportunity_details: bool,
+    pub(crate) show_opportunity_details: bool,
 }
 
 impl Default for ZoneSniperApp {
@@ -201,7 +199,6 @@ impl Default for ZoneSniperApp {
             candle_resolution: CandleResolution::default(),
             auto_scale_y: true,
             ticker_state: TickerState::default(),
-            last_frame_time: None,
             show_opportunity_details: false,
             tf_scope_match_base: false,
             selected_opportunity: None,
@@ -215,6 +212,7 @@ impl Default for ZoneSniperApp {
 }
 
 impl ZoneSniperApp {
+
     pub(crate) fn new(cc: &eframe::CreationContext<'_>, args: Cli) -> Self {
         let mut app: ZoneSniperApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
@@ -1279,7 +1277,7 @@ impl eframe::App for ZoneSniperApp {
         }
 
         // 1. Snapshot the Engine Ledger
-        #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(e) = &self.engine {
             // Save active ledger to separate binary file
             if let Err(e) = ledger_io::save_ledger(&e.engine_ledger) {

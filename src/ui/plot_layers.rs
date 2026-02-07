@@ -17,7 +17,6 @@ use crate::config::{
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::models::OhlcvTimeSeries;
-use crate::models::cva::ScoreType;
 use crate::models::trading_view::{SuperZone, TradeOpportunity, TradingModel};
 
 use crate::ui::app::PlotVisibility;
@@ -25,9 +24,9 @@ use crate::ui::styles::{DirectionColor, apply_opacity};
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;
 
-pub struct HorizonLinesLayer;
+pub(crate) struct HorizonLinesLayer;
 
-pub struct OpportunityLayer;
+pub(crate) struct OpportunityLayer;
 
 impl PlotLayer for OpportunityLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
@@ -190,7 +189,7 @@ impl PlotLayer for HorizonLinesLayer {
     }
 }
 
-pub struct CandlestickLayer;
+pub(crate) struct CandlestickLayer;
 
 impl PlotLayer for CandlestickLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
@@ -461,12 +460,12 @@ fn draw_body_rect(
 
 /// Context passed to every layer during rendering.
 /// This prevents argument explosion.
-pub struct LayerContext<'a> {
+pub(crate) struct LayerContext<'a> {
     pub trading_model: &'a TradingModel,
     pub ohlcv: &'a OhlcvTimeSeries,
     pub cache: &'a PlotCache,
     pub visibility: &'a PlotVisibility,
-    pub background_score_type: ScoreType,
+    // pub background_score_type: ScoreType,
     pub x_min: f64,
     pub x_max: f64,
     pub current_price: Option<Price>, // Pass SIM-aware price so layers render correctly in SIM mode
@@ -477,14 +476,14 @@ pub struct LayerContext<'a> {
 }
 
 /// A standardized layer in the plot stack.
-pub trait PlotLayer {
+pub(crate) trait PlotLayer {
     fn render(&self, ui: &mut PlotUi, ctx: &LayerContext);
 }
 
 // ============================================================================
 // 1. BACKGROUND LAYER (The Histogram)
 // ============================================================================
-pub struct BackgroundLayer;
+pub(crate) struct BackgroundLayer;
 
 impl PlotLayer for BackgroundLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
@@ -525,7 +524,7 @@ impl PlotLayer for BackgroundLayer {
 // ============================================================================
 // 2. STICKY ZONE LAYER (Consolidation)
 // ============================================================================
-pub struct StickyZoneLayer;
+pub(crate) struct StickyZoneLayer;
 
 impl PlotLayer for StickyZoneLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
@@ -570,7 +569,7 @@ impl PlotLayer for StickyZoneLayer {
 // ============================================================================
 // 3. REVERSAL ZONE LAYER (Wicks)
 // ============================================================================
-pub struct ReversalZoneLayer;
+pub(crate) struct ReversalZoneLayer;
 
 impl PlotLayer for ReversalZoneLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {
@@ -622,7 +621,7 @@ impl PlotLayer for ReversalZoneLayer {
 }
 
 // 6. SEGMENT SEPARATOR LAYER (Vertical Gaps)
-pub struct SegmentSeparatorLayer;
+pub(crate) struct SegmentSeparatorLayer;
 
 impl PlotLayer for SegmentSeparatorLayer {
     fn render(&self, plot_ui: &mut PlotUi, ctx: &LayerContext) {

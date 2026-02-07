@@ -8,53 +8,53 @@ use crate::config::{OptimizationStrategy, PhPct, StationId};
 use crate::config::DF;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct UIEngineSharedData {
-    pub pairs: HashSet<String>,
-    pub station_overrides: HashMap<String, StationId>,
-    pub ph_overrides: HashMap<String, PhPct>,
+pub(crate) struct UIEngineSharedData {
+    pub(crate) pairs: HashSet<String>,
+    pub(crate) station_overrides: HashMap<String, StationId>,
+    pub(crate) ph_overrides: HashMap<String, PhPct>,
     // Add other shared configurations here as needed in the future
-    pub strategy: OptimizationStrategy,
+    pub(crate) strategy: OptimizationStrategy,
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct SharedConfiguration {
+pub(crate) struct SharedConfiguration {
     inner: Arc<RwLock<UIEngineSharedData>>,
 }
 
 impl SharedConfiguration {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(UIEngineSharedData::default())),
         }
     }
 
-    pub fn get_strategy(&self) -> OptimizationStrategy {
+    pub(crate) fn get_strategy(&self) -> OptimizationStrategy {
         self.inner.read().unwrap().strategy
     }
 
-    pub fn set_strategy(&self, strategy: OptimizationStrategy) {
+    pub(crate) fn set_strategy(&self, strategy: OptimizationStrategy) {
         self.inner.write().unwrap().strategy = strategy;
     }
 
     // --- Pair Registry ---
     // i.e write a list of pairs
-    pub fn register_pairs(&self, pairs: Vec<String>) {
+    pub(crate) fn register_pairs(&self, pairs: Vec<String>) {
         let mut lock = self.inner.write().unwrap();
         for p in pairs {
             lock.pairs.insert(p);
         }
     }
 
-    pub fn get_pair_count(&self) -> usize {
-        self.inner.read().unwrap().pairs.len()
-    }
+    // pub fn get_pair_count(&self) -> usize {
+    //     self.inner.read().unwrap().pairs.len()
+    // }
 
-    pub fn get_all_pairs(&self) -> Vec<String> {
+    pub(crate) fn get_all_pairs(&self) -> Vec<String> {
         self.inner.read().unwrap().pairs.iter().cloned().collect()
     }
 
     /// Iterates through all registered pairs and ensures they have a StationId.
-    pub fn ensure_all_stations_initialized(&self) {
+    pub(crate) fn ensure_all_stations_initialized(&self) {
         let mut data = self.inner.write().unwrap();
         let keys: Vec<String> = data.pairs.iter().cloned().collect();
         for pair in keys {
@@ -72,7 +72,7 @@ impl SharedConfiguration {
     }
 
     /// Iterates through all registered pairs and ensures they have a PH value.
-    pub fn ensure_all_phs_initialized(&self, default_ph: PhPct) {
+    pub(crate) fn ensure_all_phs_initialized(&self, default_ph: PhPct) {
         let mut data = self.inner.write().unwrap();
         let keys: Vec<String> = data.pairs.iter().cloned().collect();
         for pair in keys {
@@ -88,7 +88,7 @@ impl SharedConfiguration {
     }
 
     // --- Read Accessors ---
-    pub fn get_station(&self, key: &str) -> Option<StationId> {
+    pub(crate) fn get_station(&self, key: &str) -> Option<StationId> {
         self.inner
             .read()
             .unwrap()
@@ -98,7 +98,7 @@ impl SharedConfiguration {
     }
 
     /// impl AsRef<str>: Most flexible -  allows a single function to conveniently accept both owned Strings and borrowed &str slices
-    pub fn get_station_opt(&self, key: Option<impl AsRef<str>>) -> Option<StationId> {
+    pub(crate) fn get_station_opt(&self, key: Option<impl AsRef<str>>) -> Option<StationId> {
         key.and_then(|k| {
             self.inner
                 .read()
@@ -109,12 +109,12 @@ impl SharedConfiguration {
         })
     }
 
-    pub fn get_ph(&self, key: &str) -> Option<PhPct> {
+    pub(crate) fn get_ph(&self, key: &str) -> Option<PhPct> {
         self.inner.read().unwrap().ph_overrides.get(key).copied()
     }
 
     // --- Write Accessors ---
-    pub fn insert_station(&self, key: String, value: StationId) {
+    pub(crate) fn insert_station(&self, key: String, value: StationId) {
         self.inner
             .write()
             .unwrap()
@@ -122,29 +122,29 @@ impl SharedConfiguration {
             .insert(key, value);
     }
 
-    pub fn insert_ph(&self, key: String, value: PhPct) {
+    pub(crate) fn insert_ph(&self, key: String, value: PhPct) {
         self.inner.write().unwrap().ph_overrides.insert(key, value);
     }
 
     // Ensure default PH if needed
-    pub fn ensure_ph_default(&self, key: String, default_value: PhPct) {
-        self.inner
-            .write()
-            .unwrap()
-            .ph_overrides
-            .entry(key)
-            .or_insert(default_value);
-    }
+    // pub fn ensure_ph_default(&self, key: String, default_value: PhPct) {
+    //     self.inner
+    //         .write()
+    //         .unwrap()
+    //         .ph_overrides
+    //         .entry(key)
+    //         .or_insert(default_value);
+    // }
 
-    // Utility to get all station overrides
-    pub fn get_all_stations(&self) -> HashMap<String, StationId> {
-        self.inner.read().unwrap().station_overrides.clone()
-    }
+    // // Utility to get all station overrides
+    // pub fn get_all_stations(&self) -> HashMap<String, StationId> {
+    //     self.inner.read().unwrap().station_overrides.clone()
+    // }
 
-    // Utility to get all PH overrides
-    pub fn get_all_phs(&self) -> HashMap<String, PhPct> {
-        self.inner.read().unwrap().ph_overrides.clone()
-    }
+    // // Utility to get all PH overrides
+    // pub fn get_all_phs(&self) -> HashMap<String, PhPct> {
+    //     self.inner.read().unwrap().ph_overrides.clone()
+    // }
 }
 
 // --- SERDE MAGIC ---

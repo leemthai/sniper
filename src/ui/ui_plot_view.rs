@@ -30,31 +30,21 @@ use crate::ui::plot_layers::{
 
 /// A lightweight representation of a background bar.
 #[derive(Clone)]
-pub struct BackgroundBar {
-    pub x_max: f64,
-    pub y_center: f64,
-    pub height: f64,
-    pub color: Color32,
+pub(crate) struct BackgroundBar {
+    pub(crate) x_max: f64,
+    pub(crate) y_center: f64,
+    pub(crate) height: f64,
+    pub(crate) color: Color32,
 }
 
 #[derive(Clone)]
-pub struct PlotCache {
-    pub cva_hash: u64,
-    pub bars: Vec<BackgroundBar>,
-    pub y_min: f64,
-    pub y_max: f64,
-    pub x_min: f64,
-    pub x_max: f64,
-    pub bar_thickness: f64,
-    pub time_decay_factor: f64,
-    pub score_type: ScoreType,
-    pub sticky_zone_indices: Vec<usize>,
-    pub zone_scores: Vec<f64>,
-    pub total_width: f64,
+pub(crate) struct PlotCache {
+    pub(crate) cva_hash: u64,
+    pub(crate) bars: Vec<BackgroundBar>,
 }
 
 #[derive(Default)]
-pub struct PlotView {
+pub(crate) struct PlotView {
     cache: Option<PlotCache>,
 }
 
@@ -124,7 +114,7 @@ fn create_time_axis(
         .placement(VPlacement::Bottom)
 }
 
-pub enum PlotInteraction {
+pub(crate) enum PlotInteraction {
     None,
     UserInteracted, // User dragged/zoomed
     RequestReset,   // User double-clicked
@@ -133,24 +123,6 @@ pub enum PlotInteraction {
 impl PlotView {
     pub fn new() -> Self {
         Self { cache: None }
-    }
-
-    pub fn cache_hits(&self) -> usize {
-        0
-    }
-    pub fn cache_misses(&self) -> usize {
-        0
-    }
-    pub fn cache_hit_rate(&self) -> Option<f64> {
-        None
-    }
-
-    pub fn clear_cache(&mut self) {
-        self.cache = None;
-    }
-
-    pub fn has_cache(&self) -> bool {
-        self.cache.is_some()
     }
 
     fn calculate_view_bounds(
@@ -326,7 +298,7 @@ impl PlotView {
         }
     }
 
-    pub fn show_my_plot(
+    pub(crate) fn show_my_plot(
         &mut self,
         ui: &mut Ui,
         cva_results: &CVACore,
@@ -420,7 +392,7 @@ impl PlotView {
                     ohlcv: ohlcv,
                     cache: &cache,
                     visibility,
-                    background_score_type,
+                    // background_score_type,
                     x_min: 0.0,
                     x_max: total_visual_width,
                     current_price: current_pair_price,
@@ -582,16 +554,6 @@ impl PlotView {
             let cache = PlotCache {
                 cva_hash: current_hash,
                 bars,
-                y_min,
-                y_max,
-                x_min: 0.0,
-                x_max: 1.0,
-                bar_thickness: bar_width,
-                time_decay_factor,
-                score_type,
-                sticky_zone_indices: indices,
-                zone_scores: data_for_display,
-                total_width: 1.0,
             };
 
             self.cache = Some(cache.clone());

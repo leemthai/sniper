@@ -1,3 +1,3 @@
 pub mod shared_engine_ui;
 
-pub use shared_engine_ui::SharedConfiguration;
+pub(crate) use shared_engine_ui::SharedConfiguration;

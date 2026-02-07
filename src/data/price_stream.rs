@@ -154,12 +154,12 @@ impl PriceStreamManager {
         }
     }
 
-    pub(crate) fn set_candle_sender(&mut self, tx: Sender<LiveCandle>) {
+    pub fn set_candle_sender(&mut self, tx: Sender<LiveCandle>) {
         self.candle_tx = Some(tx);
     }
 
     /// Suspend price updates (enter simulation mode)
-    pub(crate) fn suspend(&self) {
+    pub fn suspend(&self) {
         *self.suspended.lock().unwrap() = true;
         #[cfg(debug_assertions)]
         if DF.log_simulation_events {
@@ -168,7 +168,7 @@ impl PriceStreamManager {
     }
 
     /// Resume price updates (exit simulation mode)
-    pub(crate) fn resume(&self) {
+    pub fn resume(&self) {
         *self.suspended.lock().unwrap() = false;
         #[cfg(debug_assertions)]
         if DF.log_simulation_events {
@@ -177,12 +177,12 @@ impl PriceStreamManager {
     }
 
     /// Check if price updates are suspended
-    pub(crate) fn is_suspended(&self) -> bool {
+    pub fn is_suspended(&self) -> bool {
         *self.suspended.lock().unwrap()
     }
 
     /// Delay continuation (entire app) until price stream connection health reaches threshold % (0 to 100)
-    pub(crate) fn wait_for_health_threshold(&self, threshold_pct: Pct) {
+    pub fn wait_for_health_threshold(&self, threshold_pct: Pct) {
         loop {
             let health = self.connection_health();
             if health >= threshold_pct {
@@ -209,7 +209,7 @@ impl PriceStreamManager {
     }
 
     /// Get overall connection health (percentage of connected streams)
-    pub(crate) fn connection_health(&self) -> Pct {
+    pub fn connection_health(&self) -> Pct {
         let status_map = self.connection_status.lock().unwrap();
         if status_map.is_empty() {
             return Pct::new(0.0);

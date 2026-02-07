@@ -16,7 +16,7 @@ pub mod ph_audit;
 mod shared;
 
 // Re-export commonly used types
-pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
+pub use data::{price_stream::PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
 pub use domain::{Candle, PairInterval};
 pub use models::{CVACore, TimeSeriesSlice, TradingModel, Zone};
 pub use ui::ZoneSniperApp;

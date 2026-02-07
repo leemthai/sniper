@@ -12,13 +12,14 @@ use crate::config::{Pct, PriceLike};
 use crate::models::trading_view::TradeOpportunity;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct OpportunityLedger {
+pub(crate) struct OpportunityLedger {
     // Map UUID -> Opportunity
-    pub opportunities: HashMap<String, TradeOpportunity>,
+    pub(crate) opportunities: HashMap<String, TradeOpportunity>,
 }
 
 impl OpportunityLedger {
-    pub fn new() -> Self {
+
+    pub(crate) fn new() -> Self {
         Self {
             opportunities: HashMap::new(),
         }
@@ -27,7 +28,7 @@ impl OpportunityLedger {
     #[cfg(debug_assertions)]
     /// DEBUG: Summarizes how many TradeOpportunities exist per OptimizationStrategy.
     /// This inspects the ledger directly (ground truth), not the UI.
-    pub fn debug_log_strategy_summary(&self) {
+    pub(crate) fn debug_log_strategy_summary(&self) {
         if !DF.log_ledger {
             return;
         }
@@ -73,7 +74,7 @@ impl OpportunityLedger {
 
     /// Intelligently updates the ledger.
     /// Returns: (IsNew, ActiveID)
-    pub fn evolve(&mut self, new_opp: TradeOpportunity, tolerance_pct: Pct) -> (bool, String) {
+    pub(crate) fn evolve(&mut self, new_opp: TradeOpportunity, tolerance_pct: Pct) -> (bool, String) {
         // 1. Try Exact ID Match (Fast Path)
         let exact_id = new_opp.id.clone();
         if self.opportunities.contains_key(&exact_id) {
@@ -139,23 +140,23 @@ impl OpportunityLedger {
 
     /// Prunes opportunities based on a predicate.
     /// Keeps the entry if the closure returns true, removes it if false.
-    pub fn retain<F>(&mut self, f: F)
+    pub(crate) fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&String, &mut TradeOpportunity) -> bool,
     {
         self.opportunities.retain(f);
     }
 
-    pub fn get_all(&self) -> Vec<&TradeOpportunity> {
+    pub(crate) fn get_all(&self) -> Vec<&TradeOpportunity> {
         self.opportunities.values().collect()
     }
 
-    pub fn find_first_for_pair(&self, pair_name: Option<String>) -> Option<&TradeOpportunity> {
+    pub(crate) fn find_first_for_pair(&self, pair_name: Option<String>) -> Option<&TradeOpportunity> {
         let name = pair_name?;
         self.opportunities.values().find(|op| op.pair_name == name)
     }
 
-    pub fn remove(&mut self, id: &str) {
+    pub(crate) fn remove(&mut self, id: &str) {
         self.opportunities.remove(id);
     }
 
@@ -177,7 +178,7 @@ impl OpportunityLedger {
     /// 3. For colliding trades, the winner is selected using the quality score
     ///    defined by that specific strategy.
     /// 4. Non-winning trades are removed from the ledger; winners are preserved.
-    pub fn prune_collisions(&mut self, tolerance_pct: Pct) {
+    pub(crate) fn prune_collisions(&mut self, tolerance_pct: Pct) {
         let mut to_remove: Vec<String> = Vec::new();
 
         // Snapshot for stable comparison

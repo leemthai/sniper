@@ -43,165 +43,6 @@ const CELL_PADDING_Y: f32 = 4.0;
 
 impl ZoneSniperApp {
     // Helper to sort rows (Updated for Zero-Op handling)
-    fn sort_trade_finder_rows(&self, rows: &mut Vec<TradeFinderRow>) {
-        rows.sort_by(|a, b| {
-            // 1. Always push "No Opportunity" rows to the bottom
-            let a_has = a.opportunity.is_some();
-            let b_has = b.opportunity.is_some();
-
-            if a_has != b_has {
-                if a_has {
-                    return Ordering::Less;
-                }
-                // A (Has) < B (Empty) -> A First
-                else {
-                    return Ordering::Greater;
-                }
-            }
-
-            // 2. Standard Sort
-            let cmp = match self.tf_sort_col {
-                SortColumn::PairName => a.pair_name.cmp(&b.pair_name),
-
-                // NEW: Target Price Sort
-                SortColumn::TargetPrice => {
-                    let val_a = a
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.target_price)
-                        .unwrap_or_default();
-                    let val_b = b
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.target_price)
-                        .unwrap_or_default();
-                    val_a
-                        .value()
-                        .total_cmp(&val_b.value())
-                        .then_with(|| a.pair_name.cmp(&b.pair_name))
-                }
-
-                SortColumn::QuoteVolume24h => a
-                    .quote_volume_24h
-                    .value()
-                    .total_cmp(&b.quote_volume_24h.value())
-                    .then_with(|| a.pair_name.cmp(&b.pair_name)),
-
-                SortColumn::Volatility => {
-                    let va = a
-                        .market_state
-                        .as_ref()
-                        .map(|m| m.volatility_pct)
-                        .unwrap_or(VolatilityPct::new(0.0));
-                    let vb = b
-                        .market_state
-                        .as_ref()
-                        .map(|m| m.volatility_pct)
-                        .unwrap_or(VolatilityPct::new(0.0));
-                    va.value()
-                        .total_cmp(&vb.value())
-                        .then_with(|| a.pair_name.cmp(&b.pair_name))
-                }
-                SortColumn::Momentum => {
-                    let ma = a
-                        .market_state
-                        .as_ref()
-                        .map(|m| m.momentum_pct)
-                        .unwrap_or(MomentumPct::new(0.0));
-                    let mb = b
-                        .market_state
-                        .as_ref()
-                        .map(|m| m.momentum_pct)
-                        .unwrap_or(MomentumPct::new(0.0));
-                    ma.value()
-                        .total_cmp(&mb.value())
-                        .then_with(|| a.pair_name.cmp(&b.pair_name))
-                }
-
-                SortColumn::LiveRoi => {
-                    let val_a = a
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.live_roi(a.current_price).value())
-                        .unwrap_or(f64::NEG_INFINITY);
-                    let val_b = b
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.live_roi(b.current_price).value())
-                        .unwrap_or(f64::NEG_INFINITY);
-                    val_a
-                        .total_cmp(&val_b)
-                        .then_with(|| a.pair_name.cmp(&b.pair_name))
-                }
-                SortColumn::AnnualizedRoi => {
-                    let val_a = a
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.live_annualized_roi(a.current_price).value())
-                        .unwrap_or(f64::NEG_INFINITY);
-                    let val_b = b
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.live_annualized_roi(b.current_price).value())
-                        .unwrap_or(f64::NEG_INFINITY);
-                    val_a
-                        .total_cmp(&val_b)
-                        .then_with(|| a.pair_name.cmp(&b.pair_name))
-                }
-                SortColumn::AvgDuration => {
-                    let val_a = a
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.avg_duration.value())
-                        .unwrap_or(i64::MAX);
-                    let val_b = b
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.avg_duration.value())
-                        .unwrap_or(i64::MAX);
-                    val_b
-                        .cmp(&val_a)
-                        .then_with(|| a.pair_name.cmp(&b.pair_name))
-                }
-                // Sort by Strategy Score (Balanced/ROI/AROI)
-                SortColumn::Score => {
-                    let val_a = a
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.calculate_quality_score())
-                        .unwrap_or(f64::NEG_INFINITY);
-                    let val_b = b
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.calculate_quality_score())
-                        .unwrap_or(f64::NEG_INFINITY);
-
-                    val_a
-                        .total_cmp(&val_b)
-                        .then_with(|| a.pair_name.cmp(&b.pair_name))
-                }
-                SortColumn::VariantCount => {
-                    let va = a
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.variant_count())
-                        .unwrap_or(0);
-                    let vb = b
-                        .opportunity
-                        .as_ref()
-                        .map(|o| o.variant_count())
-                        .unwrap_or(0);
-                    va.cmp(&vb).then_with(|| a.pair_name.cmp(&b.pair_name))
-                }
-            };
-
-            match self.tf_sort_dir {
-                SortDirection::Ascending => cmp,
-                SortDirection::Descending => cmp.reverse(),
-            }
-        });
-    }
-
     pub(super) fn render_opportunity_details_modal(&mut self, ctx: &Context) {
         // 1. Check if open
         if !self.show_opportunity_details {
@@ -578,8 +419,376 @@ impl ZoneSniperApp {
             });
     }
 
-    /// Helper: Renders the Header, Scope, and Direction controls
+    pub(super) fn render_help_panel(&mut self, ctx: &Context) {
+        let is_sim_mode = self.is_simulation_mode();
+
+        Window::new(&UI_TEXT.kbs_name_long)
+            .open(&mut self.show_debug_help)
+            .resizable(false)
+            .order(Order::Tooltip) // Need to set this because Plot draws elements on Order::Foreground (and redraws them every second) so we need be a higher-level than Foreground even
+            .collapsible(false)
+            .default_width(400.0)
+            .show(ctx, |ui| {
+                ui.heading("Press keys to execute commands");
+                ui.add_space(10.0);
+
+                // 1. General Shortcuts
+                let mut _general_shortcuts = vec![
+                    ("ESC", UI_TEXT.kbs_close_all_panes.as_str()),
+                    ("K (or H)", UI_TEXT.kbs_open_close.as_str()),
+                    ("1", UI_TEXT.kbs_toolbar_shortcut_hvz.as_str()),
+                    ("2", UI_TEXT.kbs_toolbar_shortcut_low_wick.as_str()),
+                    ("3", UI_TEXT.kbs_toolbar_shortcut_high_wick.as_str()),
+                    ("4", UI_TEXT.kbs_toolbar_shortcut_histogram.as_str()),
+                    ("5", UI_TEXT.kbs_toolbar_shortcut_candles.as_str()),
+                    ("6", UI_TEXT.kbs_toolbar_shortcut_gap.as_str()),
+                    ("7", UI_TEXT.kbs_toolbar_shortcut_price_limits.as_str()),
+                    ("8", UI_TEXT.kbs_toolbar_shortcut_live_price.as_str()),
+                    ("9", UI_TEXT.kbs_toolbar_shortcut_targets.as_str()),
+                    // Note, can use '0' as well here ie numeric zero, if we need antoher one
+                    ("O", UI_TEXT.kbs_view_opp_explainer.as_str()),
+                    ("T", UI_TEXT.kbs_view_time_machine.as_str()),
+                ];
+
+                // Only add 'S' for Native
+                #[cfg(not(target_arch = "wasm32"))]
+                _general_shortcuts.push(("S", &UI_TEXT.kbs_sim_mode));
+
+                Grid::new("general_shortcuts_grid")
+                    .num_columns(2)
+                    .spacing([20.0, 8.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        Self::render_shortcut_rows(ui, &_general_shortcuts);
+                    });
+
+                if is_sim_mode {
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.add_space(5.0);
+                    ui.heading(&UI_TEXT.sim_mode_controls);
+                    ui.add_space(5.0);
+
+                    ui.add_space(5.0);
+
+                    let mut _sim_shortcuts = vec![
+                        ("D", UI_TEXT.sim_help_sim_toggle_direction.as_str()),
+                        ("X", UI_TEXT.sim_help_sim_step_size.as_str()),
+                        ("A", UI_TEXT.sim_help_sim_activate_price_change.as_str()),
+                        ("Y", UI_TEXT.sim_help_sim_jump_hvz.as_str()),
+                        ("L", UI_TEXT.sim_help_sim_jump_lower_wicks.as_str()),
+                        ("W", UI_TEXT.sim_help_sim_jump_higher_wicks.as_str()),
+                    ];
+
+                    Grid::new("sim_shortcuts_grid")
+                        .num_columns(2)
+                        .spacing([20.0, 8.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            Self::render_shortcut_rows(ui, &_sim_shortcuts);
+                        });
+                }
+
+                #[cfg(debug_assertions)]
+                {
+                    // Note: any keys added here have to be hand-inserted in handle_global_shortcuts to activate them, too
+                    let debug_shortcuts = [(
+                        "INSERT-HERE",
+                        "Insert future debug only key-trigger operation here",
+                    )];
+
+                    if debug_shortcuts.len() > 1 {
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(5.0);
+                        ui.heading("Debug Shortcuts");
+                        ui.add_space(5.0);
+
+                        Grid::new("debug_shortcuts_grid")
+                            .num_columns(2)
+                            .spacing([20.0, 8.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                Self::render_shortcut_rows(ui, &debug_shortcuts);
+                            });
+                    }
+                }
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(5.0);
+            });
+    }
+
+    pub(super) fn render_left_panel(&mut self, ctx: &Context) {
+        let frame = UI_CONFIG.side_panel_frame();
+
+        SidePanel::left("left_panel")
+            .min_width(280.0) // I believe this is irrelevant because items we draw inside have higher total min_width
+            .resizable(false)
+            .frame(frame)
+            .show(ctx, |ui| {
+                // TIME TUNER
+                if let Some(action) = time_tuner::render(
+                    ui,
+                    &constants::tuner::CONFIG,
+                    self.shared_config
+                        .get_station_opt(self.selected_pair.clone()),
+                    self.selected_pair.clone(),
+                ) {
+                    self.handle_tuner_action(action);
+                }
+
+                ui.add_space(10.0);
+                ui.separator();
+
+                // 2. ACTIVE TARGET (New Context Panel)
+                self.render_active_target_panel(ui);
+
+                ui.separator();
+
+                // 3. MARKET SCANNER (Formerly Trade Finder)
+                // We will rename/update this function next
+                self.render_trade_finder_content(ui);
+            });
+    }
+
+    pub(super) fn render_top_panel(&mut self, ctx: &Context) {
+        let frame = UI_CONFIG.top_panel_frame();
+
+        TopBottomPanel::top("top_toolbar")
+            .frame(frame)
+            .min_height(30.0)
+            .resizable(false)
+            .show(ctx, |ui| {
+                // --- TOP TOOLBAR ---
+                ui.horizontal(|ui| {
+                    // 1. CANDLE RESOLUTION
+                    ui.label(
+                        RichText::new(&UI_TEXT.tb_time)
+                            .size(16.0)
+                            .color(PLOT_CONFIG.color_text_neutral),
+                    );
+
+                    for res in CandleResolution::iter() {
+                        ui.selectable_value(&mut self.candle_resolution, res, res.to_string());
+                    }
+
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    self.render_optimization_strategy(ui);
+
+                    // 2. LAYER VISIBILITY
+                    ui.checkbox(&mut self.plot_visibility.sticky, &UI_TEXT.tb_sticky);
+                    ui.checkbox(&mut self.plot_visibility.low_wicks, &UI_TEXT.tb_low_wicks);
+                    ui.checkbox(&mut self.plot_visibility.high_wicks, &UI_TEXT.tb_high_wicks);
+                    ui.checkbox(
+                        &mut self.plot_visibility.background,
+                        &UI_TEXT.tb_volume_hist,
+                    );
+                    ui.checkbox(&mut self.plot_visibility.candles, &UI_TEXT.tb_candles);
+
+                    ui.separator();
+
+                    // CONTEXT
+                    ui.checkbox(&mut self.plot_visibility.separators, &UI_TEXT.tb_gaps);
+                    ui.checkbox(
+                        &mut self.plot_visibility.horizon_lines,
+                        &UI_TEXT.tb_price_limits,
+                    );
+                    ui.checkbox(&mut self.plot_visibility.price_line, &UI_TEXT.tb_live_price);
+                    ui.checkbox(&mut self.plot_visibility.opportunities, &UI_TEXT.tb_targets);
+
+                    // STATUS INDICATOR (TEMP but very useful)
+                    if self.auto_scale_y {
+                        ui.label(
+                            RichText::new(&UI_TEXT.tb_y_locked)
+                                .small()
+                                .color(PLOT_CONFIG.color_profit),
+                        );
+                    } else {
+                        ui.label(
+                            RichText::new(&UI_TEXT.tb_y_unlocked)
+                                .small()
+                                .color(PLOT_CONFIG.color_warning),
+                        );
+                    }
+                });
+            });
+    }
+
+    pub(super) fn render_ticker_panel(&mut self, ctx: &Context) {
+        let panel_frame = UI_CONFIG.bottom_panel_frame();
+
+        // Render at bottom. If called BEFORE status panel in update(), it sits below it.
+        // If called AFTER, it sits above it.
+        TopBottomPanel::bottom("ticker_panel")
+            .frame(panel_frame)
+            .min_height(TICKER.height)
+            .resizable(false)
+            .show(ctx, |ui| {
+                if let Some(engine) = &self.engine {
+                    self.ticker_state.update_data(engine);
+                }
+
+                // Render Ticker and Capture Result
+                if let Some(pair) = self.ticker_state.render(ui) {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        self.jump_to_pair(pair);
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let _ = pair;
+                    }
+                }
+            });
+    }
+
+    pub(super) fn render_central_panel(&mut self, ctx: &Context) {
+        let central_panel_frame = UI_CONFIG.central_panel_frame();
+
+        CentralPanel::default()
+            .frame(central_panel_frame)
+            .show(ctx, |ui| {
+                // FIX: Grab Nav State HERE (Before borrowing self.engine)
+                // This requires us to clone it because it's Copy/Clone
+                let nav_state = self.get_nav_state();
+
+                // 1. Safety Check: Engine existence
+                let Some(engine) = &self.engine else {
+                    render_fullscreen_message(
+                        ui,
+                        &UI_TEXT.cp_system_starting,
+                        &UI_TEXT.cp_init_engine,
+                        false,
+                    );
+                    return;
+                };
+
+                // 2. Safety Check: Selected Pair
+                let Some(pair) = self.selected_pair.clone() else {
+                    render_fullscreen_message(
+                        ui,
+                        &UI_TEXT.error_no_pair_selected,
+                        &UI_TEXT.cp_please_select_pair,
+                        false,
+                    );
+                    return;
+                };
+
+                // 3. Get Price State (Do we have a live price?)
+                let current_price = self.get_display_price(&pair); // engine.get_price(&pair);
+
+                let (is_calculating, last_error) = engine.get_pair_status(&pair);
+
+                // PRIORITY 1: ERRORS
+                // If the most recent calculation failed (e.g. "Insufficient Data" at 1%), show the error, even if we have an old cached model.
+                if let Some(err_msg) = last_error {
+                    let body = if err_msg.contains("Insufficient data") {
+                        format!("{}\n\n{}", UI_TEXT.error_insufficient_data_body, err_msg)
+                    } else {
+                        err_msg.to_string()
+                    };
+                    render_fullscreen_message(ui, &UI_TEXT.error_analysis_failed, &body, true);
+                }
+                // PRIORITY 2: VALID MODEL
+                // If no error, and we have data, draw it.
+                else if let Some(model) = engine.get_model(&pair) {
+                    let interaction = self.plot_view.show_my_plot(
+                        ui,
+                        &model.cva,
+                        &model,
+                        current_price,
+                        ScoreType::FullCandleTVW,
+                        &self.plot_visibility,
+                        engine,
+                        self.candle_resolution,
+                        nav_state.current_segment_idx,
+                        self.auto_scale_y,
+                        self.selected_opportunity.clone(),
+                    );
+
+                    // HANDLE INTERACTION
+                    match interaction {
+                        PlotInteraction::UserInteracted => {
+                            // User wants control. Disable auto-scale.
+                            self.auto_scale_y = false;
+                        }
+                        PlotInteraction::RequestReset => {
+                            // User requested reset. Re-enable auto-scale.
+                            self.auto_scale_y = true;
+                        }
+                        PlotInteraction::None => {}
+                    }
+                }
+                // PRIORITY 3: CALCULATING (Initial Load)
+                else if is_calculating {
+                    render_fullscreen_message(
+                        ui,
+                        &format!("{} {}...", UI_TEXT.cp_analyzing, pair),
+                        &UI_TEXT.cp_calculating_zones,
+                        false,
+                    );
+                }
+                // PRIORITY 4: QUEUED / WAITING
+                else if current_price.is_some() {
+                    render_fullscreen_message(
+                        ui,
+                        &format!("{}: {}...", UI_TEXT.cp_queued, pair),
+                        &UI_TEXT.cp_wait_thread,
+                        false,
+                    );
+                }
+                // PRIORITY 5: NO DATA STREAM
+                else {
+                    render_fullscreen_message(
+                        ui,
+                        &UI_TEXT.cp_wait_prices,
+                        &UI_TEXT.cp_listen_binance_stream,
+                        false,
+                    );
+                }
+            });
+    }
+
+    pub(super) fn render_status_panel(&mut self, ctx: &Context) {
+        let frame = UI_CONFIG.bottom_panel_frame();
+        TopBottomPanel::bottom("status_panel")
+            .frame(frame)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        // 1. Simulation / Live Mode
+                        self.render_status_mode(ui);
+
+                        // 2. Zone Info
+                        self.render_status_zone_info(ui);
+
+                        ui.separator();
+
+                        // 3. Coverage
+                        self.render_status_coverage(ui);
+
+                        // 4. Candle Stats
+                        self.render_status_candles(ui);
+
+                        // 5. System Status
+                        self.render_status_system(ui);
+
+                        ui.separator();
+
+                        // 6. Network
+                        self.render_status_network(ui);
+                    });
+                });
+            });
+    }
+
     fn render_trade_finder_filters(&mut self, ui: &mut Ui, count: usize) -> bool {
+        // Renders the Header, Scope, and Direction controls
         let mut filter_changed = false;
         ui.add_space(10.0);
 
@@ -647,8 +856,8 @@ impl ZoneSniperApp {
         filter_changed
     }
 
-    /// Helper for Empty Cells (SSOT)
     fn display_no_data(&self, ui: &mut Ui) {
+        // Helper for Empty Cells (SSOT)
         ui.label("-");
     }
 
@@ -837,8 +1046,8 @@ impl ZoneSniperApp {
         });
     }
 
-    /// Helper to render a stacked header (Primary Sort Top, Optional Secondary Sort Bottom)
     fn render_header_stack(
+        // Helper to render a stacked header (Primary Sort Top, Optional Secondary Sort Bottom)
         &mut self,
         ui: &mut Ui,
         sort_changed: &mut bool,
@@ -925,8 +1134,8 @@ impl ZoneSniperApp {
         });
     }
 
-    /// Renders the data cells for a single row
     fn render_tf_table_row(
+        // Renders the data cells for a single row
         &mut self,
         table_row: &mut TableRow,
         row: &TradeFinderRow,
@@ -975,8 +1184,8 @@ impl ZoneSniperApp {
         }
     }
 
-    /// Column 1: Pair Name + Direction Icon (Static Text) on top line, Age on 2nd line
     fn col_pair_name(
+        // Column 1: Pair Name + Direction Icon (Static Text) on top line, Age on 2nd line
         &self,
         table_row: &mut egui_extras::TableRow,
         row: &TradeFinderRow,
@@ -1276,8 +1485,8 @@ impl ZoneSniperApp {
         final_rows
     }
 
-    /// Renders a small icon-only sort button. Returns true if sort changed.
     fn render_sort_icon_button(&mut self, ui: &mut Ui, col: SortColumn, icon: &str) -> bool {
+        // Renders a small icon-only sort button. Returns true if sort changed.
         let is_active = self.tf_sort_col == col;
 
         let color = if is_active {
@@ -1314,8 +1523,8 @@ impl ZoneSniperApp {
         false
     }
 
-    /// Renders a single sortable label using the Interactive Button style
     fn render_stable_sort_label(&mut self, ui: &mut Ui, col: SortColumn, text: &str) -> bool {
+        // Renders a single sortable label using the Interactive Button style
         let mut clicked = false;
         let is_active = self.tf_sort_col == col;
         let color = if is_active {
@@ -1414,12 +1623,9 @@ impl ZoneSniperApp {
                         // Source info + ID
                         ui.horizontal(|ui| {
                             ui.label(
-                                RichText::new(format!(
-                                    "{} {}",
-                                    UI_TEXT.label_source_ph, op.ph_pct
-                                ))
-                                .small()
-                                .color(PLOT_CONFIG.color_text_subdued),
+                                RichText::new(format!("{} {}", UI_TEXT.label_source_ph, op.ph_pct))
+                                    .small()
+                                    .color(PLOT_CONFIG.color_text_subdued),
                             );
 
                             #[cfg(debug_assertions)]
@@ -1457,8 +1663,8 @@ impl ZoneSniperApp {
         ui.add_space(10.0);
     }
 
-    /// Handles events from the Time Tuner UI (Left Panel). including calling self.handle_tuner_action() which updates self.shared_config.ph_overrides for the given pair.
-    pub fn handle_tuner_action(&mut self, action: TunerAction) {
+    fn handle_tuner_action(&mut self, action: TunerAction) {
+        // Handles events from the Time Tuner UI (Left Panel). including calling self.handle_tuner_action() which updates self.shared_config.ph_overrides for the given pair.
         match action {
             TunerAction::StationSelected(station_id) => {
                 // Run Auto-Tune for selected pair
@@ -1496,7 +1702,11 @@ impl ZoneSniperApp {
                                 .insert_ph(pair_name.clone(), best_ph_pct);
                             #[cfg(debug_assertions)]
                             if DF.log_ph_overrides {
-                                log::info!("SETTING PH_OVERRIDES for {} to be {} in handle_tuner_action", pair, best_ph_pct);
+                                log::info!(
+                                    "SETTING PH_OVERRIDES for {} to be {} in handle_tuner_action",
+                                    pair,
+                                    best_ph_pct
+                                );
                             }
 
                             // Use invalidate_pair_and_recalc to update ONLY this pair
@@ -1519,392 +1729,6 @@ impl ZoneSniperApp {
                 log::info!("TODO: Open Config Modal for Time Tuner");
             }
         }
-    }
-
-    pub(super) fn render_left_panel(&mut self, ctx: &Context) {
-        let frame = UI_CONFIG.side_panel_frame();
-
-        SidePanel::left("left_panel")
-            .min_width(280.0) // I believe this is irrelevant because items we draw inside have higher total min_width
-            .resizable(false)
-            .frame(frame)
-            .show(ctx, |ui| {
-                // TIME TUNER
-                if let Some(action) = time_tuner::render(
-                    ui,
-                    &constants::tuner::CONFIG,
-                    self.shared_config
-                        .get_station_opt(self.selected_pair.clone()),
-                    self.selected_pair.clone(),
-                ) {
-                    self.handle_tuner_action(action);
-                }
-
-                ui.add_space(10.0);
-                ui.separator();
-
-                // 2. ACTIVE TARGET (New Context Panel)
-                self.render_active_target_panel(ui);
-
-                ui.separator();
-
-                // 3. MARKET SCANNER (Formerly Trade Finder)
-                // We will rename/update this function next
-                self.render_trade_finder_content(ui);
-            });
-    }
-
-    fn ui_optimization_strategy(&mut self, ui: &mut Ui) {
-        ui.label(format!("{}", UI_TEXT.label_goal));
-
-        // Read current value
-        let current_strategy = self.shared_config.get_strategy();
-        let mut selected_strategy = current_strategy;
-
-        // Selected text (icon + display)
-        let selected_text = format!("{} {}", selected_strategy.icon(), selected_strategy);
-
-        // ComboBox
-        ComboBox::from_id_salt("Optimization strategy")
-            .selected_text(selected_text)
-            .width(100.0)
-            .show_ui(ui, |ui| {
-                for strategy in OptimizationStrategy::iter() {
-                    let text = format!("{} {}", strategy.icon(), strategy);
-                    ui.selectable_value(&mut selected_strategy, strategy, text);
-                }
-            });
-
-        // Commit if changed
-        if selected_strategy != current_strategy {
-            #[cfg(debug_assertions)]
-            if DF.log_strategy_selection {
-                log::info!(
-                    "Changing strategy from {} to {}",
-                    current_strategy,
-                    selected_strategy
-                );
-            }
-
-            self.shared_config.set_strategy(selected_strategy);
-            self.handle_strategy_selection();
-        }
-
-        ui.separator();
-    }
-
-    pub(super) fn render_top_panel(&mut self, ctx: &Context) {
-        let frame = UI_CONFIG.top_panel_frame();
-
-        TopBottomPanel::top("top_toolbar")
-            .frame(frame)
-            .min_height(30.0)
-            .resizable(false)
-            .show(ctx, |ui| {
-                // --- TOP TOOLBAR ---
-                ui.horizontal(|ui| {
-                    // 1. CANDLE RESOLUTION
-                    ui.label(
-                        RichText::new(&UI_TEXT.tb_time)
-                            .size(16.0)
-                            .color(PLOT_CONFIG.color_text_neutral),
-                    );
-
-                    for res in CandleResolution::iter() {
-                        ui.selectable_value(&mut self.candle_resolution, res, res.to_string());
-                    }
-
-                    ui.add_space(10.0);
-                    ui.separator();
-
-                    self.ui_optimization_strategy(ui);
-
-                    // 2. LAYER VISIBILITY
-                    ui.checkbox(&mut self.plot_visibility.sticky, &UI_TEXT.tb_sticky);
-                    ui.checkbox(&mut self.plot_visibility.low_wicks, &UI_TEXT.tb_low_wicks);
-                    ui.checkbox(&mut self.plot_visibility.high_wicks, &UI_TEXT.tb_high_wicks);
-                    ui.checkbox(
-                        &mut self.plot_visibility.background,
-                        &UI_TEXT.tb_volume_hist,
-                    );
-                    ui.checkbox(&mut self.plot_visibility.candles, &UI_TEXT.tb_candles);
-
-                    ui.separator();
-
-                    // CONTEXT
-                    ui.checkbox(&mut self.plot_visibility.separators, &UI_TEXT.tb_gaps);
-                    ui.checkbox(
-                        &mut self.plot_visibility.horizon_lines,
-                        &UI_TEXT.tb_price_limits,
-                    );
-                    ui.checkbox(&mut self.plot_visibility.price_line, &UI_TEXT.tb_live_price);
-                    ui.checkbox(&mut self.plot_visibility.opportunities, &UI_TEXT.tb_targets);
-
-                    // STATUS INDICATOR (TEMP but very useful)
-                    if self.auto_scale_y {
-                        ui.label(
-                            RichText::new(&UI_TEXT.tb_y_locked)
-                                .small()
-                                .color(PLOT_CONFIG.color_profit),
-                        );
-                    } else {
-                        ui.label(
-                            RichText::new(&UI_TEXT.tb_y_unlocked)
-                                .small()
-                                .color(PLOT_CONFIG.color_warning),
-                        );
-                    }
-                });
-            });
-    }
-
-    pub(super) fn render_ticker_panel(&mut self, ctx: &Context) {
-        let panel_frame = UI_CONFIG.bottom_panel_frame();
-
-        // Render at bottom. If called BEFORE status panel in update(), it sits below it.
-        // If called AFTER, it sits above it.
-        TopBottomPanel::bottom("ticker_panel")
-            .frame(panel_frame)
-            .min_height(TICKER.height)
-            .resizable(false)
-            .show(ctx, |ui| {
-                if let Some(engine) = &self.engine {
-                    self.ticker_state.update_data(engine);
-                }
-
-                // Render Ticker and Capture Result
-                if let Some(pair) = self.ticker_state.render(ui) {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        self.jump_to_pair(pair);
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        let _ = pair;
-                    }
-                }
-            });
-    }
-
-    fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
-        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            // 1. Determine which variant is currently active
-            let active_stop_price = if let Some(sel) = &self.selected_opportunity {
-                // FIX: Check exact UUID match.
-                // Previous logic checked target_zone_id, which is now often 0 for generated trades,
-                // causing all trades to think they were selected.
-                if sel.id == op.id {
-                    sel.stop_price
-                } else {
-                    op.stop_price
-                }
-            } else {
-                op.stop_price
-            };
-
-            // 2. Find the index (1-based)
-            let current_index = op
-                .variants
-                .iter()
-                .position(|v| v.stop_price == active_stop_price)
-                .unwrap_or(0)
-                + 1;
-
-            // 3. Generate Label "#/# Vrts"
-            let label_text = format!(
-                "{}/{} {} ▾",
-                current_index,
-                op.variant_count(),
-                UI_TEXT.label_sl_variants_short
-            );
-
-            // FIX: Use Unique UUID for the UI ID source.
-            // Using target_zone_id (which is 0) caused ID collisions in egui.
-            let id_source = format!("var_menu_{}", op.id);
-
-            // CALL THE HELPER
-            ui.custom_dropdown(&id_source, &label_text, |ui| {
-                let mut should_close = false;
-
-                for (i, variant) in op.variants.iter().enumerate() {
-                    let risk_pct =
-                        Pct::new(variant.stop_price.percent_diff_from_0_1(&op.start_price));
-                    let win_rate = variant.simulation.success_rate;
-
-                    let text = format!(
-                        "{}. {} {}   {} {}   {} -{}",
-                        i + 1,
-                        UI_TEXT.label_roi,
-                        variant.roi_pct,
-                        UI_TEXT.label_success_rate_short,
-                        win_rate,
-                        UI_TEXT.label_stop_loss_short,
-                        risk_pct
-                    );
-
-                    let is_current = variant.stop_price == active_stop_price;
-
-                    if ui.selectable_label(is_current, text).clicked() {
-                        // 1. Construct the specific variant opportunity
-                        let mut new_selected = op.clone();
-                        new_selected.stop_price = variant.stop_price;
-                        new_selected.simulation = variant.simulation.clone();
-
-                        // 2. Use the Helper
-                        self.select_specific_opportunity(
-                            new_selected,
-                            ScrollBehavior::None,
-                            "render_card_variants",
-                        );
-
-                        should_close = true;
-                    }
-                }
-
-                should_close
-            });
-        });
-    }
-
-    pub(super) fn render_central_panel(&mut self, ctx: &Context) {
-        let central_panel_frame = UI_CONFIG.central_panel_frame();
-
-        CentralPanel::default()
-            .frame(central_panel_frame)
-            .show(ctx, |ui| {
-                // FIX: Grab Nav State HERE (Before borrowing self.engine)
-                // This requires us to clone it because it's Copy/Clone
-                let nav_state = self.get_nav_state();
-
-                // 1. Safety Check: Engine existence
-                let Some(engine) = &self.engine else {
-                    render_fullscreen_message(
-                        ui,
-                        &UI_TEXT.cp_system_starting,
-                        &UI_TEXT.cp_init_engine,
-                        false,
-                    );
-                    return;
-                };
-
-                // 2. Safety Check: Selected Pair
-                let Some(pair) = self.selected_pair.clone() else {
-                    render_fullscreen_message(
-                        ui,
-                        &UI_TEXT.error_no_pair_selected,
-                        &UI_TEXT.cp_please_select_pair,
-                        false,
-                    );
-                    return;
-                };
-
-                // 3. Get Price State (Do we have a live price?)
-                let current_price = self.get_display_price(&pair); // engine.get_price(&pair);
-
-                let (is_calculating, last_error) = engine.get_pair_status(&pair);
-
-                // PRIORITY 1: ERRORS
-                // If the most recent calculation failed (e.g. "Insufficient Data" at 1%), show the error, even if we have an old cached model.
-                if let Some(err_msg) = last_error {
-                    let body = if err_msg.contains("Insufficient data") {
-                        format!("{}\n\n{}", UI_TEXT.error_insufficient_data_body, err_msg)
-                    } else {
-                        err_msg.to_string()
-                    };
-                    render_fullscreen_message(ui, &UI_TEXT.error_analysis_failed, &body, true);
-                }
-                // PRIORITY 2: VALID MODEL
-                // If no error, and we have data, draw it.
-                else if let Some(model) = engine.get_model(&pair) {
-                    let interaction = self.plot_view.show_my_plot(
-                        ui,
-                        &model.cva,
-                        &model,
-                        current_price,
-                        ScoreType::FullCandleTVW,
-                        &self.plot_visibility,
-                        engine,
-                        self.candle_resolution,
-                        nav_state.current_segment_idx,
-                        self.auto_scale_y,
-                        self.selected_opportunity.clone(),
-                    );
-
-                    // HANDLE INTERACTION
-                    match interaction {
-                        PlotInteraction::UserInteracted => {
-                            // User wants control. Disable auto-scale.
-                            self.auto_scale_y = false;
-                        }
-                        PlotInteraction::RequestReset => {
-                            // User requested reset. Re-enable auto-scale.
-                            self.auto_scale_y = true;
-                        }
-                        PlotInteraction::None => {}
-                    }
-                }
-                // PRIORITY 3: CALCULATING (Initial Load)
-                else if is_calculating {
-                    render_fullscreen_message(
-                        ui,
-                        &format!("{} {}...", UI_TEXT.cp_analyzing, pair),
-                        &UI_TEXT.cp_calculating_zones,
-                        false,
-                    );
-                }
-                // PRIORITY 4: QUEUED / WAITING
-                else if current_price.is_some() {
-                    render_fullscreen_message(
-                        ui,
-                        &format!("{}: {}...", UI_TEXT.cp_queued, pair),
-                        &UI_TEXT.cp_wait_thread,
-                        false,
-                    );
-                }
-                // PRIORITY 5: NO DATA STREAM
-                else {
-                    render_fullscreen_message(
-                        ui,
-                        &UI_TEXT.cp_wait_prices,
-                        &UI_TEXT.cp_listen_binance_stream,
-                        false,
-                    );
-                }
-            });
-    }
-
-    pub(super) fn render_status_panel(&mut self, ctx: &Context) {
-        let frame = UI_CONFIG.bottom_panel_frame();
-        TopBottomPanel::bottom("status_panel")
-            .frame(frame)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        // 1. Simulation / Live Mode
-                        self.render_status_mode(ui);
-
-                        // 2. Zone Info
-                        self.render_status_zone_info(ui);
-
-                        ui.separator();
-
-                        // 3. Coverage
-                        self.render_status_coverage(ui);
-
-                        // 4. Candle Stats
-                        self.render_status_candles(ui);
-
-                        // 5. System Status
-                        self.render_status_system(ui);
-
-                        ui.separator();
-
-                        // 6. Network
-                        self.render_status_network(ui);
-                    });
-                });
-            });
     }
 
     fn render_status_mode(&self, ui: &mut Ui) {
@@ -2087,6 +1911,125 @@ impl ZoneSniperApp {
         }
     }
 
+    fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
+        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+            // 1. Determine which variant is currently active
+            let active_stop_price = if let Some(sel) = &self.selected_opportunity {
+                // FIX: Check exact UUID match.
+                // Previous logic checked target_zone_id, which is now often 0 for generated trades,
+                // causing all trades to think they were selected.
+                if sel.id == op.id {
+                    sel.stop_price
+                } else {
+                    op.stop_price
+                }
+            } else {
+                op.stop_price
+            };
+
+            // 2. Find the index (1-based)
+            let current_index = op
+                .variants
+                .iter()
+                .position(|v| v.stop_price == active_stop_price)
+                .unwrap_or(0)
+                + 1;
+
+            // 3. Generate Label "#/# Vrts"
+            let label_text = format!(
+                "{}/{} {} ▾",
+                current_index,
+                op.variant_count(),
+                UI_TEXT.label_sl_variants_short
+            );
+
+            // FIX: Use Unique UUID for the UI ID source.
+            // Using target_zone_id (which is 0) caused ID collisions in egui.
+            let id_source = format!("var_menu_{}", op.id);
+
+            // CALL THE HELPER
+            ui.custom_dropdown(&id_source, &label_text, |ui| {
+                let mut should_close = false;
+
+                for (i, variant) in op.variants.iter().enumerate() {
+                    let risk_pct =
+                        Pct::new(variant.stop_price.percent_diff_from_0_1(&op.start_price));
+                    let win_rate = variant.simulation.success_rate;
+
+                    let text = format!(
+                        "{}. {} {}   {} {}   {} -{}",
+                        i + 1,
+                        UI_TEXT.label_roi,
+                        variant.roi_pct,
+                        UI_TEXT.label_success_rate_short,
+                        win_rate,
+                        UI_TEXT.label_stop_loss_short,
+                        risk_pct
+                    );
+
+                    let is_current = variant.stop_price == active_stop_price;
+
+                    if ui.selectable_label(is_current, text).clicked() {
+                        // 1. Construct the specific variant opportunity
+                        let mut new_selected = op.clone();
+                        new_selected.stop_price = variant.stop_price;
+                        new_selected.simulation = variant.simulation.clone();
+
+                        // 2. Use the Helper
+                        self.select_specific_opportunity(
+                            new_selected,
+                            ScrollBehavior::None,
+                            "render_card_variants",
+                        );
+
+                        should_close = true;
+                    }
+                }
+
+                should_close
+            });
+        });
+    }
+
+    fn render_optimization_strategy(&mut self, ui: &mut Ui) {
+        ui.label(format!("{}", UI_TEXT.label_goal));
+
+        // Read current value
+        let current_strategy = self.shared_config.get_strategy();
+        let mut selected_strategy = current_strategy;
+
+        // Selected text (icon + display)
+        let selected_text = format!("{} {}", selected_strategy.icon(), selected_strategy);
+
+        // ComboBox
+        ComboBox::from_id_salt("Optimization strategy")
+            .selected_text(selected_text)
+            .width(100.0)
+            .show_ui(ui, |ui| {
+                for strategy in OptimizationStrategy::iter() {
+                    let text = format!("{} {}", strategy.icon(), strategy);
+                    ui.selectable_value(&mut selected_strategy, strategy, text);
+                }
+            });
+
+        // Commit if changed
+        if selected_strategy != current_strategy {
+            #[cfg(debug_assertions)]
+            if DF.log_strategy_selection {
+                log::info!(
+                    "Changing strategy from {} to {}",
+                    current_strategy,
+                    selected_strategy
+                );
+            }
+
+            self.shared_config.set_strategy(selected_strategy);
+            self.handle_strategy_selection();
+        }
+
+        ui.separator();
+    }
+
     fn render_shortcut_rows(ui: &mut Ui, rows: &[(&str, &str)]) {
         for (key, description) in rows {
             ui.label(RichText::new(*key).monospace().strong());
@@ -2095,105 +2038,163 @@ impl ZoneSniperApp {
         }
     }
 
-    pub(super) fn render_help_panel(&mut self, ctx: &Context) {
-        let is_sim_mode = self.is_simulation_mode();
+    fn sort_trade_finder_rows(&self, rows: &mut Vec<TradeFinderRow>) {
+        rows.sort_by(|a, b| {
+            // 1. Always push "No Opportunity" rows to the bottom
+            let a_has = a.opportunity.is_some();
+            let b_has = b.opportunity.is_some();
 
-        Window::new(&UI_TEXT.kbs_name_long)
-            .open(&mut self.show_debug_help)
-            .resizable(false)
-            .order(Order::Tooltip) // Need to set this because Plot draws elements on Order::Foreground (and redraws them every second) so we need be a higher-level than Foreground even
-            .collapsible(false)
-            .default_width(400.0)
-            .show(ctx, |ui| {
-                ui.heading("Press keys to execute commands");
-                ui.add_space(10.0);
+            if a_has != b_has {
+                if a_has {
+                    return Ordering::Less;
+                }
+                // A (Has) < B (Empty) -> A First
+                else {
+                    return Ordering::Greater;
+                }
+            }
 
-                // 1. General Shortcuts
-                let mut _general_shortcuts = vec![
-                    ("ESC", UI_TEXT.kbs_close_all_panes.as_str()),
-                    ("K (or H)", UI_TEXT.kbs_open_close.as_str()),
-                    ("1", UI_TEXT.kbs_toolbar_shortcut_hvz.as_str()),
-                    ("2", UI_TEXT.kbs_toolbar_shortcut_low_wick.as_str()),
-                    ("3", UI_TEXT.kbs_toolbar_shortcut_high_wick.as_str()),
-                    ("4", UI_TEXT.kbs_toolbar_shortcut_histogram.as_str()),
-                    ("5", UI_TEXT.kbs_toolbar_shortcut_candles.as_str()),
-                    ("6", UI_TEXT.kbs_toolbar_shortcut_gap.as_str()),
-                    ("7", UI_TEXT.kbs_toolbar_shortcut_price_limits.as_str()),
-                    ("8", UI_TEXT.kbs_toolbar_shortcut_live_price.as_str()),
-                    ("9", UI_TEXT.kbs_toolbar_shortcut_targets.as_str()),
-                    // Note, can use '0' as well here ie numeric zero, if we need antoher one
-                    ("O", UI_TEXT.kbs_view_opp_explainer.as_str()),
-                    ("T", UI_TEXT.kbs_view_time_machine.as_str()),
-                ];
+            // 2. Standard Sort
+            let cmp = match self.tf_sort_col {
+                SortColumn::PairName => a.pair_name.cmp(&b.pair_name),
 
-                // Only add 'S' for Native
-                #[cfg(not(target_arch = "wasm32"))]
-                _general_shortcuts.push(("S", &UI_TEXT.kbs_sim_mode));
-
-                Grid::new("general_shortcuts_grid")
-                    .num_columns(2)
-                    .spacing([20.0, 8.0])
-                    .striped(true)
-                    .show(ui, |ui| {
-                        Self::render_shortcut_rows(ui, &_general_shortcuts);
-                    });
-
-                if is_sim_mode {
-                    ui.add_space(10.0);
-                    ui.separator();
-                    ui.add_space(5.0);
-                    ui.heading(&UI_TEXT.sim_mode_controls);
-                    ui.add_space(5.0);
-
-                    ui.add_space(5.0);
-
-                    let mut _sim_shortcuts = vec![
-                        ("D", UI_TEXT.sim_help_sim_toggle_direction.as_str()),
-                        ("X", UI_TEXT.sim_help_sim_step_size.as_str()),
-                        ("A", UI_TEXT.sim_help_sim_activate_price_change.as_str()),
-                        ("Y", UI_TEXT.sim_help_sim_jump_hvz.as_str()),
-                        ("L", UI_TEXT.sim_help_sim_jump_lower_wicks.as_str()),
-                        ("W", UI_TEXT.sim_help_sim_jump_higher_wicks.as_str()),
-                    ];
-
-                    Grid::new("sim_shortcuts_grid")
-                        .num_columns(2)
-                        .spacing([20.0, 8.0])
-                        .striped(true)
-                        .show(ui, |ui| {
-                            Self::render_shortcut_rows(ui, &_sim_shortcuts);
-                        });
+                // NEW: Target Price Sort
+                SortColumn::TargetPrice => {
+                    let val_a = a
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.target_price)
+                        .unwrap_or_default();
+                    let val_b = b
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.target_price)
+                        .unwrap_or_default();
+                    val_a
+                        .value()
+                        .total_cmp(&val_b.value())
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
 
-                #[cfg(debug_assertions)]
-                {
-                    // Note: any keys added here have to be hand-inserted in handle_global_shortcuts to activate them, too
-                    let debug_shortcuts = [(
-                        "INSERT-HERE",
-                        "Insert future debug only key-trigger operation here",
-                    )];
+                SortColumn::QuoteVolume24h => a
+                    .quote_volume_24h
+                    .value()
+                    .total_cmp(&b.quote_volume_24h.value())
+                    .then_with(|| a.pair_name.cmp(&b.pair_name)),
 
-                    if debug_shortcuts.len() > 1 {
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(5.0);
-                        ui.heading("Debug Shortcuts");
-                        ui.add_space(5.0);
-
-                        Grid::new("debug_shortcuts_grid")
-                            .num_columns(2)
-                            .spacing([20.0, 8.0])
-                            .striped(true)
-                            .show(ui, |ui| {
-                                Self::render_shortcut_rows(ui, &debug_shortcuts);
-                            });
-                    }
+                SortColumn::Volatility => {
+                    let va = a
+                        .market_state
+                        .as_ref()
+                        .map(|m| m.volatility_pct)
+                        .unwrap_or(VolatilityPct::new(0.0));
+                    let vb = b
+                        .market_state
+                        .as_ref()
+                        .map(|m| m.volatility_pct)
+                        .unwrap_or(VolatilityPct::new(0.0));
+                    va.value()
+                        .total_cmp(&vb.value())
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
+                }
+                SortColumn::Momentum => {
+                    let ma = a
+                        .market_state
+                        .as_ref()
+                        .map(|m| m.momentum_pct)
+                        .unwrap_or(MomentumPct::new(0.0));
+                    let mb = b
+                        .market_state
+                        .as_ref()
+                        .map(|m| m.momentum_pct)
+                        .unwrap_or(MomentumPct::new(0.0));
+                    ma.value()
+                        .total_cmp(&mb.value())
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
 
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(5.0);
-            });
+                SortColumn::LiveRoi => {
+                    let val_a = a
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.live_roi(a.current_price).value())
+                        .unwrap_or(f64::NEG_INFINITY);
+                    let val_b = b
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.live_roi(b.current_price).value())
+                        .unwrap_or(f64::NEG_INFINITY);
+                    val_a
+                        .total_cmp(&val_b)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
+                }
+                SortColumn::AnnualizedRoi => {
+                    let val_a = a
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.live_annualized_roi(a.current_price).value())
+                        .unwrap_or(f64::NEG_INFINITY);
+                    let val_b = b
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.live_annualized_roi(b.current_price).value())
+                        .unwrap_or(f64::NEG_INFINITY);
+                    val_a
+                        .total_cmp(&val_b)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
+                }
+                SortColumn::AvgDuration => {
+                    let val_a = a
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.avg_duration.value())
+                        .unwrap_or(i64::MAX);
+                    let val_b = b
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.avg_duration.value())
+                        .unwrap_or(i64::MAX);
+                    val_b
+                        .cmp(&val_a)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
+                }
+                // Sort by Strategy Score (Balanced/ROI/AROI)
+                SortColumn::Score => {
+                    let val_a = a
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.calculate_quality_score())
+                        .unwrap_or(f64::NEG_INFINITY);
+                    let val_b = b
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.calculate_quality_score())
+                        .unwrap_or(f64::NEG_INFINITY);
+
+                    val_a
+                        .total_cmp(&val_b)
+                        .then_with(|| a.pair_name.cmp(&b.pair_name))
+                }
+                SortColumn::VariantCount => {
+                    let va = a
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.variant_count())
+                        .unwrap_or(0);
+                    let vb = b
+                        .opportunity
+                        .as_ref()
+                        .map(|o| o.variant_count())
+                        .unwrap_or(0);
+                    va.cmp(&vb).then_with(|| a.pair_name.cmp(&b.pair_name))
+                }
+            };
+
+            match self.tf_sort_dir {
+                SortDirection::Ascending => cmp,
+                SortDirection::Descending => cmp.reverse(),
+            }
+        });
     }
 }
 
