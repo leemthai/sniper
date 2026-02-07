@@ -45,10 +45,6 @@ impl SharedConfiguration {
         }
     }
 
-    // pub fn get_pair_count(&self) -> usize {
-    //     self.inner.read().unwrap().pairs.len()
-    // }
-
     pub(crate) fn get_all_pairs(&self) -> Vec<String> {
         self.inner.read().unwrap().pairs.iter().cloned().collect()
     }

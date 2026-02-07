@@ -53,7 +53,7 @@ const DEMO_PRICES_JSON: &str = include_str!(concat!(
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ConnectionStatus {
+enum ConnectionStatus {
     Connected,
     Connecting,
     Disconnected,

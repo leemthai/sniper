@@ -1,11 +1,10 @@
 use std::sync::{Arc, RwLock};
 use crate::config::{OptimizationStrategy, StationId, PhPct, Price};
 use crate::data::timeseries::TimeSeriesCollection;
-use crate::models::cva::CVACore;
 use crate::models::trading_view::TradingModel;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum JobMode {
+pub(crate) enum JobMode {
     /// Standard operation: Calculate CVA, then run Pathfinder (Scouts/Drills)
     FullAnalysis,
     
@@ -20,7 +19,7 @@ pub enum JobMode {
 /// - Each JobRequest is immutable
 /// - Exactly one JobRequest per pair may be in-flight
 #[derive(Debug, Clone)]
-pub struct JobRequest {
+pub(crate) struct JobRequest {
     pub pair_name: String,
     pub current_price: Option<Price>,
     pub timeseries: Arc<RwLock<TimeSeriesCollection>>,
@@ -33,10 +32,7 @@ pub struct JobRequest {
 
 /// The result returned by the worker
 #[derive(Debug, Clone)]
-pub struct JobResult {
+pub(crate) struct JobResult {
     pub pair_name: String,
-    pub duration_ms: u128,
     pub result: Result<Arc<TradingModel>, String>,
-    pub cva: Option<Arc<CVACore>>,
-    pub candle_count: usize,
 }

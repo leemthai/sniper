@@ -11,7 +11,7 @@ pub struct PairInterval {
 }
 
 impl PairInterval {
-    pub fn get_base(text: &str) -> Option<&str> {
+    pub(crate) fn get_base(text: &str) -> Option<&str> {
         let quote = Self::get_quote(text)?;
         // `strip_suffix` returns `None` if the suffix is not found.
         // If get_quote returned Some(quote), strip_suffix can still return None
@@ -21,40 +21,20 @@ impl PairInterval {
 
     // Finds the trading quote at the end of the pair name and returns it.
     // Returns None if no matching quote is found.
-    pub fn get_quote(text: &str) -> Option<&str> {
+    pub(crate) fn get_quote(text: &str) -> Option<&str> {
         BINANCE.quote_assets
             .iter()
             .find(|&&ext| text.ends_with(ext))
             .copied()
     }
 
-    /* # Where we use base_asset and quote_asset in the app:
-    1. Creating permutations of `base` and `quote` to easily create lots of pairs
-    2. (No) -  BN API takes a single symbol as well.
-    3. BN does actually output details in kline results denominated in either base or quote, thus::
-        base_asset_volumes:
-        quote_asset_volumes:
-      So use get_base_and_quote() to split a string up into its constituent parts  */
-    pub fn get_base_and_quote(text: &str) -> Option<(&str, &str)> {
-        let base = Self::get_base(text)?;
-        let quote = Self::get_quote(text)?;
-        Some((base, quote))
-    }
-
-    // Split the name into base and quote assets.
-    pub fn split_pair_name(pair_name: &str) -> (&str, &str) {
-        match Self::get_base_and_quote(pair_name) {
-            Some((base, quote)) => (base, quote),
-            None => ("Invalid", "Name"),
-        }
-    }
-
     // The name we pass into the Binance API (not necessarily display name)
-    pub fn bn_name(&self) -> &str {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn bn_name(&self) -> &str {
         &self.name
     }
 
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 }

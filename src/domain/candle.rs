@@ -2,7 +2,7 @@ use crate::config::{BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePric
 
 // Define the CandleType enum
 #[derive(Debug, PartialEq)]
-pub enum CandleType {
+pub(crate) enum CandleType {
     Bullish,
     Bearish,
 }
@@ -44,7 +44,7 @@ impl Candle {
     }
 
     // A method to determine the type of candle
-    pub fn get_type(&self) -> CandleType {
+    fn get_type(&self) -> CandleType {
         if Price::from(self.close_price) >= Price::from(self.open_price) {
             CandleType::Bullish
         } else {
@@ -53,7 +53,7 @@ impl Candle {
     }
 
     // Returns the low and high of the candle body as a tuple
-    pub fn body_range(&self) -> (f64, f64) {
+    fn body_range(&self) -> (f64, f64) {
         match self.get_type() {
             CandleType::Bullish => (self.open_price.value(), self.close_price.value()),
             CandleType::Bearish => (self.close_price.value(), self.open_price.value()),
@@ -61,22 +61,22 @@ impl Candle {
     }
 
     // Calculates the low of the bottom wick.
-    pub fn low_wick_low(&self) -> f64 {
+    pub(crate) fn low_wick_low(&self) -> f64 {
         self.low_price.value()
     }
 
     // Calculates the high of the bottom wick.
-    pub fn low_wick_high(&self) -> f64 {
+    pub(crate) fn low_wick_high(&self) -> f64 {
         self.body_range().0
     }
 
     // Calculates the low of the top wick.
-    pub fn high_wick_low(&self) -> f64 {
+    pub(crate) fn high_wick_low(&self) -> f64 {
         self.body_range().1
     }
 
     // Calculates the high of the top wick.
-    pub fn high_wick_high(&self) -> f64 {
+    pub(crate) fn high_wick_high(&self) -> f64 {
         self.high_price.value()
     }
 }

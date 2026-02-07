@@ -27,15 +27,3 @@ pub(crate) fn load_ledger() -> Result<OpportunityLedger> {
     let ledger = bincode::deserialize_from(reader)?;
     Ok(ledger)
 }
-
-// #[cfg(target_arch = "wasm32")]
-// pub fn save_ledger(_ledger: &OpportunityLedger) -> Result<()> {
-//     // WASM persistence is handled differently (usually local_storage), 
-//     // but for now we just no-op as requested for the file split.
-//     Ok(())
-// }
-
-// #[cfg(target_arch = "wasm32")]
-// pub fn load_ledger() -> Result<OpportunityLedger> {
-//     Ok(OpportunityLedger::new())
-// }

@@ -8,15 +8,14 @@ use crate::models::timeseries;
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 
-pub struct TickerItem {
+pub(crate) struct TickerItem {
     pub symbol: String,
     pub price: Price,
     pub change: f64,           // Difference since last update
-    pub last_update_time: f64, // For fade effects
     pub url: Option<String>,
 }
 
-pub struct TickerState {
+pub(crate) struct TickerState {
     // Horizontal offset (pixels)
     offset: f32,
     // Local cache to calculate diffs (Symbol -> LastPrice)
@@ -41,7 +40,7 @@ impl Default for TickerState {
 }
 
 impl TickerState {
-    pub fn update_data(&mut self, engine: &SniperEngine) {
+    pub(crate) fn update_data(&mut self, engine: &SniperEngine) {
         // In WASM, we don't update from engine, we use static demo text
         if cfg!(target_arch = "wasm32") {
             if self.items.is_empty() {
@@ -49,14 +48,12 @@ impl TickerState {
                     symbol: "ZONE SNIPER WEB DEMO".to_string(),
                     price: Price::new(0.0),
                     change: 0.0,
-                    last_update_time: 0.0,
                     url: None,
                 });
                 self.items.push(TickerItem {
                     symbol: "VISIT US ON GITHUB".to_string(),
                     price: Price::new(0.0),
                     change: 0.0,
-                    last_update_time: 0.0,
                     url: Some("https://github.com/leemthai/sniper".to_string()),
                 });
                 self.items.push(TickerItem {
@@ -64,7 +61,6 @@ impl TickerState {
                         .to_string(),
                     price: Price::new(0.0),
                     change: 0.0,
-                    last_update_time: 0.0,
                     url: None,
                 });
                 // Add fake price data for demo pairs - TEMP do we really want this?
@@ -72,7 +68,6 @@ impl TickerState {
                     symbol: "BTCUSDT".to_string(),
                     price: Price::new(98000.0),
                     change: 120.5,
-                    last_update_time: 0.0,
                     url: None,
                 });
             }
@@ -124,7 +119,6 @@ impl TickerState {
                             symbol: pair,
                             price: current_price,
                             change: change_24h,
-                            last_update_time: 0.0,
                             url: None,
                         });
                     }
@@ -141,7 +135,6 @@ impl TickerState {
                         symbol: symbol_key,
                         price: Price::new(0.0), // 0.0 marks it as a message/link
                         change: 0.0,
-                        last_update_time: 0.0,
                         url: url.map(|s| s.to_string()),
                     });
                 }
@@ -149,86 +142,7 @@ impl TickerState {
         }
     }
 
-    fn format_item(&self, item: &TickerItem) -> String {
-        // 1. Custom Message / Link
-        if item.url.is_some() {
-            return format!("{} 🔗", item.symbol);
-        }
-
-        // 2. Static Message (WASM or Custom)
-        if item.price.value() == 0.0 && item.change == 0.0 {
-            return item.symbol.clone();
-        }
-
-        // 2. Price
-        let price_str = format!("{}", item.price);
-
-        // 3. Formatted Percent
-        let pct = self.calculate_pct(item);
-
-        // 4. Stable Precision Logic
-        // We ALWAYS use the "Long" format to prevent jitter.
-        let abs_change = item.change.abs();
-
-        // Determine precision based on magnitude
-        let precision = if abs_change < 0.0001 {
-            6
-        } else if abs_change < 1.0 {
-            4
-        } else {
-            2
-        };
-
-        // 5. Sign Logic (Fixed Width)
-        // We manually handle signs to ensure " " (Space) takes up same room as "+" or "-"
-        // if we are effectively zero (below display threshold).
-
-        // Note: Using the Configured Threshold to decide if it's "Zero"
-        let is_zero = pct.abs() < TICKER.min_change_pct_for_color;
-
-        let sign_change = if is_zero {
-            " "
-        } else if item.change > 0.0 {
-            "+"
-        } else {
-            "-"
-        };
-        let sign_pct = if is_zero {
-            " "
-        } else if pct > 0.0 {
-            "+"
-        } else {
-            "-"
-        };
-
-        // Format: SYMBOL PRICE (SIGN DELTA / SIGN PCT)
-        // Example: "USDCUSDT $1.0000 ( -0.0001 / -0.01%)"
-        // Example: "USDCUSDT $1.0000 (  0.0000 /  0.00%)"
-        format!(
-            "{} {} ({}{:.prec$} / {}{:.2}%)",
-            item.symbol,
-            price_str,
-            sign_change,
-            abs_change,
-            sign_pct,
-            pct.abs(),
-            prec = precision
-        )
-    }
-
-    // Helper: Single source of truth for % calculation
-    fn calculate_pct(&self, item: &TickerItem) -> f64 {
-        let price_p: Price = item.price;
-        let old_price = price_p.value() - item.change;
-
-        if old_price.abs() > f64::EPSILON {
-            (item.change / old_price) * 100.0
-        } else {
-            0.0
-        }
-    }
-
-    pub fn render(&mut self, ui: &mut Ui) -> Option<String> {
+    pub(crate) fn render(&mut self, ui: &mut Ui) -> Option<String> {
         // Calculate EXACT delta time since last frame
         let now = AppInstant::now();
         let dt = if let Some(last) = self.last_render_time {
@@ -373,6 +287,86 @@ impl TickerState {
         }
 
         clicked_pair
+    }
+
+    fn format_item(&self, item: &TickerItem) -> String {
+        // 1. Custom Message / Link
+        if item.url.is_some() {
+            return format!("{} 🔗", item.symbol);
+        }
+
+        // 2. Static Message (WASM or Custom)
+        if item.price.value() == 0.0 && item.change == 0.0 {
+            return item.symbol.clone();
+        }
+
+        // 2. Price
+        let price_str = format!("{}", item.price);
+
+        // 3. Formatted Percent
+        let pct = self.calculate_pct(item);
+
+        // 4. Stable Precision Logic
+        // We ALWAYS use the "Long" format to prevent jitter.
+        let abs_change = item.change.abs();
+
+        // Determine precision based on magnitude
+        let precision = if abs_change < 0.0001 {
+            6
+        } else if abs_change < 1.0 {
+            4
+        } else {
+            2
+        };
+
+        // 5. Sign Logic (Fixed Width)
+        // We manually handle signs to ensure " " (Space) takes up same room as "+" or "-"
+        // if we are effectively zero (below display threshold).
+
+        // Note: Using the Configured Threshold to decide if it's "Zero"
+        let is_zero = pct.abs() < TICKER.min_change_pct_for_color;
+
+        let sign_change = if is_zero {
+            " "
+        } else if item.change > 0.0 {
+            "+"
+        } else {
+            "-"
+        };
+        let sign_pct = if is_zero {
+            " "
+        } else if pct > 0.0 {
+            "+"
+        } else {
+            "-"
+        };
+
+        // Format: SYMBOL PRICE (SIGN DELTA / SIGN PCT)
+        // Example: "USDCUSDT $1.0000 ( -0.0001 / -0.01%)"
+        // Example: "USDCUSDT $1.0000 (  0.0000 /  0.00%)"
+        format!(
+            "{} {} ({}{:.prec$} / {}{:.2}%)",
+            item.symbol,
+            price_str,
+            sign_change,
+            abs_change,
+            sign_pct,
+            pct.abs(),
+            prec = precision
+        )
+    }
+
+    fn calculate_pct(&self, item: &TickerItem) -> f64 {
+        // Helper: Single source of truth for % calculation
+
+        let price_p: Price = item.price;
+        let old_price = price_p.value() - item.change;
+
+        if old_price.abs() > f64::EPSILON {
+            (item.change / old_price) * 100.0
+        } else {
+            0.0
+        }
     }
 
     fn get_rainbow_color(&self, x_pos: f32) -> Color32 {

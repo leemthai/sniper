@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 
 
 use crate::models::OhlcvTimeSeries;
-use crate::config::{MomentumPct, SimilaritySettings, VolatilityPct, VolRatio, PriceLike};
+use crate::config::{MomentumPct, VolatilityPct, VolRatio, PriceLike};
 
 /// A normalized "Fingerprint" of the market conditions at a specific moment in time.
 /// Used to find historical matches for the Ghost Runner simulation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct MarketState {
+pub(crate) struct MarketState {
     /// 1. Volatility (The "Temperature")
     /// Ratio of (High-Low) relative to the Close price.
     /// High = Violent/Fast market. Low = Quiet/Consolidation.
@@ -28,7 +28,7 @@ impl MarketState {
 
     /// Calculates the fingerprint for a specific index.
     /// `lookback`: Number of candles to use for Momentum and Volume MA.
-    pub fn calculate(ts: &OhlcvTimeSeries, idx: usize, trend_lookback: usize) -> Option<Self> {
+    pub(crate) fn calculate(ts: &OhlcvTimeSeries, idx: usize, trend_lookback: usize) -> Option<Self> {
         // Safety check
         if idx < trend_lookback || trend_lookback == 0 {
             return None;
@@ -54,13 +54,11 @@ impl MarketState {
         })
     }
     
+    // pub fn similarity_score(&self, other: &Self, config: &SimilaritySettings) -> f64 {
+    //     let d_vol = (self.volatility_pct.value() - other.volatility_pct.value()).abs() * config.weight_volatility.value();
+    //     let d_mom = (self.momentum_pct.value() - other.momentum_pct.value()).abs() * config.weight_momentum.value();
+    //     let d_vol_ratio = (self.relative_volume.value() - other.relative_volume.value()).abs() * config.weight_volume.value();
 
-
-    pub fn similarity_score(&self, other: &Self, config: &SimilaritySettings) -> f64 {
-        let d_vol = (self.volatility_pct.value() - other.volatility_pct.value()).abs() * config.weight_volatility.value();
-        let d_mom = (self.momentum_pct.value() - other.momentum_pct.value()).abs() * config.weight_momentum.value();
-        let d_vol_ratio = (self.relative_volume.value() - other.relative_volume.value()).abs() * config.weight_volume.value();
-
-        d_vol + d_mom + d_vol_ratio
-    }
+    //     d_vol + d_mom + d_vol_ratio
+    // }
 }

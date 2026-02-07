@@ -14,7 +14,7 @@ use crate::models::trading_view::TradeOpportunity;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct OpportunityLedger {
     // Map UUID -> Opportunity
-    pub(crate) opportunities: HashMap<String, TradeOpportunity>,
+    pub opportunities: HashMap<String, TradeOpportunity>,
 }
 
 impl OpportunityLedger {

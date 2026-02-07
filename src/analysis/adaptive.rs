@@ -9,7 +9,7 @@ impl AdaptiveParameters {
 
     /// Calculates Max Duration using Diffusive Market Physics (Random Walk).
     /// Formula: Candles = (Ratio + Bias)^2
-    pub fn calculate_dynamic_journey_duration(ph_pct: PhPct, avg_volatility_pct: VolatilityPct, interval_ms: DurationMs, journey: &JourneySettings) -> Duration {
+    pub(crate) fn calculate_dynamic_journey_duration(ph_pct: PhPct, avg_volatility_pct: VolatilityPct, interval_ms: DurationMs, journey: &JourneySettings) -> Duration {
         
         // 2. Ratio: How many "Volatility Units" is the target away?
         let ratio = ph_pct.value() / avg_volatility_pct.as_safe_divisor();
@@ -31,7 +31,7 @@ impl AdaptiveParameters {
     }
 
     /// Maps Price Horizon % -> Trend Lookback (Candles).
-    pub fn calculate_trend_lookback_candles(ph_threshold: PhPct) -> usize {
+    pub(crate) fn calculate_trend_lookback_candles(ph_threshold: PhPct) -> usize {
         // 5m Candle Constants
         const DAY: f64 = 288.0;
         const WEEK: f64 = 2016.0;

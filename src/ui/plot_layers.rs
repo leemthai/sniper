@@ -480,9 +480,7 @@ pub(crate) trait PlotLayer {
     fn render(&self, ui: &mut PlotUi, ctx: &LayerContext);
 }
 
-// ============================================================================
-// 1. BACKGROUND LAYER (The Histogram)
-// ============================================================================
+// BACKGROUND LAYER (The Histogram)
 pub(crate) struct BackgroundLayer;
 
 impl PlotLayer for BackgroundLayer {
@@ -521,9 +519,7 @@ impl PlotLayer for BackgroundLayer {
     }
 }
 
-// ============================================================================
-// 2. STICKY ZONE LAYER (Consolidation)
-// ============================================================================
+// STICKY ZONE LAYER (Consolidation)
 pub(crate) struct StickyZoneLayer;
 
 impl PlotLayer for StickyZoneLayer {
@@ -566,9 +562,7 @@ impl PlotLayer for StickyZoneLayer {
     }
 }
 
-// ============================================================================
-// 3. REVERSAL ZONE LAYER (Wicks)
-// ============================================================================
+// REVERSAL ZONE LAYER (Wicks)
 pub(crate) struct ReversalZoneLayer;
 
 impl PlotLayer for ReversalZoneLayer {
@@ -620,7 +614,7 @@ impl PlotLayer for ReversalZoneLayer {
     }
 }
 
-// 6. SEGMENT SEPARATOR LAYER (Vertical Gaps)
+// SEGMENT SEPARATOR LAYER (Vertical Gaps)
 pub(crate) struct SegmentSeparatorLayer;
 
 impl PlotLayer for SegmentSeparatorLayer {
@@ -716,8 +710,6 @@ impl PlotLayer for PriceLineLayer {
         }
     }
 }
-
-// HELPER FUNCTIONS (Private to this module)
 
 enum ZoneShape {
     Rectangle,

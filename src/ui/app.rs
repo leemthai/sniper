@@ -67,9 +67,9 @@ impl Default for NavigationState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TuningState {
-    pub(crate) todo_list: Vec<String>,
-    pub(crate) total: usize,
-    pub(crate) completed: usize,
+    pub todo_list: Vec<String>,
+    pub total: usize,
+    pub completed: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]

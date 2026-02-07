@@ -14,7 +14,7 @@ use crate::utils::time_utils::AppInstant;
 
 /// Structure of Arrays (SoA) layout for AVX-512 processing.
 /// Instead of [State, State, State], we have [All_Vols], [All_Moms], [All_Rels].
-pub struct SimdHistory {
+pub(crate) struct SimdHistory {
     pub indices: Vec<usize>, // Keep track of which candle index generated this data
     pub vol: Vec<f32>,
     pub mom: Vec<f32>,
@@ -22,7 +22,7 @@ pub struct SimdHistory {
 }
 
 impl SimdHistory {
-    pub fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         Self {
             indices: Vec::with_capacity(capacity),
             vol: Vec::with_capacity(capacity),
@@ -32,7 +32,7 @@ impl SimdHistory {
     }
 
     /// Padding ensures we don't segfault when loading chunks of 16 at the end
-    pub fn pad_to_16(&mut self) {
+    fn pad_to_16(&mut self) {
         while self.vol.len() % 16 != 0 {
             self.vol.push(0.0);
             self.mom.push(0.0);
@@ -254,22 +254,22 @@ fn generate_volatility_optimized(
     results
 }
 
-#[derive(Debug, Clone)]
-pub struct ScenarioConfig {
-    pub target_price: TargetPrice,
-    pub stop_loss_price: StopPrice,
-    pub max_duration_candles: usize, // e.g. 7 days converted to candles
-}
+// #[derive(Debug, Clone)]
+// pub(crate) struct ScenarioConfig {
+//     pub target_price: TargetPrice,
+//     pub stop_loss_price: StopPrice,
+//     pub max_duration_candles: usize, // e.g. 7 days converted to candles
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Outcome {
+pub(crate) enum Outcome {
     TargetHit(usize), // Succeeded in N candles
     StopHit(usize),   // Failed in N candles
     TimedOut(RoiPct), // Neither hit nor failed. Stores % change at timeout
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SimulationResult {
+pub(crate) struct SimulationResult {
     pub success_rate: Prob,     // 0.0 to 1.0
     pub avg_candle_count: f64,  // Average candles to result
     pub risk_reward_ratio: f64, // Based on historical outcomes
@@ -278,7 +278,7 @@ pub struct SimulationResult {
     pub market_state: MarketState,
 }
 
-pub struct ScenarioSimulator;
+pub(crate) struct ScenarioSimulator;
 
 impl ScenarioSimulator {
     /// STEP 1: The Heavy Lift.

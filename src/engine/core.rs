@@ -36,14 +36,14 @@ use super::worker;
 /// Represents the state of a single pair in the engine.
 #[derive(Debug, Clone)]
 pub(crate) struct PairRuntime {
-    pub(crate) model: Option<Arc<TradingModel>>,
+    pub model: Option<Arc<TradingModel>>,
 
     /// Metadata for the trigger system
-    pub(crate) last_update_price: Price,
+    pub last_update_price: Price,
     /// Is a worker currently crunching this pair?
-    pub(crate) is_calculating: bool,
+    pub is_calculating: bool,
     /// Last error (if any) to show in UI
-    pub(crate) last_error: Option<String>,
+    pub last_error: Option<String>,
 }
 
 impl PairRuntime {
@@ -58,12 +58,12 @@ impl PairRuntime {
 }
 
 pub(crate) struct EngineJob {
-    pub(crate) pair: String,
-    pub(crate) price_override: Option<Price>,
-    pub(crate) ph_pct: PhPct,
-    pub(crate) strategy: OptimizationStrategy,
-    pub(crate) station_id: StationId,
-    pub(crate) mode: JobMode,
+    pub pair: String,
+    pub price_override: Option<Price>,
+    pub ph_pct: PhPct,
+    pub strategy: OptimizationStrategy,
+    pub station_id: StationId,
+    pub mode: JobMode,
 }
 
 pub struct SniperEngine {
@@ -264,7 +264,7 @@ impl SniperEngine {
                             pair_name: pair.clone(),
                             quote_volume_24h: vol_24h,
                             market_state: Some(op.market_state),
-                            opportunity_count_total: total_ops,
+                            // opportunity_count_total: total_ops,
                             opportunity: Some(op.clone()),
                             current_price: current_price,
                         });
@@ -275,7 +275,7 @@ impl SniperEngine {
                         pair_name: pair.clone(),
                         quote_volume_24h: vol_24h,
                         market_state: None,
-                        opportunity_count_total: 0,
+                        // opportunity_count_total: 0,
                         opportunity: None,
                         current_price: current_price,
                     });

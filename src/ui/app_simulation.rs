@@ -1,7 +1,7 @@
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub enum SimDirection {
+pub(crate) enum SimDirection {
     Up,
     Down,
 }
@@ -22,7 +22,7 @@ impl Default for SimDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub enum SimStepSize {
+pub(crate) enum SimStepSize {
     Point1, // 0.1%
     Point5, // 0.5%
     One,    // 1%

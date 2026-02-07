@@ -1475,7 +1475,7 @@ impl ZoneSniperApp {
                     pair_name: sample.pair_name,
                     quote_volume_24h: sample.quote_volume_24h,
                     market_state: sample.market_state,
-                    opportunity_count_total: 0,
+                    // opportunity_count_total: 0,
                     opportunity: None,
                     current_price: sample.current_price,
                 });

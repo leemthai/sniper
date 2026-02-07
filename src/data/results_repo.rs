@@ -1,13 +1,10 @@
-use anyhow::Result;
-
 use serde::{Deserialize, Serialize};
-// use chrono::{DateTime, Utc};
 
 use crate::config::Price;
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    anyhow::Context,
+    anyhow::{Context, Result},
     sqlx::{
         Row,
         sqlite::{
@@ -30,7 +27,7 @@ use crate::config::PriceLike;
 
 /// A finalized trade record ready for persistent storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TradeResult {
+pub(crate) struct TradeResult {
     pub trade_id: String, // Original UUID
     pub pair: String,
     pub direction: TradeDirection,
@@ -47,7 +44,8 @@ pub struct TradeResult {
 
 /// Abstract interface for results storage (Native vs WASM)
 #[async_trait::async_trait]
-pub trait ResultsRepositoryTrait: Send + Sync {
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) trait ResultsRepositoryTrait: Send + Sync {
     async fn initialize(&self) -> Result<()>;
     async fn get_installation_id(&self) -> Result<String>;
     async fn record_trade(&self, result: TradeResult) -> Result<()>;
@@ -56,7 +54,7 @@ pub trait ResultsRepositoryTrait: Send + Sync {
 // --- NATIVE IMPLEMENTATION ---
 
 #[cfg(not(target_arch = "wasm32"))]
-pub struct ResultsRepository {
+pub(crate) struct ResultsRepository {
     pool: SqlitePool,
 }
 
@@ -193,33 +191,6 @@ impl ResultsRepositoryTrait for ResultsRepository {
         .await
         .context("Failed to insert trade result")?;
 
-        Ok(())
-    }
-}
-
-// --- WASM IMPLEMENTATION (No-Op) ---
-
-#[cfg(target_arch = "wasm32")]
-pub struct ResultsRepository;
-
-#[cfg(target_arch = "wasm32")]
-impl ResultsRepository {
-    pub fn new(_path: &str) -> Result<Self> {
-        Ok(Self)
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[async_trait::async_trait]
-impl ResultsRepositoryTrait for ResultsRepository {
-    async fn initialize(&self) -> Result<()> {
-        Ok(())
-    }
-    async fn get_installation_id(&self) -> Result<String> {
-        Ok("wasm-demo-user".to_string())
-    }
-    async fn record_trade(&self, _result: TradeResult) -> Result<()> {
-        // In WASM, we just discard the result as per instructions
         Ok(())
     }
 }

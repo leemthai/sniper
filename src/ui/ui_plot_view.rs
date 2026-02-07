@@ -1,13 +1,15 @@
 use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
-use eframe::egui::{Color32, Ui, Vec2b, Rect, PointerButton};
-use egui_plot::{Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotUi, VPlacement, PlotPoint};
+use eframe::egui::{Color32, PointerButton, Rect, Ui, Vec2b};
+use egui_plot::{
+    Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotPoint, PlotUi, VPlacement,
+};
 
 use crate::analysis::range_gap_finder::DisplaySegment;
 
-use crate::config::{Price, CandleResolution, PriceLike};
 use crate::config::plot::PLOT_CONFIG;
+use crate::config::{CandleResolution, Price, PriceLike};
 
 use crate::engine::SniperEngine;
 
@@ -25,22 +27,22 @@ use crate::utils::maths_utils;
 // Import the new Layer System
 use crate::ui::plot_layers::{
     BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,
-    PlotLayer, PriceLineLayer, ReversalZoneLayer, StickyZoneLayer, SegmentSeparatorLayer,
+    PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer,
 };
 
 /// A lightweight representation of a background bar.
 #[derive(Clone)]
 pub(crate) struct BackgroundBar {
-    pub(crate) x_max: f64,
-    pub(crate) y_center: f64,
-    pub(crate) height: f64,
-    pub(crate) color: Color32,
+    pub x_max: f64,
+    pub y_center: f64,
+    pub height: f64,
+    pub color: Color32,
 }
 
 #[derive(Clone)]
 pub(crate) struct PlotCache {
-    pub(crate) cva_hash: u64,
-    pub(crate) bars: Vec<BackgroundBar>,
+    pub cva_hash: u64,
+    pub bars: Vec<BackgroundBar>,
 }
 
 #[derive(Default)]
@@ -121,181 +123,8 @@ pub(crate) enum PlotInteraction {
 }
 
 impl PlotView {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { cache: None }
-    }
-
-    fn calculate_view_bounds(
-        &self,
-        model: &TradingModel,
-        current_segment_idx: Option<usize>,
-        resolution: CandleResolution,
-    ) -> (f64, f64, f64) {
-        let gap_size = PLOT_CONFIG.segment_gap_width;
-        let agg_interval_ms = resolution.duration().as_millis() as i64;
-
-        // Helper: Calculate visual width using UTC Grid logic
-        // This must match CandlestickLayer logic exactly.
-        let calc_width = |seg: &DisplaySegment| -> f64 {
-            // Get timestamps of first and last candle in segment
-            // Note: DisplaySegment stores start_ts and end_ts.
-            // end_ts is the timestamp of the last candle (inclusive).
-
-            let start_bucket = seg.start_ts / agg_interval_ms;
-            let end_bucket = seg.end_ts / agg_interval_ms;
-
-            // The number of visual bars is the number of buckets spanned
-            let buckets = end_bucket - start_bucket + 1;
-            buckets as f64
-        };
-
-        let total_visual_candles: f64 = model.segments.iter().map(|s| calc_width(s)).sum();
-
-        let gap_count = model.segments.len().saturating_sub(1);
-        let total_visual_width = total_visual_candles + (gap_count as f64 * gap_size);
-
-        if let Some(target_idx) = current_segment_idx {
-            if target_idx < model.segments.len() {
-                let mut start_x = 0.0;
-                for i in 0..target_idx {
-                    start_x += calc_width(&model.segments[i]);
-                    start_x += gap_size;
-                }
-                let width = calc_width(&model.segments[target_idx]);
-                return (start_x, start_x + width, total_visual_width);
-            }
-        }
-        (0.0, total_visual_width, total_visual_width)
-    }
-
-    // Helper: Calculates Y-Axis bounds based on PH and Live Price
-    fn calculate_y_bounds(
-        &self,
-        cva_results: &CVACore,
-        current_price_opt: Option<Price>,
-    ) -> std::ops::RangeInclusive<f64> {
-
-        let (ph_min, ph_max) = cva_results.price_range.min_max();
-        let current_price = current_price_opt.unwrap_or_default();
-
-        // 1. Calculate Standard Union (PH + Price)
-        // We intentionally ignore model.segments for the *Final* calculation to keep Sniper View,
-        // but we calculate them below for the Debug Log you requested.
-        let final_min = ph_min.min(current_price.value());
-        let final_max = ph_max.max(current_price.value());
-
-        // 2. Apply Configured Padding
-        let range = final_max - final_min;
-        let pad = range * PLOT_CONFIG.plot_y_padding_pct;
-
-        ((final_min - pad).max(0.0))..=(final_max + pad)
-    }
-
-    fn generate_x_marks(input: GridInput) -> Vec<GridMark> {
-        let mut marks = Vec::new();
-        let (min, max) = input.bounds;
-        let range = max - min;
-
-        let step = calculate_adaptive_step(range, 8.0);
-
-        let start = (min / step).ceil() as i64;
-        let end = (max / step).floor() as i64;
-
-        for i in start..=end {
-            let value = i as f64 * step;
-            marks.push(GridMark {
-                value,
-                step_size: step,
-            });
-        }
-        marks
-    }
-
-    // Helper: Generates Y-Axis grid marks (Price)
-    // FIX: Use input.bounds (Visible Area) instead of PH bounds to ensure
-    // ticks always cover the screen, preventing the axis from vanishing.
-    fn generate_y_marks(input: egui_plot::GridInput, _ph_min: f64, _ph_max: f64) -> Vec<GridMark> {
-        let mut marks = Vec::new();
-        let (min, max) = input.bounds; // Visible range
-        let range = max - min;
-
-        // Use the adaptive step logic so we always get ~8 ticks
-        // (Ensure calculate_adaptive_step is available in this scope)
-        let step = calculate_adaptive_step(range, 8.0);
-
-        let start = (min / step).ceil() as i64;
-        let end = (max / step).floor() as i64;
-
-        for i in start..=end {
-            let value = i as f64 * step;
-            marks.push(GridMark {
-                value,
-                step_size: step,
-            });
-        }
-
-        // Optional: If you still strictly want PH bounds labeled, push them explicitly.
-        // But standard grid lines usually look cleaner.
-        // marks.push(GridMark { value: _ph_min, step_size: step });
-        // marks.push(GridMark { value: _ph_max, step_size: step });
-
-        marks
-    }
-
-    // Helper: Enforces sane zoom/pan limits when the user is in Manual Mode
-    fn enforce_manual_safety_limits(plot_ui: &mut PlotUi, current_price: Price) {
-
-        let bounds = plot_ui.plot_bounds();
-        let mut min = *bounds.range_y().start();
-        let mut max = *bounds.range_y().end();
-        let mut range = max - min;
-        let mut changed = false;
-
-        let base_price = current_price.value().max(1.0);
-
-        // --- 1. ZOOM LIMITS (Range) ---
-        let min_allowed_range = base_price * 0.00001; // 0.001%
-        let max_allowed_range = base_price * 2.0; // 200% (View 0 to 180k for BTC)
-
-        if range < min_allowed_range {
-            let center = (min + max) / 2.0;
-            range = min_allowed_range;
-            min = center - range / 2.0;
-            max = center + range / 2.0;
-            changed = true;
-        } else if range > max_allowed_range {
-            let center = (min + max) / 2.0;
-            range = max_allowed_range;
-            min = center - range / 2.0;
-            max = center + range / 2.0;
-            changed = true;
-        }
-
-        // --- 2. PAN LIMITS (Position) ---
-
-        // A. Hard Floor: Bottom cannot be negative
-        if min < 0.0 {
-            let diff = 0.0 - min;
-            min += diff;
-            max += diff;
-            changed = true;
-        }
-
-        // B. Hard Ceiling: Top cannot exceed 5x Current Price
-        // This stops you from dragging into "Millions" territory on a $100 coin.
-        let hard_ceiling = base_price * 5.0;
-
-        if max > hard_ceiling {
-            let diff = max - hard_ceiling;
-            min -= diff;
-            max -= diff;
-            changed = true;
-        }
-
-        // Apply if we hit any bumper
-        if changed {
-            plot_ui.set_plot_bounds_y(min..=max);
-        }
     }
 
     pub(crate) fn show_my_plot(
@@ -312,7 +141,7 @@ impl PlotView {
         auto_scale_y: bool,
         selected_opportunity: Option<TradeOpportunity>,
     ) -> PlotInteraction {
-        // 1. Fetch OHLCV Data (Required for Candle Layer)
+        // Fetch OHLCV Data (Required for Candle Layer)
         // We assume the pair exists since we have a model for it.
         let ts_guard = engine.timeseries.read().unwrap();
         let ohlcv = find_matching_ohlcv(
@@ -327,11 +156,11 @@ impl PlotView {
             self.calculate_view_bounds(trading_model, current_segment_idx, resolution);
 
         // Y-Axis: CONDITIONAL LOCK
-        // 3. Calculate Visual Height (Y-Axis) -- MOVED UP
+        // Calculate Visual Height (Y-Axis) -- MOVED UP
         // We do this BEFORE the plot so the grid spacer knows the real visual range
         let y_bounds_range = self.calculate_y_bounds(cva_results, current_pair_price);
 
-        // 1. Calculate Data (Background Bars)
+        // Calculate Data (Background Bars)
         let cache = self.calculate_plot_data(cva_results, background_score_type);
 
         // Extract PH bounds for the grid spacer
@@ -353,7 +182,6 @@ impl PlotView {
             .allow_drag(Vec2b { x: false, y: true })
             .allow_zoom(Vec2b { x: false, y: true })
             .show(ui, |plot_ui| {
-
                 let width = view_max - view_min;
                 let safe_width = width.max(10.0); // Safetey: If width is 0 (empty dat), default to small pad
                 let pad_x = safe_width * PLOT_CONFIG.plot_x_padding_pct;
@@ -377,13 +205,13 @@ impl PlotView {
                 let bounds = plot_ui.plot_bounds();
                 let min = bounds.min();
                 let max = bounds.max();
-                
+
                 // Map Data Corners to Screen Pixels
                 // Top-Left in Data is (min_x, max_y) -> Screen (x, y)
                 let p1 = plot_ui.screen_from_plot(PlotPoint::new(min[0], max[1]));
                 // Bottom-Right in Data is (max_x, min_y) -> Screen (x, y)
                 let p2 = plot_ui.screen_from_plot(PlotPoint::new(max[0], min[1]));
-                
+
                 let clip_rect = Rect::from_min_max(p1, p2);
 
                 // --- LAYER STACK ---
@@ -461,9 +289,7 @@ impl PlotView {
         // 2. Dragging -> Break Lock (Unlock)
         // Note: we explicitly check if Y drag is allowed by config,
         // though we hardcoded it in Plot::new anyway.
-        if r.dragged_by(PointerButton::Primary)
-            || r.dragged_by(PointerButton::Secondary)
-        {
+        if r.dragged_by(PointerButton::Primary) || r.dragged_by(PointerButton::Secondary) {
             // Only trigger if we actually moved in Y to avoid accidental clicks?
             // Actually, any drag intent should unlock it.
             return PlotInteraction::UserInteracted;
@@ -475,6 +301,178 @@ impl PlotView {
         }
 
         PlotInteraction::None
+    }
+
+    fn calculate_view_bounds(
+        &self,
+        model: &TradingModel,
+        current_segment_idx: Option<usize>,
+        resolution: CandleResolution,
+    ) -> (f64, f64, f64) {
+        let gap_size = PLOT_CONFIG.segment_gap_width;
+        let agg_interval_ms = resolution.duration().as_millis() as i64;
+
+        // Helper: Calculate visual width using UTC Grid logic
+        // This must match CandlestickLayer logic exactly.
+        let calc_width = |seg: &DisplaySegment| -> f64 {
+            // Get timestamps of first and last candle in segment
+            // Note: DisplaySegment stores start_ts and end_ts.
+            // end_ts is the timestamp of the last candle (inclusive).
+
+            let start_bucket = seg.start_ts / agg_interval_ms;
+            let end_bucket = seg.end_ts / agg_interval_ms;
+
+            // The number of visual bars is the number of buckets spanned
+            let buckets = end_bucket - start_bucket + 1;
+            buckets as f64
+        };
+
+        let total_visual_candles: f64 = model.segments.iter().map(|s| calc_width(s)).sum();
+
+        let gap_count = model.segments.len().saturating_sub(1);
+        let total_visual_width = total_visual_candles + (gap_count as f64 * gap_size);
+
+        if let Some(target_idx) = current_segment_idx {
+            if target_idx < model.segments.len() {
+                let mut start_x = 0.0;
+                for i in 0..target_idx {
+                    start_x += calc_width(&model.segments[i]);
+                    start_x += gap_size;
+                }
+                let width = calc_width(&model.segments[target_idx]);
+                return (start_x, start_x + width, total_visual_width);
+            }
+        }
+        (0.0, total_visual_width, total_visual_width)
+    }
+
+    fn calculate_y_bounds(
+        // Helper: Calculates Y-Axis bounds based on PH and Live Price
+        &self,
+        cva_results: &CVACore,
+        current_price_opt: Option<Price>,
+    ) -> std::ops::RangeInclusive<f64> {
+        let (ph_min, ph_max) = cva_results.price_range.min_max();
+        let current_price = current_price_opt.unwrap_or_default();
+
+        // 1. Calculate Standard Union (PH + Price)
+        // We intentionally ignore model.segments for the *Final* calculation to keep Sniper View,
+        // but we calculate them below for the Debug Log you requested.
+        let final_min = ph_min.min(current_price.value());
+        let final_max = ph_max.max(current_price.value());
+
+        // 2. Apply Configured Padding
+        let range = final_max - final_min;
+        let pad = range * PLOT_CONFIG.plot_y_padding_pct;
+
+        ((final_min - pad).max(0.0))..=(final_max + pad)
+    }
+
+    fn generate_x_marks(input: GridInput) -> Vec<GridMark> {
+        let mut marks = Vec::new();
+        let (min, max) = input.bounds;
+        let range = max - min;
+
+        let step = calculate_adaptive_step(range, 8.0);
+
+        let start = (min / step).ceil() as i64;
+        let end = (max / step).floor() as i64;
+
+        for i in start..=end {
+            let value = i as f64 * step;
+            marks.push(GridMark {
+                value,
+                step_size: step,
+            });
+        }
+        marks
+    }
+
+    fn generate_y_marks(input: egui_plot::GridInput, _ph_min: f64, _ph_max: f64) -> Vec<GridMark> {
+        // Helper: Generates Y-Axis grid marks (Price)
+        // FIX: Use input.bounds (Visible Area) instead of PH bounds to ensure
+        // ticks always cover the screen, preventing the axis from vanishing.
+        let mut marks = Vec::new();
+        let (min, max) = input.bounds; // Visible range
+        let range = max - min;
+
+        // Use the adaptive step logic so we always get ~8 ticks
+        // (Ensure calculate_adaptive_step is available in this scope)
+        let step = calculate_adaptive_step(range, 8.0);
+
+        let start = (min / step).ceil() as i64;
+        let end = (max / step).floor() as i64;
+
+        for i in start..=end {
+            let value = i as f64 * step;
+            marks.push(GridMark {
+                value,
+                step_size: step,
+            });
+        }
+
+        // Optional: If you still strictly want PH bounds labeled, push them explicitly.
+        // But standard grid lines usually look cleaner.
+        // marks.push(GridMark { value: _ph_min, step_size: step });
+        // marks.push(GridMark { value: _ph_max, step_size: step });
+
+        marks
+    }
+
+    fn enforce_manual_safety_limits(plot_ui: &mut PlotUi, current_price: Price) {
+        // Helper: Enforces sane zoom/pan limits when the user is in Manual Mode
+
+        let bounds = plot_ui.plot_bounds();
+        let mut min = *bounds.range_y().start();
+        let mut max = *bounds.range_y().end();
+        let mut range = max - min;
+        let mut changed = false;
+
+        let base_price = current_price.value().max(1.0);
+
+        // --- 1. ZOOM LIMITS (Range) ---
+        let min_allowed_range = base_price * 0.00001; // 0.001%
+        let max_allowed_range = base_price * 2.0; // 200% (View 0 to 180k for BTC)
+
+        if range < min_allowed_range {
+            let center = (min + max) / 2.0;
+            range = min_allowed_range;
+            min = center - range / 2.0;
+            max = center + range / 2.0;
+            changed = true;
+        } else if range > max_allowed_range {
+            let center = (min + max) / 2.0;
+            range = max_allowed_range;
+            min = center - range / 2.0;
+            max = center + range / 2.0;
+            changed = true;
+        }
+
+        // --- 2. PAN LIMITS (Position) ---
+
+        // A. Hard Floor: Bottom cannot be negative
+        if min < 0.0 {
+            let diff = 0.0 - min;
+            min += diff;
+            max += diff;
+            changed = true;
+        }
+
+        // B. Hard Ceiling: Top cannot exceed 5x Current Price
+        // This stops you from dragging into "Millions" territory on a $100 coin.
+        let hard_ceiling = base_price * 5.0;
+
+        if max > hard_ceiling {
+            let diff = max - hard_ceiling;
+            min -= diff;
+            max -= diff;
+            changed = true;
+        }
+
+        // Apply if we hit any bumper
+        if changed {
+            plot_ui.set_plot_bounds_y(min..=max);
+        }
     }
 
     fn calculate_plot_data(&mut self, cva_results: &CVACore, score_type: ScoreType) -> PlotCache {

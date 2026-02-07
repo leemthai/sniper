@@ -53,7 +53,7 @@ impl OptimizationStrategy {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TradeVariant {
+pub(crate) struct TradeVariant {
     pub ratio: f64,
     pub stop_price: StopPrice,
     pub roi_pct: RoiPct,
@@ -61,7 +61,7 @@ pub struct TradeVariant {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TradeDirection {
+pub(crate) enum TradeDirection {
     Long,
     Short,
 }
@@ -76,14 +76,14 @@ impl fmt::Display for TradeDirection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VisualFluff {
+pub(crate) struct VisualFluff {
     // Purely for visualization. Not used for calculation.
     // The "Hills and Valleys" of volume (CVA Histogram).
     pub volume_profile: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SortDirection {
+pub(crate) enum SortDirection {
     Ascending,
     Descending,
 }
@@ -98,7 +98,7 @@ impl SortDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SortColumn {
+pub(crate) enum SortColumn {
     PairName,
     TargetPrice,
     LiveRoi,
@@ -113,7 +113,7 @@ pub enum SortColumn {
 
 /// A row in the consolidated Trade Finder list.
 #[derive(Debug, Clone)]
-pub struct TradeFinderRow {
+pub(crate) struct TradeFinderRow {
     pub pair_name: String,
 
     // 24h Quote Volume (e.g. USDT volume). Crucial for filtering "Dead" coins.
@@ -124,11 +124,11 @@ pub struct TradeFinderRow {
 
     pub opportunity: Option<TradeOpportunity>,
     pub current_price: Price,
-    pub opportunity_count_total: usize,
+    // pub opportunity_count_total: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TradeOutcome {
+pub(crate) enum TradeOutcome {
     TargetHit,
     StopHit,
     Timeout,
@@ -147,7 +147,7 @@ impl std::fmt::Display for TradeOutcome {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TradeOpportunity {
+pub(crate) struct TradeOpportunity {
     pub id: String,
     pub created_at: DateTime<Utc>,
     pub ph_pct: PhPct,
@@ -178,7 +178,7 @@ impl TradeOpportunity {
     /// Opportunities are comparable IFF they belong to the same
     /// pair, direction, strategy, and station.
     #[inline]
-    pub fn is_comparable_to(&self, other: &TradeOpportunity) -> bool {
+    pub(crate) fn is_comparable_to(&self, other: &TradeOpportunity) -> bool {
         self.pair_name == other.pair_name
             && self.direction == other.direction
             && self.strategy == other.strategy
@@ -187,7 +187,7 @@ impl TradeOpportunity {
 
     #[cfg(debug_assertions)]
     #[inline]
-    pub fn assert_comparable_to(&self, other: &TradeOpportunity) {
+    pub(crate) fn assert_comparable_to(&self, other: &TradeOpportunity) {
         debug_assert!(
             self.is_comparable_to(other),
             "Ledger invariant violated: attempted to compare non-comparable opportunities"
@@ -196,7 +196,7 @@ impl TradeOpportunity {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NavigationTarget {
+pub(crate) enum NavigationTarget {
     Opportunity(String), // UUID (Primary)
     Pair(String),        // Fallback (Market View / No Op)
 }
@@ -210,14 +210,14 @@ impl fmt::Display for TradeOpportunity {
 impl TradeOpportunity {
     /// Calculates a composite Quality Score (0.0 to 100.0+)
     /// Used for "Auto-Tuning" and finding the best setups.
-    pub fn calculate_quality_score(&self) -> f64 {
+    pub(crate) fn calculate_quality_score(&self) -> f64 {
         self.strategy
             .calculate_score(self.expected_roi(), self.avg_duration)
     }
 
     /// Centralized "Referee" Logic.
     /// Determines if the trade is dead based on current price action and time.
-    pub fn check_exit_condition(
+    pub(crate)  fn check_exit_condition(
         &self,
         current_high: Price,
         current_low: Price,
@@ -253,25 +253,25 @@ impl TradeOpportunity {
     }
 
     /// Helper to get number of variants (including the active one)
-    pub fn variant_count(&self) -> usize {
+    pub(crate)  fn variant_count(&self) -> usize {
         self.variants.len()
     }
 
     /// Checks if the SNAPSHOT (Creation) status was worthwhile.
-    pub fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
+    pub(crate)  fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
         let roi = self.expected_roi();
         let aroi = TradeProfile::calculate_annualized_roi(roi, self.avg_duration);
         profile.is_worthwhile(roi, aroi)
     }
 
     /// Calculates the Expected ROI % per trade for this specific opportunity.
-    pub fn expected_roi(&self) -> RoiPct {
+    pub(crate)  fn expected_roi(&self) -> RoiPct {
         // RETURN THE SIMULATION TRUTH. The simulation already calculated the true average PnL (including timeouts).
         self.simulation.avg_pnl_pct
     }
 
     /// Calculates the Expected ROI % using a dynamic live price.
-    pub fn live_roi(&self, current_price: Price) -> RoiPct {
+    pub(crate)  fn live_roi(&self, current_price: Price) -> RoiPct {
         // 1. Get the baseline "True PnL" from the simulation (e.g. 7.0%)
         let base_roi = self.expected_roi();
 
@@ -289,7 +289,7 @@ impl TradeOpportunity {
     }
 
     /// Calculates Annualized ROI based on LIVE price and AVERAGE duration.
-    pub fn live_annualized_roi(&self, current_price: Price) -> AroiPct {
+    pub(crate)  fn live_annualized_roi(&self, current_price: Price) -> AroiPct {
         let roi = self.live_roi(current_price);
         TradeProfile::calculate_annualized_roi(roi, self.avg_duration)
     }
@@ -360,14 +360,10 @@ impl SuperZone {
     }
 
     /// Check if a price is within this superzone
-    pub fn contains(&self, price: Price) -> bool {
+    pub(crate) fn contains(&self, price: Price) -> bool {
         price >= self.price_bottom && price <= self.price_top
     }
 
-    /// Distance from price to superzone center
-    pub fn distance_to(&self, price: Price) -> Price {
-        Price::new((self.price_center - price).abs())
-    }
 }
 
 /// Aggregate contiguous zones into SuperZones
@@ -402,11 +398,11 @@ fn aggregate_zones(zones: &[Zone]) -> Vec<SuperZone> {
 
 /// Classified zones representing different trading characteristics
 #[derive(Debug, Clone, Default)]
-pub struct ClassifiedZones {
+pub(crate) struct ClassifiedZones {
     // Raw fixed-width zones
-    pub low_wicks: Vec<Zone>,
-    pub high_wicks: Vec<Zone>,
-    pub sticky: Vec<Zone>,
+    // pub low_wicks: Vec<Zone>,
+    // pub high_wicks: Vec<Zone>,
+    // pub sticky: Vec<Zone>,
 
     // SuperZones (aggregated contiguous zones)
     pub sticky_superzones: Vec<SuperZone>,
@@ -417,12 +413,11 @@ pub struct ClassifiedZones {
 /// Complete trading model for a pair containing CVA and classified zones
 /// This is the domain model independent of UI/plotting concerns
 #[derive(Debug, Clone)]
-pub struct TradingModel {
-    pub pair_name: String,
+pub(crate) struct TradingModel {
+    // pub pair_name: String,
     pub cva: Arc<CVACore>,
     pub zones: ClassifiedZones,
     pub coverage: ZoneCoverageStats,
-    // pub profile: HorizonProfile,
     pub segments: Vec<DisplaySegment>,
     pub opportunities: Vec<TradeOpportunity>,
 }
@@ -437,9 +432,8 @@ pub struct ZoneCoverageStats {
 
 impl TradingModel {
     /// Create a new trading model from CVA results and optional current price
-    pub fn from_cva(
+    pub(crate) fn from_cva(
         cva: Arc<CVACore>,
-        // profile: HorizonProfile,
         ohlcv: &OhlcvTimeSeries,
     ) -> Self {
         let (classified, stats) = Self::classify_zones(&cva, &constants::zones::DEFAULT);
@@ -456,7 +450,7 @@ impl TradingModel {
             // profile,
             zones: classified,
             coverage: stats,
-            pair_name: ohlcv.pair_interval.name().to_string(),
+            // pair_name: ohlcv.pair_interval.name().to_string(),
             segments,
             opportunities: Vec::new(),
         }
@@ -614,9 +608,6 @@ impl TradingModel {
             };
 
             let classified = ClassifiedZones {
-                sticky,
-                low_wicks,
-                high_wicks,
                 sticky_superzones,
                 low_wicks_superzones,
                 high_wicks_superzones,
@@ -624,77 +615,6 @@ impl TradingModel {
 
             (classified, stats)
         })
-    }
-
-    /// Get nearest support superzone relative to a specific price
-    fn nearest_support_superzone(&self, price: Price) -> Option<&SuperZone> {
-        self.zones
-            .sticky_superzones
-            .iter()
-            .filter(|sz| sz.price_center < price)
-            .min_by(|a, b| {
-                a.distance_to(price)
-                    .partial_cmp(&b.distance_to(price))
-                    .unwrap()
-            })
-    }
-
-    /// Get nearest resistance superzone relative to a specific price
-    fn nearest_resistance_superzone(&self, price: Price) -> Option<&SuperZone> {
-        self.zones
-            .sticky_superzones
-            .iter()
-            .filter(|sz| sz.price_center > price)
-            .min_by(|a, b| {
-                a.distance_to(price)
-                    .partial_cmp(&b.distance_to(price))
-                    .unwrap()
-            })
-    }
-
-    /// Find all superzones containing the given price
-    /// Returns a vec of (superzone_id, zone_type) tuples for all matching zones
-    pub fn find_superzones_at_price(&self, price: Price) -> Vec<(usize, ZoneType)> {
-        let mut zones = Vec::new();
-
-        // Check sticky superzones
-        for sz in &self.zones.sticky_superzones {
-            if sz.contains(price) {
-                // Determine if this specific sticky zone is acting as S or R
-                let zone_type = if let Some(sup) = self.nearest_support_superzone(price) {
-                    if sup.id == sz.id {
-                        ZoneType::Support
-                    } else {
-                        ZoneType::Sticky
-                    }
-                } else if let Some(res) = self.nearest_resistance_superzone(price) {
-                    if res.id == sz.id {
-                        ZoneType::Resistance
-                    } else {
-                        ZoneType::Sticky
-                    }
-                } else {
-                    ZoneType::Sticky
-                };
-
-                zones.push((sz.id, zone_type));
-            }
-        }
-
-        // Check low wick superzones
-        for sz in &self.zones.low_wicks_superzones {
-            if sz.contains(price) {
-                zones.push((sz.id, ZoneType::LowWicks));
-            }
-        }
-        // Check low wick superzones
-        for sz in &self.zones.high_wicks_superzones {
-            if sz.contains(price) {
-                zones.push((sz.id, ZoneType::HighWicks));
-            }
-        }
-
-        zones
     }
 }
 

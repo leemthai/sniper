@@ -34,7 +34,7 @@ use crate::models::cva::CVACore;
 use crate::models::timeseries::find_matching_ohlcv;
 use crate::models::trading_view::{TradeDirection, TradeOpportunity, TradeVariant, VisualFluff};
 
-use crate::TradingModel;
+use crate::models::trading_view::TradingModel;
 
 use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::{AppInstant, TimeUtils};
@@ -341,10 +341,10 @@ pub(crate) fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
         Err(e) => {
             let _ = tx.send(JobResult {
                 pair_name: req.pair_name.clone(),
-                duration_ms: 0,
                 result: Err(e),
-                cva: None,
-                candle_count: 0,
+                // duration_ms: 0,
+                // cva: None,
+                // candle_count: 0,
             });
             return;
         }
@@ -946,9 +946,8 @@ fn run_drill_phase(
     candidates
 }
 
-
-/// Runs a gated R:R stop-loss tournament, selecting the highest-scoring viable stop per strategy.
 fn run_stop_loss_tournament(
+    // Runs a gated R:R stop-loss tournament, selecting the highest-scoring viable stop per strategy.
     ohlcv: &OhlcvTimeSeries,
     historical_matches: &[(usize, f64)],
     current_state: MarketState,
@@ -1133,32 +1132,27 @@ fn perform_standard_analysis(
     let base_label = format!("{} @ {}", req.pair_name, ph_pct);
 
     crate::trace_time!(&format!("Total JOB [{}]", base_label), 10_000, {
-        let start = AppInstant::now();
 
-        // 1. Price
         let price = match resolve_analysis_price(req, ts_collection) {
             Ok(p) => p,
             Err(e) => {
-                let _ = tx.send(build_error_result(req, start.elapsed().as_millis(), e, 0));
+                let _ = tx.send(build_error_result(req, e));
                 return;
             }
         };
 
-        // 2. Count
         let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 4_000, {
             calculate_exact_candle_count(req, ts_collection, price)
         });
 
         let full_label = format!("{} ({} candles)", base_label, count);
 
-        // 3. CVA
         let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 10_000, {
             pair_analysis_pure(req.pair_name.clone(), ts_collection, price, ph_pct)
         });
 
-        let elapsed = start.elapsed().as_millis();
 
-        // 5. Result Construction
+        // Result Construction
         let response = match result_cva {
             Ok(cva) => {
                 // BRANCH: Check Mode
@@ -1166,7 +1160,6 @@ fn perform_standard_analysis(
                     // Fast Return: No Simulations
                     JobResult {
                         pair_name: req.pair_name.clone(),
-                        duration_ms: elapsed,
                         // Return the Model with CVA, but EMPTY opportunities
                         result: Ok(Arc::new(TradingModel::from_cva(
                             Arc::new(cva),
@@ -1178,15 +1171,13 @@ fn perform_standard_analysis(
                             .unwrap(),
                             // &req.config
                         ))),
-                        cva: None, // Legacy field (optional)
-                        candle_count: count,
                     }
                 } else {
                     // Full Analysis: Pass CVA to Pathfinder
-                    build_success_result(req, ts_collection, cva, price, count, elapsed)
+                    build_success_result(req, ts_collection, cva, price)
                 }
             }
-            Err(e) => build_error_result(req, elapsed, e.to_string(), count),
+            Err(e) => build_error_result(req, e.to_string()),
         };
 
         let _ = tx.send(response);
@@ -1195,16 +1186,11 @@ fn perform_standard_analysis(
 
 fn build_error_result(
     req: &JobRequest,
-    duration_ms: u128,
     error_msg: String,
-    candle_count: usize,
 ) -> JobResult {
     JobResult {
         pair_name: req.pair_name.clone(),
-        duration_ms,
         result: Err(error_msg),
-        cva: None,
-        candle_count,
     }
 }
 
@@ -1255,8 +1241,6 @@ fn build_success_result(
     ts_collection: &TimeSeriesCollection,
     cva: CVACore,
     price: Price,
-    count: usize,
-    elapsed: u128,
 ) -> JobResult {
     let cva_arc = Arc::new(cva);
 
@@ -1283,9 +1267,6 @@ fn build_success_result(
 
     JobResult {
         pair_name: req.pair_name.clone(),
-        duration_ms: elapsed,
         result: Ok(Arc::new(model)),
-        cva: Some(cva_arc),
-        candle_count: count,
     }
 }
