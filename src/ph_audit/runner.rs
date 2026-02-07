@@ -8,7 +8,7 @@ use crate::config::{OptimizationStrategy, StationId, BASE_INTERVAL, PhPct, Price
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::engine::worker;
-use crate::models::timeseries::find_matching_ohlcv;
+use crate::models::find_matching_ohlcv;
 
 use crate::utils::time_utils::AppInstant;
 

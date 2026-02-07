@@ -42,7 +42,6 @@ use super::app::ZoneSniperApp;
 const CELL_PADDING_Y: f32 = 4.0;
 
 impl ZoneSniperApp {
-    // Helper to sort rows (Updated for Zero-Op handling)
     pub(super) fn render_opportunity_details_modal(&mut self, ctx: &Context) {
         // 1. Check if open
         if !self.show_opportunity_details {

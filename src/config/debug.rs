@@ -82,6 +82,3 @@ pub const DF: LogFlags = LogFlags {
     max_pairs_load: 12, // 40, // 25, // 60,
     wipe_ledger_on_startup: false,
 };
-
-// use crate::config::DF
-// if df.log_ledger {}

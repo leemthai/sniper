@@ -1,12 +1,9 @@
-// Domain models for klines analysis
-// These modules contain pure business logic independent of UI/visualization
-
-// pub mod cva;
 mod cva;
 pub(crate) use cva::{PRICE_RECALC_THRESHOLD_PCT, MIN_CANDLES_FOR_ANALYSIS, SEGMENT_MERGE_TOLERANCE_MS, CVACore, ScoreType};
 
-pub mod timeseries;
-pub use timeseries::{MostRecentIntervals, OhlcvTimeSeries, TimeSeriesSlice, find_matching_ohlcv};
+mod ohlcv;
+pub use ohlcv::{OhlcvTimeSeries};
+pub(crate) use ohlcv::{find_matching_ohlcv, TimeSeriesSlice ,LiveCandle};
 
 mod trading_view;
 pub(crate) use trading_view::{

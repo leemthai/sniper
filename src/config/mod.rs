@@ -33,11 +33,14 @@ pub mod plot;
 mod tuner;
 pub(crate) use tuner::{StationId, TunerStation, TUNER_CONFIG, TimeTunerConfig};
 
+// Private module
 mod types;
+// Re-export to everyone
 pub use types::{
     Price,
     PriceLike,
 };
+// Crate-wide re-export
 pub(crate) use types::{
     JourneySettings, 
     OptimalSearchSettings, 

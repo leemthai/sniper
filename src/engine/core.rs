@@ -20,12 +20,11 @@ use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
-use crate::models::{PRICE_RECALC_THRESHOLD_PCT};
 use crate::models::ledger::OpportunityLedger;
-use crate::models::timeseries::{LiveCandle, find_matching_ohlcv};
-use crate::models::{TradeDirection, TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel, DEFAULT_JOURNEY_SETTINGS};
+use crate::models::{TradeDirection, TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel, DEFAULT_JOURNEY_SETTINGS, LiveCandle, find_matching_ohlcv, PRICE_RECALC_THRESHOLD_PCT};
 
 use crate::shared::SharedConfiguration;
+
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 

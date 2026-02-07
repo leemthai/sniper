@@ -29,7 +29,7 @@ use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::domain::price_horizon;
 
-use crate::models::timeseries::find_matching_ohlcv;
+use crate::models::find_matching_ohlcv;
 use crate::models::{TradeDirection, TradeOpportunity, TradeVariant, DEFAULT_JOURNEY_SETTINGS, VisualFluff, CVACore, OhlcvTimeSeries, TradingModel};
 
 use crate::utils::maths_utils::duration_to_candles;

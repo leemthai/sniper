@@ -4,7 +4,8 @@ use eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2};
 use crate::config::{Price, PriceLike, TICKER, BASE_INTERVAL};
 use crate::engine::SniperEngine;
 
-use crate::models::timeseries;
+
+use crate::models::{find_matching_ohlcv};
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 
@@ -88,7 +89,7 @@ impl TickerState {
 
                     // Look up history
                     let ts_guard = engine.timeseries.read().unwrap();
-                    if let Ok(ohlcv) = timeseries::find_matching_ohlcv(
+                    if let Ok(ohlcv) = find_matching_ohlcv(
                         &ts_guard.series_data,
                         &pair,
                         BASE_INTERVAL.as_millis() as i64,

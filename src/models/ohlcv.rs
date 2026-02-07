@@ -1,19 +1,15 @@
 use anyhow::{Result, anyhow};
-use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 
 use crate::config::{VolatilityPct, VolRatio, BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice, PriceLike, Price};
+
 use crate::domain::candle::Candle;
 use crate::domain::pair_interval::PairInterval;
 
 use crate::models::cva::{CVACore, ScoreType};
 
 const RVOL_WINDOW: usize = 20;
-
-// ============================================================================
-// OhlcvTimeSeries: Raw time series data for a trading pair
-// ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveCandle {
@@ -29,6 +25,7 @@ pub struct LiveCandle {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+/// OhlcvTimeSeries: Raw time series data for a trading pair
 pub struct OhlcvTimeSeries {
     pub pair_interval: PairInterval,
     pub first_kline_timestamp_ms: i64,
@@ -49,7 +46,7 @@ pub struct OhlcvTimeSeries {
 
 }
 
-pub fn find_matching_ohlcv<'a>(
+pub(crate) fn find_matching_ohlcv<'a>(
     timeseries_data: &'a [OhlcvTimeSeries],
     pair_name: &str,
     interval_ms: i64,
@@ -70,7 +67,7 @@ pub fn find_matching_ohlcv<'a>(
 
 impl OhlcvTimeSeries {
 
-    pub fn update_from_live(&mut self, candle: &LiveCandle) {
+    pub(crate) fn update_from_live(&mut self, candle: &LiveCandle) {
         if self.timestamps.is_empty() { return; }
         
         let last_idx = self.timestamps.len() - 1;
@@ -114,9 +111,8 @@ impl OhlcvTimeSeries {
         }
     }
 
-
-    /// Helper: Calculates Relative Volume for a specific index using existing data
     fn calculate_rvol_at_index(&self, idx: usize) -> VolRatio {
+        // Helper: Calculates Relative Volume for a specific index using existing data
         let start = idx.saturating_sub(RVOL_WINDOW - 1);
         let slice = &self.base_asset_volumes[start..=idx];
         let sum: f64 = slice.iter().map(|v| v.value()).sum();
@@ -127,8 +123,6 @@ impl OhlcvTimeSeries {
         
         VolRatio::calculate(current_vol, avg)
     }
-
-    // ... calculate_volatility_in_range implementation ...
 
     /// Create a TimeSeries from a list of Candles (Loaded from DB)
     pub fn from_candles(pair_interval: PairInterval, candles: Vec<Candle>) -> Self {
@@ -203,10 +197,9 @@ impl OhlcvTimeSeries {
         }
     }
 
-
     /// Calculates the Average Volatility ((High-Low)/Close) over a range of indices.
     /// Returns 0.0 if range is invalid or empty.
-    pub fn calculate_volatility_in_range(&self, start_idx: usize, end_idx: usize) -> VolatilityPct {
+    pub(crate) fn calculate_volatility_in_range(&self, start_idx: usize, end_idx: usize) -> VolatilityPct {
         if start_idx >= end_idx || end_idx > self.close_prices.len() {
             return VolatilityPct::new(0.);
         }
@@ -231,7 +224,7 @@ impl OhlcvTimeSeries {
         }
     }
 
-    pub fn get_candle(&self, idx: usize) -> Candle {
+    pub(crate) fn get_candle(&self, idx: usize) -> Candle {
         // Direct access since the vectors are already f64
         let open = self.open_prices[idx];
         let high = self.high_prices[idx];
@@ -245,30 +238,22 @@ impl OhlcvTimeSeries {
         Candle::new(timestamp, open, high, low, close, base_vol, quote_vol)
     }
 
-    pub fn klines(&self) -> usize {
+    pub(crate) fn klines(&self) -> usize {
         self.open_prices.len()
     }
 
-    pub fn get_all_indices(&self) -> (usize, usize) {
-        (0, self.open_prices.len())
-    }
 }
 
-// ============================================================================
-// TimeSeriesSlice: Windowed view into OhlcvTimeSeries with CVA generation
-// ============================================================================
-
-pub struct TimeSeriesSlice<'a> {
+/// TimeSeriesSlice: Windowed view into OhlcvTimeSeries with CVA generation
+pub(crate) struct TimeSeriesSlice<'a> {
     pub series_data: &'a OhlcvTimeSeries,
     pub ranges: Vec<(usize, usize)>, // Vector of (start_idx, end_idx) where end_idx is exclusive
 }
 
-
-
 impl TimeSeriesSlice<'_> {
 
     /// Generate CVA results from this time slice (potentially discontinuous ranges)
-    pub fn generate_cva_results(
+    pub(crate) fn generate_cva_results(
         &self,
         n_chunks: usize,
         pair_name: String,
@@ -381,40 +366,5 @@ impl TimeSeriesSlice<'_> {
             temporal_weight,
         );
 
-    }
-}
-
-// ============================================================================
-// Helper types
-// ============================================================================
-
-pub enum MostRecentIntervals {
-    Count(usize),
-    Duration(Duration),
-}
-
-pub enum DateTimeInput {
-    TimestampMs(i64),
-    ChronoDateTime(DateTime<Utc>),
-}
-
-impl DateTimeInput {
-    pub fn to_milliseconds(&self) -> i64 {
-        match self {
-            DateTimeInput::TimestampMs(ts) => *ts,
-            DateTimeInput::ChronoDateTime(dt) => dt.timestamp_millis(),
-        }
-    }
-}
-
-impl From<i64> for DateTimeInput {
-    fn from(ts_ms: i64) -> Self {
-        DateTimeInput::TimestampMs(ts_ms)
-    }
-}
-
-impl From<DateTime<Utc>> for DateTimeInput {
-    fn from(dt: DateTime<Utc>) -> Self {
-        DateTimeInput::ChronoDateTime(dt)
     }
 }

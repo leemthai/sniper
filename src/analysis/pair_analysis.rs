@@ -3,14 +3,13 @@ use anyhow::{Context, Result, bail};
 use crate::config::{PhPct, Price, BASE_INTERVAL, TIME_DECAY_FACTOR, ZONE_COUNT};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
-use crate::models::{CVACore, MIN_CANDLES_FOR_ANALYSIS};
-use crate::models::timeseries::{TimeSeriesSlice, find_matching_ohlcv};
+
+use crate::models::{CVACore, MIN_CANDLES_FOR_ANALYSIS, TimeSeriesSlice, find_matching_ohlcv};
 
 // --- NEW PURE FUNCTION FOR THE ENGINE ---
-
 /// Calculates CVA for a pair given a specific price and configuration.
 /// This runs entirely isolated from the UI state.
-pub fn pair_analysis_pure(
+pub(crate) fn pair_analysis_pure(
     pair_name: String,
     timeseries_data: &TimeSeriesCollection,
     current_price: Price,

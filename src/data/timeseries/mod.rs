@@ -15,7 +15,6 @@ use std::collections::BTreeSet;
 
 use crate::models::OhlcvTimeSeries;
 
-
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct TimeSeriesCollection {
     pub name: String,

@@ -1,7 +1,7 @@
     use crate::config::{Price, Pct};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::models::timeseries::LiveCandle;
+use crate::models::LiveCandle;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::Sender;
 // Add these inside a cfg block for Native support

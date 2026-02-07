@@ -704,14 +704,3 @@ impl TradingModel {
         })
     }
 }
-
-// /// Zone classification types for a given price level
-// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// pub enum ZoneType {
-//     Sticky,     // High consolidation, price tends to stick here
-//     Support,    // Nearest sticky zone below current price
-//     Resistance, // Nearest sticky zone above current price
-//     LowWicks,   // High rejection activity below current price
-//     HighWicks,  // High rejection activity above current price
-//     Neutral,    // No special classification
-// }

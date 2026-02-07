@@ -13,8 +13,7 @@ use crate::config::{CandleResolution, Price, PriceLike};
 
 use crate::engine::SniperEngine;
 
-use crate::models::{CVACore, ScoreType, TradingModel, TradeOpportunity};
-use crate::models::timeseries::find_matching_ohlcv;
+use crate::models::{CVACore, ScoreType, TradingModel, TradeOpportunity, find_matching_ohlcv};
 
 use crate::ui::app::PlotVisibility;
 

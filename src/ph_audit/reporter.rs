@@ -16,7 +16,7 @@ impl AuditReporter {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn add_row(
+    pub(crate) fn add_row(
         &mut self,
         pair: &str,
         strategy: &str,
@@ -74,7 +74,7 @@ impl AuditReporter {
         self.buffer.push(row);
     }
 
-    pub fn print_all(&self) {
+    pub(crate) fn print_all(&self) {
         // Optional: clear screen or add newlines to separate from noise
         println!("\n\n\n");
         println!("==================== CSV DATA START ====================");
