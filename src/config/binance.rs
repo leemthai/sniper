@@ -31,8 +31,6 @@ pub struct RestLimits {
 
 /// Configuration for WebSocket Connections
 pub struct WsConfig {
-    /// WebSocket base URL for Binance streaming API (single stream)
-    pub base_url: &'static str,
     /// WebSocket base URL for Binance combined streaming API
     pub combined_base_url: &'static str,
     /// Maximum reconnection delay (seconds)
@@ -69,7 +67,6 @@ pub const BINANCE: BinanceConfig = BinanceConfig {
         concurrent_sync_tasks: 10,
     },
     ws: WsConfig {
-        base_url: "wss://stream.binance.com:9443/ws",
         combined_base_url: "wss://stream.binance.com:9443/stream?streams=",
         max_reconnect_delay_sec: 300, // 5 minutes
         initial_reconnect_delay_sec: 1,

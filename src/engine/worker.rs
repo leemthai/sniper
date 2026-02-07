@@ -18,23 +18,19 @@ use super::messages::{JobMode, JobRequest, JobResult};
 use crate::analysis::adaptive::AdaptiveParameters;
 use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
-use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult};
+use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult, DEFAULT_SIMILARITY};
 
 use crate::config::{
     DF, DurationMs, HighPrice, LowPrice, OptimizationStrategy, PhPct, Price, PriceLike, StationId,
-    StopPrice, TargetPrice, TradeProfile, TunerStation, constants, Pct,
+    StopPrice, TargetPrice, TradeProfile, TunerStation, Pct, TUNER_SCAN_STEPS, BASE_INTERVAL,
 };
 
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::domain::price_horizon;
 
-use crate::models::OhlcvTimeSeries;
-use crate::models::cva::CVACore;
 use crate::models::timeseries::find_matching_ohlcv;
-use crate::models::trading_view::{TradeDirection, TradeOpportunity, TradeVariant, VisualFluff};
-
-use crate::models::trading_view::TradingModel;
+use crate::models::{TradeDirection, TradeOpportunity, TradeVariant, DEFAULT_JOURNEY_SETTINGS, VisualFluff, CVACore, OhlcvTimeSeries, TradingModel};
 
 use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::{AppInstant, TimeUtils};
@@ -65,6 +61,9 @@ struct CandidateResult {
     #[allow(dead_code)]
     source_desc: String,
 }
+
+
+const SAMPLE_COUNT: usize = 50;
 
 /// Runs the "Scan & Fit" algorithm to find the optimal Price Horizon
 /// that produces trades within the Station's target time range.
@@ -99,7 +98,7 @@ pub(crate) fn tune_to_station(
     }
 
     // 1. Generate Scan Points (Linear Interpolation)
-    let steps = constants::TUNER_SCAN_STEPS;
+    let steps = TUNER_SCAN_STEPS;
     let mut scan_points = Vec::with_capacity(steps);
     if steps > 1 {
         let step_size =
@@ -246,7 +245,7 @@ pub(crate) fn run_pathfinder_simulations(
     // Volatility range is clamped to available klines to avoid underflow
 
     let max_idx = ohlcv.klines().saturating_sub(1);
-    let vol_lookback = constants::journey::optimization::VOLATILITY_LOOKBACK.min(max_idx);
+    let vol_lookback = DEFAULT_JOURNEY_SETTINGS.optimization.volatility_lookback.min(max_idx);
     let start_vol = ohlcv.klines().saturating_sub(vol_lookback);
     let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol, ohlcv.klines());
 
@@ -255,18 +254,18 @@ pub(crate) fn run_pathfinder_simulations(
     let duration = AdaptiveParameters::calculate_dynamic_journey_duration(
         ph_pct,
         avg_volatility,
-        DurationMs::new(constants::BASE_INTERVAL.as_millis() as i64),
-        &constants::journey::DEFAULT,
+        DurationMs::new(BASE_INTERVAL.as_millis() as i64),
+        &DEFAULT_JOURNEY_SETTINGS,
     );
     let duration_candles =
-        duration_to_candles(duration, constants::BASE_INTERVAL.as_millis() as i64);
+        duration_to_candles(duration, BASE_INTERVAL.as_millis() as i64);
 
     let matches_opt = ScenarioSimulator::find_historical_matches(
         ohlcv.pair_interval.name(),
         ohlcv,
         max_idx,
-        &constants::similarity::DEFAULT,
-        constants::journey::SAMPLE_COUNT,
+        &DEFAULT_SIMILARITY,
+        SAMPLE_COUNT,
         trend_lookback,
         duration_candles,
     );
@@ -362,7 +361,7 @@ fn simulate_target(
 ) -> Option<CandidateResult> {
     crate::trace_time!("Worker: Simulate Target", 500, {
 
-        let interval_duration = DurationMs::new(constants::BASE_INTERVAL.as_millis() as i64);
+        let interval_duration = DurationMs::new(BASE_INTERVAL.as_millis() as i64);
 
         let direction = if Price::from(target_price) > ctx.current_price {
             TradeDirection::Long
@@ -379,7 +378,7 @@ fn simulate_target(
             direction,
             ctx.duration_candles,
             risk_tests,
-            &constants::journey::DEFAULT.profile,
+            &DEFAULT_JOURNEY_SETTINGS.profile,
             ctx.strategy,
             interval_duration,
             limit_samples,
@@ -447,9 +446,9 @@ fn apply_diversity_filter(
         return Vec::new();
     }
 
-    let regions = constants::journey::optimization::DIVERSITY_REGIONS;
-    let cutoff_ratio = constants::journey::optimization::DIVERSITY_CUT_OFF;
-    let max_results = constants::journey::optimization::MAX_RESULTS;
+    let regions = DEFAULT_JOURNEY_SETTINGS.optimization.diversity_regions;
+    let cutoff_ratio = DEFAULT_JOURNEY_SETTINGS.optimization.diversity_cut_off;
+    let max_results = DEFAULT_JOURNEY_SETTINGS.optimization.max_results;
 
     // --- INSERT START: DEBUG SCOREBOARD ---
     // This creates a temporary view to log the top candidates without consuming the vector
@@ -599,8 +598,9 @@ struct PathfinderContext<'a> {
 }
 
 fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
-    let price_buffer_pct = constants::journey::optimization::PRICE_BUFFER_PCT;
-    let steps = constants::journey::optimization::SCOUT_STEPS;
+
+    let price_buffer_pct = DEFAULT_JOURNEY_SETTINGS.optimization.price_buffer_pct;
+    let steps = DEFAULT_JOURNEY_SETTINGS.optimization.scout_steps;
     let scout_risks = [2.5]; // Optimization: 1 variant
 
     // --- OPTIMIZATION #2: DIRECTIONAL BIAS (Pruning) ---
@@ -781,10 +781,10 @@ fn run_drill_phase(
         return candidates;
     }
 
-    let steps = constants::journey::optimization::SCOUT_STEPS;
-    let drill_offset_factor = constants::journey::optimization::DRILL_OFFSET_FACTOR;
-    let drill_cutoff_pct = constants::journey::optimization::DRILL_CUTOFF_PCT;
-    let drill_top_n = constants::journey::optimization::DRILL_TOP_N;
+    let steps = DEFAULT_JOURNEY_SETTINGS.optimization.scout_steps;
+    let drill_offset_factor = DEFAULT_JOURNEY_SETTINGS.optimization.drill_offset_factor;
+    let drill_cutoff_pct = DEFAULT_JOURNEY_SETTINGS.optimization.drill_cutoff_pct;
+    let drill_top_n = DEFAULT_JOURNEY_SETTINGS.optimization.drill_top_n;
 
     // Sort Best First
     candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
@@ -883,8 +883,8 @@ fn run_drill_phase(
         }
 
         // 2. Drill Loop (Parallelized)
-        let full_risks = constants::journey::RISK_REWARD_TESTS;
-        let full_samples = constants::journey::SAMPLE_COUNT;
+        let full_risks = DEFAULT_JOURNEY_SETTINGS.risk_reward_tests;
+        let full_samples = DEFAULT_JOURNEY_SETTINGS.sample_count;
 
         // Use Rayon to calculate results in parallel
         let drill_results: Vec<CandidateResult> = drill_targets
@@ -1109,7 +1109,7 @@ fn fetch_local_timeseries(req: &JobRequest) -> Result<TimeSeriesCollection, Stri
         .map_err(|_| "Failed to acquire RwLock".to_string())?;
 
     let target_pair = &req.pair_name;
-    let interval = constants::BASE_INTERVAL.as_millis() as i64;
+    let interval = BASE_INTERVAL.as_millis() as i64;
 
     // Find and clone specifically what we need
     if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, target_pair, interval) {
@@ -1166,7 +1166,7 @@ fn perform_standard_analysis(
                             find_matching_ohlcv(
                                 &ts_collection.series_data,
                                 &req.pair_name,
-                                constants::BASE_INTERVAL.as_millis() as i64,
+                                BASE_INTERVAL.as_millis() as i64,
                             )
                             .unwrap(),
                             // &req.config
@@ -1205,7 +1205,7 @@ fn resolve_analysis_price(
     if let Ok(ts) = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        constants::BASE_INTERVAL.as_millis() as i64,
+        BASE_INTERVAL.as_millis() as i64,
     ) {
         ts.close_prices
             .last()
@@ -1225,7 +1225,7 @@ fn calculate_exact_candle_count(
     let ohlcv_result = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        constants::BASE_INTERVAL.as_millis() as i64,
+        BASE_INTERVAL.as_millis() as i64,
     );
 
     if let Ok(ohlcv) = ohlcv_result {
@@ -1247,7 +1247,7 @@ fn build_success_result(
     let ohlcv = find_matching_ohlcv(
         &ts_collection.series_data,
         &req.pair_name,
-        constants::BASE_INTERVAL.as_millis() as i64,
+        BASE_INTERVAL.as_millis() as i64,
     )
     .expect("OHLCV data missing despite CVA success");
 

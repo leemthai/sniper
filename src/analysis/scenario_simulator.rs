@@ -4,13 +4,24 @@ use std::cmp::Ordering;
 use crate::analysis::market_state::MarketState;
 
 use crate::config::{
-    DF, Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice,
+    DF, Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice, Weight
 };
 
 use crate::models::OhlcvTimeSeries;
-use crate::models::trading_view::TradeDirection;
+use crate::models::TradeDirection;
 
 use crate::utils::time_utils::AppInstant;
+
+const WEIGHT_VOLATILITY: Weight = Weight::new(10.0);
+const WEIGHT_MOMENTUM: Weight = Weight::new(5.0);
+const WEIGHT_VOLUME: Weight = Weight::new(1.0);
+
+pub(crate) const DEFAULT_SIMILARITY: SimilaritySettings = SimilaritySettings {
+    weight_volatility: WEIGHT_VOLATILITY,
+    weight_momentum: WEIGHT_MOMENTUM,
+    weight_volume: WEIGHT_VOLUME,
+};
+
 
 /// Structure of Arrays (SoA) layout for AVX-512 processing.
 /// Instead of [State, State, State], we have [All_Vols], [All_Moms], [All_Rels].
@@ -254,13 +265,6 @@ fn generate_volatility_optimized(
     results
 }
 
-// #[derive(Debug, Clone)]
-// pub(crate) struct ScenarioConfig {
-//     pub target_price: TargetPrice,
-//     pub stop_loss_price: StopPrice,
-//     pub max_duration_candles: usize, // e.g. 7 days converted to candles
-// }
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Outcome {
     TargetHit(usize), // Succeeded in N candles
@@ -284,7 +288,7 @@ impl ScenarioSimulator {
     /// STEP 1: The Heavy Lift.
     /// Scans history to find the Top N moments that look like "Now".
     /// This runs ONCE per job.
-    pub fn find_historical_matches(
+    pub(crate) fn find_historical_matches(
         pair_name: &str,
         ts: &OhlcvTimeSeries,
         current_idx: usize,
@@ -402,7 +406,7 @@ impl ScenarioSimulator {
         Some((candidates, current_market_state))
     }
 
-    pub fn analyze_outcome(
+    pub(crate) fn analyze_outcome(
         ts: &OhlcvTimeSeries,
         matches: &[(usize, f64)],
         current_market_state: MarketState,

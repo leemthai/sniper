@@ -15,14 +15,14 @@ pub struct CandleRangePanel<'a> {
 }
 
 impl<'a> CandleRangePanel<'a> {
-    pub fn new(segments: &'a [DisplaySegment], current_idx: Option<usize>) -> Self {
+    pub(crate) fn new(segments: &'a [DisplaySegment], current_idx: Option<usize>) -> Self {
         Self {
             segments,
             current_range_idx: current_idx,
         }
     }
 
-    pub fn render(&mut self, ui: &mut Ui, last_viewed_idx: usize) -> Option<Option<usize>> {
+    pub(crate) fn render(&mut self, ui: &mut Ui, last_viewed_idx: usize) -> Option<Option<usize>> {
         let mut action = None;
 
         ui.add_space(5.0);

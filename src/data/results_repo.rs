@@ -17,7 +17,7 @@ use {
     uuid::Uuid,
 };
 
-use crate::models::trading_view::{TradeDirection, TradeOutcome};
+use crate::models::{TradeDirection, TradeOutcome};
 
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;

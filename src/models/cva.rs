@@ -2,6 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::config::{VolatilityPct, Price, PriceRange, LowPrice, HighPrice};
+use crate::config::PhPct;
+use crate::utils::TimeUtils;
+
+pub(crate) const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
+// pub(crate) const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.001); // TEMP put this value in for testing purposes if you want rapid re-triggering caused by prices...
+pub(crate) const MIN_CANDLES_FOR_ANALYSIS: usize = 250;
+pub(crate) const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
 
 /// Lean CVA results containing only actively used metrics
 /// Memory footprint: ~3.2KB per 100 zones vs 14.4KB with full CVAResults

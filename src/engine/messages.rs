@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 use crate::config::{OptimizationStrategy, StationId, PhPct, Price};
 use crate::data::timeseries::TimeSeriesCollection;
-use crate::models::trading_view::TradingModel;
+use crate::models::TradingModel;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum JobMode {

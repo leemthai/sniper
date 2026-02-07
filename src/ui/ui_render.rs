@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{MomentumPct, OptimizationStrategy, Pct, TICKER, VolatilityPct, constants};
+use crate::config::{MomentumPct, OptimizationStrategy, Pct, TICKER, VolatilityPct, BASE_INTERVAL, TUNER_CONFIG};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -23,8 +23,8 @@ use crate::domain::pair_interval::PairInterval;
 
 use crate::engine::messages::JobMode;
 
-use crate::models::cva::ScoreType;
-use crate::models::trading_view::{
+use crate::models::{DEFAULT_JOURNEY_SETTINGS, ScoreType};
+use crate::models::{
     NavigationTarget, SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
 };
 
@@ -96,7 +96,7 @@ impl ZoneSniperApp {
                 let max_time_str = TimeUtils::format_duration(max_time_ms.value());
 
                 // For interval display, we use the global config as a fallback if not in state
-                let interval_ms = constants::BASE_INTERVAL.as_millis() as i64;
+                let interval_ms = BASE_INTERVAL.as_millis() as i64;
                 let max_candles = if interval_ms > 0 {
                     max_time_ms.value() / interval_ms
                 } else {
@@ -531,7 +531,7 @@ impl ZoneSniperApp {
                 // TIME TUNER
                 if let Some(action) = time_tuner::render(
                     ui,
-                    &constants::tuner::CONFIG,
+                    &TUNER_CONFIG,
                     self.shared_config
                         .get_station_opt(self.selected_pair.clone()),
                     self.selected_pair.clone(),
@@ -1457,7 +1457,7 @@ impl ZoneSniperApp {
                         return true;
                     }
                     // Rule B: MWT (Must be worthwhile)
-                    if !op.is_worthwhile(&constants::journey::DEFAULT.profile) {
+                    if !op.is_worthwhile(&DEFAULT_JOURNEY_SETTINGS.profile) {
                         return false;
                     }
                     true

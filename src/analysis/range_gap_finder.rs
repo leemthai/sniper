@@ -3,8 +3,9 @@ use crate::models::OhlcvTimeSeries;
 use crate::utils::TimeUtils;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum GapReason {
+pub(crate) enum GapReason {
     None,              // Start of data
+    #[allow(unused)]
     PriceMismatch,     // Indices were skipped (Price out of PH)
     MissingSourceData, // Indices contiguous, but Time jumped (Exchange down/Delisted)
 
@@ -14,7 +15,7 @@ pub enum GapReason {
 }
 
 #[derive(Debug, Clone)]
-pub struct DisplaySegment {
+pub(crate) struct DisplaySegment {
     pub start_idx: usize,
     pub end_idx: usize,
     pub start_ts: i64,
@@ -29,11 +30,11 @@ pub struct DisplaySegment {
     pub gap_duration_str: String,
 }
 
-pub struct RangeGapFinder;
+pub(crate) struct RangeGapFinder;
 
 impl RangeGapFinder {
 
-pub fn analyze(
+pub(crate) fn analyze(
         timeseries: &OhlcvTimeSeries, 
         ph_ranges: &[(usize, usize)],
         price_bounds: (Price, Price),

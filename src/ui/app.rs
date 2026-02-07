@@ -17,7 +17,8 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{CandleResolution, PhPct, Price, PriceLike, StationId, constants};
+use crate::config::{CandleResolution, PhPct, Price, PriceLike, StationId, TUNER_CONFIG, BASE_INTERVAL};
+
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::{Pct};
@@ -31,8 +32,8 @@ use crate::engine::SniperEngine;
 use crate::engine::worker;
 
 use crate::models::ledger::OpportunityLedger;
-use crate::models::trading_view::{NavigationTarget, SortColumn, SortDirection, TradeOpportunity};
-use crate::models::{ProgressEvent, SyncStatus, find_matching_ohlcv};
+use crate::models::{TradeOpportunity};
+use crate::models::{ProgressEvent, SyncStatus, find_matching_ohlcv, NavigationTarget, SortColumn, SortDirection};
 
 use crate::shared::SharedConfiguration;
 
@@ -273,7 +274,7 @@ impl ZoneSniperApp {
     pub(crate) fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<PhPct> {
         if let Some(e) = &self.engine {
             // 1. Get Config for the requested Station
-            let station = constants::tuner::CONFIG
+            let station = TUNER_CONFIG
                 .stations
                 .iter()
                 .find(|s| s.id == station_id)?;
@@ -286,7 +287,7 @@ impl ZoneSniperApp {
             let ohlcv = find_matching_ohlcv(
                 &ts_guard.series_data,
                 pair,
-                constants::BASE_INTERVAL.as_millis() as i64,
+                BASE_INTERVAL.as_millis() as i64,
             )
             .ok()?;
 
@@ -676,7 +677,7 @@ impl ZoneSniperApp {
 
                 // Subtitle / Info
                 let interval_str =
-                    TimeUtils::interval_to_string(constants::BASE_INTERVAL.as_millis() as i64);
+                    TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
                 ui.label(
                     RichText::new(format!(
                         "{} {} {}",
@@ -837,7 +838,7 @@ impl ZoneSniperApp {
                         );
                     }
                     // B. Get Station Definition
-                    if let Some(station_def) = constants::tuner::CONFIG
+                    if let Some(station_def) = TUNER_CONFIG
                         .stations
                         .iter()
                         .find(|s| s.id == station_id)
@@ -848,7 +849,7 @@ impl ZoneSniperApp {
                             if let Ok(ohlcv) = find_matching_ohlcv(
                                 &ts_guard.series_data,
                                 &pair,
-                                constants::BASE_INTERVAL.as_millis() as i64,
+                                BASE_INTERVAL.as_millis() as i64,
                             ) {
                                 if let Some(price) = e.price_stream.get_price(&pair) {
                                     worker::tune_to_station(

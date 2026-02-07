@@ -18,7 +18,7 @@ use tokio::time::sleep;
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::{BINANCE, BinanceApiConfig, },
+    crate::config::{BINANCE, BinanceApiConfig, BASE_INTERVAL},
     binance_sdk::{
         config::ConfigurationRestApi,
         spot::{
@@ -76,10 +76,8 @@ pub struct PriceStreamManager {
 // ... build_combined_stream_url ...
 #[cfg(not(target_arch = "wasm32"))]
 fn build_combined_stream_url(symbols: &[String]) -> String {
-    use crate::config::constants;
-
     let interval =
-        crate::utils::TimeUtils::interval_to_string(constants::BASE_INTERVAL.as_millis() as i64);
+        crate::utils::TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
 
     // CHANGE: Only subscribe to kline
     let streams: Vec<String> = symbols

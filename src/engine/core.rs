@@ -9,7 +9,7 @@ use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::R
 use crate::config::DF;
 
 use crate::config::{
-    OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, StationId, constants,
+    OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, StationId, BASE_INTERVAL,
 };
 
 use crate::data::price_stream::PriceStreamManager;
@@ -20,11 +20,10 @@ use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
+use crate::models::{PRICE_RECALC_THRESHOLD_PCT};
 use crate::models::ledger::OpportunityLedger;
 use crate::models::timeseries::{LiveCandle, find_matching_ohlcv};
-use crate::models::trading_view::{
-    TradeDirection, TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel,
-};
+use crate::models::{TradeDirection, TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel, DEFAULT_JOURNEY_SETTINGS};
 
 use crate::shared::SharedConfiguration;
 use crate::utils::TimeUtils;
@@ -303,7 +302,7 @@ impl SniperEngine {
         }
 
         // Maintenance loop - checks for drifting trades that have overlapped and merges them.
-        let journey_settings = &constants::journey::DEFAULT;
+        let journey_settings = &DEFAULT_JOURNEY_SETTINGS;
 
         if t1.duration_since(self.last_ledger_maintenance).as_secs()
             >= journey_settings.optimization.prune_interval_sec
@@ -570,7 +569,7 @@ impl SniperEngine {
         for (id, op) in &self.engine_ledger.opportunities {
             // A. Get Data context
             let pair = &op.pair_name;
-            let interval_ms = constants::BASE_INTERVAL.as_millis() as i64;
+            let interval_ms = BASE_INTERVAL.as_millis() as i64;
 
             if let Ok(series) = find_matching_ohlcv(&ts_guard.series_data, pair, interval_ms) {
                 let Some(current_price) = series.close_prices.last().copied() else {
@@ -682,7 +681,7 @@ impl SniperEngine {
                     for op in &model.opportunities {
                         self.engine_ledger.evolve(
                             op.clone(),
-                            constants::journey::optimization::FUZZY_MATCH_TOLERANCE,
+                            DEFAULT_JOURNEY_SETTINGS.optimization.fuzzy_match_tolerance,
                         );
                     }
                     // Success: Update State
@@ -735,7 +734,7 @@ impl SniperEngine {
 
     fn trigger_recalcs_on_price_changes(&mut self) {
         let pairs: Vec<String> = self.shared_config.get_all_pairs();
-        let threshold = constants::cva::PRICE_RECALC_THRESHOLD_PCT;
+        let threshold = PRICE_RECALC_THRESHOLD_PCT;
 
         for pair_name in pairs {
             let Some(current_price) = self.price_stream.get_price(&pair_name) else {

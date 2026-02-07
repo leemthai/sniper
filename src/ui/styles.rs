@@ -4,7 +4,7 @@ use eframe::egui::{
 };
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::models::trading_view::TradeDirection;
+use crate::models::TradeDirection;
 use crate::ui::config::UI_CONFIG;
 use crate::ui::ui_text::UI_TEXT;
 

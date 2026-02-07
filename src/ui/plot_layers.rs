@@ -11,13 +11,13 @@ use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 use crate::analysis::range_gap_finder::GapReason;
 
 use crate::config::{
-    CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike, constants,
+    CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike, BASE_INTERVAL,
 };
 
 use crate::config::plot::PLOT_CONFIG;
 
 use crate::models::OhlcvTimeSeries;
-use crate::models::trading_view::{SuperZone, TradeOpportunity, TradingModel};
+use crate::models::{SuperZone, TradeOpportunity, TradingModel};
 
 use crate::ui::app::PlotVisibility;
 use crate::ui::styles::{DirectionColor, apply_opacity};
@@ -625,7 +625,7 @@ impl PlotLayer for SegmentSeparatorLayer {
 
         let gap_width = PLOT_CONFIG.segment_gap_width;
         let mut visual_x = 0.0;
-        let step_size = ctx.resolution.steps_from(constants::BASE_INTERVAL);
+        let step_size = ctx.resolution.steps_from(BASE_INTERVAL);
 
         // Foreground Painter + Clipping
         let painter = plot_ui

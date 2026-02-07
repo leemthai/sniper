@@ -1,5 +1,6 @@
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Duration as ChronoDuration;
 use chrono::{DateTime, Utc};
@@ -11,19 +12,105 @@ use crate::analysis::scenario_simulator::SimulationResult;
 use crate::analysis::zone_scoring::find_target_zones;
 
 use crate::config::{
-    AroiPct, DurationMs, OptimizationStrategy, PhPct, Price, QuoteVol, RoiPct, StationId,
-    StopPrice, TargetPrice, TradeProfile, ZoneClassificationConfig, ZoneParams, constants,
+    AroiPct, DurationMs, OptimizationStrategy, Price, QuoteVol, RoiPct, StationId,
+    StopPrice, TargetPrice, TradeProfile, ZoneClassificationConfig, ZoneParams, PhPct, Sigma, Pct, JourneySettings, OptimalSearchSettings
 };
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
 use crate::models::OhlcvTimeSeries;
-use crate::models::cva::{CVACore, ScoreType};
+use crate::models::{SEGMENT_MERGE_TOLERANCE_MS, CVACore, ScoreType};
 
 use crate::ui::config::UI_TEXT;
 
 use crate::utils::maths_utils::{mean_and_stddev, normalize_max, smooth_data};
+
+const SAMPLE_COUNT: usize = 50;
+const RISK_REWARD_TESTS: &[f64] = &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0];
+const MAX_JOURNEY_TIME: Duration = Duration::from_secs(86400 * 90);
+// const VOLATILITY_ZIGZAG_FACTOR: f64 = 6.0;
+const MIN_JOURNEY_DURATION: Duration = Duration::from_secs(3600);
+
+mod profile {
+    use super::*;
+    pub const MIN_ROI: RoiPct = RoiPct::new(0.001);
+    pub const MIN_AROI: AroiPct = AroiPct::new(0.20);
+    // pub const WEIGHT_ROI: Weight = Weight::new(1.0);
+    // pub const WEIGHT_AROI: Weight = Weight::new(0.002);
+}
+
+mod optimization {
+    use super::*;
+    pub const SCOUT_STEPS: usize = 20;
+    pub const DRILL_TOP_N: usize = 5;
+    pub const DRILL_OFFSET_FACTOR: f64 = 0.25;
+    pub const DRILL_CUTOFF_PCT: PhPct = PhPct::new(0.70);
+    pub const VOLATILITY_LOOKBACK: usize = 50;
+    pub const DIVERSITY_REGIONS: usize = 5;
+    pub const DIVERSITY_CUT_OFF: PhPct = PhPct::new(0.5);
+    pub const MAX_RESULTS: usize = 5;
+    pub const PRICE_BUFFER_PCT: PhPct = PhPct::new(0.005);
+    pub const FUZZY_MATCH_TOLERANCE: Pct = Pct::new(0.5);
+    pub const PRUNE_INTERVAL_SEC: u64 = 10;
+}
+
+pub(crate) const DEFAULT_JOURNEY_SETTINGS: JourneySettings = JourneySettings {
+    sample_count: SAMPLE_COUNT,
+    risk_reward_tests: RISK_REWARD_TESTS,
+    // volatility_zigzag_factor: VOLATILITY_ZIGZAG_FACTOR,
+    min_journey_duration: MIN_JOURNEY_DURATION,
+    max_journey_time: MAX_JOURNEY_TIME,
+    profile: TradeProfile {
+        min_roi_pct: profile::MIN_ROI,
+        min_aroi_pct: profile::MIN_AROI,
+        // weight_roi: profile::WEIGHT_ROI,
+        // weight_aroi: profile::WEIGHT_AROI,
+    },
+    optimization: OptimalSearchSettings {
+        scout_steps: optimization::SCOUT_STEPS,
+        drill_top_n: optimization::DRILL_TOP_N,
+        drill_offset_factor: optimization::DRILL_OFFSET_FACTOR,
+        drill_cutoff_pct: optimization::DRILL_CUTOFF_PCT,
+        volatility_lookback: optimization::VOLATILITY_LOOKBACK,
+        diversity_regions: optimization::DIVERSITY_REGIONS,
+        diversity_cut_off: optimization::DIVERSITY_CUT_OFF,
+        max_results: optimization::MAX_RESULTS,
+        price_buffer_pct: optimization::PRICE_BUFFER_PCT,
+        fuzzy_match_tolerance: optimization::FUZZY_MATCH_TOLERANCE,
+        prune_interval_sec: optimization::PRUNE_INTERVAL_SEC,
+    },
+};
+
+mod sticky {
+    use super::*;
+    pub const SMOOTH_PCT: PhPct = PhPct::new(0.02);
+    pub const GAP_PCT: PhPct = PhPct::new(0.01);
+    pub const VIABILITY_PCT: PhPct = PhPct::new(0.001);
+    pub const SIGMA: Sigma = Sigma::new(0.2);
+}
+mod reversal {
+    use super::*;
+    pub const SMOOTH_PCT: PhPct = PhPct::new(0.005);
+    pub const GAP_PCT: PhPct = PhPct::new(0.0);
+    pub const VIABILITY_PCT: PhPct = PhPct::new(0.0005);
+    pub const SIGMA: Sigma = Sigma::new(1.5);
+    }
+
+pub(crate) const DEFAULT_ZONE_CONFIG: ZoneClassificationConfig = ZoneClassificationConfig {
+    sticky: ZoneParams {
+        smooth_pct: sticky::SMOOTH_PCT,
+        gap_pct: sticky::GAP_PCT,
+        viability_pct: sticky::VIABILITY_PCT,
+        sigma: sticky::SIGMA,
+    },
+    reversal: ZoneParams {
+        smooth_pct: reversal::SMOOTH_PCT,
+        gap_pct: reversal::GAP_PCT,
+        viability_pct: reversal::VIABILITY_PCT,
+        sigma: reversal::SIGMA,
+    },
+};
 
 impl OptimizationStrategy {
     /// Calculate a score based on the strategy
@@ -298,7 +385,7 @@ impl TradeOpportunity {
 /// A single price zone with its properties
 #[derive(Debug, Clone)]
 pub struct Zone {
-    #[allow(dead_code)] // Useful for debugging and zone identification
+    // #[allow(dead_code)] // Useful for debugging and zone identification
     pub index: usize,
     pub price_bottom: Price,
     pub price_top: Price,
@@ -312,7 +399,7 @@ pub struct SuperZone {
     /// Unique identifier for this superzone (based on first zone index)
     pub id: usize,
     /// Range of zone indices this superzone covers (inclusive)
-    pub index_range: (usize, usize),
+    // pub index_range: (usize, usize),
     pub price_bottom: Price,
     pub price_top: Price,
     pub price_center: Price,
@@ -351,7 +438,7 @@ impl SuperZone {
 
         Self {
             id: first.index,
-            index_range: (first.index, last.index),
+            // index_range: (first.index, last.index),
             price_bottom,
             price_top,
             price_center: Price::new(price_center),
@@ -436,12 +523,12 @@ impl TradingModel {
         cva: Arc<CVACore>,
         ohlcv: &OhlcvTimeSeries,
     ) -> Self {
-        let (classified, stats) = Self::classify_zones(&cva, &constants::zones::DEFAULT);
+        let (classified, stats) = Self::classify_zones(&cva, &DEFAULT_ZONE_CONFIG);
 
         let (low, high) = cva.price_range.min_max();
         let bounds: (Price, Price) = (Price::new(low), Price::new(high));
 
-        let merge_ms = constants::cva::SEGMENT_MERGE_TOLERANCE_MS;
+        let merge_ms = SEGMENT_MERGE_TOLERANCE_MS;
 
         let segments = RangeGapFinder::analyze(ohlcv, &cva.included_ranges, bounds, merge_ms);
 
@@ -618,13 +705,13 @@ impl TradingModel {
     }
 }
 
-/// Zone classification types for a given price level
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ZoneType {
-    Sticky,     // High consolidation, price tends to stick here
-    Support,    // Nearest sticky zone below current price
-    Resistance, // Nearest sticky zone above current price
-    LowWicks,   // High rejection activity below current price
-    HighWicks,  // High rejection activity above current price
-    Neutral,    // No special classification
-}
+// /// Zone classification types for a given price level
+// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// pub enum ZoneType {
+//     Sticky,     // High consolidation, price tends to stick here
+//     Support,    // Nearest sticky zone below current price
+//     Resistance, // Nearest sticky zone above current price
+//     LowWicks,   // High rejection activity below current price
+//     HighWicks,  // High rejection activity above current price
+//     Neutral,    // No special classification
+// }

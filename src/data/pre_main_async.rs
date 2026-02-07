@@ -10,8 +10,7 @@ use {crate::config::DEMO, crate::data::timeseries::wasm_demo::WasmDemoData};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::constants,
-    crate::config::BINANCE,
+    crate::config::{BINANCE, BASE_INTERVAL},
     crate::data::provider::{BinanceProvider, MarketDataProvider},
     crate::data::rate_limiter::GlobalRateLimiter,
     crate::data::storage::{MarketDataStorage, SqliteStorage},
@@ -172,7 +171,7 @@ pub async fn fetch_pair_data(
         }
 
         // 3. Run in Parallel
-        let interval = constants::BASE_INTERVAL.as_millis() as i64;
+        let interval = BASE_INTERVAL.as_millis() as i64;
 
         let results = stream::iter(supply_pairs)
             .enumerate()

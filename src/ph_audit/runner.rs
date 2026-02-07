@@ -3,7 +3,7 @@ use strum::IntoEnumIterator;
 
 use crate::analysis::pair_analysis;
 
-use crate::config::{OptimizationStrategy, StationId, constants, PhPct, Price, PriceLike};
+use crate::config::{OptimizationStrategy, StationId, BASE_INTERVAL, PhPct, Price, PriceLike};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -28,7 +28,7 @@ pub fn execute_audit(
         if find_matching_ohlcv(
             &ts_collection.series_data,
             pair,
-            constants::BASE_INTERVAL.as_millis() as i64,
+            BASE_INTERVAL.as_millis() as i64,
         )
         .is_err()
         {
@@ -80,7 +80,7 @@ fn run_single_simulation(
     ts_collection: &TimeSeriesCollection,
     reporter: &mut AuditReporter,
 ) {
-    let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, constants::BASE_INTERVAL.as_millis() as i64).unwrap(); // Unwrap is safe here because we checked existence in the main loop
+    let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, BASE_INTERVAL.as_millis() as i64).unwrap(); // Unwrap is safe here because we checked existence in the main loop
     let start_time = AppInstant::now();
 
     // C. Run Pipeline (Using worker internals)

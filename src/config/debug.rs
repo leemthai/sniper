@@ -1,16 +1,21 @@
 //! Debugging feature flags.
 
+#[allow(dead_code)]
 pub struct LogFlags {
 
     /// Emit verbose logging for live price stream connections and ticks.
     pub log_price_stream_updates: bool,
+
     /// Emit simulation-mode state changes (enter/exit, price adjustments, etc.).
     pub log_simulation_events: bool,
+
     /// Activate trace_time macro (for cool scope-level timing)
     pub log_performance: bool,
     /// Log ledger activity
     pub log_ledger: bool,
+
     pub log_results_repo: bool,
+
     pub log_engine_core: bool,
 
     pub log_tuner: bool,
@@ -41,6 +46,7 @@ pub struct LogFlags {
     // These two need moving out to somehwere else!!!!!!!!!
     // Limit how many pairs are loaded in Debug mode.
     pub max_pairs_load: usize,
+
     // Nuke ledger automatically on start-up
     pub wipe_ledger_on_startup: bool, 
 }

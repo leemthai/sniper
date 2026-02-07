@@ -25,7 +25,6 @@ pub(crate) struct MarketState {
 }
 
 impl MarketState {
-
     /// Calculates the fingerprint for a specific index.
     /// `lookback`: Number of candles to use for Momentum and Volume MA.
     pub(crate) fn calculate(ts: &OhlcvTimeSeries, idx: usize, trend_lookback: usize) -> Option<Self> {
@@ -53,12 +52,4 @@ impl MarketState {
             relative_volume: rel_vol,
         })
     }
-    
-    // pub fn similarity_score(&self, other: &Self, config: &SimilaritySettings) -> f64 {
-    //     let d_vol = (self.volatility_pct.value() - other.volatility_pct.value()).abs() * config.weight_volatility.value();
-    //     let d_mom = (self.momentum_pct.value() - other.momentum_pct.value()).abs() * config.weight_momentum.value();
-    //     let d_vol_ratio = (self.relative_volume.value() - other.relative_volume.value()).abs() * config.weight_volume.value();
-
-    //     d_vol + d_mom + d_vol_ratio
-    // }
 }

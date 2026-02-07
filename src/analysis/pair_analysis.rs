@@ -1,9 +1,9 @@
 use anyhow::{Context, Result, bail};
 
-use crate::config::{constants, PhPct, Price};
+use crate::config::{PhPct, Price, BASE_INTERVAL, TIME_DECAY_FACTOR, ZONE_COUNT};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
-use crate::models::cva::CVACore;
+use crate::models::{CVACore, MIN_CANDLES_FOR_ANALYSIS};
 use crate::models::timeseries::{TimeSeriesSlice, find_matching_ohlcv};
 
 // --- NEW PURE FUNCTION FOR THE ENGINE ---
@@ -21,7 +21,7 @@ pub fn pair_analysis_pure(
     let ohlcv_time_series = find_matching_ohlcv(
         &timeseries_data.series_data,
         &pair_name,
-        constants::BASE_INTERVAL.as_millis() as i64,
+        BASE_INTERVAL.as_millis() as i64,
     )
     .with_context(|| format!("No OHLCV data found for {}", pair_name))?;
 
@@ -33,7 +33,7 @@ pub fn pair_analysis_pure(
     // 3. Validation
     let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();
 
-    if total_candle_count < constants::cva::MIN_CANDLES_FOR_ANALYSIS {
+    if total_candle_count < MIN_CANDLES_FOR_ANALYSIS {
         let s = if total_candle_count == 1 { "" } else { "s" };
 
         bail!(
@@ -41,12 +41,12 @@ pub fn pair_analysis_pure(
             pair_name,
             total_candle_count,
             s,
-            constants::cva::MIN_CANDLES_FOR_ANALYSIS
+            MIN_CANDLES_FOR_ANALYSIS
         );
     }
 
     // 4. Dynamic Decay Logic (Optimized & Accordion-Aware)
-    let dynamic_decay_factor = if (constants::TIME_DECAY_FACTOR - 1.0).abs() < f64::EPSILON {
+    let dynamic_decay_factor = if (TIME_DECAY_FACTOR - 1.0).abs() < f64::EPSILON {
         // Optimization: If decay is 1.0, multiplier is 1.0. Skip math.
         1.0
     } else {
@@ -67,7 +67,7 @@ pub fn pair_analysis_pure(
         let duration_years = duration_ms as f64 / millis_per_year;
 
         if duration_years > 0.0 {
-            constants::TIME_DECAY_FACTOR.powf(duration_years).max(1.0)
+            TIME_DECAY_FACTOR.powf(duration_years).max(1.0)
         } else {
             1.0
         }
@@ -79,7 +79,7 @@ pub fn pair_analysis_pure(
         ranges: slice_ranges.clone(),
     };
 
-    let mut cva_results = timeseries_slice.generate_cva_results(constants::ZONE_COUNT, pair_name.clone(), dynamic_decay_factor, price_range);
+    let mut cva_results = timeseries_slice.generate_cva_results(ZONE_COUNT, pair_name.clone(), dynamic_decay_factor, price_range);
 
     // Store the raw ranges for the UI Navigator
     cva_results.included_ranges = slice_ranges.clone();

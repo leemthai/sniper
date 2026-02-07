@@ -9,7 +9,7 @@ use {
     std::path::PathBuf,
     std::thread,
     std::time::{Duration, Instant},
-    zone_sniper::config::{constants, DEMO, PERSISTENCE, Price, PriceLike},
+    zone_sniper::config::{BASE_INTERVAL, DEMO, PERSISTENCE, Price, PriceLike},
     zone_sniper::data::price_stream::PriceStreamManager,
     zone_sniper::data::storage::{MarketDataStorage, SqliteStorage},
     zone_sniper::data::timeseries::cache_file::CacheFile,
@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
     // 2. Configuration from demo.rs
     let demo_pairs = DEMO.resources.pairs;
     
-    let interval_ms = constants::BASE_INTERVAL.as_millis() as i64;
+    let interval_ms = BASE_INTERVAL.as_millis() as i64;
     let interval_str = TimeUtils::interval_to_string(interval_ms);
     let db_path = "klines.sqlite";
 

@@ -668,27 +668,27 @@ impl<T: PriceLike> PriceRange<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
-#[serde(transparent)]
-pub struct PriceDelta(pub f64);
+// #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
+// #[serde(transparent)]
+// pub struct PriceDelta(pub f64);
 
-impl PriceDelta {
-    pub const fn new(val: f64) -> Self {
-        Self(val) // Deltas can be negative
-    }
+// impl PriceDelta {
+//     pub const fn new(val: f64) -> Self {
+//         Self(val) // Deltas can be negative
+//     }
 
-    #[inline]
-    pub fn value(self) -> f64 {
-        self.0
-    }
-}
+//     #[inline]
+//     pub fn value(self) -> f64 {
+//         self.0
+//     }
+// }
 
-impl std::fmt::Display for PriceDelta {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Deltas show the sign but usually not the currency symbol
-        write!(f, "{:+.4}", self.0)
-    }
-}
+// impl std::fmt::Display for PriceDelta {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         // Deltas show the sign but usually not the currency symbol
+//         write!(f, "{:+.4}", self.0)
+//     }
+// }
 
 // --- ENUMS (Definitions) ---
 
@@ -812,7 +812,7 @@ pub struct SimilaritySettings {
     pub weight_volatility: Weight,
     pub weight_momentum: Weight,
     pub weight_volume: Weight,
-    pub cutoff_score: f64,
+    // pub cutoff_score: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -825,8 +825,8 @@ pub struct ZoneClassificationConfig {
 pub struct TradeProfile {
     pub min_roi_pct: RoiPct,
     pub min_aroi_pct: AroiPct,
-    pub weight_roi: Weight,
-    pub weight_aroi: Weight,
+    // pub weight_roi: Weight,
+    // pub weight_aroi: Weight,
 }
 
 impl TradeProfile {
@@ -863,7 +863,7 @@ pub struct OptimalSearchSettings {
 pub struct JourneySettings {
     pub sample_count: usize,
     pub risk_reward_tests: &'static [f64],
-    pub volatility_zigzag_factor: f64,
+    // pub volatility_zigzag_factor: f64,
     pub min_journey_duration: Duration,
     pub max_journey_time: Duration,
     pub profile: TradeProfile,
