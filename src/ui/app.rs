@@ -17,11 +17,12 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{CandleResolution, PhPct, Price, PriceLike, StationId, TUNER_CONFIG, BASE_INTERVAL};
-
+use crate::config::{
+    BASE_INTERVAL, CandleResolution, PhPct, Price, PriceLike, StationId, TUNER_CONFIG,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::config::{Pct};
+use crate::config::Pct;
 
 use crate::config::DF;
 
@@ -31,9 +32,11 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::engine::SniperEngine;
 use crate::engine::worker;
 
+use crate::models::TradeOpportunity;
 use crate::models::ledger::OpportunityLedger;
-use crate::models::{TradeOpportunity};
-use crate::models::{ProgressEvent, SyncStatus, find_matching_ohlcv, NavigationTarget, SortColumn, SortDirection};
+use crate::models::{
+    NavigationTarget, ProgressEvent, SortColumn, SortDirection, SyncStatus, find_matching_ohlcv,
+};
 
 use crate::shared::SharedConfiguration;
 
@@ -144,6 +147,8 @@ pub struct ZoneSniperApp {
     pub(crate) saved_opportunity_id: Option<String>,
 
     #[serde(skip)]
+    pub(crate) valid_pairs: HashSet<String>, // New field - retains knowledge of all valid pairs - the UI should iterate through this to find pairs
+    #[serde(skip)]
     pub(crate) selected_opportunity: Option<TradeOpportunity>,
     #[serde(skip)]
     pub(crate) scroll_target: Option<NavigationTarget>,
@@ -185,6 +190,7 @@ impl Default for ZoneSniperApp {
             shared_config: SharedConfiguration::new(),
             startup_tune_done: false,
             plot_visibility: PlotVisibility::default(),
+            valid_pairs: HashSet::new(),
             show_debug_help: false,
             show_ph_help: false,
             engine: None,
@@ -213,7 +219,6 @@ impl Default for ZoneSniperApp {
 }
 
 impl ZoneSniperApp {
-
     pub(crate) fn new(cc: &eframe::CreationContext<'_>, args: Cli) -> Self {
         let mut app: ZoneSniperApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
@@ -274,10 +279,7 @@ impl ZoneSniperApp {
     pub(crate) fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<PhPct> {
         if let Some(e) = &self.engine {
             // 1. Get Config for the requested Station
-            let station = TUNER_CONFIG
-                .stations
-                .iter()
-                .find(|s| s.id == station_id)?;
+            let station = TUNER_CONFIG.stations.iter().find(|s| s.id == station_id)?;
 
             // 2. Get Price (Strict Check - must be live)
             let price = e.price_stream.get_price(pair)?;
@@ -676,8 +678,7 @@ impl ZoneSniperApp {
                 );
 
                 // Subtitle / Info
-                let interval_str =
-                    TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
+                let interval_str = TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
                 ui.label(
                     RichText::new(format!(
                         "{} {} {}",
@@ -817,7 +818,6 @@ impl ZoneSniperApp {
         let mut processed = 0;
 
         if let Some(e) = &mut self.engine {
-
             // Wait for connection health to be good enough (50%) before continuing
             #[cfg(not(target_arch = "wasm32"))]
             e.price_stream.wait_for_health_threshold(Pct::new(0.5));
@@ -838,10 +838,8 @@ impl ZoneSniperApp {
                         );
                     }
                     // B. Get Station Definition
-                    if let Some(station_def) = TUNER_CONFIG
-                        .stations
-                        .iter()
-                        .find(|s| s.id == station_id)
+                    if let Some(station_def) =
+                        TUNER_CONFIG.stations.iter().find(|s| s.id == station_id)
                     {
                         // C. Tune it
                         let best_ph = {
@@ -941,11 +939,10 @@ impl ZoneSniperApp {
         if let Some(rx) = &self.data_rx {
             // Non-blocking check
             if let Ok((timeseries, _sig)) = rx.try_recv() {
-                let (available_pairs, valid_set, final_pair) =
-                    self.resolve_startup_state(&timeseries);
+                self.initialize_pair_state(&timeseries);
 
                 // Initialize Engine with (pointer to) EXACTLY same SharedConfiguration as we have here. Just two pointers to shared memory.
-                let mut e = SniperEngine::new(timeseries, self.shared_config.clone());
+                let mut e = SniperEngine::new(timeseries, self.shared_config.clone(), self.valid_pairs.iter().cloned().collect());
 
                 // RESTORE LEDGER
                 // If the Nuke Flag is on, we start fresh. Otherwise, we load persistence.
@@ -983,16 +980,33 @@ impl ZoneSniperApp {
                 // Remove all opportunities for pairs that were not loaded in this session.
                 let _count_before = e.engine_ledger.opportunities.len();
 
+                #[cfg(debug_assertions)]
+                if DF.log_ledger {
+                    log::info!("The valid start-up set is {:?}", self.valid_pairs);
+                }
                 e.engine_ledger
-                    .retain(|_id, op| valid_set.contains(&op.pair_name));
+                    .retain(|_id, op| self.valid_pairs.contains(&op.pair_name));
+
+                #[cfg(debug_assertions)]
+                {
+                    if DF.log_ledger {
+                        for op in e.engine_ledger.opportunities.values() {
+                            debug_assert!(
+                                self.valid_pairs.contains(&op.pair_name),
+                                "Ledger contains invalid pair AFTER retain: {}",
+                                op.pair_name
+                            );
+                        }
+                    }
+                }
 
                 #[cfg(debug_assertions)]
                 {
                     let count_after = e.engine_ledger.opportunities.len();
                     if _count_before != count_after {
                         if DF.log_ledger {
-                            log::warn!(
-                                "STARTUP CLEANUP: Culled {} orphan trades (Data not loaded).",
+                            log::info!(
+                                "START-UP CLEANUP: Culled {} orphan trades (Data not loaded).",
                                 _count_before - count_after
                             );
                         }
@@ -1070,75 +1084,53 @@ impl ZoneSniperApp {
                     }
                 }
 
-                // 5. Reset Navigation
+                // Reset Navigation to use selected Pair
                 self.nav_states
-                    .insert(final_pair, NavigationState::default());
+                    .insert(self.selected_pair.as_ref().expect("selected_pair must be set during startup").clone(), NavigationState::default());
 
-                // 6. TRANSITION TO TUNING PHASE
-                // We create a todo list of ALL pairs to tune them before the app starts.
-                let all_pairs: Vec<String> = available_pairs.into_iter().collect();
-
+                // TRANSITION TO TUNING PHASE
                 return Some(AppState::Tuning(TuningState {
-                    total: all_pairs.len(),
+                    total: self.valid_pairs.len(),
                     completed: 0,
-                    todo_list: all_pairs,
+                    todo_list: self.valid_pairs.iter().cloned().collect::<Vec<String>>(),
                 }));
             }
         }
         None
     }
 
-    /// Helper: Resolves the startup pair and initializes station overrides. called just from check_loading_completion.
-    fn resolve_startup_state(
+    /// Helper: Resolves the startup pair and valid_pair list
+    fn initialize_pair_state(
         &mut self,
         timeseries: &TimeSeriesCollection,
-    ) -> (Vec<String>, HashSet<String>, String) {
+    ) {
+
         // Get List of ACTUAL loaded pairs
         let available_pairs = timeseries.unique_pair_names();
-        let valid_set: HashSet<String> = available_pairs.iter().cloned().collect();
+        let valid_pairs: HashSet<String> = available_pairs.iter().cloned().collect();
+        self.valid_pairs = valid_pairs;
 
         // 1. Register pairs in shared config - ensures all pairs write
-        self.shared_config.register_pairs(available_pairs.clone());
+        // self.shared_config.register_persisted_pairs(available_pairs.clone());
+        self.shared_config.ensure_all_stations_initialized(&available_pairs);
+        self.shared_config.ensure_all_phs_initialized(&available_pairs, PhPct::default());
 
-        // Resolve Startup Pair - and check if the saved 'selected_pair' actually exists in the loaded data.
-        let valid_startup_pair = self
-            .selected_pair
-            .as_ref()
-            .filter(|p| valid_set.contains(*p))
-            .cloned();
+        let resolved_pair = self
+        .selected_pair
+        .as_ref()
+        .filter(|p| self.valid_pairs.contains(*p))
+        .cloned()
+        .or_else(|| available_pairs.first().cloned())
+        .expect("Can't run app without at least one asset");
 
-        self.shared_config.ensure_all_stations_initialized();
-        self.shared_config
-            .ensure_all_phs_initialized(PhPct::default());
-
-        let start_pair = if let Some(p) = valid_startup_pair {
-            p // Saved pair is valid
-        } else {
-            // Saved pair is invalid/missing. Fallback to first available.
-            let fallback = available_pairs
-                .first()
-                .cloned()
-                .expect("Can't run app without at least one asset");
-            if DF.log_selected_pair {
-                #[cfg(debug_assertions)]
-                log::warn!(
-                    "STARTUP FIX: Saved pair {:?} not found in loaded data. Falling back to {}.",
-                    self.selected_pair,
-                    fallback
-                );
-            }
-            fallback
-        };
         #[cfg(debug_assertions)]
         if DF.log_selected_pair {
             log::info!(
                 "SELECTED PAIR: set to [{:?}] in check_loading_completion",
-                start_pair
+                resolved_pair
             );
         }
-        self.selected_pair = Some(start_pair.clone()); // Guaranteed to have a selected_pair after this
-
-        (available_pairs, valid_set, start_pair)
+        self.selected_pair = Some(resolved_pair.clone()); // Guaranteed to have a selected_pair after this
     }
 
     /// Helper to load and configure custom fonts (Nerd Fonts)

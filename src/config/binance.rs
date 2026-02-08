@@ -76,7 +76,7 @@ pub const BINANCE: BinanceConfig = BinanceConfig {
         retries: 5,
         backoff_ms: 5000,
     },
-    max_pairs: 12, // 100,
+    max_pairs: 20, // 100,
     pairs_filename: "pairs.txt",
-    quote_assets: &["USDT", "USDC", "FDUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "JPY", "BRL"],
+    quote_assets: &["USDT", "USDC", "FDUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "JPY", "BRL", "USD", "USD1", "COP", "BRL", "ARS", "MXN"],
 };

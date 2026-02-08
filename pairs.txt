@@ -1,32 +1,23 @@
-# High volume
-BTCUSDT
-DOGEUSDT
-SOLUSDT
-ETHUSDT
-XRPUSDT
-
-# Breakout
-BNBFDUSD
-PAXGUSDT
-ZECUSDT
-
-# New pair
-KITEUSDT
-
-# Unsure why added
-LUNCUSDT
-
-# Volatile
-PEPEUSDT
-PENGUUSDT
-
-# Currency Trading
-BTCJPY
-USDTBRL
-
-# ETH vs BTC
-ETHBTC
-
+BTCUSDT # High volume
+DOGEUSDT # High volume
+SOLUSDT # High volume
+ETHUSDT # High volume
+XRPUSDT # High volume
+BNBFDUSD # Breakout
+PAXGUSDT # Breakout
+ZECUSDT # Breakout
+KITEUSDT # New pair
+LUNCUSDT # Unsure why added
+PEPEUSDT # Volatile
+PENGUUSDT # Volatile
+BTCJPY # Currency Trading JPY
+USDTBRL # Currency Tradiny BRL
+DOTEUR # Currency Trading EUR
+USDTCOP # Currency Trading COP
+ETHBTC # ETH vs BTC
+USD1USDT # Stable
+USDCUSDT # Stable
+USDTUSD # Stable
 
 
 BTCFDUSD

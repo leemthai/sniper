@@ -49,18 +49,24 @@ pub struct LogFlags {
 
     // Nuke ledger automatically on start-up
     pub wipe_ledger_on_startup: bool, 
+
+    pub log_pairs: bool,
 }
 
 pub const DF: LogFlags = LogFlags {
 
-    log_station_overrides: true,
-    log_ph_overrides: true,
-    log_tuner: true,
-
+    log_pairs: true,
+    
+    
+    log_ledger: true,
     log_startup_prices: true,
+
+    log_station_overrides: false,
+    log_ph_overrides: false,
+    log_tuner: false,
+
     
     log_engine_core: false, // exclusively core.rs stuff
-    log_ledger: false,
     log_pathfinder: false,
 
     log_selected_opportunity: false,
@@ -79,6 +85,6 @@ pub const DF: LogFlags = LogFlags {
 
     // These two need moving out to somehwere else!!!!!!!!!
     // Default to a small number for quick UI testing. Change this to 1000 when you want to stress-test the model i.e all pairs.
-    max_pairs_load: 12, // 40, // 25, // 60,
+    max_pairs_load: 20, // 40, // 25, // 60,
     wipe_ledger_on_startup: false,
 };

@@ -9,7 +9,7 @@ use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::R
 use crate::config::DF;
 
 use crate::config::{
-    OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, StationId, BASE_INTERVAL,
+    BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, StationId,
 };
 
 use crate::data::price_stream::PriceStreamManager;
@@ -21,7 +21,10 @@ use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait};
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::models::ledger::OpportunityLedger;
-use crate::models::{TradeDirection, TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel, DEFAULT_JOURNEY_SETTINGS, LiveCandle, find_matching_ohlcv, PRICE_RECALC_THRESHOLD_PCT};
+use crate::models::{
+    DEFAULT_JOURNEY_SETTINGS, LiveCandle, PRICE_RECALC_THRESHOLD_PCT, TradeDirection,
+    TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel, find_matching_ohlcv,
+};
 
 use crate::shared::SharedConfiguration;
 
@@ -65,6 +68,9 @@ pub(crate) struct EngineJob {
 }
 
 pub struct SniperEngine {
+    // Definitive list of pairs we use in engine - initialized from app ONE TIME
+    pub(crate) active_engine_pairs: Vec<String>,
+
     /// Pair registry
     pub(crate) pairs_states: HashMap<String, PairRuntime>, // Keep track of the state of all pairs (not part of SharedConfiguration)
 
@@ -107,6 +113,7 @@ impl SniperEngine {
     pub(crate) fn new(
         timeseries: TimeSeriesCollection,
         shared_config: SharedConfiguration,
+        active_engine_pairs: Vec<String>,
     ) -> Self {
         // 1. Create Channels
         let (_candle_tx, candle_rx) = channel();
@@ -121,12 +128,20 @@ impl SniperEngine {
         #[cfg(not(target_arch = "wasm32"))]
         worker::spawn_worker_thread(job_rx, result_tx);
 
-        // 3. Initialize Pairs
+        // Initialize pair states
         let mut pairs_states = HashMap::new();
         {
-            for pair in shared_config.get_all_pairs().clone() {
+            for pair in active_engine_pairs.clone() {
                 pairs_states.insert(pair, PairRuntime::new());
             }
+            #[cfg(debug_assertions)]
+            if DF.log_pairs {
+                log::info!(
+                    "SniperEngine::new() Initializing runtime PairRunTimef or the following {} pairs: {:?} ",
+                    active_engine_pairs.len(),
+                    active_engine_pairs
+                )
+            };
         }
 
         // 4. Initialize Price Stream
@@ -138,7 +153,7 @@ impl SniperEngine {
             price_manager.set_candle_sender(_candle_tx.clone());
 
             let price_stream = Arc::new(price_manager);
-            price_stream.subscribe_all(shared_config.get_all_pairs().clone());
+            price_stream.subscribe_all(active_engine_pairs.clone());
             price_stream
         };
 
@@ -165,6 +180,7 @@ impl SniperEngine {
 
         // Construct Engine
         Self {
+            active_engine_pairs,
             pairs_states,
             shared_config,
             engine_ledger: OpportunityLedger::new(),
@@ -399,7 +415,15 @@ impl SniperEngine {
     pub(crate) fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
         self.queue.clear();
 
-        let mut all_pairs = self.shared_config.get_all_pairs();
+        let mut all_pairs = self.active_engine_pairs.clone();
+        #[cfg(debug_assertions)]
+        if DF.log_pairs {
+            log::info!(
+                "calling trigger_global_recalc() with the following {} pairs: {:?}",
+                all_pairs.len(),
+                all_pairs
+            );
+        }
 
         // Snapshot: Takes a snapshot of self.engine_strategy so the loop uses a consistent strategy
         let strategy = self.shared_config.get_strategy();
@@ -732,9 +756,18 @@ impl SniperEngine {
     }
 
     fn trigger_recalcs_on_price_changes(&mut self) {
-        let pairs: Vec<String> = self.shared_config.get_all_pairs();
+        // let pairs: Vec<String> = self.shared_config.get_all_pairs();
         let threshold = PRICE_RECALC_THRESHOLD_PCT;
 
+        let pairs: Vec<String> = self.active_engine_pairs.iter().cloned().collect();
+        #[cfg(debug_assertions)]
+        if DF.log_pairs {
+            log::info!(
+                "calling trigger_recalcs_on_price_changes() with the following {} pairs: {:?}",
+                pairs.len(),
+                pairs
+            );
+        }
         for pair_name in pairs {
             let Some(current_price) = self.price_stream.get_price(&pair_name) else {
                 continue;

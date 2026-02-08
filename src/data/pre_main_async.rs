@@ -126,8 +126,10 @@ pub async fn fetch_pair_data(
         let mut supply_pairs: Vec<String> = match fs::read_to_string(BINANCE.pairs_filename) {
             Ok(content) => content
                 .lines()
-                .map(|s| s.trim().to_uppercase())
-                .filter(|s| !s.is_empty() && !s.starts_with('#'))
+                .map(|line| {
+            line.split('#').next().unwrap_or("").trim().to_uppercase()
+        })
+                .filter(|s| !s.is_empty())
                 .collect(),
             Err(_) => {
                 log::warn!("{} not found, using default BTC/ETH", BINANCE.pairs_filename);
@@ -135,30 +137,23 @@ pub async fn fetch_pair_data(
             }
         };
 
-        // --- APPLY LIMITS ---
+        // Production Limit (from binance.rs)
+        supply_pairs.truncate(BINANCE.max_pairs);
 
-        // 1. Production Limit (from binance.rs)
-        if supply_pairs.len() > BINANCE.max_pairs {
-            supply_pairs.truncate(BINANCE.max_pairs);
-        }
-
-        // 2. Debug Limit (from debug.rs)
+        // Debug Limit (from debug.rs)
         #[cfg(debug_assertions)]
         {
-            let debug_limit = DF.max_pairs_load;
-            // If the flag is smaller than the current list, truncate it.
-            // (If you set debug_limit to 1000, it effectively loads 'all')
-            if supply_pairs.len() > debug_limit {
-                log::warn!(
-                    "⚡ DEBUG FAST START: Limiting load to {} pairs (Configured in src/config/debug.rs)",
-                    debug_limit
-                );
-                supply_pairs.truncate(debug_limit);
+            if DF.log_pairs {
+                log::info!("Pre-culling by DF.max_pairs_load we have {} pairs: {:?}", supply_pairs.len(), supply_pairs);
+            }
+            supply_pairs.truncate(DF.max_pairs_load);
+            if DF.log_pairs {
+                log::info!(
+                    "Post-culling by DF.max_pairs_load we have {} pairs: {:?}", supply_pairs.len(), supply_pairs);
             }
         }
-        // --------------------
 
-        // 3. INITIALIZE UI LIST
+        // INITIALIZE UI LIST
         // Tell the UI about all pairs immediately so they appear as "Pending"
         if let Some(ref tx) = progress_tx {
             for (i, pair) in supply_pairs.iter().enumerate() {
@@ -170,7 +165,7 @@ pub async fn fetch_pair_data(
             }
         }
 
-        // 3. Run in Parallel
+        // Run in Parallel
         let interval = BASE_INTERVAL.as_millis() as i64;
 
         let results = stream::iter(supply_pairs)

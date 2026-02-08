@@ -1,15 +1,14 @@
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::sync::{Arc, RwLock};
 
-use crate::config::{OptimizationStrategy, PhPct, StationId};
 #[cfg(debug_assertions)]
 use crate::config::DF;
+use crate::config::{OptimizationStrategy, PhPct, StationId};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct UIEngineSharedData {
-    pub(crate) pairs: HashSet<String>,
+    // pub(crate) persisted_pairs: HashSet<String>,
     pub(crate) station_overrides: HashMap<String, StationId>,
     pub(crate) ph_overrides: HashMap<String, PhPct>,
     // Add other shared configurations here as needed in the future
@@ -36,26 +35,20 @@ impl SharedConfiguration {
         self.inner.write().unwrap().strategy = strategy;
     }
 
-    // --- Pair Registry ---
-    // i.e write a list of pairs
-    pub(crate) fn register_pairs(&self, pairs: Vec<String>) {
-        let mut lock = self.inner.write().unwrap();
-        for p in pairs {
-            lock.pairs.insert(p);
-        }
-    }
+    /// The registry is for all persisted pairs. So *not allowed to read from here for ui/engine work. Only persistence work
+    /// Its' actually only used to call ensure_all_stations_initialized() and ensure_all_phs_initialized()
+    // pub(crate) fn register_persisted_pairs(&self, pairs: Vec<String>) {
+    //     let mut lock = self.inner.write().unwrap();
+    //     for p in pairs {
+    //         lock.persisted_pairs.insert(p);
+    //     }
+    // }
 
-    pub(crate) fn get_all_pairs(&self) -> Vec<String> {
-        self.inner.read().unwrap().pairs.iter().cloned().collect()
-    }
-
-    /// Iterates through all registered pairs and ensures they have a StationId.
-    pub(crate) fn ensure_all_stations_initialized(&self) {
+    pub(crate) fn ensure_all_stations_initialized(&self, pairs: &[String]) {
         let mut data = self.inner.write().unwrap();
-        let keys: Vec<String> = data.pairs.iter().cloned().collect();
-        for pair in keys {
+        for pair in pairs {
             data.station_overrides
-                .entry(pair)
+                .entry(pair.clone())
                 .or_insert(StationId::default());
         }
         #[cfg(debug_assertions)]
@@ -67,12 +60,10 @@ impl SharedConfiguration {
         }
     }
 
-    /// Iterates through all registered pairs and ensures they have a PH value.
-    pub(crate) fn ensure_all_phs_initialized(&self, default_ph: PhPct) {
+    pub(crate) fn ensure_all_phs_initialized(&self, pairs: &[String], default_ph: PhPct) {
         let mut data = self.inner.write().unwrap();
-        let keys: Vec<String> = data.pairs.iter().cloned().collect();
-        for pair in keys {
-            data.ph_overrides.entry(pair).or_insert(default_ph);
+        for pair in pairs {
+            data.ph_overrides.entry(pair.clone()).or_insert(default_ph);
         }
         #[cfg(debug_assertions)]
         if DF.log_ph_overrides {
