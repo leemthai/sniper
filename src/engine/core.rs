@@ -68,11 +68,11 @@ pub(crate) struct EngineJob {
 }
 
 pub struct SniperEngine {
-    // Definitive list of pairs we use in engine - initialized from app ONE TIME
+    // Definitive list of pairs we use in engine - initialized from app ONE TIME at startup
     pub(crate) active_engine_pairs: Vec<String>,
 
     /// Pair registry
-    pub(crate) pairs_states: HashMap<String, PairRuntime>, // Keep track of the state of all pairs (not part of SharedConfiguration)
+    pub(crate) pairs_states: HashMap<String, PairRuntime>, // Keep track of the state of all pairs (not part of SharedConfiguration coz we don't need to save)
 
     pub(crate) shared_config: SharedConfiguration, // Share information between ui and engine (for variables either side can update via Arc<RwLock)
     // pub engine_strategy: OptimizationStrategy,

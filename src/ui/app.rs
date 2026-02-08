@@ -130,26 +130,30 @@ impl Default for PlotVisibility {
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct ZoneSniperApp {
+
+    pub(crate) shared_config: SharedConfiguration, // This persists across sessions. Contains details of all pairs analysed
     pub(crate) selected_pair: Option<String>,
-    pub(crate) shared_config: SharedConfiguration,
+    #[serde(skip)]
+    pub(crate) valid_session_pairs: HashSet<String>, // Valid pairs for this session only - this is passed to the engine
+
+
     pub(crate) plot_visibility: PlotVisibility,
     pub(crate) show_debug_help: bool,
     pub(crate) show_ph_help: bool,
     pub(crate) candle_resolution: CandleResolution,
     pub(crate) show_candle_range: bool,
-    pub(crate) startup_tune_done: bool,
+
 
     // TradeFinder State
     pub(crate) tf_scope_match_base: bool, // True = Current Base Pairs, False = All
     pub(crate) tf_sort_col: SortColumn,
     pub(crate) tf_sort_dir: SortDirection,
 
-    pub(crate) saved_opportunity_id: Option<String>,
-
-    #[serde(skip)]
-    pub(crate) valid_pairs: HashSet<String>, // New field - retains knowledge of all valid pairs - the UI should iterate through this to find pairs
+    // Inside the app we use selected_opportunity, an Option<TradeOpportunity>. But for persistance, we just save the ID inside it and recreate it in check_loading_completion.
+    pub(crate) persisted_opportunity_id: Option<String>,
     #[serde(skip)]
     pub(crate) selected_opportunity: Option<TradeOpportunity>,
+
     #[serde(skip)]
     pub(crate) scroll_target: Option<NavigationTarget>,
     #[serde(skip)]
@@ -188,9 +192,8 @@ impl Default for ZoneSniperApp {
         Self {
             selected_pair: Some("BTCUSDT".to_string()),
             shared_config: SharedConfiguration::new(),
-            startup_tune_done: false,
             plot_visibility: PlotVisibility::default(),
-            valid_pairs: HashSet::new(),
+            valid_session_pairs: HashSet::new(),
             show_debug_help: false,
             show_ph_help: false,
             engine: None,
@@ -213,7 +216,7 @@ impl Default for ZoneSniperApp {
             tf_sort_col: SortColumn::LiveRoi, // Default to Money
             tf_sort_dir: SortDirection::Descending, // Highest first
             // saved_strategy: OptimizationStrategy::default(),
-            saved_opportunity_id: None,
+            persisted_opportunity_id: None,
         }
     }
 }
@@ -305,7 +308,7 @@ impl ZoneSniperApp {
     }
 
     /// Updates self.selected_pair (and weirdly sets auto_scale_y = true)
-    pub(crate) fn handle_pair_selection(&mut self, new_pair_name: String) {
+    pub(crate) fn select_pair(&mut self, new_pair_name: String) {
         self.auto_scale_y = true; // TEMP completely the wrong place for plot code.
         let _old_pair_name = self.selected_pair.replace(new_pair_name.clone());
         #[cfg(debug_assertions)]
@@ -351,14 +354,14 @@ impl ZoneSniperApp {
             }
         }
 
-        // If we have found an opportunity for this pair, go to it. Otherwise just switchto the pair
+        // If we have found an opportunity for this pair, go to it. Otherwise just switch to the pair
         if let Some(op) = best_op {
             // PATH A: Specific Opportunity
             // Delegate to the sniper function to handle context override + highlighting
-            self.select_specific_opportunity(op, ScrollBehavior::Center, "jump to pair");
+            self.select_opportunity(op, ScrollBehavior::Center, "jump to pair");
         } else {
             // Path B: No opportunity for this pair. So just switch the UI context to this pair.
-            self.handle_pair_selection(pair);
+            self.select_pair(pair);
         }
 
         // 4. Final Polish
@@ -366,7 +369,7 @@ impl ZoneSniperApp {
     }
 
     /// Selects a specific opportunity
-    pub(crate) fn select_specific_opportunity(
+    pub(crate) fn select_opportunity(
         &mut self,
         op: TradeOpportunity,
         scroll: ScrollBehavior,
@@ -374,17 +377,17 @@ impl ZoneSniperApp {
     ) {
         #[cfg(debug_assertions)]
         if DF.log_selected_opportunity {
-            log::info!("Call select_specific_opportunity because {}", _reason);
+            log::info!("Call select_opportunity because {}", _reason);
         }
         // Switch State (Pure UI)
-        self.handle_pair_selection(op.pair_name.clone());
+        self.select_pair(op.pair_name.clone());
 
         // Update Selection
         self.selected_opportunity = Some(op.clone());
         #[cfg(debug_assertions)]
         if DF.log_selected_opportunity {
             log::info!(
-                "SELECTED OPPORTUNITY: SET to {} in select_specific_opportunity",
+                "SELECTED OPPORTUNITY: SET to {} in select_opportunity",
                 op
             );
         }
@@ -942,79 +945,16 @@ impl ZoneSniperApp {
                 self.initialize_pair_state(&timeseries);
 
                 // Initialize Engine with (pointer to) EXACTLY same SharedConfiguration as we have here. Just two pointers to shared memory.
-                let mut e = SniperEngine::new(timeseries, self.shared_config.clone(), self.valid_pairs.iter().cloned().collect());
+                let mut e = SniperEngine::new(
+                    timeseries,
+                    self.shared_config.clone(),
+                    self.valid_session_pairs.iter().cloned().collect(),
+                );
 
-                // RESTORE LEDGER
-                // If the Nuke Flag is on, we start fresh. Otherwise, we load persistence.
-                if DF.wipe_ledger_on_startup {
-                    #[cfg(debug_assertions)]
-                    log::info!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
-                    e.engine_ledger = OpportunityLedger::new();
-                } else {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        match ledger_io::load_ledger() {
-                            Ok(l) => {
-                                #[cfg(debug_assertions)]
-                                if DF.log_ledger {
-                                    log::info!(
-                                        "Loaded ledger with {} opportunities",
-                                        l.opportunities.len()
-                                    );
-                                }
-                                e.engine_ledger = l;
-                            }
-                            Err(_e) => {
-                                #[cfg(debug_assertions)]
-                                log::error!("Failed to load ledger (starting fresh): {}", _e);
-                                e.engine_ledger = OpportunityLedger::new();
-                            }
-                        }
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        e.engine_ledger = OpportunityLedger::new();
-                    }
-                }
-
-                // Remove all opportunities for pairs that were not loaded in this session.
-                let _count_before = e.engine_ledger.opportunities.len();
-
-                #[cfg(debug_assertions)]
-                if DF.log_ledger {
-                    log::info!("The valid start-up set is {:?}", self.valid_pairs);
-                }
-                e.engine_ledger
-                    .retain(|_id, op| self.valid_pairs.contains(&op.pair_name));
-
-                #[cfg(debug_assertions)]
-                {
-                    if DF.log_ledger {
-                        for op in e.engine_ledger.opportunities.values() {
-                            debug_assert!(
-                                self.valid_pairs.contains(&op.pair_name),
-                                "Ledger contains invalid pair AFTER retain: {}",
-                                op.pair_name
-                            );
-                        }
-                    }
-                }
-
-                #[cfg(debug_assertions)]
-                {
-                    let count_after = e.engine_ledger.opportunities.len();
-                    if _count_before != count_after {
-                        if DF.log_ledger {
-                            log::info!(
-                                "START-UP CLEANUP: Culled {} orphan trades (Data not loaded).",
-                                _count_before - count_after
-                            );
-                        }
-                    }
-                }
+                e.engine_ledger = Self::restore_engine_ledger(&self.valid_session_pairs);
                 self.engine = Some(e);
 
-                if let Some(id) = &self.saved_opportunity_id {
+                if let Some(id) = &self.persisted_opportunity_id {
                     if let Some(op) = self
                         .engine
                         .as_ref()
@@ -1063,7 +1003,7 @@ impl ZoneSniperApp {
                         }
                     }
                 } else {
-                    // Saved_opportunity_id is None. So again, just find best op in ledger, similar to above?
+                    // persisted_opportunity_id is None. So again, just find best op in ledger, similar to above?
                     if let Some(e) = self.engine.as_ref() {
                         self.selected_opportunity = e
                             .engine_ledger
@@ -1072,12 +1012,12 @@ impl ZoneSniperApp {
                         #[cfg(debug_assertions)]
                         if DF.log_selected_opportunity {
                             log::info!(
-                                "SELECTED_OPPORTUNIY SET to {} in check_loading_completion as start-up value because saved_opportunity_id is ({:?}). Therefore we must get an opportunity that matches self.selected_pair which is {:?}",
+                                "SELECTED_OPPORTUNIY SET to {} in check_loading_completion as start-up value because persisted_opportunity_id is ({:?}). Therefore we must get an opportunity that matches self.selected_pair which is {:?}",
                                 self.selected_opportunity
                                     .as_ref()
                                     .map(|op| op.id.as_str())
                                     .unwrap_or("None"),
-                                self.saved_opportunity_id,
+                                self.persisted_opportunity_id,
                                 &self.selected_pair
                             );
                         }
@@ -1085,43 +1025,114 @@ impl ZoneSniperApp {
                 }
 
                 // Reset Navigation to use selected Pair
-                self.nav_states
-                    .insert(self.selected_pair.as_ref().expect("selected_pair must be set during startup").clone(), NavigationState::default());
+                self.nav_states.insert(
+                    self.selected_pair
+                        .as_ref()
+                        .expect("selected_pair must be set during startup")
+                        .clone(),
+                    NavigationState::default(),
+                );
 
                 // TRANSITION TO TUNING PHASE
                 return Some(AppState::Tuning(TuningState {
-                    total: self.valid_pairs.len(),
+                    total: self.valid_session_pairs.len(),
                     completed: 0,
-                    todo_list: self.valid_pairs.iter().cloned().collect::<Vec<String>>(),
+                    todo_list: self.valid_session_pairs.iter().cloned().collect::<Vec<String>>(),
                 }));
             }
         }
         None
     }
 
-    /// Helper: Resolves the startup pair and valid_pair list
-    fn initialize_pair_state(
-        &mut self,
-        timeseries: &TimeSeriesCollection,
-    ) {
+    /// Returns a fully-initialized OpprtuntyLedger (including startup-culling against valid_session_pairs)
+    fn restore_engine_ledger(valid_session_pairs: &HashSet<String>) -> OpportunityLedger {
+        // If the Nuke Flag is on, we start fresh.
+        if DF.wipe_ledger_on_startup {
+            #[cfg(debug_assertions)]
+            log::info!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
+            return OpportunityLedger::new();
+        }
 
+        // Otherwise attempt to load persistence
+        let mut ledger = {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                match ledger_io::load_ledger() {
+                    Ok(l) => {
+                        #[cfg(debug_assertions)]
+                        if DF.log_ledger {
+                            log::info!(
+                                "Loaded ledger with {} opportunities",
+                                l.opportunities.len()
+                            );
+                        }
+                        l
+                    }
+                    Err(e) => {
+                        #[cfg(debug_assertions)]
+                        log::error!("Failed to load ledger (starting fresh): {}", e);
+                        OpportunityLedger::new()
+                    }
+                }
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                OpportunityLedger::new()
+            }
+        };
+
+        // Remove all opportunities for pairs that were not loaded in this session.
+        let count_before = ledger.opportunities.len();
+
+        #[cfg(debug_assertions)]
+        if DF.log_ledger {
+            log::info!("The valid start-up set is {:?}", valid_session_pairs);
+        }
+
+        ledger.retain(|_id, op| valid_session_pairs.contains(&op.pair_name));
+
+        #[cfg(debug_assertions)]
+        {
+            if DF.log_ledger {
+                for op in ledger.opportunities.values() {
+                    debug_assert!(
+                        valid_session_pairs.contains(&op.pair_name),
+                        "Ledger contains invalid pair AFTER retain: {}",
+                        op.pair_name
+                    );
+                }
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            let count_after = ledger.opportunities.len();
+            if count_before != count_after && DF.log_ledger {
+                log::info!(
+                    "START-UP CLEANUP: Culled {} orphan trades (Data not loaded).",
+                    count_before - count_after
+                );
+            }
+        }
+
+        ledger
+    }
+
+    /// Helper: Resolves: (1) self.startup_pair, (2) self.valid_session_pairs, (3) self.shared_config.ph_overides(), (4) self.shared_config.ph_overrides()
+    fn initialize_pair_state(&mut self, timeseries: &TimeSeriesCollection) {
         // Get List of ACTUAL loaded pairs
         let available_pairs = timeseries.unique_pair_names();
-        let valid_pairs: HashSet<String> = available_pairs.iter().cloned().collect();
-        self.valid_pairs = valid_pairs;
-
-        // 1. Register pairs in shared config - ensures all pairs write
-        // self.shared_config.register_persisted_pairs(available_pairs.clone());
-        self.shared_config.ensure_all_stations_initialized(&available_pairs);
-        self.shared_config.ensure_all_phs_initialized(&available_pairs, PhPct::default());
+        let valid_session_pairs: HashSet<String> = available_pairs.iter().cloned().collect();
+        self.valid_session_pairs = valid_session_pairs;
 
         let resolved_pair = self
-        .selected_pair
-        .as_ref()
-        .filter(|p| self.valid_pairs.contains(*p))
-        .cloned()
-        .or_else(|| available_pairs.first().cloned())
-        .expect("Can't run app without at least one asset");
+            .selected_pair
+            .as_ref()
+            .filter(|p| self.valid_session_pairs.contains(*p))
+            .cloned()
+            .or_else(|| available_pairs.first().cloned())
+            .expect("Can't run app without at least one asset");
 
         #[cfg(debug_assertions)]
         if DF.log_selected_pair {
@@ -1131,6 +1142,12 @@ impl ZoneSniperApp {
             );
         }
         self.selected_pair = Some(resolved_pair.clone()); // Guaranteed to have a selected_pair after this
+
+        // Register all pairs in shared config
+        self.shared_config
+            .ensure_all_stations_initialized(&available_pairs);
+        self.shared_config
+            .ensure_all_phs_initialized(&available_pairs, PhPct::default());
     }
 
     /// Helper to load and configure custom fonts (Nerd Fonts)
@@ -1258,18 +1275,19 @@ fn setup_custom_visuals(ctx: &Context) {
 
 impl eframe::App for ZoneSniperApp {
     fn save(&mut self, storage: &mut dyn Storage) {
-        // Update the serializable ID from the runtime "fat" object
-        self.saved_opportunity_id = self.selected_opportunity.as_ref().map(|op| op.id.clone());
 
+        // Update the serializable ID from the runtime "fat" object. Will set to None if self.selected_opportunity is None
+        // Seems to be called every 30 seconds? (Must be an eframe::App thing?)
+        self.persisted_opportunity_id = self.selected_opportunity.as_ref().map(|op| op.id.clone());
         #[cfg(debug_assertions)]
         if DF.log_selected_opportunity {
-            match &self.saved_opportunity_id {
-                Some(id) => log::info!("💾 SAVE [App]: Persisting Opportunity ID [{}]", id),
+            match &self.persisted_opportunity_id {
+                Some(_id) => log::info!("💾 SAVE [App]: Persisting Opportunity ID [{:?}]", self.selected_opportunity),
                 None => log::info!("💾 SAVE [App]: No opportunity selected (None)"),
             }
         }
 
-        // 1. Snapshot the Engine Ledger
+        // Snapshot the Engine Ledger
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(e) = &self.engine {
             // Save active ledger to separate binary file

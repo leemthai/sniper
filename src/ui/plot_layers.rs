@@ -123,10 +123,10 @@ impl PlotLayer for OpportunityLayer {
             Some(_) => {
                 // CASE B: MISMATCH --- User has an Op selected, but it's for a DIFFERENT pair (e.g. ETH selected, viewing BTC).
                 // So We draw NOTHING.
-                log::warn!(
-                    "This has failed for pair {} some reason: if &op.pair_name == current_pair .... so needs debugging. Not unexpected because I have disengaged from plot code a bit.",
-                    current_pair
-                );
+                // log::warn!(
+                //     "This has failed for pair {} some reason: if &op.pair_name == current_pair .... so needs debugging. Not unexpected because I have disengaged from plot code a bit.",
+                //     current_pair
+                // );
             }
 
             None => {

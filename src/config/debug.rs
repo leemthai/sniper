@@ -2,7 +2,6 @@
 
 #[allow(dead_code)]
 pub struct LogFlags {
-
     /// Emit verbose logging for live price stream connections and ticks.
     pub log_price_stream_updates: bool,
 
@@ -19,9 +18,9 @@ pub struct LogFlags {
     pub log_engine_core: bool,
 
     pub log_tuner: bool,
-    pub log_station_overrides: bool, 
+    pub log_station_overrides: bool,
     pub log_ph_overrides: bool,
-    
+
     pub log_pathfinder: bool,
     pub log_zones: bool,
 
@@ -48,29 +47,27 @@ pub struct LogFlags {
     pub max_pairs_load: usize,
 
     // Nuke ledger automatically on start-up
-    pub wipe_ledger_on_startup: bool, 
+    pub wipe_ledger_on_startup: bool,
 
     pub log_pairs: bool,
 }
 
 pub const DF: LogFlags = LogFlags {
 
-    log_pairs: true,
-    
-    
-    log_ledger: true,
-    log_startup_prices: true,
+    log_selected_opportunity: true,
+    log_selected_pair: true,
+    log_pairs: false,
+
+    log_ledger: false,
+    log_startup_prices: false,
 
     log_station_overrides: false,
     log_ph_overrides: false,
     log_tuner: false,
 
-    
     log_engine_core: false, // exclusively core.rs stuff
     log_pathfinder: false,
 
-    log_selected_opportunity: false,
-    log_selected_pair: false,
     log_strategy_selection: false,
     log_candle_update: false,
     log_performance: false,

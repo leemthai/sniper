@@ -935,8 +935,7 @@ impl ZoneSniperApp {
 
         let filter_changed = self.render_trade_finder_filters(ui, rows.len());
 
-        // Simple Validity Check (The Anti-Healer)
-        // If the specific selected trade ID is no longer in the list (filtered out or expired),
+        // If the specific selected trade ID is no longer in the list (filtered out/expired/None),
         // we drop to Market View (None). We do NOT hunt for a replacement.
         if let Some(sel) = &self.selected_opportunity {
             let exists = rows
@@ -946,19 +945,19 @@ impl ZoneSniperApp {
                 #[cfg(debug_assertions)]
                 if DF.log_selected_opportunity {
                     log::info!(
-                        "ANTI-HEALER: SELECTED OPPORTUNITY CLEARed in render_trade_finder_content because apparently no longer exists. THIS NEEDS INVESTIGATING TO FIND OUT WHY."
+                        "SELECTED OPPORTUNITY CLEARED in render_trade_finder_content because apparently no longer exists. THIS NEEDS INVESTIGATING TO FIND OUT WHY."
                     );
                 }
                 self.selected_opportunity = None;
             }
         } else {
-            #[cfg(debug_assertions)]
-            if DF.log_selected_opportunity {
-                log::info!(
-                    "ANTI-HEALER: FAILED TO FIND the currently selected OPPPORTUNITY {:?} in TF because it is blank. Weird?",
-                    &self.selected_opportunity
-                );
-            }
+            // #[cfg(debug_assertions)]
+            // if DF.log_selected_opportunity {
+            //     log::info!(
+            //         "ANTI-HEALER: FAILED TO FIND the currently selected OPPPORTUNITY {:?} in TF because it is blank. Weird?",
+            //         &self.selected_opportunity
+            //     );
+            // }
         }
 
         // Sort
@@ -1165,20 +1164,20 @@ impl ZoneSniperApp {
 
         // // 4. INTERACTION
         if response.clicked() {
+            // Clicking an opportunity row selects it; clicking any non-opportunity row clears selection and selects the pair.
             if let Some(op) = &row.opportunity {
-                self.select_specific_opportunity(
+                self.select_opportunity(
                     op.clone(),
                     ScrollBehavior::None,
                     "clicked in render_tf_table_row",
                 );
-            } else {
-                // This clicked row has no opportunity attached
-                self.handle_pair_selection(row.pair_name.clone());
+            } else if self.selected_opportunity.is_some() {
+                self.selected_opportunity = None;
                 #[cfg(debug_assertions)]
                 log::info!(
                     "SELECTED OPPORTUNITY CLEARing! in render_tf_table_row because this this row has no opportunity i.e. row.opportunity is None"
                 );
-                // self.selected_opportunity = None;
+                self.select_pair(row.pair_name.clone());
             }
         }
     }
@@ -1975,7 +1974,7 @@ impl ZoneSniperApp {
                         new_selected.simulation = variant.simulation.clone();
 
                         // 2. Use the Helper
-                        self.select_specific_opportunity(
+                        self.select_opportunity(
                             new_selected,
                             ScrollBehavior::None,
                             "render_card_variants",

@@ -35,15 +35,6 @@ impl SharedConfiguration {
         self.inner.write().unwrap().strategy = strategy;
     }
 
-    /// The registry is for all persisted pairs. So *not allowed to read from here for ui/engine work. Only persistence work
-    /// Its' actually only used to call ensure_all_stations_initialized() and ensure_all_phs_initialized()
-    // pub(crate) fn register_persisted_pairs(&self, pairs: Vec<String>) {
-    //     let mut lock = self.inner.write().unwrap();
-    //     for p in pairs {
-    //         lock.persisted_pairs.insert(p);
-    //     }
-    // }
-
     pub(crate) fn ensure_all_stations_initialized(&self, pairs: &[String]) {
         let mut data = self.inner.write().unwrap();
         for pair in pairs {
