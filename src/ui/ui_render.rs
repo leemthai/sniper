@@ -12,7 +12,9 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 use crate::config::plot::PLOT_CONFIG;
-use crate::config::{MomentumPct, OptimizationStrategy, Pct, TICKER, VolatilityPct, BASE_INTERVAL, TUNER_CONFIG};
+use crate::config::{
+    BASE_INTERVAL, MomentumPct, OptimizationStrategy, Pct, TICKER, TUNER_CONFIG, VolatilityPct,
+};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -28,7 +30,7 @@ use crate::models::{
     NavigationTarget, SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
 };
 
-use crate::ui::app::ScrollBehavior;
+use crate::ui::app::{ScrollBehavior, Selection};
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color};
 use crate::ui::ui_panels::CandleRangePanel;
@@ -48,8 +50,8 @@ impl ZoneSniperApp {
             return;
         }
 
-        // 2. Get Data (Directly from Selected Opportunity)
-        let Some(op) = self.selected_opportunity.clone() else {
+        // 2. Get Data (Directly from Selection)
+        let Selection::Opportunity(op) = &self.selection else {
             return;
         };
 
@@ -389,7 +391,7 @@ impl ZoneSniperApp {
 
                 // Safety check for Engine/Model
                 if let Some(engine) = &self.engine {
-                    if let Some(pair) = &self.selected_pair {
+                    if let Some(pair) = &self.selection.pair_owned() {
                         if let Some(model) = engine.get_model(pair) {
                             let mut nav = self.get_nav_state();
                             let max_idx = model.segments.len().saturating_sub(1);
@@ -528,14 +530,15 @@ impl ZoneSniperApp {
             .frame(frame)
             .show(ctx, |ui| {
                 // TIME TUNER
-                if let Some(action) = time_tuner::render(
-                    ui,
-                    &TUNER_CONFIG,
-                    self.shared_config
-                        .get_station_opt(self.selected_pair.clone()),
-                    self.selected_pair.clone(),
-                ) {
-                    self.handle_tuner_action(action);
+                if let Some(pair) = self.selection.pair_owned() {
+                    if let Some(action) = time_tuner::render(
+                        ui,
+                        &TUNER_CONFIG,
+                        self.shared_config.get_station_opt(Some(pair.clone())),
+                        Some(pair),
+                    ) {
+                        self.handle_tuner_action(action);
+                    }
                 }
 
                 ui.add_space(10.0);
@@ -667,7 +670,7 @@ impl ZoneSniperApp {
                 };
 
                 // 2. Safety Check: Selected Pair
-                let Some(pair) = self.selected_pair.clone() else {
+                let Some(pair) = self.selection.pair_owned() else {
                     render_fullscreen_message(
                         ui,
                         &UI_TEXT.error_no_pair_selected,
@@ -706,7 +709,7 @@ impl ZoneSniperApp {
                         self.candle_resolution,
                         nav_state.current_segment_idx,
                         self.auto_scale_y,
-                        self.selected_opportunity.clone(),
+                        self.selection.opportunity().cloned(),
                     );
 
                     // HANDLE INTERACTION
@@ -806,7 +809,7 @@ impl ZoneSniperApp {
 
             // Locate Button (Center on Target)
             // Only show if we actually have a target to scroll to
-            if self.selected_pair.is_some() {
+            if self.selection.pair_owned().is_some() {
                 ui.add_space(5.0);
                 if ui
                     .small_button(
@@ -834,8 +837,8 @@ impl ZoneSniperApp {
 
             // "[BASE ASSET] ONLY"
             let base_asset = self
-                .selected_pair
-                .as_ref()
+                .selection
+                .pair()
                 .and_then(|p| PairInterval::get_base(p))
                 .unwrap_or("SELECTED");
 
@@ -935,20 +938,21 @@ impl ZoneSniperApp {
 
         let filter_changed = self.render_trade_finder_filters(ui, rows.len());
 
-        // If the specific selected trade ID is no longer in the list (filtered out/expired/None),
-        // we drop to Market View (None). We do NOT hunt for a replacement.
-        if let Some(sel) = &self.selected_opportunity {
+        // If the selected opportunity no longer exists, drop to Market View (None).
+        if let Selection::Opportunity(sel) = &self.selection {
             let exists = rows
                 .iter()
                 .any(|r| r.opportunity.as_ref().map_or(false, |op| op.id == sel.id));
+
             if !exists {
                 #[cfg(debug_assertions)]
                 if DF.log_selected_opportunity {
                     log::info!(
-                        "SELECTED OPPORTUNITY CLEARED in render_trade_finder_content because apparently no longer exists. THIS NEEDS INVESTIGATING TO FIND OUT WHY."
+                        "SELECTION CLEARED in render_trade_finder_content because selected opportunity no longer exists."
                     );
                 }
-                self.selected_opportunity = None;
+
+                self.selection = Selection::None;
             }
         } else {
             // #[cfg(debug_assertions)]
@@ -1139,14 +1143,23 @@ impl ZoneSniperApp {
         row: &TradeFinderRow,
         index: usize,
     ) {
-        // Selection Logic
-        let is_selected = self.selected_pair.as_deref() == Some(&row.pair_name)
-            && match (&self.selected_opportunity, &row.opportunity) {
-                // Comparison: Match IDs directly
-                (Some(sel), Some(op)) => sel.id == op.id,
-                (None, None) => true,
-                _ => false,
-            };
+        // Selection Logic (Selection-only)
+        let is_selected = match (&self.selection, &row.opportunity) {
+            // Opportunity view: exact opportunity match
+            (Selection::Opportunity(sel), Some(op)) => sel.id == op.id,
+
+            // Pair view: row has no opportunity AND pair matches
+            (Selection::Pair(pair), None) => pair == &row.pair_name,
+
+            // Market view: nothing is selected
+            (Selection::None, _) => false,
+
+            // All other combinations are not selected
+            _ => false,
+        };
+
+        // This paints the background correctly behind the correct row
+        table_row.set_selected(is_selected);
 
         // This paints the background correctly behind the correct row
         table_row.set_selected(is_selected);
@@ -1171,13 +1184,13 @@ impl ZoneSniperApp {
                     ScrollBehavior::None,
                     "clicked in render_tf_table_row",
                 );
-            } else if self.selected_opportunity.is_some() {
-                self.selected_opportunity = None;
+            } else if matches!(self.selection, Selection::Opportunity(_)) {
                 #[cfg(debug_assertions)]
                 log::info!(
-                    "SELECTED OPPORTUNITY CLEARing! in render_tf_table_row because this this row has no opportunity i.e. row.opportunity is None"
+                    "SELECTED OPPORTUNITY CLEARED in render_tf_table_row because this row has no opportunity (row.opportunity is None)"
                 );
-                self.select_pair(row.pair_name.clone());
+
+                self.selection = Selection::Pair(row.pair_name.clone());
             }
         }
     }
@@ -1407,12 +1420,12 @@ impl ZoneSniperApp {
             vec![]
         };
 
-        let selected_op_id = self.selected_opportunity.as_ref().map(|o| &o.id);
+        let selected_op_id = self.selection.opportunity().map(|o| &o.id);
 
         // Scope Helper
         let base_asset = self
-            .selected_pair
-            .as_ref()
+            .selection
+            .pair()
             .and_then(|p| PairInterval::get_base(p))
             .unwrap_or("");
 
@@ -1422,7 +1435,7 @@ impl ZoneSniperApp {
                 return true;
             }
             // Always keep selected/target pair
-            if self.selected_pair.as_deref() == Some(pair) {
+            if self.selection.pair() == Some(pair) {
                 return true;
             }
             // Check Base
@@ -1564,8 +1577,8 @@ impl ZoneSniperApp {
     }
 
     fn render_active_target_panel(&mut self, ui: &mut Ui) {
-        let pair_opt = self.selected_pair.clone();
-        let opp_opt = self.selected_opportunity.clone();
+        let pair_opt = self.selection.pair_owned();
+        let opp_opt = self.selection.opportunity();
 
         Frame::group(ui.style())
             .fill(Color32::from_white_alpha(5))
@@ -1666,7 +1679,7 @@ impl ZoneSniperApp {
         match action {
             TunerAction::StationSelected(station_id) => {
                 // Run Auto-Tune for selected pair
-                if let Some(pair) = &self.selected_pair {
+                if let Some(pair) = self.selection.pair_owned() {
                     let pair_name = pair.clone();
 
                     // Save the preference immediately
@@ -1730,7 +1743,8 @@ impl ZoneSniperApp {
     }
 
     fn render_status_mode(&self, ui: &mut Ui) {
-        if let Some(pair) = &self.selected_pair {
+
+        if let Some(pair) = &self.selection.pair_owned() {
             if self.is_simulation_mode() {
                 let label = &UI_TEXT.sp_simulation_mode;
 
@@ -1780,7 +1794,7 @@ impl ZoneSniperApp {
 
     fn render_status_zone_info(&self, ui: &mut Ui) {
         if let Some(engine) = &self.engine {
-            if let Some(pair) = &self.selected_pair {
+            if let Some(pair) = &self.selection.pair_owned() {
                 if let Some(model) = engine.get_model(pair) {
                     let cva = &model.cva;
                     let zone_size =
@@ -1798,7 +1812,7 @@ impl ZoneSniperApp {
 
     fn render_status_coverage(&self, ui: &mut Ui) {
         if let Some(engine) = &self.engine {
-            if let Some(pair) = &self.selected_pair {
+            if let Some(pair) = &self.selection.pair_owned() {
                 if let Some(model) = engine.get_model(pair) {
                     // Helper closure for coverage colors
                     let cov_color = |pct: f64| {
@@ -1838,7 +1852,7 @@ impl ZoneSniperApp {
 
     fn render_status_candles(&self, ui: &mut Ui) {
         if let Some(engine) = &self.engine {
-            if let Some(pair) = &self.selected_pair {
+            if let Some(pair) = &self.selection.pair_owned() {
                 if let Some(model) = engine.get_model(pair) {
                     ui.separator();
 
@@ -1912,7 +1926,7 @@ impl ZoneSniperApp {
     fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
             // 1. Determine which variant is currently active
-            let active_stop_price = if let Some(sel) = &self.selected_opportunity {
+            let active_stop_price = if let Some(sel) = &self.selection.opportunity() {
                 // FIX: Check exact UUID match.
                 // Previous logic checked target_zone_id, which is now often 0 for generated trades,
                 // causing all trades to think they were selected.
