@@ -339,8 +339,8 @@ impl TimeSeriesSlice<'_> {
         let candle_high = clamp(Price::from(candle.high_price));
         cva_core.distribute_conserved_volume(
             ScoreType::FullCandleTVW,
-            candle_low.into(),
-            candle_high.into(),
+            candle_low,
+            candle_high,
             candle.base_asset_volume.value() * temporal_weight,
         );
 
@@ -350,8 +350,8 @@ impl TimeSeriesSlice<'_> {
 
         cva_core.apply_rejection_impact( 
             ScoreType::LowWickCount,
-            low_wick_start.into(),
-            low_wick_end.into(),
+            low_wick_start,
+            low_wick_end,
             temporal_weight, 
         );
 
@@ -361,8 +361,8 @@ impl TimeSeriesSlice<'_> {
 
         cva_core.apply_rejection_impact( 
             ScoreType::HighWickCount,
-            high_wick_start.into(),
-            high_wick_end.into(),
+            high_wick_start,
+            high_wick_end,
             temporal_weight,
         );
 

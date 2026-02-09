@@ -223,7 +223,7 @@ impl SniperEngine {
 
             let ts_guard = self.timeseries.read().unwrap();
 
-            for (pair, _state) in &self.pairs_states {
+            for pair in self.pairs_states.keys() {
                 // 2. Get Context (Price)
                 // STRICT MODE: Do not default to 0.0. If no price, skip the pair.
                 let price_opt = overrides
@@ -266,7 +266,7 @@ impl SniperEngine {
                 let valid_ops: Vec<&TradeOpportunity> = raw_ops
                     .iter()
                     .filter(|&&op| op.expected_roi().is_positive())
-                    .map(|&op| op)
+                    .copied()
                     .collect();
 
                 let total_ops = valid_ops.len();
@@ -278,9 +278,8 @@ impl SniperEngine {
                             pair_name: pair.clone(),
                             quote_volume_24h: vol_24h,
                             market_state: Some(op.market_state),
-                            // opportunity_count_total: total_ops,
                             opportunity: Some(op.clone()),
-                            current_price: current_price,
+                            current_price,
                         });
                     }
                 } else {
@@ -289,9 +288,8 @@ impl SniperEngine {
                         pair_name: pair.clone(),
                         quote_volume_24h: vol_24h,
                         market_state: None,
-                        // opportunity_count_total: 0,
                         opportunity: None,
-                        current_price: current_price,
+                        current_price,
                     });
                 }
             }
@@ -438,10 +436,12 @@ impl SniperEngine {
                     .expect("We must have value for ph_pct for this pair at all times");
 
                 // 2. Lookup Station (Specific to pair)
-                let station = config.get_station(&pair).expect(&format!(
-                    "trigger_global_recalc must have station set for pair {}",
-                    pair
-                ));
+                let station = config.get_station(&pair).unwrap_or_else(|| {
+                    panic!(
+                        "trigger_global_recalc must have station set for pair {}",
+                        pair
+                    )
+                });
 
                 target_queue.push_back(EngineJob {
                     pair,
@@ -476,6 +476,7 @@ impl SniperEngine {
     ///
     /// This is used when the caller knows the current model for this pair
     /// is stale (e.g. user action, parameter change).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn invalidate_pair_and_recalc(
         &mut self,
         pair: &str,
@@ -544,7 +545,7 @@ impl SniperEngine {
                             let station_id = self
                                 .shared_config
                                 .get_station(&pair_name)
-                                .expect(&format!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in shared_config {:?}", pair_name, ph_pct, self.shared_config)); // This should now crash if None is encountered. Better than reverting to default I think
+                                .unwrap_or_else(|| panic!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in shared_config {:?}", pair_name, ph_pct, self.shared_config));
                             #[cfg(debug_assertions)]
                             if DF.log_engine_core {
                                 log::info!(
@@ -555,9 +556,9 @@ impl SniperEngine {
                             self.enqueue_or_replace(EngineJob {
                                 pair: pair_name.clone(),
                                 price_override: Some(candle.close.into()),
-                                ph_pct: ph_pct,
+                                ph_pct,
                                 strategy: self.shared_config.get_strategy(),
-                                station_id: station_id,
+                                station_id,
                                 mode: JobMode::FullAnalysis,
                             });
                             // }
@@ -625,7 +626,7 @@ impl SniperEngine {
                 if let Some(reason) = outcome {
                     let pnl = match op.direction {
                         TradeDirection::Long => {
-                            (exit_price - Price::from(op.start_price)) / op.start_price * 100.0
+                            (exit_price - op.start_price) / op.start_price * 100.0
                         }
                         TradeDirection::Short => {
                             (op.start_price - exit_price) / op.start_price * 100.0
@@ -646,9 +647,9 @@ impl SniperEngine {
                     let result = TradeResult {
                         trade_id: id.clone(),
                         pair: pair.clone(),
-                        direction: op.direction.clone(),
+                        direction: op.direction,
                         entry_price: op.start_price,
-                        exit_price: exit_price,
+                        exit_price,
                         outcome: reason,
                         entry_time: op.created_at.timestamp_millis(),
                         exit_time: time_now_utc.timestamp_millis(),
@@ -759,7 +760,7 @@ impl SniperEngine {
         // let pairs: Vec<String> = self.shared_config.get_all_pairs();
         let threshold = PRICE_RECALC_THRESHOLD_PCT;
 
-        let pairs: Vec<String> = self.active_engine_pairs.iter().cloned().collect();
+        let pairs: Vec<String> = self.active_engine_pairs.to_vec();
         #[cfg(debug_assertions)]
         if DF.log_pairs {
             log::info!(
@@ -836,10 +837,15 @@ impl SniperEngine {
                 }
             };
 
-            let station_id = self.shared_config.get_station(&pair_name).expect(&format!(
-                "PAIR {} with ph_pct {} unexpectedly missing station_id",
-                pair_name, ph_pct
-            ));
+            let station_id = self
+                .shared_config
+                .get_station(&pair_name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "PAIR {} with ph_pct {} unexpectedly missing station_id",
+                        pair_name, ph_pct
+                    )
+                });
 
             self.enqueue_or_replace(EngineJob {
                 pair: pair_name.clone(),
@@ -876,7 +882,7 @@ impl SniperEngine {
     fn dispatch_job(&mut self, job: EngineJob) {
         if let Some(state) = self.pairs_states.get_mut(&job.pair) {
             // Resolve Price
-            let live_price = self.price_stream.get_price(&job.pair).map(Price::from);
+            let live_price = self.price_stream.get_price(&job.pair);
             let final_price_opt = job.price_override.or(live_price);
 
             // 🔴 THIS IS THE FIX for the engine violation - refuse to queue a new job for the same pair if already being calculated

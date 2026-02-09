@@ -3,9 +3,9 @@ macro_rules! trace_time {
     // $threshold_micros: Enter 500 for 0.5ms, 1000 for 1ms, etc.
     ($name:expr, $threshold_micros:expr, $block:block) => {{
         // Check the global flag
-        if crate::config::DF.log_performance {
+        if $crate::config::DF.log_performance {
             // FIX: Use AppInstant instead of std::time::Instant
-            let start = crate::utils::time_utils::AppInstant::now();
+            let start = $crate::utils::time_utils::AppInstant::now();
             let result = $block;
             let elapsed = start.elapsed();
             let micros = elapsed.as_micros();

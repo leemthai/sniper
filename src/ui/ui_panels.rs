@@ -37,7 +37,7 @@ impl<'a> CandleRangePanel<'a> {
 
         ui.horizontal(|ui| {
             // PREV BUTTON
-            let prev_enabled = self.current_range_idx.map_or(false, |i| i > 0);
+            let prev_enabled = self.current_range_idx.is_some_and(|i| i > 0);
             if ui.add_enabled(prev_enabled, Button::new("⬅")).clicked() {
                 if let Some(curr) = self.current_range_idx {
                     action = Some(Some(curr - 1));
@@ -67,7 +67,7 @@ impl<'a> CandleRangePanel<'a> {
             // NEXT BUTTON
             let next_enabled = self
                 .current_range_idx
-                .map_or(false, |i| i < self.segments.len() - 1);
+                .is_some_and(|i| i < self.segments.len() - 1);
             if ui
                 .add_enabled(next_enabled, Button::new("➡"))
                 .clicked()

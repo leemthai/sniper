@@ -40,7 +40,7 @@ impl SharedConfiguration {
         for pair in pairs {
             data.station_overrides
                 .entry(pair.clone())
-                .or_insert(StationId::default());
+                .or_default();
         }
         #[cfg(debug_assertions)]
         if DF.log_station_overrides {

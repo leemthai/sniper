@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use crate::analysis::market_state::MarketState;
 
 use crate::config::{
-    DF, Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice, Weight
+    DF, Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice, Weight,
 };
 
 use crate::models::OhlcvTimeSeries;
@@ -21,7 +21,6 @@ pub(crate) const DEFAULT_SIMILARITY: SimilaritySettings = SimilaritySettings {
     weight_momentum: WEIGHT_MOMENTUM,
     weight_volume: WEIGHT_VOLUME,
 };
-
 
 /// Structure of Arrays (SoA) layout for AVX-512 processing.
 /// Instead of [State, State, State], we have [All_Vols], [All_Moms], [All_Rels].
@@ -44,7 +43,7 @@ impl SimdHistory {
 
     /// Padding ensures we don't segfault when loading chunks of 16 at the end
     fn pad_to_16(&mut self) {
-        while self.vol.len() % 16 != 0 {
+        while !self.vol.len().is_multiple_of(16) {
             self.vol.push(0.0);
             self.mom.push(0.0);
             self.rel_vol.push(0.0);
@@ -172,13 +171,18 @@ fn generate_momentum_optimized(
         0
     };
 
-    for i in processed..len {
+    for (i, result) in results
+        .iter_mut()
+        .enumerate()
+        .skip(processed)
+        .take(len - processed)
+    {
         let curr_idx = start_idx + i;
         let prev_idx = curr_idx - lookback;
         let c = ts.close_prices[curr_idx];
         let p = ts.close_prices[prev_idx];
         if p.is_positive() {
-            results[i] = ((c - p) / p) as f32;
+            *result = ((c - p) / p) as f32;
         }
     }
 
@@ -237,13 +241,13 @@ fn generate_volatility_optimized(
         0
     };
 
-    for i in processed..raw_len {
+    for (i, raw_vol) in raw_vols.iter_mut().enumerate().skip(processed) {
         let idx = raw_start + i;
         let h: Price = ts.high_prices[idx].into();
         let l: Price = ts.low_prices[idx].into();
         let c: Price = ts.close_prices[idx].into();
         if c.is_positive() {
-            raw_vols[i] = (h - l) / c;
+            *raw_vol = (h - l) / c;
         }
     }
 
@@ -406,6 +410,7 @@ impl ScenarioSimulator {
         Some((candidates, current_market_state))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn analyze_outcome(
         ts: &OhlcvTimeSeries,
         matches: &[(usize, f64)],
@@ -428,18 +433,14 @@ impl ScenarioSimulator {
 
             // Pre-calculate theoretical max PnL for Hit/Stop
             let (win_pnl_pct, lose_pnl_pct) = match direction {
-                TradeDirection::Long => {
-                    (
-                        (Price::from(target_price) - entry_price) / entry_price,
-                        (Price::from(stop_price) - entry_price) / entry_price,
-                    )
-                }
-                TradeDirection::Short => {
-                    (
-                        (entry_price - Price::from(target_price)) / entry_price,
-                        (entry_price - Price::from(stop_price)) / entry_price,
-                    )
-                }
+                TradeDirection::Long => (
+                    (Price::from(target_price) - entry_price) / entry_price,
+                    (Price::from(stop_price) - entry_price) / entry_price,
+                ),
+                TradeDirection::Short => (
+                    (entry_price - Price::from(target_price)) / entry_price,
+                    (entry_price - Price::from(stop_price)) / entry_price,
+                ),
             };
 
             for &(start_idx, _score) in matches {
@@ -607,8 +608,9 @@ impl ScenarioSimulator {
                         // DYNAMIC FORENSICS BASED ON DIRECTION
                         match direction {
                             TradeDirection::Long => {
-                                let low_change =
-                                    (Price::from(c.low_price) - Price::from(hist_entry)) / Price::from(hist_entry);
+                                let low_change = (Price::from(c.low_price)
+                                    - Price::from(hist_entry))
+                                    / Price::from(hist_entry);
                                 let scalar_hit = low_change <= stop_dist; // stop_dist is usually negative for Long
                                 let simd_hit = c.low_price <= Price::from(hist_stop);
 
@@ -631,7 +633,8 @@ impl ScenarioSimulator {
                                 );
                             }
                             TradeDirection::Short => {
-                                let high_change = (Price::from(c.high_price) - Price::from(hist_entry))
+                                let high_change = (Price::from(c.high_price)
+                                    - Price::from(hist_entry))
                                     / hist_entry;
                                 let scalar_hit = high_change >= stop_dist; // stop_dist is positive for Short
                                 let simd_hit = Price::from(c.high_price) >= Price::from(hist_stop);

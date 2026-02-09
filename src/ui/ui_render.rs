@@ -81,7 +81,7 @@ impl ZoneSniperApp {
                 // "Setup Type: LONG" (with encoded color)
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label_subdued(format!("{}", UI_TEXT.opp_exp_setup_type));
+                    ui.label_subdued(&UI_TEXT.opp_exp_setup_type);
                     ui.label(
                         RichText::new(op.direction.to_string().to_uppercase())
                             .strong()
@@ -111,7 +111,7 @@ impl ZoneSniperApp {
                 let roi_color = get_outcome_color(roi_pct.value());
 
                 ui.metric(
-                    &format!("{}", UI_TEXT.label_roi),
+                    &UI_TEXT.label_roi,
                     &format!("{}", roi_pct),
                     roi_color,
                 );
@@ -875,9 +875,9 @@ impl ZoneSniperApp {
         let mut render_btn = |ui: &mut Ui, idx: usize| {
             if let Some(goal) = goals.get(idx) {
                 let col = match goal {
-                    &OptimizationStrategy::MaxROI => SortColumn::LiveRoi,
-                    &OptimizationStrategy::MaxAROI => SortColumn::AnnualizedRoi,
-                    &OptimizationStrategy::Balanced => SortColumn::Score,
+                    OptimizationStrategy::MaxROI => SortColumn::LiveRoi,
+                    OptimizationStrategy::MaxAROI => SortColumn::AnnualizedRoi,
+                    OptimizationStrategy::Balanced => SortColumn::Score,
                 };
                 if self.render_sort_icon_button(ui, col, &goal.icon()) {
                     *sort_changed = true;
@@ -942,7 +942,7 @@ impl ZoneSniperApp {
         if let Selection::Opportunity(sel) = &self.selection {
             let exists = rows
                 .iter()
-                .any(|r| r.opportunity.as_ref().map_or(false, |op| op.id == sel.id));
+                .any(|r| r.opportunity.as_ref().is_some_and(|op| op.id == sel.id));
 
             if !exists {
                 #[cfg(debug_assertions)]
@@ -980,8 +980,7 @@ impl ZoneSniperApp {
                 match target {
                     // Case A: Hunting a specific Trade (UUID)
                     NavigationTarget::Opportunity(id) => {
-                        // log::info!("render_trade_finder_content() case A hunting id: {} ", id);
-                        r.opportunity.as_ref().map_or(false, |op| op.id == *id)
+                        r.opportunity.as_ref().is_some_and(|op| op.id == *id)
                     }
                     // Case B: Hunting a Pair (Market View)
                     NavigationTarget::Pair(name) => {
@@ -1733,6 +1732,7 @@ impl ZoneSniperApp {
                         }
                     }
                 } else {
+                    // Nothing going on here yet (or ever probably)
                 }
             }
             TunerAction::ConfigureTuner => {
@@ -2004,7 +2004,7 @@ impl ZoneSniperApp {
     }
 
     fn render_optimization_strategy(&mut self, ui: &mut Ui) {
-        ui.label(format!("{}", UI_TEXT.label_goal));
+        ui.label(&UI_TEXT.label_goal);
 
         // Read current value
         let current_strategy = self.shared_config.get_strategy();
@@ -2050,7 +2050,7 @@ impl ZoneSniperApp {
         }
     }
 
-    fn sort_trade_finder_rows(&self, rows: &mut Vec<TradeFinderRow>) {
+    fn sort_trade_finder_rows(&self, rows: &mut [TradeFinderRow]) {
         rows.sort_by(|a, b| {
             // 1. Always push "No Opportunity" rows to the bottom
             let a_has = a.opportunity.is_some();

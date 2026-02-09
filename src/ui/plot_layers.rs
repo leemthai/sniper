@@ -316,6 +316,7 @@ impl PlotLayer for CandlestickLayer {
 }
 
 // Helper: Draws the candle (splitting logic included)
+#[allow(clippy::too_many_arguments)]
 fn draw_split_candle(
     ui: &mut PlotUi,
     x: f64,
@@ -343,8 +344,8 @@ fn draw_split_candle(
     let close_p: Price = close.into();
     let high_p: Price = high.into();
     let low_p: Price = low.into();
-    let ph_min_p: Price = ph_min.into();
-    let ph_max_p: Price = ph_max.into();
+    let ph_min_p: Price = ph_min;
+    let ph_max_p: Price = ph_max;
 
     // A. Bottom Ghost Wick (Below ph_min)
     // Range: [low, min(high, ph_min)]
@@ -729,6 +730,7 @@ fn get_stroke(zone: &SuperZone, current_price: Option<Price>, base_color: Color3
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_superzone(
     plot_ui: &mut PlotUi,
     superzone: &SuperZone,

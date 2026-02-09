@@ -1,7 +1,8 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize, Default)]
 pub(crate) enum SimDirection {
+    #[default]
     Up,
     Down,
 }
@@ -15,14 +16,15 @@ impl fmt::Display for SimDirection {
     }
 }
 
-impl Default for SimDirection {
-    fn default() -> Self {
-        Self::Up
-    }
-}
+// impl Default for SimDirection {
+//     fn default() -> Self {
+//         Self::Up
+//     }
+// }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize, Default)]
 pub(crate) enum SimStepSize {
+    #[default]
     Point1, // 0.1%
     Point5, // 0.5%
     One,    // 1%
@@ -52,11 +54,11 @@ impl SimStepSize {
     }
 }
 
-impl Default for SimStepSize {
-    fn default() -> Self {
-        Self::Point1
-    }
-}
+// impl Default for SimStepSize {
+//     fn default() -> Self {
+//         Self::Point1
+//     }
+// }
 
 impl fmt::Display for SimStepSize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

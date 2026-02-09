@@ -1,4 +1,4 @@
-    use crate::config::{Price, Pct};
+use crate::config::{Pct, Price};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::models::LiveCandle;
@@ -18,7 +18,7 @@ use tokio::time::sleep;
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::{BINANCE, BinanceApiConfig, BASE_INTERVAL},
+    crate::config::{BASE_INTERVAL, BINANCE, BinanceApiConfig},
     binance_sdk::{
         config::ConfigurationRestApi,
         spot::{
@@ -76,8 +76,7 @@ pub struct PriceStreamManager {
 // ... build_combined_stream_url ...
 #[cfg(not(target_arch = "wasm32"))]
 fn build_combined_stream_url(symbols: &[String]) -> String {
-    let interval =
-        crate::utils::TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
+    let interval = crate::utils::TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
 
     // CHANGE: Only subscribe to kline
     let streams: Vec<String> = symbols
@@ -358,51 +357,37 @@ async fn run_combined_price_stream(
             Ok(Message::Text(text)) => {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                     // Check Event Type "e"
-                    if let Some(event_type) = v["data"]["e"].as_str() {
-                        match event_type {
-                            "kline" => {
-                                // 1. SEND TO ENGINE (History/Heartbeat)
-                                if let Some(tx) = &candle_tx {
-                                    parse_and_send_kline(&v["data"], tx);
-                                }
+                    if let Some("kline") = v["data"]["e"].as_str() {
+                        // 1. SEND TO ENGINE (History/Heartbeat)
+                        if let Some(tx) = &candle_tx {
+                            parse_and_send_kline(&v["data"], tx);
+                        }
 
-                                // 2. UPDATE LIVE PRICE CACHE (UI Display)
-                                // We use the current candle close ("c") as the live price
-                                if let Some(k) = v["data"].get("k") {
-                                    if let Some(c_str) = k["c"].as_str() {
-                                        if let Ok(raw) = c_str.parse::<f64>() {
-                                            // Check Suspension
-                                            let is_suspended = *suspended_arc.lock().unwrap();
-                                            if !is_suspended {
-                                                let symbol = v["data"]["s"]
-                                                    .as_str()
-                                                    .unwrap_or("")
-                                                    .to_lowercase();
+                        // 2. UPDATE LIVE PRICE CACHE (UI Display)
+                        // We use the current candle close ("c") as the live price
+                        if let Some(k) = v["data"].get("k") {
+                            if let Some(c_str) = k["c"].as_str() {
+                                if let Ok(raw) = c_str.parse::<f64>() {
+                                    // Check Suspension
+                                    let is_suspended = *suspended_arc.lock().unwrap();
+                                    if !is_suspended {
+                                        let symbol =
+                                            v["data"]["s"].as_str().unwrap_or("").to_lowercase();
 
-                                                // Update Map
-                                                let price = Price::new(raw);
-                                                prices_arc
-                                                    .lock()
-                                                    .unwrap()
-                                                    .insert(symbol.clone(), price);
+                                        // Update Map
+                                        let price = Price::new(raw);
+                                        prices_arc.lock().unwrap().insert(symbol.clone(), price);
 
-                                                #[cfg(debug_assertions)]
-                                                if DF.log_price_stream_updates {
-                                                    log::info!(
-                                                        "[kline-tick] {} -> {:.6}",
-                                                        symbol,
-                                                        price
-                                                    );
-                                                }
-                                            }
+                                        #[cfg(debug_assertions)]
+                                        if DF.log_price_stream_updates {
+                                            log::info!("[kline-tick] {} -> {:.6}", symbol, price);
                                         }
                                     }
                                 }
                             }
-                            // Ignore other events (like 24hrTicker if any sneak in)
-                            _ => {}
                         }
                     }
+                // Ignore other events (like 24hrTicker if any sneak in)
                 } else {
                     log::warn!("⚠️ Failed to parse WebSocket JSON message");
                 }

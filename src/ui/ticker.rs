@@ -196,7 +196,7 @@ impl TickerState {
         // Wrap offset logic (Infinite Scroll)
         // If offset is too far left (negative), wrap it back to 0
         // If offset is too far right (positive), wrap it back
-        self.offset = self.offset % total_width;
+        self.offset %= total_width;
         if self.offset > 0.0 {
             self.offset -= total_width;
         } // Keep it negative-flowing
@@ -214,7 +214,7 @@ impl TickerState {
 
             for item in &self.items {
                 // COLOR LOGIC
-                let text_color = if let Some(_) = &item.url {
+                let text_color = if item.url.is_some() {
                     TICKER.text_color_link
                 } else if item.price.value() == 0.0 {
                     // Custom Message

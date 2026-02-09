@@ -8,17 +8,17 @@ use crate::config::{MomentumPct, VolatilityPct, VolRatio, PriceLike};
 /// Used to find historical matches for the Ghost Runner simulation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub(crate) struct MarketState {
-    /// 1. Volatility (The "Temperature")
+    /// Volatility (The "Temperature")
     /// Ratio of (High-Low) relative to the Close price.
     /// High = Violent/Fast market. Low = Quiet/Consolidation.
     pub volatility_pct: VolatilityPct,
 
-    /// 2. Momentum (The "Velocity")
+    /// Momentum (The "Velocity")
     /// Percentage change over the last N candles (e.g. 12 candles / 1 hour).
     /// Positive = Rushing up. Negative = Crashing down.
     pub momentum_pct: MomentumPct,
 
-    /// 3. Relative Volume (The "Fuel")
+    /// Relative Volume (The "Fuel")
     /// Current Volume divided by Average Volume (e.g. 20-period MA).
     /// > 1.0 = High conviction. < 1.0 = Low liquidity/interest.
     pub relative_volume: VolRatio,
@@ -44,7 +44,7 @@ impl MarketState {
 
         // 3. Relative Volume (O(1) Lookup)
         // We now read the pre-calculated value directly.
-        let rel_vol = ts.relative_volumes.get(idx).copied().expect(&format!("something gone wrong with idx value, {},  in market_state::calculate ", idx));
+        let rel_vol = ts.relative_volumes.get(idx).copied().unwrap_or_else(|| panic!("something gone wrong with idx value, {},  in market_state::calculate ", idx));
 
         Some(Self {
             volatility_pct: volatility,

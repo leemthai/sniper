@@ -5,6 +5,12 @@ pub struct AuditReporter {
     buffer: Vec<String>,
 }
 
+impl Default for AuditReporter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuditReporter {
     pub fn new() -> Self {
         Self { buffer: Vec::new() }
@@ -39,7 +45,7 @@ impl AuditReporter {
             if let Some(hrs) = durations_hours.get(i) {
                 d_str.push_str(&format!(",{:.2}", hrs));
             } else {
-                d_str.push_str(",");
+                d_str.push(',');
             }
         }
 
@@ -50,10 +56,10 @@ impl AuditReporter {
             } else {
                 format!("{:.2}", v)  // Balanced -> Raw Score
             }
-        }).unwrap_or_else(|| "".to_string());
+        }).unwrap_or_default();
         
         // FIX: High Precision for Stop Loss
-        let stop_str = avg_stop_pct.map(|v| format!("{:.4}%", v * 100.0)).unwrap_or_else(|| "".to_string());
+        let stop_str = avg_stop_pct.map(|v| format!("{:.4}%", v * 100.0)).unwrap_or_default();
 
         let row = format!(
             "{},{},{},{},{},{},{},{},{},{},{},{}{}",

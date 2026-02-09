@@ -125,6 +125,7 @@ impl PlotView {
         Self { cache: None }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn show_my_plot(
         &mut self,
         ui: &mut Ui,
@@ -214,15 +215,15 @@ impl PlotView {
 
                 // --- LAYER STACK ---
                 let ctx = LayerContext {
-                    trading_model: trading_model,
-                    ohlcv: ohlcv,
+                    trading_model,
+                    ohlcv,
                     cache: &cache,
                     visibility,
                     // background_score_type,
                     x_min: 0.0,
                     x_max: total_visual_width,
                     current_price: current_pair_price,
-                    resolution: resolution,
+                    resolution,
                     ph_bounds: (Price::new(ph_min), Price::new(ph_max)),
                     clip_rect,
                     selected_opportunity: &selected_opportunity,
@@ -325,7 +326,7 @@ impl PlotView {
             buckets as f64
         };
 
-        let total_visual_candles: f64 = model.segments.iter().map(|s| calc_width(s)).sum();
+        let total_visual_candles: f64 = model.segments.iter().map(&calc_width).sum();
 
         let gap_count = model.segments.len().saturating_sub(1);
         let total_visual_width = total_visual_candles + (gap_count as f64 * gap_size);

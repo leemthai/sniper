@@ -7,23 +7,24 @@ use strum_macros::{Display, EnumIter};
 
 use crate::ui::config::UI_TEXT;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, Default)]
 pub enum CandleResolution {
     M5,
     M15,
     H1,
     H4,
+    #[default]
     D1,
     D3,
     W1,
     M1,
 }
 
-impl Default for CandleResolution {
-    fn default() -> Self {
-        Self::D1 // Default to 1D candles for plot candles
-    }
-}
+// impl Default for CandleResolution {
+//     fn default() -> Self {
+//         Self::D1 // Default to 1D candles for plot candles
+//     }
+// }
 
 impl CandleResolution {
     pub fn duration(&self) -> Duration {
@@ -303,7 +304,7 @@ impl DurationMs {
         DurationMs::new((self.0 as f64 * factor).round() as i64)
     }
 
-    pub fn to_hours(&self) -> f64 {
+    pub fn to_hours(self) -> f64 {
         if self.0 <= 0 {
             0.0
         } else {
@@ -312,7 +313,7 @@ impl DurationMs {
     }
 
     /// Converts duration to a float number of years (for annualized math).
-    pub fn to_years(&self) -> f64 {
+    pub fn to_years(self) -> f64 {
         if self.0 <= 0 {
             0.0
         } else {
@@ -692,21 +693,22 @@ impl<T: PriceLike> PriceRange<T> {
 
 // --- ENUMS (Definitions) ---
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter, Ord, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter, Ord, PartialOrd, Default)]
 pub enum OptimizationStrategy {
     #[strum(to_string = "Max ROI")]
     MaxROI,
     #[strum(to_string = "Max AROI")]
     MaxAROI,
     #[strum(to_string = "Balanced")]
+    #[default]
     Balanced,
 }
 
-impl Default for OptimizationStrategy {
-    fn default() -> Self {
-        Self::Balanced // The sensible middle ground
-    }
-}
+// impl Default for OptimizationStrategy {
+//     fn default() -> Self {
+//         Self::Balanced // The sensible middle ground
+//     }
+// }
 
 impl OptimizationStrategy {
     pub fn icon(&self) -> String {

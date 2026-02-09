@@ -55,19 +55,10 @@ pub enum ScrollBehavior {
     None,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 pub(crate) struct NavigationState {
     pub current_segment_idx: Option<usize>, // None = Show All
     pub last_viewed_segment_idx: usize,
-}
-
-impl Default for NavigationState {
-    fn default() -> Self {
-        Self {
-            current_segment_idx: None,
-            last_viewed_segment_idx: 0,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -128,17 +119,13 @@ impl Default for PlotVisibility {
     }
 }
 
-#[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Debug, Default)]
 pub(crate) enum Selection {
+    #[default]
     None,
     Pair(String),
     Opportunity(TradeOpportunity),
-}
-
-impl Default for Selection {
-    fn default() -> Self {
-        Selection::None
-    }
 }
 
 impl fmt::Display for Selection {
@@ -516,10 +503,10 @@ impl ZoneSniperApp {
             let Some(pair) = self.selection.pair() else {
                 return;
             };
-            let Some(current_price) = self.get_display_price(&pair) else {
+            let Some(current_price) = self.get_display_price(pair) else {
                 return;
             };
-            let Some(model) = e.get_model(&pair) else {
+            let Some(model) = e.get_model(pair) else {
                 return;
             };
 
@@ -872,10 +859,7 @@ impl ZoneSniperApp {
             while processed < chunk_size && !state.todo_list.is_empty() {
                 if let Some(pair) = state.todo_list.pop() {
                     // A. Determine Station for each pair
-                    let station_id = self.shared_config.get_station(&pair).expect(&format!(
-                        "handle_tuning_phase stations should all be full, especially for pair {}",
-                        pair
-                    ));
+                    let station_id = self.shared_config.get_station(&pair).unwrap_or_else(|| panic!("handle_tuning_phase stations should all be full, especially for pair {}", pair));
                     #[cfg(debug_assertions)]
                     if DF.log_station_overrides {
                         log::info!(

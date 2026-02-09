@@ -156,6 +156,7 @@ impl CVACore {
     }
 
     // Updated Constructor to match src/models/timeseries.rs usage
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         min_price: LowPrice,
         max_price: HighPrice,

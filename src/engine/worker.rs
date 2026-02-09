@@ -289,7 +289,7 @@ pub(crate) fn run_pathfinder_simulations(
         ohlcv,
         cva: cva_opt,
         matches,
-        current_state: current_state,
+        current_state,
         current_price,
         strategy,
         station_id,
@@ -410,7 +410,7 @@ fn simulate_target(
                 target_price,
                 stop_price,
                 max_duration: ctx.duration,
-                avg_duration: avg_duration,
+                avg_duration,
                 strategy: ctx.strategy,
                 station_id: ctx.station_id,
                 market_state: ctx.current_state,
@@ -430,10 +430,10 @@ fn simulate_target(
 }
 
 /// Phase C: Filters opportunities using the "Regional Championship" strategy.
-/// 1. Divides the price range into N regions.
-/// 2. Finds the best trade in each region (Local Winner).
-/// 3. Filters Local Winners against the Global Best Score (Qualifying Round).
-/// /// Invariant: range_max > range_min (degenerate price ranges are rejected upstream)
+/// Divides the price range into N regions.
+/// Finds the best trade in each region (Local Winner).
+/// Filters Local Winners against the Global Best Score (Qualifying Round).
+/// Invariant: range_max > range_min (degenerate price ranges are rejected upstream)
 fn apply_diversity_filter(
     candidates: Vec<CandidateResult>,
     _pair_name: &str,
@@ -946,6 +946,7 @@ fn run_drill_phase(
     candidates
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_stop_loss_tournament(
     // Runs a gated R:R stop-loss tournament, selecting the highest-scoring viable stop per strategy.
     ohlcv: &OhlcvTimeSeries,
