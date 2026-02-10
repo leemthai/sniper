@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+// use std::fs::remove_dir;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, RwLock};
 
@@ -28,6 +29,7 @@ use crate::models::{
 
 use crate::shared::SharedConfiguration;
 
+use crate::ui::app::LedgerRemovals;
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 
@@ -297,11 +299,14 @@ impl SniperEngine {
         })
     }
 
-    /// THE GAME LOOP.
-    pub(crate) fn update(&mut self) {
+    /// THE GAME LOOP
+    /// Returns a list of opportunity IDs that got pruned. This is passed back to UI to update `Selection` if current selection is one of the ops pruned
+    pub(crate) fn update(&mut self) -> LedgerRemovals {
         // Ingest Live Data (The Heartbeat)
         let t1 = AppInstant::now();
-        self.process_live_data();
+        let mut removals = LedgerRemovals::default();
+        removals.ids.extend(self.process_live_data());
+
         let d1 = t1.elapsed().as_micros();
 
         // WASM ONLY: Process jobs manually in the main thread
@@ -321,8 +326,10 @@ impl SniperEngine {
             >= journey_settings.optimization.prune_interval_sec
         {
             // Pass the Tolerance AND the Profile (Strategy)
-            self.engine_ledger
-                .prune_collisions(journey_settings.optimization.fuzzy_match_tolerance);
+            removals.ids.extend(
+                self.engine_ledger
+                    .prune_collisions(journey_settings.optimization.fuzzy_match_tolerance),
+            );
             self.last_ledger_maintenance = t1;
         }
 
@@ -354,6 +361,8 @@ impl SniperEngine {
                 d4
             );
         }
+
+        removals
     }
 
     /// Accessor for UI
@@ -505,8 +514,10 @@ impl SniperEngine {
         });
     }
 
-    fn process_live_data(&mut self) {
+    fn process_live_data(&mut self) -> Vec<String> {
         // Process incoming live candles every 5 mins
+
+        let mut removed = Vec::new();
         // 1. Check if we have data
         // We use a loop to drain the channel so we don't lag behind
         let mut updates = Vec::new();
@@ -515,7 +526,7 @@ impl SniperEngine {
         }
 
         if updates.is_empty() {
-            return;
+            return removed;
         }
 
         let ts_lock = self.timeseries.clone();
@@ -576,10 +587,11 @@ impl SniperEngine {
             }
         }
         // THE REAPER: Garbage Collect dead trades. CRITICAL: We run this on EVERY tick (not just close).
-        self.prune_ledger();
+        removed.extend(self.prune_ledger());
+        removed
     }
 
-    fn prune_ledger(&mut self) {
+    fn prune_ledger(&mut self) -> Vec<String> {
         // GARBAGE COLLECTION: Removes finished trades and archives them.
         // If a wick hits our Stop Loss mid-candle, we want to kill the trade immediately.
         let time_now_utc = TimeUtils::now_utc();
@@ -691,9 +703,17 @@ impl SniperEngine {
         }
 
         // 3. Update Ledger
-        for id in ids_to_remove {
-            self.engine_ledger.remove(&id);
+        for id in &ids_to_remove {
+            #[cfg(debug_assertions)]
+            if DF.log_ledger {
+                log::info!(
+                    "LEDGER PRUNE: Removing opportunity id {} from ledger",
+                    id
+                );
+            }
+            self.engine_ledger.remove_from_ledger(id);
         }
+        ids_to_remove
     }
 
     fn handle_job_result(&mut self, result: JobResult) {

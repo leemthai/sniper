@@ -48,7 +48,7 @@ impl std::fmt::Display for PairInterval {
             "Base: {}, Quote: {}, full: {}, Interval: {}ms (or {}) ",
             base,
             quote,
-            self.name(),
+            self.name,
             self.interval_ms,
             TimeUtils::interval_to_string(self.interval_ms)
         )

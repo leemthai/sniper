@@ -74,7 +74,7 @@ async fn sync_pair(
 pub async fn fetch_pair_data(
     klines_acceptable_age_secs: i64,
     args: &Cli,
-    progress_tx: Option<Sender<ProgressEvent>>, // <--- CHANGED TYPE
+    progress_tx: Option<Sender<ProgressEvent>>,
 ) -> (TimeSeriesCollection, &'static str) {
     // --- WASM IMPLEMENTATION ---
     #[cfg(target_arch = "wasm32")]

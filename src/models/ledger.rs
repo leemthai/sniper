@@ -151,7 +151,7 @@ impl OpportunityLedger {
         self.opportunities.values().collect()
     }
 
-    pub(crate) fn remove(&mut self, id: &str) {
+    pub(crate) fn remove_from_ledger(&mut self, id: &str) {
         self.opportunities.remove(id);
     }
 
@@ -173,7 +173,9 @@ impl OpportunityLedger {
     /// 3. For colliding trades, the winner is selected using the quality score
     ///    defined by that specific strategy.
     /// 4. Non-winning trades are removed from the ledger; winners are preserved.
-    pub(crate) fn prune_collisions(&mut self, tolerance_pct: Pct) {
+    /// 
+    /// Returns a list of opportunity IDs that got pruned. This is passed back to UI from the engine to update `Selection`
+    pub(crate) fn prune_collisions(&mut self, tolerance_pct: Pct) -> Vec<String> {
         let mut to_remove: Vec<String> = Vec::new();
 
         // Snapshot for stable comparison
@@ -241,9 +243,14 @@ impl OpportunityLedger {
         }
 
         // Apply removals to the real ledger
-        for id in to_remove {
-            self.opportunities.remove(&id);
+        for id in to_remove.clone() {
+            #[cfg(debug_assertions)]
+            if DF.log_ledger {
+                log::info!("LEDGER PRUNE PART II: Removing opportunity id {} from ledger", id);
+            }
+            self.remove_from_ledger(&id);
         }
+        to_remove
     }
 
     /// Helper to update an existing opportunity while preserving its history

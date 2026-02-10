@@ -119,6 +119,20 @@ impl Default for PlotVisibility {
     }
 }
 
+/// Identifiers of opportunities that were removed from the engine ledger
+/// during an update cycle (pruning, collision resolution, etc).
+#[derive(Debug, Default)]
+pub struct LedgerRemovals {
+    pub ids: Vec<String>,
+}
+
+impl LedgerRemovals {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.ids.is_empty()
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Default)]
 pub(crate) enum Selection {
@@ -129,7 +143,7 @@ pub(crate) enum Selection {
 }
 
 impl fmt::Display for Selection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Selection::None => write!(f, "Selection::None"),
             Selection::Pair(pair_name) => write!(f, "Selection::Pair({})", pair_name),
@@ -764,8 +778,11 @@ impl ZoneSniperApp {
     fn render_running_state(&mut self, ctx: &Context) {
         let start = AppInstant::now();
         if let Some(e) = &mut self.engine {
-            e.update();
+            let removals = e.update();
+            // Clear UI selection if the selected opportunity was removed from the ledger
+            self.clear_selection_if_opportunity_removed(&removals.ids);
         }
+
         let engine_time = start.elapsed().as_micros();
 
         self.handle_global_shortcuts(ctx);
@@ -1033,105 +1050,6 @@ impl ZoneSniperApp {
         None
     }
 
-    // fn check_loading_completion_old(&mut self) -> Option<AppState> {
-    //     // Access rx without borrowing self for long
-    //     if let Some(rx) = &self.data_rx {
-    //         // Non-blocking check
-    //         if let Ok((timeseries, _sig)) = rx.try_recv() {
-    //             self.initialize_pair_state(&timeseries);
-
-    //             // Initialize Engine
-    //             let mut e = SniperEngine::new(
-    //                 timeseries,
-    //                 self.shared_config.clone(),
-    //                 self.valid_session_pairs.iter().cloned().collect(),
-    //             );
-
-    //             e.engine_ledger = Self::restore_engine_ledger(&self.valid_session_pairs);
-    //             self.engine = Some(e);
-
-    //             if let Some(id) = &self.persisted_opportunity_id {
-    //                 if let Some(op) = self
-    //                     .engine
-    //                     .as_ref()
-    //                     .and_then(|e| e.engine_ledger.opportunities.get(id))
-    //                     .cloned()
-    //                 {
-    //                     // Persisted opportunity still exists → restore it directly.
-    //                     // Its pair becomes the effective selected pair.
-    //                     self.selection = Selection::Opportunity(op.clone());
-
-    //                     #[cfg(debug_assertions)]
-    //                     if DF.log_selected_opportunity {
-    //                         log::info!(
-    //                             "SELECTED OPPORTUNITY RESTORED to {} in check_loading_completion",
-    //                             op.id
-    //                         );
-    //                     }
-    //                 } else {
-    //                     // Persisted opportunity ID no longer valid → fall back to best opportunity
-    //                     // for the currently resolved selected pair.
-    //                     let selection = self.selection.clone();
-
-    //                     if let (Some(e), Selection::Pair(pair)) = (&self.engine, selection) {
-    //                         if let Some(op) =
-    //                             e.engine_ledger.find_first_for_pair(Some(pair)).cloned()
-    //                         {
-    //                             self.selection = Selection::Opportunity(op.clone());
-
-    //                             #[cfg(debug_assertions)]
-    //                             if DF.log_selected_opportunity {
-    //                                 log::info!(
-    //                                     "SELECTED OPPORTUNITY SET to {} in check_loading_completion (persisted ID invalid)",
-    //                                     op.id
-    //                                 );
-    //                             }
-    //                         }
-    //                     }
-    //                 }
-    //             } else {
-    //                 // NOTE: If persisted_opportunity_id is None → intentionally do nothing.
-    //                 // We remain in Selection::Pair(_)
-
-    //                 // // No persisted opportunity → pick best opportunity for current selection (if any)
-    //                 // let selection = self.selection.clone();
-
-    //                 // if let (Some(e), Selection::Pair(pair)) = (&self.engine, selection) {
-    //                 //     if let Some(op) = e.engine_ledger.find_first_for_pair(Some(pair)).cloned() {
-    //                 //         self.selection = Selection::Opportunity(op.clone());
-
-    //                 //         #[cfg(debug_assertions)]
-    //                 //         if DF.log_selected_opportunity {
-    //                 //             log::info!(
-    //                 //                 "SELECTED OPPORTUNITY SET to {} in check_loading_completion because persisted_opportunity_id is None",
-    //                 //                 op.id
-    //                 //             );
-    //                 //         }
-    //                 //     }
-    //                 // }
-    //             }
-
-    //             // Reset Navigation to use selected Pair
-    //             if let Some(pair) = self.selection.pair_owned() {
-    //                 self.nav_states.insert(pair, NavigationState::default());
-    //             }
-
-    //             // TRANSITION TO TUNING PHASE
-    //             return Some(AppState::Tuning(TuningState {
-    //                 total: self.valid_session_pairs.len(),
-    //                 completed: 0,
-    //                 todo_list: self
-    //                     .valid_session_pairs
-    //                     .iter()
-    //                     .cloned()
-    //                     .collect::<Vec<String>>(),
-    //             }));
-    //         }
-    //     }
-
-    //     None
-    // }
-
     /// Returns a fully-initialized OpprtuntyLedger (including startup-culling against valid_session_pairs)
     fn restore_engine_ledger(valid_session_pairs: &HashSet<String>) -> OpportunityLedger {
         // If the Nuke Flag is on, we start fresh.
@@ -1261,6 +1179,23 @@ impl ZoneSniperApp {
         ctx.set_fonts(fonts);
     }
 
+    fn clear_selection_if_opportunity_removed(&mut self, removed_ids: &[String]) {
+        // If we have just removed the selected opportunity from the ledger, clear the selection!!
+        // TEMP in future, we may announce this via a notification or something "Selected Opportunity has just expired....."
+        if let Selection::Opportunity(op) = &self.selection {
+            if removed_ids.iter().any(|id| id == &op.id) {
+                #[cfg(debug_assertions)]
+                if DF.log_selected_opportunity || DF.log_ledger {
+                    log::info!(
+                        "\u{f1238} SELECTED OPPORTUNITY CLEARED because it was removed from ledger, as rare as a rare thing!: {}",
+                        op.id
+                    );
+                }
+
+                self.selection = Selection::None;
+            }
+        }
+    }
     // --- AUDIT HELPER ---
     #[cfg(feature = "ph_audit")]
     fn try_run_audit(&self, ctx: &Context) {

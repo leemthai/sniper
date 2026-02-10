@@ -57,7 +57,7 @@ impl MarketDataProvider for BinanceProvider {
         // We can import these here safely because this whole block is guarded
 
         let pair_interval = PairInterval {
-            name: pair.to_string(),
+            name: pair.into(),
             interval_ms,
         };
 

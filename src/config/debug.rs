@@ -54,11 +54,11 @@ pub struct LogFlags {
 
 pub const DF: LogFlags = LogFlags {
 
-    log_selected_opportunity: true,
-    log_selected_pair: true,
+    log_ledger: false,
+    log_selected_opportunity: false,
+    log_selected_pair: false,
     log_pairs: false,
 
-    log_ledger: false,
     log_startup_prices: false,
 
     log_station_overrides: false,

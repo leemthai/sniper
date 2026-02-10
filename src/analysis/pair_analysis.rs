@@ -24,7 +24,7 @@ pub(crate) fn pair_analysis_pure(
     )
     .with_context(|| format!("No OHLCV data found for {}", pair_name))?;
 
-    // 2. Price Horizon: Calculate relevant slices based on price
+    // Price Horizon: Calculate relevant slices based on price
     // Note: The Engine calculates this fresh every time. No "Slice Caching".
     let (slice_ranges, price_range) =
         price_horizon::auto_select_ranges(ohlcv_time_series, current_price, ph_pct);
@@ -44,7 +44,7 @@ pub(crate) fn pair_analysis_pure(
         );
     }
 
-    // 4. Dynamic Decay Logic (Optimized & Accordion-Aware)
+    // Dynamic Decay Logic (Optimized & Accordion-Aware)
     let dynamic_decay_factor = if (TIME_DECAY_FACTOR - 1.0).abs() < f64::EPSILON {
         // Optimization: If decay is 1.0, multiplier is 1.0. Skip math.
         1.0

@@ -35,7 +35,7 @@ pub enum SyncStatus {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProgressEvent {
+pub struct ProgressEvent{
     pub index: usize,
     pub pair: String,
     pub status: SyncStatus,
