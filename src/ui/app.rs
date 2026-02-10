@@ -122,15 +122,8 @@ impl Default for PlotVisibility {
 /// Identifiers of opportunities that were removed from the engine ledger
 /// during an update cycle (pruning, collision resolution, etc).
 #[derive(Debug, Default)]
-pub struct LedgerRemovals {
+pub(crate) struct LedgerRemovals {
     pub ids: Vec<String>,
-}
-
-impl LedgerRemovals {
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.ids.is_empty()
-    }
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -143,6 +136,7 @@ pub(crate) enum Selection {
 }
 
 impl fmt::Display for Selection {
+
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Selection::None => write!(f, "Selection::None"),
@@ -184,7 +178,7 @@ impl Selection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PersistedSelection {
+pub(crate) enum PersistedSelection {
     None,
     Pair(String),
     Opportunity {
@@ -247,6 +241,7 @@ pub struct ZoneSniperApp {
 }
 
 impl Default for ZoneSniperApp {
+
     fn default() -> Self {
         #[cfg(debug_assertions)]
         if DF.log_selected_pair {
