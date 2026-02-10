@@ -174,7 +174,7 @@ impl OpportunityLedger {
     ///    defined by that specific strategy.
     /// 4. Non-winning trades are removed from the ledger; winners are preserved.
     /// 
-    /// Returns a list of opportunity IDs that got pruned. This is passed back to UI from the engine to update `Selection`
+    /// Returns a list of opportunity IDs that got pruned. This is passed back to UI from the engine to update Selection
     pub(crate) fn prune_collisions(&mut self, tolerance_pct: Pct) -> Vec<String> {
         let mut to_remove: Vec<String> = Vec::new();
 

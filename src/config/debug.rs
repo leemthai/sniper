@@ -50,13 +50,14 @@ pub struct LogFlags {
     pub wipe_ledger_on_startup: bool,
 
     pub log_pairs: bool,
+
 }
 
 pub const DF: LogFlags = LogFlags {
 
+    log_selected_pair: true,
     log_ledger: false,
     log_selected_opportunity: false,
-    log_selected_pair: false,
     log_pairs: false,
 
     log_startup_prices: false,

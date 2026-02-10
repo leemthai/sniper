@@ -16,8 +16,8 @@ DOTEUR # Currency Trading EUR
 USDTCOP # Currency Trading COP
 ETHBTC # ETH vs BTC
 USD1USDT # Stable
-USDCUSDT # Stable
-USDTUSD # Stable
+# USDCUSDT # Stable
+# USDTUSD # Stable
 
 
 BTCFDUSD

@@ -110,11 +110,7 @@ impl ZoneSniperApp {
                 let aroi_pct = op.live_annualized_roi(calc_price);
                 let roi_color = get_outcome_color(roi_pct.value());
 
-                ui.metric(
-                    &UI_TEXT.label_roi,
-                    &format!("{}", roi_pct),
-                    roi_color,
-                );
+                ui.metric(&UI_TEXT.label_roi, &format!("{}", roi_pct), roi_color);
                 ui.metric(
                     &UI_TEXT.label_aroi_long,
                     &format!("{}", aroi_pct),
@@ -938,30 +934,18 @@ impl ZoneSniperApp {
 
         let filter_changed = self.render_trade_finder_filters(ui, rows.len());
 
-        // If the selected opportunity no longer exists, drop to Market View (None).
+        #[cfg(debug_assertions)]
         if let Selection::Opportunity(sel) = &self.selection {
             let exists = rows
                 .iter()
                 .any(|r| r.opportunity.as_ref().is_some_and(|op| op.id == sel.id));
 
-            if !exists {
-                #[cfg(debug_assertions)]
-                if DF.log_selected_opportunity {
-                    log::info!(
-                        "SELECTION CLEARED in render_trade_finder_content because selected opportunity no longer exists."
-                    );
-                }
-
-                self.selection = Selection::None;
+            if !exists && DF.log_selected_opportunity {
+                log::warn!(
+                    "UI invariant violation: selected opportunity {} not present in rendered rows",
+                    sel.id
+                );
             }
-        } else {
-            // #[cfg(debug_assertions)]
-            // if DF.log_selected_opportunity {
-            //     log::info!(
-            //         "ANTI-HEALER: FAILED TO FIND the currently selected OPPPORTUNITY {:?} in TF because it is blank. Weird?",
-            //         &self.selected_opportunity
-            //     );
-            // }
         }
 
         // Sort
@@ -1743,7 +1727,6 @@ impl ZoneSniperApp {
     }
 
     fn render_status_mode(&self, ui: &mut Ui) {
-
         if let Some(pair) = &self.selection.pair_owned() {
             if self.is_simulation_mode() {
                 let label = &UI_TEXT.sp_simulation_mode;

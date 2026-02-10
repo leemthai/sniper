@@ -136,7 +136,6 @@ pub(crate) enum Selection {
 }
 
 impl fmt::Display for Selection {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Selection::None => write!(f, "Selection::None"),
@@ -241,13 +240,7 @@ pub struct ZoneSniperApp {
 }
 
 impl Default for ZoneSniperApp {
-
     fn default() -> Self {
-        #[cfg(debug_assertions)]
-        if DF.log_selected_pair {
-            log::info!("SELECTED PAIR Init to BTCUSDT");
-        }
-
         Self {
             selection: Selection::default(),
             persisted_selection: PersistedSelection::None,
@@ -707,6 +700,56 @@ impl ZoneSniperApp {
         });
     }
 
+    /// Ensure the UI always has a valid *pair-level* selection while the app is running.
+    ///
+    /// Invariant:
+    /// - While in `Running` state, the UI must never be left without a selected pair.
+    /// - A missing or invalid selection causes large parts of the UI to disappear.
+    ///
+    /// This function is a *healer*, not normal control flow:
+    /// - It should do nothing 99.999% of the time.
+    /// - It only intervenes if state has become invalid due to startup gaps,
+    ///   stale persisted state, or ledger-driven removals.
+    fn ensure_valid_selection(&mut self) {
+        // FAST PATH:
+        // If we already have a selection that refers to a valid session pair,
+        // we do nothing.
+        let selected_pair: Option<&String> = match &self.selection {
+            Selection::Pair(pair) => Some(pair),
+            Selection::Opportunity(op) => Some(&op.pair_name),
+            Selection::None => None,
+        };
+
+        if let Some(pair) = selected_pair {
+            if self.valid_session_pairs.contains(pair) {
+                return;
+            }
+        }
+
+        // HEALING PATH:
+        // At this point, either:
+        // - Selection is None
+        // - Selection refers to a pair that is NOT valid for this session
+        //   (e.g. persisted pair missing, or opportunity was pruned)
+        //
+        // We must recover by selecting *some* valid pair so the UI remains usable.
+        if let Some(pair) = self.valid_session_pairs.iter().next() {
+            #[cfg(debug_assertions)]
+            if DF.log_selected_pair {
+                log::info!(
+                    "SELECTION HEALED: no valid selection present; falling back to pair {}",
+                    pair
+                );
+            }
+
+            // IMPORTANT:
+            // We deliberately fall back to a *pair* selection, NOT an opportunity.
+            // Opportunity selection is transient and ledger-driven; pair selection
+            // is the stable baseline that keeps the UI alive.
+            self.selection = Selection::Pair(pair.clone());
+        }
+    }
+
     fn render_loading_screen(ctx: &Context, state: &LoadingState) {
         CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
@@ -777,6 +820,8 @@ impl ZoneSniperApp {
             // Clear UI selection if the selected opportunity was removed from the ledger
             self.clear_selection_if_opportunity_removed(&removals.ids);
         }
+
+        self.ensure_valid_selection();
 
         let engine_time = start.elapsed().as_micros();
 
@@ -1186,8 +1231,8 @@ impl ZoneSniperApp {
                         op.id
                     );
                 }
-
-                self.selection = Selection::None;
+                // Revert to bare pair rather than the opportunity!
+                self.selection = Selection::Pair(op.pair_name.clone());
             }
         }
     }
