@@ -1,15 +1,11 @@
 use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::sync::Arc;
-use std::sync::mpsc::{Sender};
-
+use std::sync::mpsc::Sender;
 
 // Only import thread crate on non-WASM target
 #[cfg(not(target_arch = "wasm32"))]
-use {
-    std::thread,
-    std::sync::mpsc::{Receiver}
-};
+use {std::sync::mpsc::Receiver, std::thread};
 
 use uuid::Uuid;
 
@@ -18,11 +14,13 @@ use super::messages::{JobMode, JobRequest, JobResult};
 use crate::analysis::adaptive::AdaptiveParameters;
 use crate::analysis::market_state::MarketState;
 use crate::analysis::pair_analysis::pair_analysis_pure;
-use crate::analysis::scenario_simulator::{ScenarioSimulator, SimulationResult, DEFAULT_SIMILARITY};
+use crate::analysis::scenario_simulator::{
+    DEFAULT_SIMILARITY, ScenarioSimulator, SimulationResult,
+};
 
 use crate::config::{
-    DF, DurationMs, HighPrice, LowPrice, OptimizationStrategy, PhPct, Price, PriceLike, StationId,
-    StopPrice, TargetPrice, TradeProfile, TunerStation, Pct, TUNER_SCAN_STEPS, BASE_INTERVAL,
+    BASE_INTERVAL, DF, DurationMs, HighPrice, LowPrice, OptimizationStrategy, Pct, PhPct, Price,
+    PriceLike, StationId, StopPrice, TUNER_SCAN_STEPS, TargetPrice, TradeProfile, TunerStation,
 };
 
 use crate::data::timeseries::TimeSeriesCollection;
@@ -30,13 +28,16 @@ use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
 
 use crate::models::find_matching_ohlcv;
-use crate::models::{TradeDirection, TradeOpportunity, TradeVariant, DEFAULT_JOURNEY_SETTINGS, VisualFluff, CVACore, OhlcvTimeSeries, TradingModel};
+use crate::models::{
+    CVACore, DEFAULT_JOURNEY_SETTINGS, OhlcvTimeSeries, TradeDirection, TradeOpportunity,
+    TradeVariant, TradingModel, VisualFluff,
+};
 
 use crate::utils::maths_utils::duration_to_candles;
 use crate::utils::time_utils::{AppInstant, TimeUtils};
 
 #[cfg(debug_assertions)]
-use {crate::ui::ui_text::UI_TEXT};
+use crate::ui::ui_text::UI_TEXT;
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -62,7 +63,6 @@ struct CandidateResult {
     source_desc: String,
 }
 
-
 const SAMPLE_COUNT: usize = 50;
 
 /// Runs the "Scan & Fit" algorithm to find the optimal Price Horizon
@@ -80,13 +80,14 @@ pub(crate) fn tune_to_station(
     }
 
     let _t_start = AppInstant::now();
+    let _pair_name = ohlcv.pair_interval.name();
 
     #[cfg(debug_assertions)]
     {
         if DF.log_tuner {
             log::info!(
                 "📻 TUNER START [{}]: Station '{}' (Target: {:.1}-{:.1}h) | Scan Range: {}-{} | Strategy: {}",
-                ohlcv.pair_interval.name(),
+                _pair_name,
                 station.name,
                 station.target_min_hours,
                 station.target_max_hours,
@@ -149,19 +150,21 @@ pub(crate) fn tune_to_station(
             #[cfg(debug_assertions)]
             if DF.log_tuner {
                 log::info!(
-                    "   📡 TUNER PROBE {}: Found {} ops | Top Score {:.2} | Avg Dur {:.1}h",
+                    "   📡 TUNER PROBE {}: Found {} ops | Top Score {:.2} | Avg Dur {:.1}h for {}",
                     Pct::new(ph),
                     count,
                     top_score,
-                    duration_hours
+                    duration_hours,
+                    _pair_name,
                 );
             }
         } else {
             #[cfg(debug_assertions)]
             if DF.log_tuner {
                 log::info!(
-                    "   📡 TUNER PROBE {}: No signals found (0 candidates).",
-                    Pct::new(ph)
+                    "   📡 TUNER PROBE {}: No signals found (0 candidates) for {}",
+                    Pct::new(ph),
+                    _pair_name,
                 );
             }
         }
@@ -170,7 +173,12 @@ pub(crate) fn tune_to_station(
     // 3. The "Fit" Logic (Selection)
     if results.is_empty() {
         #[cfg(debug_assertions)]
-        log::warn!("⚠️ TUNER FAILED: No candidates found across entire range.");
+        if DF.log_tuner {
+            log::warn!(
+                "⚠️ TUNER FAILED: No candidates found across entire range for {}",
+                _pair_name
+            );
+        }
         return None;
     }
 
@@ -194,7 +202,10 @@ pub(crate) fn tune_to_station(
         // Pick the result closest to the target duration range (Center point).
         #[cfg(debug_assertions)]
         if DF.log_tuner {
-            log::warn!("   ⚠️ No perfect time fit. Falling back to closest duration.");
+            log::warn!(
+                "   ⚠️ No perfect time fit. Falling back to closest duration for {}",
+                _pair_name
+            );
         }
         let target_center = (station.target_min_hours + station.target_max_hours) / 2.0;
 
@@ -213,11 +224,12 @@ pub(crate) fn tune_to_station(
         let elapsed = _t_start.elapsed();
         if DF.log_tuner {
             log::info!(
-                "✅ TUNER LOCKED: {} (Score {:.2}, Duration {:.1}h) | Took {:?}",
+                "✅ TUNER LOCKED: {} (Score {:.2}, Duration {:.1}h) | Took {:?} for {}",
                 best_match.ph,
                 best_match.score,
                 best_match.duration_hours,
-                elapsed
+                elapsed,
+                _pair_name,
             );
         }
     }
@@ -233,7 +245,6 @@ pub(crate) fn run_pathfinder_simulations(
     station_id: StationId,
     cva_opt: Option<&CVACore>,
 ) -> PathfinderResult {
-
     if !current_price.is_positive() {
         return PathfinderResult {
             opportunities: Vec::new(),
@@ -245,7 +256,10 @@ pub(crate) fn run_pathfinder_simulations(
     // Volatility range is clamped to available klines to avoid underflow
 
     let max_idx = ohlcv.klines().saturating_sub(1);
-    let vol_lookback = DEFAULT_JOURNEY_SETTINGS.optimization.volatility_lookback.min(max_idx);
+    let vol_lookback = DEFAULT_JOURNEY_SETTINGS
+        .optimization
+        .volatility_lookback
+        .min(max_idx);
     let start_vol = ohlcv.klines().saturating_sub(vol_lookback);
     let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol, ohlcv.klines());
 
@@ -257,8 +271,7 @@ pub(crate) fn run_pathfinder_simulations(
         DurationMs::new(BASE_INTERVAL.as_millis() as i64),
         &DEFAULT_JOURNEY_SETTINGS,
     );
-    let duration_candles =
-        duration_to_candles(duration, BASE_INTERVAL.as_millis() as i64);
+    let duration_candles = duration_to_candles(duration, BASE_INTERVAL.as_millis() as i64);
 
     let matches_opt = ScenarioSimulator::find_historical_matches(
         ohlcv.pair_interval.name(),
@@ -360,7 +373,6 @@ fn simulate_target(
     limit_samples: usize,
 ) -> Option<CandidateResult> {
     crate::trace_time!("Worker: Simulate Target", 500, {
-
         let interval_duration = DurationMs::new(BASE_INTERVAL.as_millis() as i64);
 
         let direction = if Price::from(target_price) > ctx.current_price {
@@ -441,7 +453,6 @@ fn apply_diversity_filter(
     range_max: Price,
     _strategy: OptimizationStrategy,
 ) -> Vec<TradeOpportunity> {
-
     if candidates.is_empty() {
         return Vec::new();
     }
@@ -457,11 +468,7 @@ fn apply_diversity_filter(
         if _strategy == OptimizationStrategy::Balanced {
             // Create vector of references so we can sort them for display only
             let mut debug_view: Vec<&CandidateResult> = candidates.iter().collect();
-            debug_view.sort_by(|a, b| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(Ordering::Equal)
-            });
+            debug_view.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
 
             log::info!("⚖️ BALANCED SCOREBOARD [{}] (Top 5 Inputs):", _pair_name);
             for (i, c) in debug_view.iter().take(5).enumerate() {
@@ -598,7 +605,6 @@ struct PathfinderContext<'a> {
 }
 
 fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
-
     let price_buffer_pct = DEFAULT_JOURNEY_SETTINGS.optimization.price_buffer_pct;
     let steps = DEFAULT_JOURNEY_SETTINGS.optimization.scout_steps;
     let scout_risks = [2.5]; // Optimization: 1 variant
@@ -963,12 +969,10 @@ fn run_stop_loss_tournament(
     limit_samples: usize,
     _zone_idx: usize,
 ) -> Option<(SimulationResult, StopPrice, Vec<TradeVariant>)> {
-
     #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
     pub struct RiskRewardRatio(pub f64);
-    
-    crate::trace_time!("Worker: SL Tournament", 1500, {
 
+    crate::trace_time!("Worker: SL Tournament", 1500, {
         let mut best_score = f64::NEG_INFINITY;
         let mut best_result: Option<(SimulationResult, StopPrice, RiskRewardRatio)> = None; // (Result, Stop, Ratio)
         let mut valid_variants = Vec::new();
@@ -1038,10 +1042,7 @@ fn run_stop_loss_tournament(
                 let duration_real = duration_ms.scale(result.avg_candle_count);
 
                 // Calculate AROI for the Gatekeeper & Judge
-                let aroi_pct = TradeProfile::calculate_annualized_roi(
-                    roi_pct,
-                    duration_real,
-                );
+                let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, duration_real);
 
                 // GATEKEEPER: Check both ROI and AROI against profile
                 let is_worthwhile = profile.is_worthwhile(roi_pct, aroi_pct);
@@ -1056,13 +1057,13 @@ fn run_stop_loss_tournament(
                     });
 
                     // JUDGE: Calculate Score based on Strategy (using CORRECT Time units)
-                    let score =
-                        strategy.calculate_score(roi_pct, duration_real);
+                    let score = strategy.calculate_score(roi_pct, duration_real);
 
                     // Track Best
                     if score > best_score {
                         best_score = score;
-                        best_result = Some((result.clone(), candidate_stop, RiskRewardRatio(ratio)));
+                        best_result =
+                            Some((result.clone(), candidate_stop, RiskRewardRatio(ratio)));
                     }
                 }
 
@@ -1133,7 +1134,6 @@ fn perform_standard_analysis(
     let base_label = format!("{} @ {}", req.pair_name, ph_pct);
 
     crate::trace_time!(&format!("Total JOB [{}]", base_label), 10_000, {
-
         let price = match resolve_analysis_price(req, ts_collection) {
             Ok(p) => p,
             Err(e) => {
@@ -1151,7 +1151,6 @@ fn perform_standard_analysis(
         let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 10_000, {
             pair_analysis_pure(req.pair_name.clone(), ts_collection, price, ph_pct)
         });
-
 
         // Result Construction
         let response = match result_cva {
@@ -1185,10 +1184,7 @@ fn perform_standard_analysis(
     });
 }
 
-fn build_error_result(
-    req: &JobRequest,
-    error_msg: String,
-) -> JobResult {
+fn build_error_result(req: &JobRequest, error_msg: String) -> JobResult {
     JobResult {
         pair_name: req.pair_name.clone(),
         result: Err(error_msg),

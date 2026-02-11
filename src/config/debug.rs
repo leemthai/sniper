@@ -54,13 +54,15 @@ pub struct LogFlags {
 }
 
 pub const DF: LogFlags = LogFlags {
+    
+    log_startup_prices: true,
+    wipe_ledger_on_startup: true,
 
-    log_selected_pair: true,
+    log_selected_pair: false,
+    log_pairs: false,
     log_ledger: false,
     log_selected_opportunity: false,
-    log_pairs: false,
 
-    log_startup_prices: false,
 
     log_station_overrides: false,
     log_ph_overrides: false,
@@ -81,8 +83,6 @@ pub const DF: LogFlags = LogFlags {
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
     log_wasm_demo: false,
 
-    // These two need moving out to somehwere else!!!!!!!!!
     // Default to a small number for quick UI testing. Change this to 1000 when you want to stress-test the model i.e all pairs.
     max_pairs_load: 20, // 40, // 25, // 60,
-    wipe_ledger_on_startup: false,
 };

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
+use std::mem;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
 
@@ -18,9 +19,7 @@ use crate::Cli;
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::config::{
-    BASE_INTERVAL, CandleResolution, PhPct, Price, PriceLike, StationId, TUNER_CONFIG,
-};
+use crate::config::{BASE_INTERVAL, CandleResolution, PhPct, Price, PriceLike};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::Pct;
@@ -31,13 +30,11 @@ use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::engine::SniperEngine;
-use crate::engine::worker;
+// use crate::engine::worker;
 
 use crate::models::TradeOpportunity;
 use crate::models::ledger::OpportunityLedger;
-use crate::models::{
-    NavigationTarget, ProgressEvent, SortColumn, SortDirection, SyncStatus, find_matching_ohlcv,
-};
+use crate::models::{NavigationTarget, ProgressEvent, SortColumn, SortDirection, SyncStatus};
 
 use crate::shared::SharedConfiguration;
 
@@ -62,27 +59,27 @@ pub(crate) struct NavigationState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TuningState {
+struct TuningState {
     pub todo_list: Vec<String>,
     pub total: usize,
     pub completed: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum AppState {
-    Loading(LoadingState),
+enum AppState {
+    Bootstrapping(BootstrapState),
     Tuning(TuningState),
     Running,
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::Loading(LoadingState::default())
+        Self::Bootstrapping(BootstrapState::default())
     }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct LoadingState {
+struct BootstrapState {
     pub pairs: BTreeMap<usize, (String, SyncStatus)>,
     pub total_pairs: usize,
     pub completed: usize,
@@ -218,7 +215,7 @@ pub struct ZoneSniperApp {
     #[serde(skip)]
     pub(crate) plot_view: PlotView,
     #[serde(skip)]
-    pub(crate) state: AppState,
+    state: AppState,
     #[serde(skip)]
     pub(crate) progress_rx: Option<Receiver<ProgressEvent>>,
     #[serde(skip)]
@@ -283,7 +280,7 @@ impl ZoneSniperApp {
 
         app.plot_view = PlotView::new();
         app.simulated_prices = HashMap::new();
-        app.state = AppState::Loading(LoadingState::default());
+        app.state = AppState::Bootstrapping(BootstrapState::default());
 
         let (data_tx, data_rx) = mpsc::channel();
         let (prog_tx, prog_rx) = mpsc::channel();
@@ -324,36 +321,6 @@ impl ZoneSniperApp {
             // Global Invalidation. Since strategy has changed, every pair needs to be re-judged. We pass the current pair as priority so the user sees the active screen update first.
             e.trigger_global_recalc(priority_pair);
         }
-    }
-
-    /// Runs the Auto-Tune algorithm for a specific pair and station.
-    /// Returns Some(new_ph) if successful. Returns None if data/price is missing.
-    pub(crate) fn run_auto_tune_logic(&self, pair: &str, station_id: StationId) -> Option<PhPct> {
-        if let Some(e) = &self.engine {
-            // 1. Get Config for the requested Station
-            let station = TUNER_CONFIG.stations.iter().find(|s| s.id == station_id)?;
-
-            // 2. Get Price (Strict Check - must be live)
-            let price = e.price_stream.get_price(pair)?;
-
-            // 3. Get Data
-            let ts_guard = e.timeseries.read().unwrap();
-            let ohlcv = find_matching_ohlcv(
-                &ts_guard.series_data,
-                pair,
-                BASE_INTERVAL.as_millis() as i64,
-            )
-            .ok()?;
-
-            // 4. Run Worker Logic
-            return worker::tune_to_station(
-                ohlcv,
-                price,
-                station,
-                self.shared_config.get_strategy(),
-            );
-        }
-        None
     }
 
     /// Sets the scroll target based on the current selection state.
@@ -637,69 +604,6 @@ impl ZoneSniperApp {
         });
     }
 
-    fn render_loading_grid(ui: &mut Ui, state: &LoadingState) {
-        ScrollArea::vertical().show(ui, |ui| {
-            Grid::new("loading_grid_multi_col")
-                .striped(true)
-                .spacing([20.0, 10.0])
-                .min_col_width(250.0)
-                .show(ui, |ui| {
-                    for (i, (_idx, (pair, status))) in state.pairs.iter().enumerate() {
-                        // Determine Color/Text based on Status
-                        let (color, status_text, status_color) = match status {
-                            SyncStatus::Pending => (
-                                PLOT_CONFIG.color_text_subdued,
-                                "-".to_string(),
-                                PLOT_CONFIG.color_text_subdued,
-                            ),
-                            SyncStatus::Syncing => (
-                                PLOT_CONFIG.color_warning,
-                                UI_TEXT.ls_syncing.to_string(),
-                                PLOT_CONFIG.color_warning,
-                            ),
-                            SyncStatus::Completed(n) => (
-                                PLOT_CONFIG.color_text_primary,
-                                format!("+{}", n),
-                                PLOT_CONFIG.color_profit,
-                            ),
-                            SyncStatus::Failed(_) => (
-                                PLOT_CONFIG.color_loss,
-                                UI_TEXT.ls_failed.to_string(),
-                                PLOT_CONFIG.color_loss,
-                            ),
-                        };
-
-                        // Render Cell
-                        ui.horizontal(|ui| {
-                            ui.set_min_width(240.0);
-                            ui.label(RichText::new(pair).strong().color(color));
-
-                            // Clean Layout syntax using imports
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                match status {
-                                    SyncStatus::Syncing => {
-                                        ui.spinner();
-                                    }
-                                    SyncStatus::Completed(_) => {
-                                        // We use status_text ("+500") here
-                                        ui.label(RichText::new(status_text).color(status_color));
-                                    }
-                                    _ => {
-                                        ui.label(RichText::new(status_text).color(status_color));
-                                    }
-                                }
-                            });
-                        });
-
-                        // New row every 3 items
-                        if (i + 1) % 3 == 0 {
-                            ui.end_row();
-                        }
-                    }
-                });
-        });
-    }
-
     /// Ensure the UI always has a valid *pair-level* selection while the app is running.
     ///
     /// Invariant:
@@ -750,70 +654,7 @@ impl ZoneSniperApp {
         }
     }
 
-    fn render_loading_screen(ctx: &Context, state: &LoadingState) {
-        CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add_space(20.0);
-
-                // Title
-                ui.heading(
-                    RichText::new(&UI_TEXT.ls_title)
-                        .size(24.0)
-                        .strong()
-                        .color(PLOT_CONFIG.color_warning),
-                );
-
-                // Subtitle / Info
-                let interval_str = TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
-                ui.label(
-                    RichText::new(format!(
-                        "{} {} {}",
-                        UI_TEXT.ls_syncing, interval_str, UI_TEXT.ls_main,
-                    ))
-                    .italics()
-                    .color(PLOT_CONFIG.color_text_neutral),
-                );
-
-                ui.add_space(20.0);
-
-                // Progress Bar Logic
-                let total = state.total_pairs;
-                let done = state.completed + state.failed;
-                let progress = if total > 0 {
-                    done as f32 / total as f32
-                } else {
-                    0.0
-                };
-
-                ui.add_space(20.0);
-                ui.add(
-                    ProgressBar::new(progress)
-                        .show_percentage()
-                        .animate(true)
-                        .text(format!("Processed {}/{}", done, total)),
-                );
-
-                // Failure Warning
-                if state.failed > 0 {
-                    ui.add_space(5.0);
-                    ui.label(
-                        RichText::new(format!(
-                            "{} {} {}",
-                            UI_TEXT.label_warning, state.failed, UI_TEXT.label_failures
-                        ))
-                        .color(PLOT_CONFIG.color_loss),
-                    );
-                }
-
-                ui.add_space(20.0);
-            });
-
-            // Call the Grid Helper we made earlier
-            Self::render_loading_grid(ui, state);
-        });
-    }
-
-    fn render_running_state(&mut self, ctx: &Context) {
+    fn tick_running_state(&mut self, ctx: &Context) {
         let start = AppInstant::now();
         if let Some(e) = &mut self.engine {
             let removals = e.update();
@@ -861,34 +702,8 @@ impl ZoneSniperApp {
         }
     }
 
-    fn update_loading_progress(state: &mut LoadingState, rx_opt: &Option<Receiver<ProgressEvent>>) {
-        if let Some(rx) = rx_opt {
-            while let Ok(event) = rx.try_recv() {
-                // FIX: Insert using Index as Key (usize), and Tuple as Value
-                state.pairs.insert(event.index, (event.pair, event.status));
-            }
-
-            state.total_pairs = state.pairs.len();
-
-            // FIX: Destructure the tuple |(_, s)| to access the Status
-            state.completed = state
-                .pairs
-                .values()
-                .filter(|(_, s)| matches!(s, SyncStatus::Completed(_)))
-                .count();
-
-            state.failed = state
-                .pairs
-                .values()
-                .filter(|(_, s)| matches!(s, SyncStatus::Failed(_)))
-                .count();
-        }
-    }
-
     /// Writes a value into each self.shared_config.ph_overrides for each pair (for current station_id)
-    /// HUGE issue for this function is that tuning is *not* done unless we have a price for the pair. And often that fails
-    /// So we get through without doing the tuning and just use default (i.e untuned) PH values to run the initial phase (not good)
-    fn handle_tuning_phase(&mut self, ctx: &Context, mut state: TuningState) -> AppState {
+    fn tick_tuning_state(&mut self, ctx: &Context, mut state: TuningState) -> AppState {
         CentralPanel::default().show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
                 ui.set_max_width(300.0);
@@ -909,86 +724,29 @@ impl ZoneSniperApp {
         let mut processed = 0;
 
         if let Some(e) = &mut self.engine {
-            // Wait for connection health to be good enough (50%) before continuing
+            // Wait for connection health before tuning (temporary — will be removed when streams split)
             #[cfg(not(target_arch = "wasm32"))]
             e.price_stream.wait_for_health_threshold(Pct::new(0.5));
 
             while processed < chunk_size && !state.todo_list.is_empty() {
                 if let Some(pair) = state.todo_list.pop() {
-                    // A. Determine Station for each pair
-                    let station_id = self.shared_config.get_station(&pair).unwrap_or_else(|| panic!("handle_tuning_phase stations should all be full, especially for pair {}", pair));
-                    #[cfg(debug_assertions)]
-                    if DF.log_station_overrides {
-                        log::info!(
-                            "🔧 READING station_overrides from app.shared_config '{:?}' for [{}] in handle_tuning_phase()",
-                            station_id,
-                            &pair,
-                        );
-                    }
-                    // B. Get Station Definition
-                    if let Some(station_def) =
-                        TUNER_CONFIG.stations.iter().find(|s| s.id == station_id)
-                    {
-                        // C. Tune it
-                        let best_ph = {
-                            let ts_guard = e.timeseries.read().unwrap();
-                            if let Ok(ohlcv) = find_matching_ohlcv(
-                                &ts_guard.series_data,
-                                &pair,
-                                BASE_INTERVAL.as_millis() as i64,
-                            ) {
-                                if let Some(price) = e.price_stream.get_price(&pair) {
-                                    worker::tune_to_station(
-                                        ohlcv,
-                                        price,
-                                        station_def,
-                                        e.shared_config.get_strategy(),
-                                    )
-                                } else {
-                                    log::warn!(
-                                        "Can't tune {} because we don't have a price for it ",
-                                        pair
-                                    );
-                                    None
-                                }
-                            } else {
-                                if DF.log_ph_overrides {
-                                    log::warn!(
-                                        "Can't tune because we have no matching_ohlcv for {}",
-                                        &pair
-                                    );
-                                }
-                                None
-                            }
-                        };
+                    if let Some(ph) = e.tune_pair_from_config(&pair) {
+                        e.shared_config.insert_ph(pair.clone(), ph);
 
-                        // D. Apply Result
-                        if let Some(ph) = best_ph {
-                            e.shared_config.insert_ph(pair.clone(), ph);
-                            #[cfg(debug_assertions)]
-                            if DF.log_ph_overrides {
-                                log::info!(
-                                    "WRITING ph value {} for pair {} during tuning phase",
-                                    &pair,
-                                    ph
-                                );
-                            }
-                        } else {
-                            #[cfg(debug_assertions)]
-                            if DF.log_ph_overrides {
-                                log::info!(
-                                    "No ph value set yet for {} so can't apply result in handle_tuning_phase. But why? Just means best_ph never set.
-                                    Can happen if phase above fails for any reason  e.g. no price obtained. So this means we can get through this function without having tuned",
-                                    pair
-                                )
-                            }
+                        #[cfg(debug_assertions)]
+                        if DF.log_ph_overrides {
+                            log::info!(
+                                "WRITING ph value {} for pair {} during tuning phase",
+                                ph,
+                                pair
+                            );
                         }
                     }
                     processed += 1;
                 }
             }
         } else {
-            log::warn!("No engine. Not good");
+            log::warn!("No engine. Not good.");
         }
 
         // 3. Update State or Finish
@@ -1016,82 +774,86 @@ impl ZoneSniperApp {
 
     /// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
-    fn check_loading_completion(&mut self) -> Option<AppState> {
+    fn finalize_bootstrap_if_ready(&mut self) -> Option<AppState> {
         if let Some(rx) = &self.data_rx {
             if let Ok((timeseries, _sig)) = rx.try_recv() {
-                // Phase 1: derive valid pairs + shared config
-                self.initialize_pair_state(&timeseries);
+                self.build_engine(timeseries);
+                self.restore_initial_selection();
 
-                // Phase 2: engine + ledger
-                let mut e = SniperEngine::new(
-                    timeseries,
-                    self.shared_config.clone(),
-                    self.valid_session_pairs.iter().cloned().collect(),
-                );
-
-                e.engine_ledger = Self::restore_engine_ledger(&self.valid_session_pairs);
-                self.engine = Some(e);
-
-                // Phase 3: restore persisted selection EXACTLY
-                self.selection = match &self.persisted_selection {
-                    PersistedSelection::None => Selection::None,
-
-                    PersistedSelection::Pair(pair) => {
-                        if self.valid_session_pairs.contains(pair) {
-                            Selection::Pair(pair.clone())
-                        } else {
-                            Selection::None
-                        }
-                    }
-
-                    PersistedSelection::Opportunity {
-                        pair,
-                        opportunity_id,
-                    } => {
-                        if let Some(e) = &self.engine {
-                            if let Some(op) = e.engine_ledger.opportunities.get(opportunity_id) {
-                                Selection::Opportunity(op.clone())
-                            } else if self.valid_session_pairs.contains(pair) {
-                                // Opportunity expired → fall back to its pair ONLY
-                                Selection::Pair(pair.clone())
-                            } else {
-                                Selection::None
-                            }
-                        } else {
-                            Selection::None
-                        }
-                    }
-                };
-
-                // Phase 4: final fallback if NOTHING is selected
-                if matches!(self.selection, Selection::None) {
-                    if let Some(pair) = self.valid_session_pairs.iter().next().cloned() {
-                        self.selection = Selection::Pair(pair);
-                    }
-                }
-
-                // Reset Navigation to use selected Pair
-                if let Some(pair) = self.selection.pair_owned() {
-                    self.nav_states.insert(pair, NavigationState::default());
-                }
-
-                // TRANSITION TO TUNING PHASE
                 return Some(AppState::Tuning(TuningState {
                     total: self.valid_session_pairs.len(),
                     completed: 0,
-                    todo_list: self
-                        .valid_session_pairs
-                        .iter()
-                        .cloned()
-                        .collect::<Vec<String>>(),
+                    todo_list: self.valid_session_pairs.iter().cloned().collect(),
                 }));
             }
         }
+
         None
     }
 
-    /// Returns a fully-initialized OpprtuntyLedger (including startup-culling against valid_session_pairs)
+    fn restore_initial_selection(&mut self) {
+        self.selection = match &self.persisted_selection {
+            PersistedSelection::None => Selection::None,
+
+            PersistedSelection::Pair(pair) => {
+                if self.valid_session_pairs.contains(pair) {
+                    Selection::Pair(pair.clone())
+                } else {
+                    Selection::None
+                }
+            }
+
+            PersistedSelection::Opportunity {
+                pair,
+                opportunity_id,
+            } => {
+                if let Some(engine) = &self.engine {
+                    if let Some(op) = engine.engine_ledger.opportunities.get(opportunity_id) {
+                        Selection::Opportunity(op.clone())
+                    } else if self.valid_session_pairs.contains(pair) {
+                        // Opportunity expired → fall back to its pair
+                        Selection::Pair(pair.clone())
+                    } else {
+                        Selection::None
+                    }
+                } else {
+                    Selection::None
+                }
+            }
+        };
+
+        // Final fallback: ensure at least one pair is selected
+        if matches!(self.selection, Selection::None) {
+            if let Some(pair) = self.valid_session_pairs.iter().next().cloned() {
+                self.selection = Selection::Pair(pair);
+            }
+        }
+
+        // Initialize navigation for selected pair
+        if let Some(pair) = self.selection.pair_owned() {
+            self.nav_states.insert(pair, NavigationState::default());
+        }
+    }
+
+    fn build_engine(&mut self, timeseries: TimeSeriesCollection) {
+        // Derive valid pairs + shared config
+        self.initialize_pair_state(&timeseries);
+
+        // Construct engine
+        let mut engine = SniperEngine::new(
+            timeseries,
+            self.shared_config.clone(),
+            self.valid_session_pairs.iter().cloned().collect(),
+        );
+
+        // Restore ledger from persistence
+        engine.engine_ledger = Self::restore_engine_ledger(&self.valid_session_pairs);
+
+        self.engine = Some(engine);
+    }
+
     fn restore_engine_ledger(valid_session_pairs: &HashSet<String>) -> OpportunityLedger {
+        // Returns a fully-initialized OpprtuntyLedger (including startup-culling against valid_session_pairs)
         // If the Nuke Flag is on, we start fresh.
         if DF.wipe_ledger_on_startup {
             #[cfg(debug_assertions)]
@@ -1165,10 +927,10 @@ impl ZoneSniperApp {
         ledger
     }
 
-    /// Helper: Resolves
-    /// valid_session_pairs
-    /// shared_config station + PH initialization
     fn initialize_pair_state(&mut self, timeseries: &TimeSeriesCollection) {
+        // Helper: Resolves
+        // valid_session_pairs
+        // shared_config station + PH initialization
         // Actual loaded pairs
         let available_pairs = timeseries.unique_pair_names();
         self.valid_session_pairs = available_pairs.iter().cloned().collect();
@@ -1236,6 +998,174 @@ impl ZoneSniperApp {
             }
         }
     }
+
+    fn tick_bootstrap(&mut self, ctx: &Context, state: &mut BootstrapState) -> AppState {
+        // 1. Update progress from REST backfill
+        Self::update_loading_progress(state, &self.progress_rx);
+        ctx.request_repaint();
+
+        // 2. Check if backfill completed
+        if let Some(next_state) = self.finalize_bootstrap_if_ready() {
+            return next_state;
+        }
+
+        // 3. Still bootstrapping → render loading UI
+        Self::render_loading_screen(ctx, state);
+
+        // Remain in Bootstrapping
+        AppState::Bootstrapping(state.clone())
+    }
+    fn render_loading_screen(ctx: &Context, state: &BootstrapState) {
+        CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+
+                // Title
+                ui.heading(
+                    RichText::new(&UI_TEXT.ls_title)
+                        .size(24.0)
+                        .strong()
+                        .color(PLOT_CONFIG.color_warning),
+                );
+
+                // Subtitle / Info
+                let interval_str = TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
+                ui.label(
+                    RichText::new(format!(
+                        "{} {} {}",
+                        UI_TEXT.ls_syncing, interval_str, UI_TEXT.ls_main,
+                    ))
+                    .italics()
+                    .color(PLOT_CONFIG.color_text_neutral),
+                );
+
+                ui.add_space(20.0);
+
+                // Progress Bar Logic
+                let total = state.total_pairs;
+                let done = state.completed + state.failed;
+                let progress = if total > 0 {
+                    done as f32 / total as f32
+                } else {
+                    0.0
+                };
+
+                ui.add_space(20.0);
+                ui.add(
+                    ProgressBar::new(progress)
+                        .show_percentage()
+                        .animate(true)
+                        .text(format!("Processed {}/{}", done, total)),
+                );
+
+                // Failure Warning
+                if state.failed > 0 {
+                    ui.add_space(5.0);
+                    ui.label(
+                        RichText::new(format!(
+                            "{} {} {}",
+                            UI_TEXT.label_warning, state.failed, UI_TEXT.label_failures
+                        ))
+                        .color(PLOT_CONFIG.color_loss),
+                    );
+                }
+
+                ui.add_space(20.0);
+            });
+
+            // Call the Grid Helper we made earlier
+            Self::render_loading_grid(ui, state);
+        });
+    }
+    fn render_loading_grid(ui: &mut Ui, state: &BootstrapState) {
+        ScrollArea::vertical().show(ui, |ui| {
+            Grid::new("loading_grid_multi_col")
+                .striped(true)
+                .spacing([20.0, 10.0])
+                .min_col_width(250.0)
+                .show(ui, |ui| {
+                    for (i, (_idx, (pair, status))) in state.pairs.iter().enumerate() {
+                        // Determine Color/Text based on Status
+                        let (color, status_text, status_color) = match status {
+                            SyncStatus::Pending => (
+                                PLOT_CONFIG.color_text_subdued,
+                                "-".to_string(),
+                                PLOT_CONFIG.color_text_subdued,
+                            ),
+                            SyncStatus::Syncing => (
+                                PLOT_CONFIG.color_warning,
+                                UI_TEXT.ls_syncing.to_string(),
+                                PLOT_CONFIG.color_warning,
+                            ),
+                            SyncStatus::Completed(n) => (
+                                PLOT_CONFIG.color_text_primary,
+                                format!("+{}", n),
+                                PLOT_CONFIG.color_profit,
+                            ),
+                            SyncStatus::Failed(_) => (
+                                PLOT_CONFIG.color_loss,
+                                UI_TEXT.ls_failed.to_string(),
+                                PLOT_CONFIG.color_loss,
+                            ),
+                        };
+
+                        // Render Cell
+                        ui.horizontal(|ui| {
+                            ui.set_min_width(240.0);
+                            ui.label(RichText::new(pair).strong().color(color));
+
+                            // Clean Layout syntax using imports
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                match status {
+                                    SyncStatus::Syncing => {
+                                        ui.spinner();
+                                    }
+                                    SyncStatus::Completed(_) => {
+                                        // We use status_text ("+500") here
+                                        ui.label(RichText::new(status_text).color(status_color));
+                                    }
+                                    _ => {
+                                        ui.label(RichText::new(status_text).color(status_color));
+                                    }
+                                }
+                            });
+                        });
+
+                        // New row every 3 items
+                        if (i + 1) % 3 == 0 {
+                            ui.end_row();
+                        }
+                    }
+                });
+        });
+    }
+    fn update_loading_progress(
+        state: &mut BootstrapState,
+        rx_opt: &Option<Receiver<ProgressEvent>>,
+    ) {
+        if let Some(rx) = rx_opt {
+            while let Ok(event) = rx.try_recv() {
+                // FIX: Insert using Index as Key (usize), and Tuple as Value
+                state.pairs.insert(event.index, (event.pair, event.status));
+            }
+
+            state.total_pairs = state.pairs.len();
+
+            // FIX: Destructure the tuple |(_, s)| to access the Status
+            state.completed = state
+                .pairs
+                .values()
+                .filter(|(_, s)| matches!(s, SyncStatus::Completed(_)))
+                .count();
+
+            state.failed = state
+                .pairs
+                .values()
+                .filter(|(_, s)| matches!(s, SyncStatus::Failed(_)))
+                .count();
+        }
+    }
+
     // --- AUDIT HELPER ---
     #[cfg(feature = "ph_audit")]
     fn try_run_audit(&self, ctx: &Context) {
@@ -1318,9 +1248,33 @@ fn setup_custom_visuals(ctx: &Context) {
 
     // Set the custom visuals
     ctx.set_visuals(visuals);
+    // Disable text selection globally. This stops the I-Beam cursor appearing on labels/buttons unless it is a text edit box.
+    // Also prevents any text from being selectable
+    ctx.style_mut(|s| s.interaction.selectable_labels = false);
 }
 
 impl eframe::App for ZoneSniperApp {
+    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+        setup_custom_visuals(ctx);
+
+        // Take ownership of state to avoid double mutable borrow
+        let current_state = mem::take(&mut self.state);
+
+        self.state = match current_state {
+            AppState::Bootstrapping(mut state) => self.tick_bootstrap(ctx, &mut state),
+
+            AppState::Tuning(state) => self.tick_tuning_state(ctx, state),
+
+            AppState::Running => {
+                #[cfg(feature = "ph_audit")]
+                self.try_run_audit(ctx);
+
+                self.tick_running_state(ctx);
+                AppState::Running
+            }
+        };
+    }
+
     fn save(&mut self, storage: &mut dyn Storage) {
         // Persist user intent, not runtime guesses
         self.persisted_selection = match &self.selection {
@@ -1349,52 +1303,5 @@ impl eframe::App for ZoneSniperApp {
         }
 
         eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-
-    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
-        setup_custom_visuals(ctx);
-
-        let mut next_state = None;
-
-        // --- FIX: GLOBAL CURSOR STRATEGY ---
-        // Disable text selection globally. This stops the I-Beam cursor appearing on labels/buttons unless it is a text edit box. THis also prevents text from being selectable
-        ctx.style_mut(|s| s.interaction.selectable_labels = false);
-
-        // --- PHASE A: LOADING STATE --- We use a scope block to limit the borrow of 'self.state'
-        {
-            if let AppState::Loading(state) = &mut self.state {
-                // 1. Update Progress (Pass fields individually to avoid conflict)
-                Self::update_loading_progress(state, &self.progress_rx);
-                ctx.request_repaint(); // Keep animating progress bar
-            }
-        }
-
-        // 2. Check Completion (requires &mut self)
-        // Only run this check if we are currently loading
-        if matches!(self.state, AppState::Loading(_)) {
-            next_state = self.check_loading_completion();
-            // log::warn!("WHERE DOES CHECK_LOADING_COMPLETION ARRIVE IN THE PROCESS?");
-        }
-
-        // --- PHASE B: TRANSITION ---
-        if let Some(new_state) = next_state {
-            self.state = new_state;
-            ctx.request_repaint();
-            return;
-        }
-
-        match &self.state {
-            AppState::Loading(state) => {
-                Self::render_loading_screen(ctx, state);
-            }
-            AppState::Tuning(tuning_state) => {
-                self.state = self.handle_tuning_phase(ctx, tuning_state.clone());
-            }
-            AppState::Running => {
-                #[cfg(feature = "ph_audit")]
-                self.try_run_audit(ctx);
-                self.render_running_state(ctx);
-            }
-        }
     }
 }

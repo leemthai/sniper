@@ -11,6 +11,7 @@ use crate::config::DF;
 
 use crate::config::{
     BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, StationId,
+    TUNER_CONFIG, TunerStation,
 };
 
 use crate::data::price_stream::PriceStreamManager;
@@ -201,6 +202,26 @@ impl SniperEngine {
             results_repo: Arc::new(repo),
             last_ledger_maintenance: AppInstant::now(),
         }
+    }
+
+    /// Tune using explicit station (manual UI trigger path)
+    pub(crate) fn tune_pair_with_station(
+        &self,
+        pair: &str,
+        station_id: StationId,
+    ) -> Option<PhPct> {
+        let tuner_station = TUNER_CONFIG.stations.iter().find(|s| s.id == station_id)?;
+
+        self.tune_pair_internal(pair, tuner_station)
+    }
+
+    /// Tune using station from shared_config (startup/global tuning path)
+    pub(crate) fn tune_pair_from_config(&self, pair: &str) -> Option<PhPct> {
+        let station_id = self.shared_config.get_station(pair)?;
+
+        let tuner_station = TUNER_CONFIG.stations.iter().find(|s| s.id == station_id)?;
+
+        self.tune_pair_internal(pair, tuner_station)
     }
 
     /// Generates the master list for the Trade Finder.
@@ -426,7 +447,7 @@ impl SniperEngine {
         #[cfg(debug_assertions)]
         if DF.log_pairs {
             log::info!(
-                "calling trigger_global_recalc() with the following {} pairs: {:?}",
+                "calling trigger_global_recalc() with the following {} pairs: {:?} in trigger_global_recalcs()",
                 all_pairs.len(),
                 all_pairs
             );
@@ -514,6 +535,27 @@ impl SniperEngine {
         });
     }
 
+    fn tune_pair_internal(&self, pair: &str, tuner_station: &TunerStation) -> Option<PhPct> {
+        // 1. Get live price
+        let price = self.price_stream.get_price(pair)?;
+
+        // 2. Get OHLCV
+        let ts_guard = self.timeseries.read().unwrap();
+        let ohlcv = find_matching_ohlcv(
+            &ts_guard.series_data,
+            pair,
+            BASE_INTERVAL.as_millis() as i64,
+        )
+        .ok()?;
+
+        // 3. Run worker
+        worker::tune_to_station(
+            ohlcv,
+            price,
+            tuner_station,
+            self.shared_config.get_strategy(),
+        )
+    }
     fn process_live_data(&mut self) -> Vec<String> {
         // Process incoming live candles every 5 mins
 
@@ -706,10 +748,7 @@ impl SniperEngine {
         for id in &ids_to_remove {
             #[cfg(debug_assertions)]
             if DF.log_ledger {
-                log::info!(
-                    "LEDGER PRUNE: Removing opportunity id {} from ledger",
-                    id
-                );
+                log::info!("LEDGER PRUNE: Removing opportunity id {} from ledger", id);
             }
             self.engine_ledger.remove_from_ledger(id);
         }
@@ -781,14 +820,6 @@ impl SniperEngine {
         let threshold = PRICE_RECALC_THRESHOLD_PCT;
 
         let pairs: Vec<String> = self.active_engine_pairs.to_vec();
-        #[cfg(debug_assertions)]
-        if DF.log_pairs {
-            log::info!(
-                "calling trigger_recalcs_on_price_changes() with the following {} pairs: {:?}",
-                pairs.len(),
-                pairs
-            );
-        }
         for pair_name in pairs {
             let Some(current_price) = self.price_stream.get_price(&pair_name) else {
                 continue;

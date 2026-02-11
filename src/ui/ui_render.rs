@@ -1677,33 +1677,35 @@ impl ZoneSniperApp {
                         );
                     }
 
-                    if let Some(best_ph_pct) = self.run_auto_tune_logic(&pair_name, station_id) {
-                        #[cfg(debug_assertions)]
-                        if DF.log_tuner {
-                            log::info!(
-                                "🎛️ BUTTON TUNE [{}] Station: {:?} -> PH {}",
-                                pair_name,
-                                station_id,
-                                best_ph_pct
-                            );
-                        }
-
-                        // Update Engine
-                        if let Some(engine) = &mut self.engine {
-                            // Create specific config for this pair's override
-                            engine
-                                .shared_config
-                                .insert_ph(pair_name.clone(), best_ph_pct);
+                    if let Some(engine) = &mut self.engine {
+                        if let Some(best_ph_pct) =
+                            engine.tune_pair_with_station(&pair_name, station_id)
+                        {
                             #[cfg(debug_assertions)]
-                            if DF.log_ph_overrides {
+                            if DF.log_tuner {
                                 log::info!(
-                                    "SETTING PH_OVERRIDES for {} to be {} in handle_tuner_action",
-                                    pair,
+                                    "🎛️ BUTTON TUNE [{}] Station: {:?} -> PH {}",
+                                    pair_name,
+                                    station_id,
                                     best_ph_pct
                                 );
                             }
 
-                            // Use invalidate_pair_and_recalc to update ONLY this pair
+                            // Persist override in engine config
+                            engine
+                                .shared_config
+                                .insert_ph(pair_name.clone(), best_ph_pct);
+
+                            #[cfg(debug_assertions)]
+                            if DF.log_ph_overrides {
+                                log::info!(
+                                    "SETTING PH_OVERRIDES for {} to be {} in handle_tuner_action",
+                                    pair_name,
+                                    best_ph_pct
+                                );
+                            }
+
+                            // Recalculate only this pair
                             engine.invalidate_pair_and_recalc(
                                 &pair_name,
                                 None,
