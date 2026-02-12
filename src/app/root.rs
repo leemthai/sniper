@@ -14,9 +14,10 @@ use {crate::data::ledger_io, std::thread, tokio::runtime::Runtime};
 
 use crate::Cli;
 
-use crate::app::phases::phase_view::PhaseView;
-
-use crate::app::state::{AppState, BootstrapState, TuningState, RunningState};
+use crate::app::{
+    phases::phase_view::PhaseView,
+    state::{AppState, BootstrapState, RunningState, TuningState},
+};
 use crate::models::SyncStatus;
 
 use crate::config::{CandleResolution, PhPct, Price, PriceLike};
@@ -41,6 +42,7 @@ use crate::ui::config::UI_CONFIG;
 use crate::ui::screens::bootstrap;
 use crate::ui::ticker::TickerState;
 use crate::ui::ui_plot_view::PlotView;
+use crate::ui::ui_plot_view::PlotVisibility;
 
 use crate::utils::time_utils::AppInstant;
 
@@ -54,43 +56,6 @@ pub enum ScrollBehavior {
 pub(crate) struct NavigationState {
     pub current_segment_idx: Option<usize>, // None = Show All
     pub last_viewed_segment_idx: usize,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) struct PlotVisibility {
-    pub sticky: bool,
-    pub low_wicks: bool,
-    pub high_wicks: bool,
-    pub background: bool,
-    pub price_line: bool,
-    pub candles: bool,
-    pub opportunities: bool,
-
-    pub horizon_lines: bool,
-    pub separators: bool,
-}
-
-impl Default for PlotVisibility {
-    fn default() -> Self {
-        Self {
-            sticky: true,
-            low_wicks: false,
-            high_wicks: false,
-            background: true,
-            price_line: true,
-            candles: true,
-            opportunities: true,
-            horizon_lines: true,
-            separators: true,
-        }
-    }
-}
-
-/// Identifiers of opportunities that were removed from the engine ledger
-/// during an update cycle (pruning, collision resolution, etc).
-#[derive(Debug, Default)]
-pub(crate) struct LedgerRemovals {
-    pub ids: Vec<String>,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -341,7 +306,7 @@ impl App {
         _reason: &str,
     ) {
         #[cfg(debug_assertions)]
-        if DF.log_selected_opportunity {
+        if DF.log_selection {
             log::info!("Call select_opportunity because {}", _reason);
         }
 
@@ -349,7 +314,7 @@ impl App {
         self.selection = Selection::Opportunity(op.clone());
 
         #[cfg(debug_assertions)]
-        if DF.log_selected_opportunity {
+        if DF.log_selection {
             log::info!("SELECTION SET to Opportunity {} in select_opportunity", op);
         }
 
@@ -359,6 +324,7 @@ impl App {
         }
     }
 
+    /// Returns the navigation state associated with the currently selected pair, inserting a default if none exists.
     pub(crate) fn get_nav_state(&mut self) -> NavigationState {
         let pair = match &self.selection {
             Selection::Opportunity(op) => op.pair_name.clone(),
@@ -369,6 +335,7 @@ impl App {
         *self.nav_states.entry(pair).or_default()
     }
 
+    /// Stores the given navigation state for the currently selected pair, if one is selected.
     pub(crate) fn set_nav_state(&mut self, state: NavigationState) {
         let pair = match &self.selection {
             Selection::Opportunity(op) => op.pair_name.clone(),
@@ -378,7 +345,12 @@ impl App {
 
         self.nav_states.insert(pair, state);
     }
-
+    
+    /// Ensures a navigation state entry exists for the specified pair, inserting a default if absent.
+    pub(crate) fn ensure_nav_state_for_pair(&mut self, pair: &str) {
+        self.nav_states.entry(pair.to_owned()).or_default();
+    }
+    
     pub(crate) fn is_simulation_mode(&self) -> bool {
         // WASM is always offline/simulation
         #[cfg(target_arch = "wasm32")]
@@ -575,11 +547,7 @@ impl App {
     }
 
     /// Writes a value into each self.shared_config.ph_overrides for each pair (for current station_id)
-    pub(crate) fn tick_tuning_state(
-        &mut self,
-        ctx: &Context,
-        state: &mut TuningState,
-    ) -> AppState {
+    pub(crate) fn tick_tuning_state(&mut self, ctx: &Context, state: &mut TuningState) -> AppState {
         // Render tuning progress UI
         CentralPanel::default().show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
@@ -700,56 +668,6 @@ impl App {
         }
     }
 
-    /// Ensure the UI always has a valid *pair-level* selection while the app is running.
-    ///
-    /// Invariant:
-    /// - While in `Running` state, the UI must never be left without a selected pair.
-    /// - A missing or invalid selection causes large parts of the UI to disappear.
-    ///
-    /// This function is a *healer*, not normal control flow:
-    /// - It should do nothing 99.999% of the time.
-    /// - It only intervenes if state has become invalid due to startup gaps,
-    ///   stale persisted state, or ledger-driven removals.
-    fn ensure_valid_selection(&mut self) {
-        // FAST PATH:
-        // If we already have a selection that refers to a valid session pair,
-        // we do nothing.
-        let selected_pair: Option<&String> = match &self.selection {
-            Selection::Pair(pair) => Some(pair),
-            Selection::Opportunity(op) => Some(&op.pair_name),
-            Selection::None => None,
-        };
-
-        if let Some(pair) = selected_pair {
-            if self.valid_session_pairs.contains(pair) {
-                return;
-            }
-        }
-
-        // HEALING PATH:
-        // At this point, either:
-        // - Selection is None
-        // - Selection refers to a pair that is NOT valid for this session
-        //   (e.g. persisted pair missing, or opportunity was pruned)
-        //
-        // We must recover by selecting *some* valid pair so the UI remains usable.
-        if let Some(pair) = self.valid_session_pairs.iter().next() {
-            #[cfg(debug_assertions)]
-            if DF.log_selected_pair {
-                log::info!(
-                    "SELECTION HEALED: no valid selection present; falling back to pair {}",
-                    pair
-                );
-            }
-
-            // IMPORTANT:
-            // We deliberately fall back to a *pair* selection, NOT an opportunity.
-            // Opportunity selection is transient and ledger-driven; pair selection
-            // is the stable baseline that keeps the UI alive.
-            self.selection = Selection::Pair(pair.clone());
-        }
-    }
-
     /// Helper: Checks if the background thread has finished.
     /// Returns Some(NewState) if ready to transition.
     pub(crate) fn finalize_bootstrap_if_ready(&mut self) -> Option<AppState> {
@@ -851,7 +769,7 @@ impl App {
 
         // Initialize navigation for selected pair
         if let Some(pair) = self.selection.pair_owned() {
-            self.nav_states.insert(pair, NavigationState::default());
+            self.ensure_nav_state_for_pair(&pair);
         }
     }
 
@@ -1007,7 +925,7 @@ impl App {
         if let Selection::Opportunity(op) = &self.selection {
             if removed_ids.iter().any(|id| id == &op.id) {
                 #[cfg(debug_assertions)]
-                if DF.log_selected_opportunity || DF.log_ledger {
+                if DF.log_selection || DF.log_ledger {
                     log::info!(
                         "\u{f1238} SELECTED OPPORTUNITY CLEARED because it was removed from ledger, as rare as a rare thing!: {}",
                         op.id
@@ -1016,6 +934,56 @@ impl App {
                 // Revert to bare pair rather than the opportunity!
                 self.selection = Selection::Pair(op.pair_name.clone());
             }
+        }
+    }
+
+    /// Ensure the UI always has a valid *pair-level* selection while the app is running.
+    ///
+    /// Invariant:
+    /// - While in `Running` state, the UI must never be left without a selected pair.
+    /// - A missing or invalid selection causes large parts of the UI to disappear.
+    ///
+    /// This function is a *healer*, not normal control flow:
+    /// - It should do nothing 99.999% of the time.
+    /// - It only intervenes if state has become invalid due to startup gaps,
+    ///   stale persisted state, or ledger-driven removals.
+    fn ensure_valid_selection(&mut self) {
+        // FAST PATH:
+        // If we already have a selection that refers to a valid session pair,
+        // we do nothing.
+        let selected_pair: Option<&String> = match &self.selection {
+            Selection::Pair(pair) => Some(pair),
+            Selection::Opportunity(op) => Some(&op.pair_name),
+            Selection::None => None,
+        };
+
+        if let Some(pair) = selected_pair {
+            if self.valid_session_pairs.contains(pair) {
+                return;
+            }
+        }
+
+        // HEALING PATH:
+        // At this point, either:
+        // - Selection is None
+        // - Selection refers to a pair that is NOT valid for this session
+        //   (e.g. persisted pair missing, or opportunity was pruned)
+        //
+        // We must recover by selecting *some* valid pair so the UI remains usable.
+        if let Some(pair) = self.valid_session_pairs.iter().next() {
+            #[cfg(debug_assertions)]
+            if DF.log_selection {
+                log::info!(
+                    "SELECTION HEALED: no valid selection present; falling back to pair {}",
+                    pair
+                );
+            }
+
+            // IMPORTANT:
+            // We deliberately fall back to a *pair* selection, NOT an opportunity.
+            // Opportunity selection is transient and ledger-driven; pair selection
+            // is the stable baseline that keeps the UI alive.
+            self.selection = Selection::Pair(pair.clone());
         }
     }
 
@@ -1111,7 +1079,7 @@ impl eframe::App for App {
         };
 
         #[cfg(debug_assertions)]
-        if DF.log_selected_opportunity {
+        if DF.log_selection {
             log::info!(
                 "💾 SAVE [App]: PersistedSelection = {:?}",
                 self.persisted_selection

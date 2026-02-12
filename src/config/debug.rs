@@ -24,13 +24,11 @@ pub struct LogFlags {
     pub log_pathfinder: bool,
     pub log_zones: bool,
 
-    /// Anything about handling self.selected_pair
-    pub log_selected_pair: bool,
+    /// Anything about handling self.selection i.. the Selection struct
+    pub log_selection: bool,
 
     pub log_candle_update: bool,
 
-    /// Anything about self.selected_opportunity
-    pub log_selected_opportunity: bool,
 
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
     pub log_wasm_demo: bool,
@@ -58,17 +56,15 @@ pub const DF: LogFlags = LogFlags {
     log_startup_prices: true,
     wipe_ledger_on_startup: true,
 
-    log_selected_pair: false,
+    log_selection: true,
+
     log_pairs: false,
     log_ledger: false,
-    log_selected_opportunity: false,
-
-
     log_station_overrides: false,
     log_ph_overrides: false,
     log_tuner: false,
 
-    log_engine_core: false, // exclusively core.rs stuff
+    log_engine_core: false,
     log_pathfinder: false,
 
     log_strategy_selection: false,

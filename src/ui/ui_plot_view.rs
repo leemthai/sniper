@@ -1,4 +1,5 @@
 use std::hash::{Hash, Hasher};
+use serde::{Deserialize, Serialize};
 
 use colorgrad::Gradient;
 use eframe::egui::{Color32, PointerButton, Rect, Ui, Vec2b};
@@ -15,8 +16,6 @@ use crate::engine::SniperEngine;
 
 use crate::models::{CVACore, ScoreType, TradingModel, TradeOpportunity, find_matching_ohlcv};
 
-use crate::app::root::PlotVisibility;
-
 use crate::ui::ui_text::UI_TEXT;
 
 use crate::utils::TimeUtils;
@@ -27,6 +26,36 @@ use crate::ui::plot_layers::{
     BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,
     PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer,
 };
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub(crate) struct PlotVisibility {
+    pub sticky: bool,
+    pub low_wicks: bool,
+    pub high_wicks: bool,
+    pub background: bool,
+    pub price_line: bool,
+    pub candles: bool,
+    pub opportunities: bool,
+
+    pub horizon_lines: bool,
+    pub separators: bool,
+}
+
+impl Default for PlotVisibility {
+    fn default() -> Self {
+        Self {
+            sticky: true,
+            low_wicks: false,
+            high_wicks: false,
+            background: true,
+            price_line: true,
+            candles: true,
+            opportunities: true,
+            horizon_lines: true,
+            separators: true,
+        }
+    }
+}
 
 /// A lightweight representation of a background bar.
 #[derive(Clone)]

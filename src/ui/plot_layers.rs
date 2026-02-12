@@ -19,7 +19,7 @@ use crate::config::plot::PLOT_CONFIG;
 use crate::models::OhlcvTimeSeries;
 use crate::models::{SuperZone, TradeOpportunity, TradingModel};
 
-use crate::app::root::PlotVisibility;
+use crate::ui::ui_plot_view::PlotVisibility;
 use crate::ui::styles::{DirectionColor, apply_opacity};
 use crate::ui::ui_plot_view::PlotCache;
 use crate::ui::ui_text::UI_TEXT;

@@ -41,7 +41,6 @@ use crate::ui::{time_tuner, time_tuner::TunerAction};
 
 use crate::utils::TimeUtils;
 
-
 const CELL_PADDING_Y: f32 = 4.0;
 
 impl App {
@@ -941,7 +940,7 @@ impl App {
                 .iter()
                 .any(|r| r.opportunity.as_ref().is_some_and(|op| op.id == sel.id));
 
-            if !exists && DF.log_selected_opportunity {
+            if !exists && DF.log_selection {
                 log::warn!(
                     "UI invariant violation: selected opportunity {} not present in rendered rows",
                     sel.id
@@ -1142,10 +1141,7 @@ impl App {
             _ => false,
         };
 
-        // This paints the background correctly behind the correct row
-        table_row.set_selected(is_selected);
-
-        // This paints the background correctly behind the correct row
+        // paint background correctly behind the correct row
         table_row.set_selected(is_selected);
 
         // We pass the scroll tracker as a local bool to the column helper
@@ -1156,25 +1152,26 @@ impl App {
         self.col_volume_24h(table_row, row);
         self.col_sl_variants(table_row, row);
 
-        // 2. GET RESPONSE (Safe now)
         let response = table_row.response();
 
-        // // 4. INTERACTION
+        // Click handling
         if response.clicked() {
-            // Clicking an opportunity row selects it; clicking any non-opportunity row clears selection and selects the pair.
-            if let Some(op) = &row.opportunity {
-                self.select_opportunity(
-                    op.clone(),
-                    ScrollBehavior::None,
-                    "clicked in render_tf_table_row",
-                );
-            } else if matches!(self.selection, Selection::Opportunity(_)) {
-                #[cfg(debug_assertions)]
-                log::info!(
-                    "SELECTED OPPORTUNITY CLEARED in render_tf_table_row because this row has no opportunity (row.opportunity is None)"
-                );
-
-                self.selection = Selection::Pair(row.pair_name.clone());
+            match &row.opportunity {
+                Some(op) => {
+                    self.select_opportunity(
+                        op.clone(),
+                        ScrollBehavior::None,
+                        "clicked in render_tf_table_row",
+                    );
+                }
+                None => {
+                    // Case where we start as NOPP
+                    #[cfg(debug_assertions)]
+                    if DF.log_selection {
+                        log::info!("Started as NOPP. So need make a selection based on new pair name ");
+                    }
+                    self.selection = Selection::Pair(row.pair_name.clone());
+                }
             }
         }
     }

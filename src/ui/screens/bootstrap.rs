@@ -5,38 +5,15 @@ use eframe::egui::{
 };
 
 use crate::app::state::BootstrapState;
+
 use crate::config::BASE_INTERVAL;
 use crate::config::plot::PLOT_CONFIG;
+
 use crate::models::SyncStatus;
-// use crate::ui::components::{progress, status_view::ToStatusView};
+
 use crate::ui::ui_text::UI_TEXT;
+
 use crate::utils::TimeUtils;
-
-// impl BootstrapView {
-//     pub(crate) fn render(ctx: &Context, state: &BootstrapState) {
-//         CentralPanel::default().show(ctx, |ui| {
-//             ui.vertical_centered(|ui| {
-//                 ui.add_space(20.0);
-
-//                 ui.heading(RichText::new("Bootstrapping").size(24.0).strong());
-
-//                 ui.add_space(20.0);
-//                 render_grid(ui, state);
-
-//                 let total = state.total_pairs;
-//                 let done = state.completed + state.failed;
-
-//                 let progress = if total > 0 {
-//                     done as f32 / total as f32
-//                 } else {
-//                     0.0
-//                 };
-
-//                 progress::render(ui, progress, format!("Processed {}/{}", done, total));
-//             });
-//         });
-//     }
-// }
 
 pub(crate) fn render(ctx: &Context, state: &BootstrapState) {
     CentralPanel::default().show(ctx, |ui| {

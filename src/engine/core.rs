@@ -30,12 +30,18 @@ use crate::models::{
 
 use crate::shared::SharedConfiguration;
 
-use crate::app::root::LedgerRemovals;
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 
 use super::messages::{JobMode, JobRequest, JobResult};
 use super::worker;
+
+/// Identifiers of opportunities that were removed from the engine ledger
+/// during an update cycle (pruning, collision resolution, etc).
+#[derive(Debug, Default)]
+pub(crate) struct LedgerRemovals {
+    pub ids: Vec<String>,
+}
 
 /// Represents the state of a single pair in the engine.
 #[derive(Debug, Clone)]
@@ -60,7 +66,6 @@ impl PairRuntime {
         }
     }
 }
-
 pub(crate) struct EngineJob {
     pub pair: String,
     pub price_override: Option<Price>,
