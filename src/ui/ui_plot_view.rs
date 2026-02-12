@@ -15,7 +15,7 @@ use crate::engine::SniperEngine;
 
 use crate::models::{CVACore, ScoreType, TradingModel, TradeOpportunity, find_matching_ohlcv};
 
-use crate::ui::app::PlotVisibility;
+use crate::app::root::PlotVisibility;
 
 use crate::ui::ui_text::UI_TEXT;
 

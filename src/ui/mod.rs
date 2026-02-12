@@ -1,5 +1,3 @@
-// User interface components
-pub mod app;
 pub mod app_simulation;
 pub mod config;
 pub mod ui_panels;
@@ -12,5 +10,6 @@ pub mod ticker;
 pub mod time_tuner;
 
 // Re-export main app
-pub use app::ZoneSniperApp;
 pub use config::UI_CONFIG;
+
+pub(crate) mod screens;

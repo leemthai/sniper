@@ -30,7 +30,9 @@ use crate::models::{
     NavigationTarget, SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
 };
 
-use crate::ui::app::{ScrollBehavior, Selection};
+use crate::app::App;
+use crate::app::root::{ScrollBehavior, Selection};
+
 use crate::ui::config::{UI_CONFIG, UI_TEXT};
 use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color};
 use crate::ui::ui_panels::CandleRangePanel;
@@ -39,12 +41,11 @@ use crate::ui::{time_tuner, time_tuner::TunerAction};
 
 use crate::utils::TimeUtils;
 
-use super::app::ZoneSniperApp;
 
 const CELL_PADDING_Y: f32 = 4.0;
 
-impl ZoneSniperApp {
-    pub(super) fn render_opportunity_details_modal(&mut self, ctx: &Context) {
+impl App {
+    pub(crate) fn render_opportunity_details_modal(&mut self, ctx: &Context) {
         // 1. Check if open
         if !self.show_opportunity_details {
             return;
@@ -375,7 +376,7 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_right_panel(&mut self, ctx: &Context) {
+    pub(crate) fn render_right_panel(&mut self, ctx: &Context) {
         let frame = UI_CONFIG.side_panel_frame();
 
         SidePanel::right("right_panel")
@@ -416,7 +417,7 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_help_panel(&mut self, ctx: &Context) {
+    pub(crate) fn render_help_panel(&mut self, ctx: &Context) {
         let is_sim_mode = self.is_simulation_mode();
 
         Window::new(&UI_TEXT.kbs_name_long)
@@ -517,7 +518,7 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_left_panel(&mut self, ctx: &Context) {
+    pub(crate) fn render_left_panel(&mut self, ctx: &Context) {
         let frame = UI_CONFIG.side_panel_frame();
 
         SidePanel::left("left_panel")
@@ -551,7 +552,7 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_top_panel(&mut self, ctx: &Context) {
+    pub(crate) fn render_top_panel(&mut self, ctx: &Context) {
         let frame = UI_CONFIG.top_panel_frame();
 
         TopBottomPanel::top("top_toolbar")
@@ -616,7 +617,7 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_ticker_panel(&mut self, ctx: &Context) {
+    pub(crate) fn render_ticker_panel(&mut self, ctx: &Context) {
         let panel_frame = UI_CONFIG.bottom_panel_frame();
 
         // Render at bottom. If called BEFORE status panel in update(), it sits below it.
@@ -644,7 +645,7 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_central_panel(&mut self, ctx: &Context) {
+    pub(crate) fn render_central_panel(&mut self, ctx: &Context) {
         let central_panel_frame = UI_CONFIG.central_panel_frame();
 
         CentralPanel::default()
@@ -751,7 +752,7 @@ impl ZoneSniperApp {
             });
     }
 
-    pub(super) fn render_status_panel(&mut self, ctx: &Context) {
+    pub(crate) fn render_status_panel(&mut self, ctx: &Context) {
         let frame = UI_CONFIG.bottom_panel_frame();
         TopBottomPanel::bottom("status_panel")
             .frame(frame)

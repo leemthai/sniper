@@ -16,11 +16,6 @@ impl fmt::Display for SimDirection {
     }
 }
 
-// impl Default for SimDirection {
-//     fn default() -> Self {
-//         Self::Up
-//     }
-// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize, Default)]
 pub(crate) enum SimStepSize {
@@ -33,7 +28,7 @@ pub(crate) enum SimStepSize {
 }
 
 impl SimStepSize {
-    pub(super) fn as_percentage(&self) -> f64 {
+    pub(crate) fn as_percentage(&self) -> f64 {
         match self {
             SimStepSize::Point1 => 0.001,
             SimStepSize::Point5 => 0.005,
@@ -43,7 +38,7 @@ impl SimStepSize {
         }
     }
 
-    pub(super) fn cycle(&mut self) {
+    pub(crate) fn cycle(&mut self) {
         *self = match self {
             SimStepSize::Point1 => SimStepSize::Point5,
             SimStepSize::Point5 => SimStepSize::One,

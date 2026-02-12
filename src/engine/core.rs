@@ -30,7 +30,7 @@ use crate::models::{
 
 use crate::shared::SharedConfiguration;
 
-use crate::ui::app::LedgerRemovals;
+use crate::app::root::LedgerRemovals;
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 

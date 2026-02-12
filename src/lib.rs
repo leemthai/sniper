@@ -13,13 +13,14 @@ pub mod ui;
 pub mod utils;
 pub mod engine;
 pub mod ph_audit;
+pub mod app;
 mod shared;
 
 // Re-export commonly used types
 pub use data::{price_stream::PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
 pub use domain::{Candle, PairInterval};
 pub use models::{Zone};
-pub use ui::ZoneSniperApp;
+pub use app::App;
 
 // CLI argument parsing
 use clap::Parser;
@@ -38,6 +39,6 @@ pub struct Cli {
 pub fn run_app(
     cc: &eframe::CreationContext<'_>,
     args: Cli, // Was TimeSeriesCollection
-) -> ZoneSniperApp {
-    ZoneSniperApp::new(cc, args)
+) -> App {
+    App::new(cc, args)
 }
