@@ -3,10 +3,14 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
 
-use eframe::egui::{
-    CentralPanel, Context, FontData, FontDefinitions, FontFamily, Key, ProgressBar, Visuals,
+use eframe::{
+    egui::{
+        CentralPanel, Context, FontData, FontDefinitions, FontFamily, 
+        Key, ProgressBar, Visuals,
+    },
+    Frame, Storage,
 };
-use eframe::{Frame, Storage};
+
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -20,42 +24,47 @@ use crate::app::{
 };
 use crate::models::SyncStatus;
 
-use crate::config::{CandleResolution, PhPct, Price, PriceLike};
+use crate::config::{CandleResolution, PhPct, Price, PriceLike, DF};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::Pct;
-
-use crate::config::DF;
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::engine::SniperEngine;
 
-use crate::models::ledger::OpportunityLedger;
-use crate::models::{NavigationTarget, ProgressEvent, SortColumn, SortDirection, TradeOpportunity};
+use crate::models::{
+    ledger::OpportunityLedger, 
+    ProgressEvent, TradeOpportunity
+};
 
 use crate::shared::SharedConfiguration;
 
-use crate::ui::app_simulation::{SimDirection, SimStepSize};
-use crate::ui::config::UI_CONFIG;
-use crate::ui::screens::bootstrap;
-use crate::ui::ticker::TickerState;
-use crate::ui::ui_plot_view::PlotView;
-use crate::ui::ui_plot_view::PlotVisibility;
+use crate::ui::{
+    app_simulation::{SimDirection, SimStepSize},
+    config::UI_CONFIG,
+    screens::bootstrap,
+    ticker::TickerState,
+    ui_plot_view::{PlotView, PlotVisibility},
+    ui_render::{SortColumn, NavigationTarget, NavigationState, ScrollBehavior},
+};
 
 use crate::utils::time_utils::AppInstant;
 
-#[derive(PartialEq, Eq)]
-pub enum ScrollBehavior {
-    Center,
-    None,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum SortDirection {
+    Ascending,
+    Descending,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
-pub(crate) struct NavigationState {
-    pub current_segment_idx: Option<usize>, // None = Show All
-    pub last_viewed_segment_idx: usize,
+impl SortDirection {
+    pub fn toggle(&self) -> Self {
+        match self {
+            Self::Ascending => Self::Descending,
+            Self::Descending => Self::Ascending,
+        }
+    }
 }
 
 #[allow(clippy::large_enum_variant)]

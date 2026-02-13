@@ -1,5 +1,4 @@
 use std::collections::{HashMap, VecDeque};
-// use std::fs::remove_dir;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, RwLock};
 
@@ -14,27 +13,28 @@ use crate::config::{
     TUNER_CONFIG, TunerStation,
 };
 
-use crate::data::price_stream::PriceStreamManager;
-use crate::data::results_repo::TradeResult;
+use crate::data::{
+    price_stream::PriceStreamManager, results_repo::TradeResult, timeseries::TimeSeriesCollection,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait};
 
-use crate::data::timeseries::TimeSeriesCollection;
-
-use crate::models::ledger::OpportunityLedger;
 use crate::models::{
     DEFAULT_JOURNEY_SETTINGS, LiveCandle, PRICE_RECALC_THRESHOLD_PCT, TradeDirection,
-    TradeFinderRow, TradeOpportunity, TradeOutcome, TradingModel, find_matching_ohlcv,
+    TradeOpportunity, TradeOutcome, TradingModel, find_matching_ohlcv, ledger::OpportunityLedger,
 };
 
 use crate::shared::SharedConfiguration;
 
-use crate::utils::TimeUtils;
-use crate::utils::time_utils::AppInstant;
+use crate::utils::{TimeUtils, time_utils::AppInstant};
 
-use super::messages::{JobMode, JobRequest, JobResult};
-use super::worker;
+use crate::engine::{
+    messages::{JobMode, JobRequest, JobResult},
+    worker,
+};
+
+use crate::ui::ui_render::TradeFinderRow;
 
 /// Identifiers of opportunities that were removed from the engine ledger
 /// during an update cycle (pruning, collision resolution, etc).

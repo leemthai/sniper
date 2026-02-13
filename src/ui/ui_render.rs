@@ -7,41 +7,88 @@ use eframe::egui::{
 
 use egui_extras::{Column, TableBuilder, TableRow};
 
+use serde::{Deserialize, Serialize};
+
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
-use crate::config::plot::PLOT_CONFIG;
-use crate::config::{
-    BASE_INTERVAL, MomentumPct, OptimizationStrategy, Pct, TICKER, TUNER_CONFIG, VolatilityPct,
+use crate::analysis::market_state::MarketState;
+
+use crate::app::{
+    App,
+    root::{Selection, SortDirection},
 };
+
+use crate::config::{
+    plot::PLOT_CONFIG,
+    BASE_INTERVAL, CandleResolution, MomentumPct, OptimizationStrategy, 
+    Pct, Price, PriceLike, QuoteVol, TICKER, TUNER_CONFIG, VolatilityPct,
+};
+
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
-
-use crate::config::{CandleResolution, PriceLike};
 
 use crate::domain::pair_interval::PairInterval;
 
 use crate::engine::messages::JobMode;
 
-use crate::models::{DEFAULT_JOURNEY_SETTINGS, ScoreType};
-use crate::models::{
-    NavigationTarget, SortColumn, SortDirection, TradeDirection, TradeFinderRow, TradeOpportunity,
+use crate::models::{TradeDirection, TradeOpportunity, DEFAULT_JOURNEY_SETTINGS, ScoreType};
+
+use crate::ui::{
+    config::{UI_CONFIG, UI_TEXT},
+    styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color},
+    ui_panels::CandleRangePanel,
+    ui_plot_view::PlotInteraction,
+    time_tuner::{self, TunerAction},
 };
-
-use crate::app::App;
-use crate::app::root::{ScrollBehavior, Selection};
-
-use crate::ui::config::{UI_CONFIG, UI_TEXT};
-use crate::ui::styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color};
-use crate::ui::ui_panels::CandleRangePanel;
-use crate::ui::ui_plot_view::PlotInteraction;
-use crate::ui::{time_tuner, time_tuner::TunerAction};
 
 use crate::utils::TimeUtils;
 
 const CELL_PADDING_Y: f32 = 4.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum SortColumn {
+    PairName,
+    TargetPrice,
+    LiveRoi,
+    AnnualizedRoi,
+    AvgDuration,
+    QuoteVolume24h,
+    Volatility,
+    Momentum,
+    VariantCount,
+    Score,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NavigationTarget {
+    Opportunity(String), // UUID (Primary)
+    Pair(String),        // Fallback (Market View / No Op)
+}
+
+#[derive(PartialEq, Eq)]
+pub enum ScrollBehavior {
+    Center,
+    None,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+pub(crate) struct NavigationState {
+    pub current_segment_idx: Option<usize>, // None = Show All
+    pub last_viewed_segment_idx: usize,
+}
+
+/// A row in the Trade Finder list.
+#[derive(Debug, Clone)]
+pub(crate) struct TradeFinderRow {
+    pub pair_name: String,
+    pub quote_volume_24h: QuoteVol, // 24h Quote Volume (e.g. USDT volume). Crucial for filtering "Dead" coins.
+    pub market_state: Option<MarketState>, // Market State (Volatility, Momentum)
+    pub opportunity: Option<TradeOpportunity>,
+    pub current_price: Price,
+}
 
 impl App {
     pub(crate) fn render_opportunity_details_modal(&mut self, ctx: &Context) {

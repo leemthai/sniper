@@ -9,7 +9,7 @@ use crate::config::{DF, OptimizationStrategy};
 
 use crate::config::{Pct, PriceLike};
 
-use crate::models::trading_view::TradeOpportunity;
+use crate::models::trade_opportunity::TradeOpportunity;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct OpportunityLedger {

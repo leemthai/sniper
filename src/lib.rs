@@ -19,7 +19,6 @@ mod shared;
 // Re-export commonly used types
 pub use data::{price_stream::PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
 pub use domain::{Candle, PairInterval};
-pub use models::{Zone};
 pub use app::App;
 
 // CLI argument parsing

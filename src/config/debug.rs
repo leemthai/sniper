@@ -53,16 +53,17 @@ pub struct LogFlags {
 
 pub const DF: LogFlags = LogFlags {
     
-    log_startup_prices: true,
-    wipe_ledger_on_startup: true,
-
-    log_selection: true,
+    log_station_overrides: false,
+    log_ph_overrides: false,
+    
+    log_selection: false,
+    log_startup_prices: false,
+    wipe_ledger_on_startup: false,
+    
+    log_tuner: false,
 
     log_pairs: false,
     log_ledger: false,
-    log_station_overrides: false,
-    log_ph_overrides: false,
-    log_tuner: false,
 
     log_engine_core: false,
     log_pathfinder: false,
