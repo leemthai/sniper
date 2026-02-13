@@ -9,8 +9,8 @@ use egui_extras::{Column, TableBuilder, TableRow};
 
 use serde::{Deserialize, Serialize};
 
-use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
+
 use strum::IntoEnumIterator;
 
 use crate::analysis::market_state::MarketState;
@@ -21,11 +21,9 @@ use crate::app::{
 };
 
 use crate::config::{
-    plot::PLOT_CONFIG,
-    BASE_INTERVAL, CandleResolution, MomentumPct, OptimizationStrategy, 
-    Pct, Price, PriceLike, QuoteVol, TICKER, TUNER_CONFIG, VolatilityPct,
+    BASE_INTERVAL, CandleResolution, MomentumPct, OptimizationStrategy, Pct, Price, PriceLike,
+    QuoteVol, TICKER, TUNER_CONFIG, VolatilityPct, plot::PLOT_CONFIG,
 };
-
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -34,14 +32,14 @@ use crate::domain::pair_interval::PairInterval;
 
 use crate::engine::messages::JobMode;
 
-use crate::models::{TradeDirection, TradeOpportunity, DEFAULT_JOURNEY_SETTINGS, ScoreType};
+use crate::models::{DEFAULT_JOURNEY_SETTINGS, ScoreType, TradeDirection, TradeOpportunity};
 
 use crate::ui::{
     config::{UI_CONFIG, UI_TEXT},
     styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color},
+    time_tuner::{self, TunerAction},
     ui_panels::CandleRangePanel,
     ui_plot_view::PlotInteraction,
-    time_tuner::{self, TunerAction},
 };
 
 use crate::utils::TimeUtils;
@@ -1215,7 +1213,9 @@ impl App {
                     // Case where we start as NOPP
                     #[cfg(debug_assertions)]
                     if DF.log_selection {
-                        log::info!("Started as NOPP. So need make a selection based on new pair name ");
+                        log::info!(
+                            "Started as NOPP. So need make a selection based on new pair name "
+                        );
                     }
                     self.selection = Selection::Pair(row.pair_name.clone());
                 }

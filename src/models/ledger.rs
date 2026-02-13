@@ -1,15 +1,16 @@
-// src/models/ledger.rs
-
 use serde::{Deserialize, Serialize};
+
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use crate::config::{Pct, PriceLike, DF};
 #[cfg(debug_assertions)]
-use crate::config::{DF, OptimizationStrategy};
+use crate::config::{OptimizationStrategy};
 
-use crate::config::{Pct, PriceLike};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::data::ledger_io;
 
-use crate::models::trade_opportunity::TradeOpportunity;
+use crate::models::TradeOpportunity;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct OpportunityLedger {
@@ -290,3 +291,79 @@ impl OpportunityLedger {
         }
     }
 }
+
+/// Called in fn called build_engine() in root.rs start-up code
+pub(crate) fn restore_engine_ledger(valid_session_pairs: &HashSet<String>) -> OpportunityLedger {
+        // Returns a fully-initialized OpprtuntyLedger (including startup-culling against valid_session_pairs)
+        // If the Nuke Flag is on, we start fresh.
+        if DF.wipe_ledger_on_startup {
+            #[cfg(debug_assertions)]
+            log::info!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
+            return OpportunityLedger::new();
+        }
+
+        // Otherwise attempt to load persistence
+        let mut ledger = {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                match ledger_io::load_ledger() {
+                    Ok(l) => {
+                        #[cfg(debug_assertions)]
+                        if DF.log_ledger {
+                            log::info!(
+                                "Loaded ledger with {} opportunities",
+                                l.opportunities.len()
+                            );
+                        }
+                        l
+                    }
+                    Err(_e) => {
+                        #[cfg(debug_assertions)]
+                        log::error!("Failed to load ledger (starting fresh): {}", _e);
+                        OpportunityLedger::new()
+                    }
+                }
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                OpportunityLedger::new()
+            }
+        };
+
+        // Remove all opportunities for pairs that were not loaded in this session.
+        let _count_before = ledger.opportunities.len();
+
+        #[cfg(debug_assertions)]
+        if DF.log_ledger {
+            log::info!("The valid start-up set is {:?}", valid_session_pairs);
+        }
+
+        ledger.retain(|_id, op| valid_session_pairs.contains(&op.pair_name));
+
+        #[cfg(debug_assertions)]
+        {
+            if DF.log_ledger {
+                for op in ledger.opportunities.values() {
+                    debug_assert!(
+                        valid_session_pairs.contains(&op.pair_name),
+                        "Ledger contains invalid pair AFTER retain: {}",
+                        op.pair_name
+                    );
+                }
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            let count_after = ledger.opportunities.len();
+            if _count_before != count_after && DF.log_ledger {
+                log::info!(
+                    "START-UP CLEANUP: Culled {} orphan trades (Data not loaded).",
+                    _count_before - count_after
+                );
+            }
+        }
+
+        ledger
+    }

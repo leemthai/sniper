@@ -53,6 +53,8 @@ pub struct LogFlags {
 
 pub const DF: LogFlags = LogFlags {
     
+    log_results_repo: true,
+    log_ledger: false,
     log_station_overrides: false,
     log_ph_overrides: false,
     
@@ -63,7 +65,6 @@ pub const DF: LogFlags = LogFlags {
     log_tuner: false,
 
     log_pairs: false,
-    log_ledger: false,
 
     log_engine_core: false,
     log_pathfinder: false,
@@ -73,7 +74,6 @@ pub const DF: LogFlags = LogFlags {
     log_performance: false,
     log_price_stream_updates: false,
     log_simulation_events: false,
-    log_results_repo: false,
     log_zones: false,
     log_simd: false,
 

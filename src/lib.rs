@@ -2,6 +2,7 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::type_complexity)]
+#![allow(clippy::too_many_arguments)]
 
 // Core modules
 pub mod analysis;

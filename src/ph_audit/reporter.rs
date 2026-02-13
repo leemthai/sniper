@@ -21,7 +21,6 @@ impl AuditReporter {
         self.buffer.push("Timestamp,Pair,Strategy,PH_Pct,Trend_K,Sim_K,Total_Candles,PH_Candles,Candidates,Top_Score,Stop_Pct,Exec_Ms,Dur_1_Hrs,Dur_2_Hrs,Dur_3_Hrs,Dur_4_Hrs,Dur_5_Hrs".to_string());
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn add_row(
         &mut self,
         pair: &str,

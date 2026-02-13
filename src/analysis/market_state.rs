@@ -23,6 +23,19 @@ pub(crate) struct MarketState {
     /// > 1.0 = High conviction. < 1.0 = Low liquidity/interest.
     pub relative_volume: VolRatio,
 }
+use std::fmt;
+
+impl fmt::Display for MarketState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "vol={:.4}|mom={:.4}|rv={:.4}",
+            self.volatility_pct.value(),
+            self.momentum_pct.value(),
+            self.relative_volume.value(),
+        )
+    }
+}
 
 impl MarketState {
     /// Calculates the fingerprint for a specific index.

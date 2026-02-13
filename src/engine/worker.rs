@@ -9,13 +9,11 @@ use {std::sync::mpsc::Receiver, std::thread};
 
 use uuid::Uuid;
 
-use super::messages::{JobMode, JobRequest, JobResult};
-
-use crate::analysis::adaptive::AdaptiveParameters;
-use crate::analysis::market_state::MarketState;
-use crate::analysis::pair_analysis::pair_analysis_pure;
-use crate::analysis::scenario_simulator::{
-    DEFAULT_SIMILARITY, ScenarioSimulator, SimulationResult,
+use crate::analysis::{
+    adaptive::AdaptiveParameters,
+    market_state::MarketState,
+    pair_analysis::pair_analysis_pure,
+    scenario_simulator::{DEFAULT_SIMILARITY, ScenarioSimulator, SimulationResult},
 };
 
 use crate::config::{
@@ -27,14 +25,18 @@ use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::domain::price_horizon;
 
-use crate::models::find_matching_ohlcv;
+use crate::engine::messages::{JobMode, JobRequest, JobResult};
+
 use crate::models::{
     CVACore, DEFAULT_JOURNEY_SETTINGS, OhlcvTimeSeries, TradeDirection, TradeOpportunity,
-    TradeVariant, TradingModel, VisualFluff,
+    TradeVariant, TradingModel, VisualFluff, find_matching_ohlcv,
 };
 
-use crate::utils::maths_utils::duration_to_candles;
-use crate::utils::time_utils::{AppInstant, TimeUtils};
+use crate::utils::{
+    maths_utils::duration_to_candles,
+    time_utils::{AppInstant, TimeUtils},
+};
+
 
 #[cfg(debug_assertions)]
 use crate::ui::ui_text::UI_TEXT;
@@ -952,7 +954,6 @@ fn run_drill_phase(
     candidates
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_stop_loss_tournament(
     // Runs a gated R:R stop-loss tournament, selecting the highest-scoring viable stop per strategy.
     ohlcv: &OhlcvTimeSeries,

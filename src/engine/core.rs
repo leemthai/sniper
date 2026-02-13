@@ -2,6 +2,9 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, RwLock};
 
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+use chrono::{TimeZone, Utc};
+
 #[cfg(not(target_arch = "wasm32"))]
 use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::Runtime};
 
@@ -229,7 +232,7 @@ impl SniperEngine {
         self.tune_pair_internal(pair, tuner_station)
     }
 
-    /// Generates the master list for the Trade Finder.
+    /// Generates the master list for the Trade Finder (TEMP shouldn't this be in UI code somewhere?!?)
     pub(crate) fn get_trade_finder_rows(
         &self,
         overrides: Option<&HashMap<String, Price>>,
@@ -511,7 +514,6 @@ impl SniperEngine {
     ///
     /// This is used when the caller knows the current model for this pair
     /// is stale (e.g. user action, parameter change).
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn invalidate_pair_and_recalc(
         &mut self,
         pair: &str,
@@ -561,6 +563,7 @@ impl SniperEngine {
             self.shared_config.get_strategy(),
         )
     }
+
     fn process_live_data(&mut self) -> Vec<String> {
         // Process incoming live candles every 5 mins
 
@@ -682,8 +685,8 @@ impl SniperEngine {
                 }
 
                 // D. Process Death
-                if let Some(reason) = outcome {
-                    let pnl = match op.direction {
+                if let Some(exit_reason) = outcome {
+                    let _pnl = match op.direction {
                         TradeDirection::Long => {
                             (exit_price - op.start_price) / op.start_price * 100.0
                         }
@@ -698,8 +701,8 @@ impl SniperEngine {
                             "LEDGER: THE REAPER: Pruning {} [{}] -> {}. PnL: {:.2}%",
                             pair,
                             id,
-                            reason,
-                            pnl
+                            exit_reason,
+                            _pnl
                         );
                     }
 
@@ -709,11 +712,17 @@ impl SniperEngine {
                         direction: op.direction,
                         entry_price: op.start_price,
                         exit_price,
-                        outcome: reason,
+                        target_price: op.target_price,
+                        stop_price: op.stop_price,
+                        exit_reason,
                         entry_time: op.created_at.timestamp_millis(),
                         exit_time: time_now_utc.timestamp_millis(),
-                        final_pnl_pct: pnl,
-                        model_snapshot: None,
+                        planned_expiry_time: op.created_at.timestamp_millis()
+                            + op.max_duration.value(),
+                        strategy: op.strategy,
+                        station_id: op.station_id,
+                        market_state: op.market_state,
+                        ph_pct: op.ph_pct,
                     };
 
                     dead_trades.push(result);
@@ -733,6 +742,30 @@ impl SniperEngine {
                 // Only clone the repo if we are actually going to use it
                 let repo = self.results_repo.clone();
                 let trades = dead_trades.clone();
+
+                #[cfg(debug_assertions)]
+                if DF.log_results_repo {
+                    for t in &dead_trades {
+                        let entry = Utc.timestamp_millis_opt(t.entry_time).unwrap();
+                        let expiry = Utc.timestamp_millis_opt(t.planned_expiry_time).unwrap();
+                        let exit = Utc.timestamp_millis_opt(t.exit_time).unwrap();
+                        log::info!(
+                            "LEDGER WRITE | id={} \
+             | entry={} ({}) \
+             | expiry={} ({}) \
+             | exit={} ({}) \
+             | reason={:?}",
+                            t.trade_id,
+                            t.entry_time,
+                            entry,
+                            t.planned_expiry_time,
+                            expiry,
+                            t.exit_time,
+                            exit,
+                            t.exit_reason,
+                        );
+                    }
+                }
 
                 thread::spawn(move || {
                     let rt = Runtime::new().unwrap();

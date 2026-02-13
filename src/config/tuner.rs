@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use crate::config::PhPct;
 
@@ -9,6 +10,12 @@ pub(crate) enum StationId {
     #[default]
     Swing,
     Macro,
+}
+
+impl fmt::Display for StationId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.short_name())
+    }
 }
 
 impl StationId {

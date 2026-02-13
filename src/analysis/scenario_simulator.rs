@@ -410,7 +410,6 @@ impl ScenarioSimulator {
         Some((candidates, current_market_state))
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn analyze_outcome(
         ts: &OhlcvTimeSeries,
         matches: &[(usize, f64)],

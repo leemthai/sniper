@@ -18,6 +18,7 @@ mod trading_model;
 pub(crate) use trading_model::{SuperZone, TradingModel};
 
 pub mod ledger;
+pub(crate) use ledger::{restore_engine_ledger};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncStatus {

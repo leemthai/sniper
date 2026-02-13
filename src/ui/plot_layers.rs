@@ -316,7 +316,6 @@ impl PlotLayer for CandlestickLayer {
 }
 
 // Helper: Draws the candle (splitting logic included)
-#[allow(clippy::too_many_arguments)]
 fn draw_split_candle(
     ui: &mut PlotUi,
     x: f64,
@@ -730,7 +729,6 @@ fn get_stroke(zone: &SuperZone, current_price: Option<Price>, base_color: Color3
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn draw_superzone(
     plot_ui: &mut PlotUi,
     superzone: &SuperZone,

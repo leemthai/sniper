@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::config::{VolatilityPct, Price, PriceRange, LowPrice, HighPrice};
-use crate::config::PhPct;
+use crate::config::{VolatilityPct, Price, PriceRange, LowPrice, HighPrice, PhPct};
 use crate::utils::TimeUtils;
 
 pub(crate) const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
@@ -13,31 +12,31 @@ pub(crate) const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
 /// Lean CVA results containing only actively used metrics
 /// Memory footprint: ~3.2KB per 100 zones vs 14.4KB with full CVAResults
 #[derive(Default, Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct CVACore {
+pub(crate) struct CVACore {
     // Active metrics (volume-weighted)
-    pub(crate) candle_bodies_vw: Vec<f64>, // Mapped to FullCandleTVW
+    pub candle_bodies_vw: Vec<f64>, // Mapped to FullCandleTVW
 
-    pub(crate) low_wick_counts: Vec<f64>, 
-    pub(crate) high_wick_counts: Vec<f64>, 
+    pub low_wick_counts: Vec<f64>, 
+    pub high_wick_counts: Vec<f64>, 
 
-    pub(crate) total_candles: usize,
+    pub total_candles: usize,
 
-    pub(crate) included_ranges: Vec<(usize, usize)>,
+    pub included_ranges: Vec<(usize, usize)>,
 
     // Metadata
-    pub(crate) pair_name: String,
-    pub(crate) price_range: PriceRange<Price>,
-    pub(crate) zone_count: usize,
+    pub pair_name: String,
+    pub price_range: PriceRange<Price>,
+    pub zone_count: usize,
 
     // Metadata fields required by pair_analysis.rs and ui_plot_view.rs
-    pub(crate) start_timestamp_ms: i64,
-    pub(crate) end_timestamp_ms: i64,
-    pub(crate) time_decay_factor: f64,
+    pub start_timestamp_ms: i64,
+    pub end_timestamp_ms: i64,
+    pub time_decay_factor: f64,
 
     // NEW METRICS
-    pub(crate) relevant_candle_count: usize, // Number of candles inside the horizon
-    pub(crate) interval_ms: i64,             // e.g. 3600000 for 1h
-    pub(crate) volatility_pct: VolatilityPct, // Average (High-Low)/Close % for relevant candles
+    pub relevant_candle_count: usize, // Number of candles inside the horizon
+    pub interval_ms: i64,             // e.g. 3600000 for 1h
+    pub volatility_pct: VolatilityPct, // Average (High-Low)/Close % for relevant candles
 }
 
 /// Score types for the lean CVA model
@@ -156,7 +155,6 @@ impl CVACore {
     }
 
     // Updated Constructor to match src/models/timeseries.rs usage
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         min_price: LowPrice,
         max_price: HighPrice,

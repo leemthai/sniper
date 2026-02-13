@@ -154,7 +154,6 @@ impl PlotView {
         Self { cache: None }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn show_my_plot(
         &mut self,
         ui: &mut Ui,
