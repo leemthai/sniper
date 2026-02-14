@@ -640,13 +640,16 @@ impl SniperEngine {
                 }
             }
         }
+        
         // THE REAPER: Garbage Collect dead trades. CRITICAL: We run this on EVERY tick (not just close).
         #[cfg(not(target_arch = "wasm32"))]
-        let removed = self.prune_ledger();
-
-        #[cfg(target_arch = "wasm32")]
-        let removed: Vec<String> = Vec::new();
-        removed
+        {
+            self.prune_ledger()
+        }
+        #[cfg(target_arch =  "wasm32")]
+        {
+            Vec::<String>::new()
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
