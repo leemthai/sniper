@@ -48,6 +48,7 @@ pub const ICON_STRATEGY_ROI:  &str = "\u{ef08}"; // For ROI strategy => high yie
 pub const ICON_STRATEGY_AROI:  &str = "\u{f046e}"; // For AROI strategy => fast / speedy / sprint / turnover
 pub const ICON_STRATEGY_BALANCED:  &str = "\u{f24e}"; // For balanced strategy => middle path / scale  - other scales are available
 pub const ICON_STRATEGY: &str = "\u{ed5f}";
+pub const ICON_STRATEGY_LOG_GROWTH: &str = "\u{f148}";
 
 // pub const ICON_CROSSHAIR: &str  = "\u{f05b}"; // (Crosshairs)
 // pub const ICON_GLOBE: &str      = "\u{f0ac}"; // (Globe)
@@ -62,6 +63,7 @@ pub struct UiText {
     pub icon_strategy_roi: String,
     pub icon_strategy_aroi: String,
     pub icon_strategy_balanced: String,
+    pub icon_strategy_log_growth: String,
 
     pub icon_close: String,
     pub icon_sort_asc: String,
@@ -282,6 +284,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         icon_strategy_roi: ICON_STRATEGY_ROI.to_string(),
         icon_strategy_aroi: ICON_STRATEGY_AROI.to_string(),
         icon_strategy_balanced: ICON_STRATEGY_BALANCED.to_string(),
+        icon_strategy_log_growth: ICON_STRATEGY_LOG_GROWTH.to_string(),
 
         label_recenter: ICON_RECENTER.to_string(),
         hover_scroll_to_selected_target: "Scroll to Selected Target".to_string(),

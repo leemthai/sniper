@@ -10,8 +10,13 @@ pub(crate) use ohlcv::{LiveCandle, TimeSeriesSlice, find_matching_ohlcv};
 
 mod trade_opportunity;
 pub(crate) use trade_opportunity::{
-    DEFAULT_JOURNEY_SETTINGS, DEFAULT_ZONE_CONFIG, TradeDirection, TradeOpportunity, TradeOutcome,
+    DEFAULT_JOURNEY_SETTINGS, DEFAULT_ZONE_CONFIG, TradeDirection, TradeOpportunity,
     TradeVariant, VisualFluff,
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use trade_opportunity::{
+    TradeOutcome, 
 };
 
 mod trading_model;

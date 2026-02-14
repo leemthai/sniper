@@ -13,7 +13,7 @@ use crate::analysis::{
     adaptive::AdaptiveParameters,
     market_state::MarketState,
     pair_analysis::pair_analysis_pure,
-    scenario_simulator::{DEFAULT_SIMILARITY, ScenarioSimulator, SimulationResult},
+    scenario_simulator::{DEFAULT_SIMILARITY, ScenarioSimulator, EmpiricalOutcomeStats},
 };
 
 use crate::config::{
@@ -366,8 +366,8 @@ pub(crate) fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
     perform_standard_analysis(&req, &ts_local, tx);
 }
 
-/// Helper: Runs the simulation tournament for a specific target price.
-fn simulate_target(
+/// Evaluates a candidate target price via historical replay and returns the highest-scoring stop-loss configuration.
+fn evaluate_target_candidate(
     ctx: &PathfinderContext,
     target_price: TargetPrice,
     source_id_suffix: &str,
@@ -383,7 +383,7 @@ fn simulate_target(
             TradeDirection::Short
         };
 
-        let best_sl_opt = run_stop_loss_tournament(
+        let best_sl_opt = optimize_stop_loss_rr(
             ctx.ohlcv,
             &ctx.matches,
             ctx.current_state,
@@ -403,7 +403,7 @@ fn simulate_target(
             let avg_duration = interval_duration.scale(result.avg_candle_count);
             let score = ctx
                 .strategy
-                .calculate_score(result.avg_pnl_pct, avg_duration);
+                .objective_score(&result, avg_duration);
 
             let unique_string = format!("{}_{}_{}", ctx.pair_name, source_id_suffix, direction);
             let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, unique_string.as_bytes()).to_string();
@@ -716,7 +716,7 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
                             );
                         }
                     }
-                    if let Some(res) = simulate_target(
+                    if let Some(res) = evaluate_target_candidate(
                         ctx,
                         TargetPrice::new(target),
                         &format!("scout_long_{}", i),
@@ -743,7 +743,7 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
                             );
                         }
                     }
-                    if let Some(res) = simulate_target(
+                    if let Some(res) = evaluate_target_candidate(
                         ctx,
                         TargetPrice::new(target),
                         &format!("scout_short_{}", i),
@@ -903,7 +903,7 @@ fn run_drill_phase(
                 let mut local_batch = Vec::with_capacity(3);
 
                 // A. Promote Scout
-                if let Some(res) = simulate_target(
+                if let Some(res) = evaluate_target_candidate(
                     ctx,
                     TargetPrice::from(base_target),
                     &scout.source_desc,
@@ -915,7 +915,7 @@ fn run_drill_phase(
                     }
                 }
                 // B. Drill Up
-                if let Some(res) = simulate_target(
+                if let Some(res) = evaluate_target_candidate(
                     ctx,
                     TargetPrice::from(base_target * (1.0 + drill_offset_pct)),
                     &format!("drill_{}_up", scout_idx),
@@ -925,7 +925,7 @@ fn run_drill_phase(
                     local_batch.push(res);
                 }
                 // C. Drill Down
-                if let Some(res) = simulate_target(
+                if let Some(res) = evaluate_target_candidate(
                     ctx,
                     TargetPrice::from(base_target * (1.0 - drill_offset_pct)),
                     &format!("drill_{}_down", scout_idx),
@@ -954,8 +954,8 @@ fn run_drill_phase(
     candidates
 }
 
-fn run_stop_loss_tournament(
-    // Runs a gated R:R stop-loss tournament, selecting the highest-scoring viable stop per strategy.
+fn optimize_stop_loss_rr(
+    // Performs a volatility-gated risk/reward tournament across stop distances and selects the highest-scoring viable configuration.
     ohlcv: &OhlcvTimeSeries,
     historical_matches: &[(usize, f64)],
     current_state: MarketState,
@@ -969,13 +969,13 @@ fn run_stop_loss_tournament(
     duration_ms: DurationMs,
     limit_samples: usize,
     _zone_idx: usize,
-) -> Option<(SimulationResult, StopPrice, Vec<TradeVariant>)> {
+) -> Option<(EmpiricalOutcomeStats, StopPrice, Vec<TradeVariant>)> {
     #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
     pub struct RiskRewardRatio(pub f64);
 
     crate::trace_time!("Worker: SL Tournament", 1500, {
         let mut best_score = f64::NEG_INFINITY;
-        let mut best_result: Option<(SimulationResult, StopPrice, RiskRewardRatio)> = None; // (Result, Stop, Ratio)
+        let mut best_result: Option<(EmpiricalOutcomeStats, StopPrice, RiskRewardRatio)> = None; // (Result, Stop, Ratio)
         let mut valid_variants = Vec::new();
 
         let target_dist_abs = (Price::from(target_price) - current_price).abs();
@@ -1027,7 +1027,7 @@ fn run_stop_loss_tournament(
             };
 
             // 3. Simulation
-            if let Some(result) = ScenarioSimulator::analyze_outcome(
+            if let Some(result) = ScenarioSimulator::estimate_empirical_outcome(
                 ohlcv,
                 effective_matches,
                 current_state,
@@ -1058,7 +1058,7 @@ fn run_stop_loss_tournament(
                     });
 
                     // JUDGE: Calculate Score based on Strategy (using CORRECT Time units)
-                    let score = strategy.calculate_score(roi_pct, duration_real);
+                    let score = strategy.objective_score(&result, duration_real);
 
                     // Track Best
                     if score > best_score {

@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 use chrono::{TimeZone, Utc};
 
 #[cfg(not(target_arch = "wasm32"))]
-use {crate::config::PERSISTENCE, std::path::Path, std::thread, tokio::runtime::Runtime};
+use {crate::config::PERSISTENCE, std::path::Path};
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
@@ -16,17 +16,18 @@ use crate::config::{
     TUNER_CONFIG, TunerStation,
 };
 
-use crate::data::{
-    price_stream::PriceStreamManager, results_repo::TradeResult, timeseries::TimeSeriesCollection,
+use crate::data::{price_stream::PriceStreamManager, timeseries::TimeSeriesCollection};
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::data::results_repo::{ResultsRepositoryTrait, SqliteResultsRepository, TradeResult};
+
+use crate::models::{
+    DEFAULT_JOURNEY_SETTINGS, LiveCandle, PRICE_RECALC_THRESHOLD_PCT, TradeOpportunity,
+    TradingModel, find_matching_ohlcv, ledger::OpportunityLedger,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::data::results_repo::{ResultsRepository, ResultsRepositoryTrait};
-
-use crate::models::{
-    DEFAULT_JOURNEY_SETTINGS, LiveCandle, PRICE_RECALC_THRESHOLD_PCT, TradeDirection,
-    TradeOpportunity, TradeOutcome, TradingModel, find_matching_ohlcv, ledger::OpportunityLedger,
-};
+use crate::models::{TradeDirection, TradeOutcome};
 
 use crate::shared::SharedConfiguration;
 
@@ -178,9 +179,14 @@ impl SniperEngine {
 
             let db_path_str = db_path.to_str().unwrap_or("results.sqlite");
 
-            let rt = Runtime::new().unwrap();
+            // Create a small dedicated runtime just for initialization
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create Tokio runtime for DB init");
+
             rt.block_on(async {
-                ResultsRepository::new(db_path_str)
+                SqliteResultsRepository::new(db_path_str)
                     .await
                     .unwrap_or_else(|e| {
                         log::error!("Failed to init results.sqlite: {}", e);
@@ -564,10 +570,8 @@ impl SniperEngine {
         )
     }
 
+    /// Important note: this fn is called every tick. Therefore self.prune_ledger() at bottom is also called every tick
     fn process_live_data(&mut self) -> Vec<String> {
-        // Process incoming live candles every 5 mins
-
-        let mut removed = Vec::new();
         // 1. Check if we have data
         // We use a loop to drain the channel so we don't lag behind
         let mut updates = Vec::new();
@@ -576,7 +580,7 @@ impl SniperEngine {
         }
 
         if updates.is_empty() {
-            return removed;
+            return Vec::new();
         }
 
         let ts_lock = self.timeseries.clone();
@@ -637,10 +641,15 @@ impl SniperEngine {
             }
         }
         // THE REAPER: Garbage Collect dead trades. CRITICAL: We run this on EVERY tick (not just close).
-        removed.extend(self.prune_ledger());
+        #[cfg(not(target_arch = "wasm32"))]
+        let removed = self.prune_ledger();
+
+        #[cfg(target_arch = "wasm32")]
+        let removed: Vec<String> = Vec::new();
         removed
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn prune_ledger(&mut self) -> Vec<String> {
         // GARBAGE COLLECTION: Removes finished trades and archives them.
         // If a wick hits our Stop Loss mid-candle, we want to kill the trade immediately.
@@ -708,7 +717,7 @@ impl SniperEngine {
 
                     let result = TradeResult {
                         trade_id: id.clone(),
-                        pair: pair.clone(),
+                        pair_name: pair.clone(),
                         direction: op.direction,
                         entry_price: op.start_price,
                         exit_price,
@@ -736,25 +745,21 @@ impl SniperEngine {
 
         // Archive Dead Trades
         if !dead_trades.is_empty() {
-            // NATIVE: Spawn async task to save
             #[cfg(not(target_arch = "wasm32"))]
             {
-                // Only clone the repo if we are actually going to use it
-                let repo = self.results_repo.clone();
-                let trades = dead_trades.clone();
-
                 #[cfg(debug_assertions)]
                 if DF.log_results_repo {
                     for t in &dead_trades {
                         let entry = Utc.timestamp_millis_opt(t.entry_time).unwrap();
                         let expiry = Utc.timestamp_millis_opt(t.planned_expiry_time).unwrap();
                         let exit = Utc.timestamp_millis_opt(t.exit_time).unwrap();
+
                         log::info!(
                             "LEDGER WRITE | id={} \
-             | entry={} ({}) \
-             | expiry={} ({}) \
-             | exit={} ({}) \
-             | reason={:?}",
+                 | entry={} ({}) \
+                 | expiry={} ({}) \
+                 | exit={} ({}) \
+                 | reason={:?}",
                             t.trade_id,
                             t.entry_time,
                             entry,
@@ -767,18 +772,13 @@ impl SniperEngine {
                     }
                 }
 
-                thread::spawn(move || {
-                    let rt = Runtime::new().unwrap();
-                    rt.block_on(async {
-                        for trade in trades {
-                            if let Err(e) = repo.record_trade(trade).await {
-                                if DF.log_results_repo {
-                                    log::error!("Failed to archive trade: {}", e);
-                                }
-                            }
+                for trade in dead_trades {
+                    if let Err(e) = self.results_repo.enqueue(trade) {
+                        if DF.log_results_repo {
+                            log::error!("Failed to enqueue trade: {}", e);
                         }
-                    });
-                });
+                    }
+                }
             }
         }
 

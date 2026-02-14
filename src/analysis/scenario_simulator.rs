@@ -277,13 +277,19 @@ pub(crate) enum Outcome {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct SimulationResult {
-    pub success_rate: Prob,     // 0.0 to 1.0
-    pub avg_candle_count: f64,  // Average candles to result
-    pub risk_reward_ratio: f64, // Based on historical outcomes
-    pub sample_size: usize,     // How many similar scenarios we found
-    pub avg_pnl_pct: RoiPct,    // The True Expected Retun (Continuous)
+pub(crate) struct EmpiricalOutcomeStats {
+    /// Proportion of replayed scenarios in which the target was reached before stop or timeout.
+    pub success_rate: Prob,
+    pub avg_candle_count: f64,
+    /// Theoretical reward-to-risk ratio implied by target and stop distances.
+    pub risk_reward_ratio: f64,
+    /// How many similar scenarios we found
+    pub sample_size: usize,
+    /// Empirical expected return across all replayed scenarios (mean PnL).
+    pub avg_pnl_pct: RoiPct,
     pub market_state: MarketState,
+    /// Variance of replayed return distribution.
+    pub return_variance: f64,
 }
 
 pub(crate) struct ScenarioSimulator;
@@ -410,7 +416,8 @@ impl ScenarioSimulator {
         Some((candidates, current_market_state))
     }
 
-    pub(crate) fn analyze_outcome(
+    /// Replays matched historical scenarios to estimate empirical return distribution and summary statistics.
+    pub(crate) fn estimate_empirical_outcome(
         ts: &OhlcvTimeSeries,
         matches: &[(usize, f64)],
         current_market_state: MarketState,
@@ -419,7 +426,7 @@ impl ScenarioSimulator {
         stop_price: StopPrice,
         max_duration_candles: usize, // Unit: Count
         direction: TradeDirection,
-    ) -> Option<SimulationResult> {
+    ) -> Option<EmpiricalOutcomeStats> {
         crate::trace_time!("Sim: Analyze Outcome (50 Matches)", 250, {
             if matches.is_empty() {
                 return None;
@@ -429,6 +436,7 @@ impl ScenarioSimulator {
             let mut accumulated_candle_count = 0.0; // Unit: Count (aggregated as float)
             let mut valid_samples = 0;
             let mut total_pnl_pct = 0.0; // Unit: Percentage
+            let mut total_pnl_sq = 0.0; // NEW: sum of squared returns
 
             // Pre-calculate theoretical max PnL for Hit/Stop
             let (win_pnl_pct, lose_pnl_pct) = match direction {
@@ -458,18 +466,27 @@ impl ScenarioSimulator {
                         wins += 1;
                         accumulated_candle_count += candles_taken as f64;
                         valid_samples += 1;
-                        total_pnl_pct += win_pnl_pct;
+                        let pnl = win_pnl_pct;
+                        total_pnl_pct += pnl;
+                        total_pnl_sq += pnl * pnl;
                     }
+
                     Outcome::StopHit(candles_taken) => {
                         accumulated_candle_count += candles_taken as f64;
                         valid_samples += 1;
-                        total_pnl_pct += lose_pnl_pct;
+
+                        let pnl = lose_pnl_pct;
+                        total_pnl_pct += pnl;
+                        total_pnl_sq += pnl * pnl; // NEW
                     }
+
                     Outcome::TimedOut(final_drift_pct) => {
-                        // Timeout means the full candle limit was exhausted
                         accumulated_candle_count += max_duration_candles as f64;
                         valid_samples += 1;
-                        total_pnl_pct += final_drift_pct.value();
+
+                        let pnl = final_drift_pct.value();
+                        total_pnl_pct += pnl;
+                        total_pnl_sq += pnl * pnl; // NEW
                     }
                 }
             }
@@ -495,13 +512,17 @@ impl ScenarioSimulator {
 
             // Real Average PnL (The "true" ROI of the sim)
             let avg_pnl_pct = total_pnl_pct / valid_samples as f64;
+            let mean = avg_pnl_pct;
+            let mean_sq = total_pnl_sq / valid_samples as f64;
+            let variance = (mean_sq - mean * mean).max(0.0);
 
-            Some(SimulationResult {
+            Some(EmpiricalOutcomeStats {
                 success_rate,
                 avg_candle_count,
                 risk_reward_ratio,
                 sample_size: valid_samples,
                 avg_pnl_pct: RoiPct::new(avg_pnl_pct),
+                return_variance: variance, // NEW
                 market_state: current_market_state,
             })
         })

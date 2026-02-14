@@ -672,11 +672,16 @@ impl<T: PriceLike> PriceRange<T> {
 pub(crate) enum OptimizationStrategy {
     #[strum(to_string = "Max ROI")]
     MaxROI,
+
     #[strum(to_string = "Max AROI")]
     MaxAROI,
+
     #[strum(to_string = "Balanced")]
     #[default]
     Balanced,
+
+    #[strum(to_string = "Log Growth (Confidence)")]
+    LogGrowthConfidence,
 }
 
 impl OptimizationStrategy {
@@ -685,6 +690,7 @@ impl OptimizationStrategy {
             OptimizationStrategy::MaxROI => UI_TEXT.icon_strategy_roi.to_string(),
             OptimizationStrategy::MaxAROI => UI_TEXT.icon_strategy_aroi.to_string(),
             OptimizationStrategy::Balanced => UI_TEXT.icon_strategy_balanced.to_string(),
+            OptimizationStrategy::LogGrowthConfidence => UI_TEXT.icon_strategy_log_growth.to_string(),
         }
     }
 }

@@ -12,6 +12,7 @@ pub mod storage;
 
 pub mod provider;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod results_repo;
 
 pub mod ledger_io;

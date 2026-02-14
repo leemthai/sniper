@@ -919,6 +919,7 @@ impl App {
                     OptimizationStrategy::MaxROI => SortColumn::LiveRoi,
                     OptimizationStrategy::MaxAROI => SortColumn::AnnualizedRoi,
                     OptimizationStrategy::Balanced => SortColumn::Score,
+                    OptimizationStrategy::LogGrowthConfidence => SortColumn::Score, // TEMP shares score column right no
                 };
                 if self.render_sort_icon_button(ui, col, &goal.icon()) {
                     *sort_changed = true;
