@@ -340,7 +340,7 @@ impl SniperEngine {
         // Ingest Live Data (The Heartbeat)
         let t1 = AppInstant::now();
         let mut removals = LedgerRemovals::default();
-        removals.ids.extend(self.process_live_data());
+        removals.ids.extend(self.tick_process_live_data());
 
         let d1 = t1.elapsed().as_micros();
 
@@ -571,7 +571,7 @@ impl SniperEngine {
     }
 
     /// Important note: this fn is called every tick. Therefore self.prune_ledger() at bottom is also called every tick
-    fn process_live_data(&mut self) -> Vec<String> {
+    fn tick_process_live_data(&mut self) -> Vec<String> {
         // 1. Check if we have data
         // We use a loop to drain the channel so we don't lag behind
         let mut updates = Vec::new();
@@ -582,6 +582,10 @@ impl SniperEngine {
         if updates.is_empty() {
             return Vec::new();
         }
+
+        log::info!(
+            "How often do we get here? - should be 5 mins right? but no........... we always have something in updates for some reason. Why? Is code going wrong or is it designed liek this"
+        );
 
         let ts_lock = self.timeseries.clone();
 
@@ -640,13 +644,13 @@ impl SniperEngine {
                 }
             }
         }
-        
-        // THE REAPER: Garbage Collect dead trades. CRITICAL: We run this on EVERY tick (not just close).
+
+        // THE REAPER: Garbage Collect dead trades. CRITICAL: We run this on EVERY tick (not just close). But no idea why lol
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.prune_ledger()
         }
-        #[cfg(target_arch =  "wasm32")]
+        #[cfg(target_arch = "wasm32")]
         {
             Vec::<String>::new()
         }
