@@ -104,66 +104,65 @@ pub(crate) const DEFAULT_ZONE_CONFIG: ZoneClassificationConfig = ZoneClassificat
     },
 };
 
-fn score_kernel(
-    strategy: OptimizationStrategy,
-    avg_pnl_pct: RoiPct,
-    duration: DurationMs,
-    variance: f64,
-    sample_size: usize,
-) -> f64 {
-    let mean = avg_pnl_pct.value();
-
-    match strategy {
-        OptimizationStrategy::MaxROI => mean,
-
-        OptimizationStrategy::MaxAROI => {
-            TradeProfile::calculate_annualized_roi(avg_pnl_pct, duration).value()
-        }
-
-        OptimizationStrategy::Balanced => {
-            let aroi = TradeProfile::calculate_annualized_roi(avg_pnl_pct, duration).value();
-
-            if mean <= 0.0 {
-                return mean;
-            }
-
-            (mean * aroi).sqrt()
-        }
-
-        OptimizationStrategy::LogGrowthConfidence => {
-            if sample_size < 2 {
-                return mean;
-            }
-
-            let n = sample_size as f64;
-            let confidence = 1.0 - 1.0 / n.sqrt();
-            let mean_adj = mean * confidence;
-
-            mean_adj - 0.5 * variance
-        }
-    }
-}
-
 impl OptimizationStrategy {
-    
-    pub fn objective_score_fast(&self, avg_pnl_pct: RoiPct, duration: DurationMs) -> f64 {
-        score_kernel(
-            *self,
-            avg_pnl_pct,
-            duration,
-            0.0, // no variance
-            1,   // minimal sample size
-        )
+    /// Calculate score with basic ROI and duration only (no variance/sample adjustments)
+    pub fn objective_score_simple(&self, avg_pnl_pct: RoiPct, duration: DurationMs) -> f64 {
+        let mean = avg_pnl_pct.value();
+
+        match self {
+            OptimizationStrategy::MaxROI => mean,
+
+            OptimizationStrategy::MaxAROI => {
+                TradeProfile::calculate_annualized_roi(avg_pnl_pct, duration).value()
+            }
+
+            OptimizationStrategy::Balanced => {
+                let aroi = TradeProfile::calculate_annualized_roi(avg_pnl_pct, duration).value();
+                if mean <= 0.0 {
+                    mean
+                } else {
+                    (mean * aroi).sqrt()
+                }
+            }
+
+            OptimizationStrategy::LogGrowthConfidence => {
+                // Fall back to simple mean when we don't have variance/sample data
+                mean
+            }
+        }
     }
 
+    /// Calculate score with full statistics (variance + sample size)
     pub fn objective_score(&self, stats: &EmpiricalOutcomeStats, duration: DurationMs) -> f64 {
-        score_kernel(
-            *self,
-            stats.avg_pnl_pct,
-            duration,
-            stats.return_variance,
-            stats.sample_size,
-        )
+        let mean = stats.avg_pnl_pct.value();
+
+        match self {
+            OptimizationStrategy::MaxROI => mean,
+
+            OptimizationStrategy::MaxAROI => {
+                TradeProfile::calculate_annualized_roi(stats.avg_pnl_pct, duration).value()
+            }
+
+            OptimizationStrategy::Balanced => {
+                let aroi =
+                    TradeProfile::calculate_annualized_roi(stats.avg_pnl_pct, duration).value();
+                if mean <= 0.0 {
+                    mean
+                } else {
+                    (mean * aroi).sqrt()
+                }
+            }
+
+            OptimizationStrategy::LogGrowthConfidence => {
+                if stats.sample_size < 2 {
+                    return mean;
+                }
+                let n = stats.sample_size as f64;
+                let confidence = 1.0 - 1.0 / n.sqrt();
+                let mean_adj = mean * confidence;
+                mean_adj - 0.5 * stats.return_variance
+            }
+        }
     }
 }
 
@@ -277,10 +276,8 @@ impl TradeOpportunity {
     /// Calculates a composite Quality Score (0.0 to 100.0+)
     /// Used for "Auto-Tuning" and finding the best setups.
     pub(crate) fn calculate_quality_score(&self) -> f64 {
-        self.strategy.objective_score_fast(
-            self.expected_roi(),
-            self.avg_duration,
-        )
+        self.strategy
+            .objective_score_simple(self.expected_roi(), self.avg_duration)
     }
 
     /// Centralized "Referee" Logic.

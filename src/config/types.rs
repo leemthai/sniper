@@ -677,10 +677,23 @@ pub(crate) enum OptimizationStrategy {
     MaxAROI,
 
     #[strum(to_string = "Balanced")]
-    #[default]
     Balanced,
-
+    
+    /// Log-Growth Confidence Score
+    /// This gives you: Growth-optimal bias (Kelly foundation)
+    /// Risk awareness
+    /// Sample-size confidence adjustment
+    /// Stability over training
+    /// It directly aligns with your architecture.
+    /// Why Log-Growth?
+    /// Long-term capital growth is maximized by: maxE[log(1+fR)]maxE[log(1+fR)]
+    /// For small R, this approximates: E[R]−1/2(​Var(R))
+    /// That is profound. It automatically:
+    /// Penalizes variance
+    /// Penalizes tail risk
+    /// Penalizes instability
     #[strum(to_string = "Log Growth (Confidence)")]
+    #[default]
     LogGrowthConfidence,
 }
 

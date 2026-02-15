@@ -340,7 +340,19 @@ impl SniperEngine {
         // Ingest Live Data (The Heartbeat)
         let t1 = AppInstant::now();
         let mut removals = LedgerRemovals::default();
-        removals.ids.extend(self.tick_process_live_data());
+        self.tick_process_price_stream_data();
+
+        // THE REAPER: Garbage Collect dead trades.
+        #[cfg(not(target_arch = "wasm32"))]
+        removals.ids.extend(self.tick_prune_ledger());
+
+        #[cfg(debug_assertions)]
+        if DF.log_ledger && !removals.ids.is_empty() {
+            log::info!(
+                "IN ENGINE UPDATE: LIST OF IDS TO REMOVE IS: {:?}",
+                removals.ids
+            );
+        }
 
         let d1 = t1.elapsed().as_micros();
 
@@ -570,94 +582,105 @@ impl SniperEngine {
         )
     }
 
-    /// Important note: this fn is called every tick. Therefore self.prune_ledger() at bottom is also called every tick
-    fn tick_process_live_data(&mut self) -> Vec<String> {
-        // 1. Check if we have data
-        // We use a loop to drain the channel so we don't lag behind
+    /// Important note: this fn is called every tick (hence the tick on front)
+    /// Return value: a list of op IDs that have been removed
+    fn tick_process_price_stream_data(&mut self) {
+        // Drain all available candles from the price stream channel
         let mut updates = Vec::new();
         while let Ok(candle) = self.candle_rx.try_recv() {
             updates.push(candle);
         }
 
-        if updates.is_empty() {
-            return Vec::new();
+        #[cfg(debug_assertions)]
+        if DF.log_price_stream_updates {
+            if updates.is_empty() {
+                log::info!("tick_process_live_data() - no new price stream data");
+            } else {
+                log::info!(
+                    "tick_process_live_data() - received {} candles",
+                    updates.len()
+                );
+            }
         }
 
-        log::info!(
-            "How often do we get here? - should be 5 mins right? but no........... we always have something in updates for some reason. Why? Is code going wrong or is it designed liek this"
-        );
+        if updates.is_empty() {
+            return;
+        }
 
         let ts_lock = self.timeseries.clone();
 
         // 2. Write Lock (on local Arc)
         if let Ok(mut ts_collection) = ts_lock.write() {
             for candle in updates {
-                if let Some(series) = ts_collection
+                // Find and update the matching time series
+                let Some(series) = ts_collection
                     .series_data
                     .iter_mut()
                     .find(|s| s.pair_interval.name() == candle.symbol)
-                {
-                    series.update_from_live(&candle);
+                else {
+                    continue;
+                };
 
-                    if candle.is_closed {
-                        #[cfg(debug_assertions)]
-                        if DF.log_candle_update {
-                            log::info!(
-                                "ENGINE: Candle Closed for {}. Triggering Recalc. in process_live_data()",
-                                candle.symbol
-                            );
-                        }
+                series.update_from_live(&candle);
 
-                        // 3. Trigger Recalc
-                        let pair_name = candle.symbol;
-                        if let Some(ph_pct) = self.shared_config.get_ph(&pair_name) {
-                            let station_id = self
-                                .shared_config
-                                .get_station(&pair_name)
-                                .unwrap_or_else(|| panic!("PAIR {} with ph_pct {} UNEXPECTEDLY not found in shared_config {:?}", pair_name, ph_pct, self.shared_config));
-                            #[cfg(debug_assertions)]
-                            if DF.log_engine_core {
-                                log::info!(
-                                    "Enqueing job for {} because a candle has closed:",
-                                    pair_name
-                                )
-                            }
-                            self.enqueue_or_replace(EngineJob {
-                                pair: pair_name.clone(),
-                                price_override: Some(candle.close.into()),
-                                ph_pct,
-                                strategy: self.shared_config.get_strategy(),
-                                station_id,
-                                mode: JobMode::FullAnalysis,
-                            });
-                            // }
-                        } else {
-                            #[cfg(debug_assertions)]
-                            if DF.log_ph_overrides {
-                                log::info!(
-                                    "FAILED to READ ph_pct value from shared_config for pair {}. Therefore not updating this pair",
-                                    pair_name
-                                );
-                            }
-                        }
-                    }
+                // Only trigger recalc on candle close
+                if !candle.is_closed {
+                    continue;
                 }
-            }
-        }
 
-        // THE REAPER: Garbage Collect dead trades. CRITICAL: We run this on EVERY tick (not just close). But no idea why lol
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prune_ledger()
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            Vec::<String>::new()
+                #[cfg(debug_assertions)]
+                if DF.log_candle_update {
+                    log::info!(
+                        "ENGINE: Candle Closed for {}. Triggering Recalc. in process_live_data()",
+                        candle.symbol
+                    );
+                }
+
+                // Get PH override - skip if not configured
+                let Some(ph_pct) = self.shared_config.get_ph(&candle.symbol) else {
+                    #[cfg(debug_assertions)]
+                    if DF.log_ph_overrides {
+                        log::info!(
+                            "No ph_pct configured for {} - skipping update",
+                            candle.symbol
+                        );
+                    }
+                    continue;
+                };
+
+                // Get station ID
+                let station_id = self
+                    .shared_config
+                    .get_station(&candle.symbol)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "PAIR {} with ph_pct {} unexpectedly not found in shared_config",
+                            candle.symbol, ph_pct
+                        )
+                    });
+
+                #[cfg(debug_assertions)]
+                if DF.log_engine_core {
+                    log::info!("Enqueueing job for {} (candle closed)", candle.symbol);
+                }
+                
+                // Enqueue the analysis job
+                self.enqueue_or_replace(EngineJob {
+                    pair: candle.symbol.clone(),
+                    price_override: Some(candle.close.into()),
+                    ph_pct,
+                    strategy: self.shared_config.get_strategy(),
+                    station_id,
+                    mode: JobMode::FullAnalysis,
+                });
+            }
         }
     }
 
+    /// Garbage collect the ledge every tick
+    /// Return: list of ops that we have removed
     #[cfg(not(target_arch = "wasm32"))]
-    fn prune_ledger(&mut self) -> Vec<String> {
+    fn tick_prune_ledger(&mut self) -> Vec<String> {
         // GARBAGE COLLECTION: Removes finished trades and archives them.
         // If a wick hits our Stop Loss mid-candle, we want to kill the trade immediately.
         let time_now_utc = TimeUtils::now_utc();
@@ -762,7 +785,7 @@ impl SniperEngine {
                         let exit = Utc.timestamp_millis_opt(t.exit_time).unwrap();
 
                         log::info!(
-                            "LEDGER WRITE | id={} \
+                            "LEDGER WRITE (because trade has just become dead | id={} \
                  | entry={} ({}) \
                  | expiry={} ({}) \
                  | exit={} ({}) \
@@ -782,7 +805,7 @@ impl SniperEngine {
                 for trade in dead_trades {
                     if let Err(e) = self.results_repo.enqueue(trade) {
                         if DF.log_results_repo {
-                            log::error!("Failed to enqueue trade: {}", e);
+                            log::error!("Failed to enqueue dead trade: {}", e);
                         }
                     }
                 }
