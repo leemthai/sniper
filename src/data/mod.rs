@@ -7,7 +7,6 @@ pub use price_stream::PriceStreamManager;
 pub mod timeseries;
 pub use timeseries::TimeSeriesCollection;
 
-
 pub mod storage;
 
 pub mod provider;

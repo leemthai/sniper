@@ -10,7 +10,7 @@ use {crate::config::DEMO, crate::data::timeseries::wasm_demo::WasmDemoData};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::{BINANCE, BASE_INTERVAL},
+    crate::config::{BASE_INTERVAL, BINANCE},
     crate::data::provider::{BinanceProvider, MarketDataProvider},
     crate::data::rate_limiter::GlobalRateLimiter,
     crate::data::storage::{MarketDataStorage, SqliteStorage},
@@ -20,14 +20,12 @@ use {
     crate::utils::TimeUtils,
     anyhow::Result,
     futures::stream::{self, StreamExt},
-    std::sync::Arc,
     std::fs,
+    std::sync::Arc,
 };
 
 #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
-use {
-    crate::config::DF,
-};
+use crate::config::DF;
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn sync_pair(
@@ -36,7 +34,6 @@ async fn sync_pair(
     storage: Arc<SqliteStorage>,
     provider: Arc<BinanceProvider>,
 ) -> Result<(OhlcvTimeSeries, usize)> {
-    
     let interval_str = TimeUtils::interval_to_string(interval_ms);
 
     // 1. Check DB for last candle
@@ -121,13 +118,14 @@ pub async fn fetch_pair_data(
         let mut supply_pairs: Vec<String> = match fs::read_to_string(BINANCE.pairs_filename) {
             Ok(content) => content
                 .lines()
-                .map(|line| {
-            line.split('#').next().unwrap_or("").trim().to_uppercase()
-        })
+                .map(|line| line.split('#').next().unwrap_or("").trim().to_uppercase())
                 .filter(|s| !s.is_empty())
                 .collect(),
             Err(_) => {
-                log::warn!("{} not found, using default BTC/ETH", BINANCE.pairs_filename);
+                log::warn!(
+                    "{} not found, using default BTC/ETH",
+                    BINANCE.pairs_filename
+                );
                 vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()]
             }
         };
@@ -139,12 +137,19 @@ pub async fn fetch_pair_data(
         #[cfg(debug_assertions)]
         {
             if DF.log_pairs {
-                log::info!("Pre-culling by DF.max_pairs_load we have {} pairs: {:?}", supply_pairs.len(), supply_pairs);
+                log::info!(
+                    "Pre-culling by DF.max_pairs_load we have {} pairs: {:?}",
+                    supply_pairs.len(),
+                    supply_pairs
+                );
             }
             supply_pairs.truncate(DF.max_pairs_load);
             if DF.log_pairs {
                 log::info!(
-                    "Post-culling by DF.max_pairs_load we have {} pairs: {:?}", supply_pairs.len(), supply_pairs);
+                    "Post-culling by DF.max_pairs_load we have {} pairs: {:?}",
+                    supply_pairs.len(),
+                    supply_pairs
+                );
             }
         }
 
