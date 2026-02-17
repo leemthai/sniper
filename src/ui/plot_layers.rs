@@ -11,7 +11,7 @@ use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 use crate::analysis::range_gap_finder::GapReason;
 
 use crate::config::{
-    CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike, BASE_INTERVAL,
+    BASE_INTERVAL, CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike,
 };
 
 use crate::config::plot::PLOT_CONFIG;
@@ -19,9 +19,9 @@ use crate::config::plot::PLOT_CONFIG;
 use crate::models::OhlcvTimeSeries;
 use crate::models::{SuperZone, TradeOpportunity, TradingModel};
 
-use crate::ui::ui_plot_view::PlotVisibility;
 use crate::ui::styles::{DirectionColor, apply_opacity};
 use crate::ui::ui_plot_view::PlotCache;
+use crate::ui::ui_plot_view::PlotVisibility;
 use crate::ui::ui_text::UI_TEXT;
 
 pub(crate) struct HorizonLinesLayer;
@@ -39,7 +39,7 @@ impl PlotLayer for OpportunityLayer {
             _ => return,
         };
 
-        // 2. SSOT SELECTION LOGIC (Matching render_active_target_panel)
+        // SSOT SELECTION LOGIC (Matching render_active_target_panel)
         // The Plot is a slave. It only renders what is explicitly selected.
         let opp_opt = ctx.selected_opportunity;
         let current_pair = &ctx.trading_model.cva.pair_name;
@@ -47,7 +47,7 @@ impl PlotLayer for OpportunityLayer {
         // 2. Find Best Opportunity
         match opp_opt {
             Some(op) if &op.pair_name == current_pair => {
-                // 3. Setup Foreground Painter
+                // Setup Foreground Painter
                 // This guarantees EVERYTHING drawn here is on top of candles, grids, and background.
                 // FIX: Create Painter with Clipping
                 // This ensures the HUD never bleeds outside the plot area
@@ -67,7 +67,7 @@ impl PlotLayer for OpportunityLayer {
                 let sl_pos_screen =
                     plot_ui.screen_from_plot(PlotPoint::new(x_center_plot, op.stop_price.value()));
 
-                // --- 1. RESOLVE SEMANTIC COLORS & STYLES ---
+                // RESOLVE SEMANTIC COLORS & STYLES
                 let direction_color = op.direction.color();
                 let sl_color = PLOT_CONFIG.color_stop_loss;
 
@@ -338,7 +338,7 @@ fn draw_split_candle(
 
     let ghost_color = base_color.linear_multiply(0.2);
 
-    // --- 1. WICKS ---
+    // WICKS
     let open_p: Price = open.into();
     let close_p: Price = close.into();
     let high_p: Price = high.into();
@@ -369,7 +369,7 @@ fn draw_split_candle(
         draw_wick_line(ui, x, solid_wick_top, solid_wick_bot, base_color, min_x);
     }
 
-    // --- 2. BODIES ---
+    // BODIES
 
     let body_top_raw = open.value().max(close.value());
     let body_bot_raw = open.value().min(close.value());
@@ -531,7 +531,7 @@ impl PlotLayer for StickyZoneLayer {
         let current_price = ctx.current_price;
 
         for superzone in &ctx.trading_model.zones.sticky_superzones {
-            // 1. Determine Identity (Color/Label) based on price position
+            // Determine Identity (Color/Label) based on price position
             let (_, color) = if let Some(price) = current_price {
                 if superzone.contains(price) {
                     ("", PLOT_CONFIG.sticky_zone_color)

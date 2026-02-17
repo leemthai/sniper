@@ -13,7 +13,7 @@ use crate::analysis::{
     adaptive::AdaptiveParameters,
     market_state::MarketState,
     pair_analysis::pair_analysis_pure,
-    scenario_simulator::{DEFAULT_SIMILARITY, ScenarioSimulator, EmpiricalOutcomeStats},
+    scenario_simulator::{DEFAULT_SIMILARITY, EmpiricalOutcomeStats, ScenarioSimulator},
 };
 
 use crate::config::{
@@ -36,7 +36,6 @@ use crate::utils::{
     maths_utils::duration_to_candles,
     time_utils::{AppInstant, TimeUtils},
 };
-
 
 #[cfg(debug_assertions)]
 use crate::ui::ui_text::UI_TEXT;
@@ -100,7 +99,7 @@ pub(crate) fn tune_to_station(
         }
     }
 
-    // 1. Generate Scan Points (Linear Interpolation)
+    // Generate Scan Points (Linear Interpolation)
     let steps = TUNER_SCAN_STEPS;
     let mut scan_points = Vec::with_capacity(steps);
     if steps > 1 {
@@ -113,7 +112,7 @@ pub(crate) fn tune_to_station(
         scan_points.push(station.scan_ph_min.value()); // Fallback
     }
 
-    // 2. Run Simulations
+    // Run Simulations
     // We store: (PH, Score, Duration_Hours, Candidate_Count)
     let mut results: Vec<ProbeResult> = Vec::new();
 
@@ -172,7 +171,7 @@ pub(crate) fn tune_to_station(
         }
     }
 
-    // 3. The "Fit" Logic (Selection)
+    // The "Fit" Logic (Selection)
     if results.is_empty() {
         #[cfg(debug_assertions)]
         if DF.log_tuner {
@@ -328,11 +327,11 @@ pub(crate) fn run_pathfinder_simulations(
         );
     }
 
-    // 2. Run Pipeline
+    // Run Pipeline
     let scouts = run_scout_phase(&ctx);
     let drill_results = run_drill_phase(&ctx, scouts);
 
-    // 3. Final Filter
+    // Final Filter
     let final_opps: Vec<TradeOpportunity> = apply_diversity_filter(
         drill_results,
         ctx.pair_name,
@@ -349,7 +348,7 @@ pub(crate) fn run_pathfinder_simulations(
 }
 
 pub(crate) fn process_request_sync(req: JobRequest, tx: Sender<JobResult>) {
-    // 1. ACQUIRE DATA (Clone & Release)
+    // ACQUIRE DATA (Clone & Release)
     let ts_local = match fetch_local_timeseries(&req) {
         Ok(ts) => ts,
         Err(e) => {
@@ -401,9 +400,7 @@ fn evaluate_target_candidate(
 
         if let Some((result, stop_price, variants)) = best_sl_opt {
             let avg_duration = interval_duration.scale(result.avg_candle_count);
-            let score = ctx
-                .strategy
-                .objective_score(&result, avg_duration);
+            let score = ctx.strategy.objective_score(&result, avg_duration);
 
             let unique_string = format!("{}_{}_{}", ctx.pair_name, source_id_suffix, direction);
             let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, unique_string.as_bytes()).to_string();
@@ -511,7 +508,7 @@ fn apply_diversity_filter(
         );
     }
 
-    // 2. Hold Local Tournaments
+    // Hold Local Tournaments
     // Vector of Options to hold the winner of each region
     let mut regional_winners: Vec<Option<CandidateResult>> = (0..regions).map(|_| None).collect();
     let total_range = range_max - range_min;
@@ -539,7 +536,7 @@ fn apply_diversity_filter(
         }
     }
 
-    // 3. The Qualifiers (Filter & Collect)
+    // The Qualifiers (Filter & Collect)
     let mut final_results = Vec::new();
 
     for (_i, winner_opt) in regional_winners.into_iter().enumerate() {
@@ -701,7 +698,7 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
             .flat_map(|i| {
                 let mut local_results = Vec::with_capacity(2);
 
-                // 1. Long Scout Logic
+                // Long Scout Logic
                 if long_active {
                     let target = long_start + Price::from(i as f64 * long_step_size);
 
@@ -727,7 +724,7 @@ fn run_scout_phase(ctx: &PathfinderContext) -> Vec<CandidateResult> {
                     }
                 }
 
-                // 2. Short Scout Logic
+                // Short Scout Logic
                 if short_active {
                     let target =
                         Price::from(ctx.price_min) + Price::from(i as f64 * short_step_size);
@@ -838,7 +835,7 @@ fn run_drill_phase(
             );
         }
 
-        // 1. Smart Selection (Dedup + Cutoff)
+        // Smart Selection (Dedup + Cutoff)
         for (idx, candidate) in candidates.iter().enumerate() {
             // Optimization #4: Adaptive Cutoff
             if candidate.score < score_threshold {
@@ -890,7 +887,7 @@ fn run_drill_phase(
             );
         }
 
-        // 2. Drill Loop (Parallelized)
+        // Drill Loop (Parallelized)
         let full_risks = DEFAULT_JOURNEY_SETTINGS.risk_reward_tests;
         let full_samples = DEFAULT_JOURNEY_SETTINGS.sample_count;
 
@@ -980,7 +977,7 @@ fn optimize_stop_loss_rr(
 
         let target_dist_abs = (Price::from(target_price) - current_price).abs();
 
-        // 1. Safety Check: Volatility Floor.
+        // Safety Check: Volatility Floor.
         let vol_floor_pct = current_state.volatility_pct.value() * 2.0;
         let min_stop_dist = current_price.value() * vol_floor_pct;
 
@@ -1005,7 +1002,7 @@ fn optimize_stop_loss_rr(
         };
 
         for &ratio in risk_tests {
-            // 2. Calculate Candidate Stop
+            // Calculate Candidate Stop
             let stop_dist = target_dist_abs / ratio;
 
             if stop_dist < min_stop_dist {
@@ -1026,7 +1023,7 @@ fn optimize_stop_loss_rr(
                 TradeDirection::Short => StopPrice::from(current_price + Price::new(stop_dist)),
             };
 
-            // 3. Simulation
+            // Simulation
             if let Some(result) = ScenarioSimulator::estimate_empirical_outcome(
                 ohlcv,
                 effective_matches,

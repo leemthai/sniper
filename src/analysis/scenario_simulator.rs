@@ -199,7 +199,7 @@ fn generate_volatility_optimized(
     let len = end_idx.saturating_sub(start_idx);
     let mut results = vec![0.0f32; len];
 
-    // 1. Generate Raw Volatility: (H - L) / C
+    // Generate Raw Volatility: (H - L) / C
     let raw_start = start_idx.saturating_sub(lookback);
     let raw_len = end_idx - raw_start;
     let mut raw_vols = vec![0.0f64; raw_len];
@@ -251,7 +251,7 @@ fn generate_volatility_optimized(
         }
     }
 
-    // 2. Rolling Sum (SMA)
+    // Rolling Sum (SMA)
     let mut current_sum: f64 = raw_vols.iter().take(lookback).sum();
     let lookback_f = lookback as f64;
 
@@ -309,10 +309,10 @@ impl ScenarioSimulator {
     ) -> Option<(Vec<(usize, f64)>, MarketState)> {
         let t_start = AppInstant::now();
 
-        // 1. Calculate Current Market State
+        // Calculate Current Market State
         let current_market_state = MarketState::calculate(ts, current_idx, trend_lookback)?;
 
-        // 2. Define Scan Range (Matches original logic exactly)
+        // Define Scan Range (Matches original logic exactly)
         let end_scan = current_idx.saturating_sub(max_duration_candles);
         // --- PHASE 1: DATA PREPARATION (Optimized Generation) ---
         let t_prep_start = AppInstant::now();
@@ -538,7 +538,7 @@ impl ScenarioSimulator {
         duration: usize,
         direction: TradeDirection,
     ) -> Outcome {
-        // 1. Run SIMD if available
+        // Run SIMD if available
         #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
         let result = if is_x86_feature_detected!("avx512f") {
             unsafe {
@@ -576,7 +576,7 @@ impl ScenarioSimulator {
             direction,
         );
 
-        // 2. DEBUG VERIFICATION
+        // DEBUG VERIFICATION
         #[cfg(debug_assertions)]
         if DF.log_simd {
             {
@@ -790,7 +790,7 @@ impl ScenarioSimulator {
         let h_ptr = ts.high_prices.as_ptr().cast::<f64>();
         let l_ptr = ts.low_prices.as_ptr().cast::<f64>();
 
-        // 1. AVX Scan Loop
+        // AVX Scan Loop
         unsafe {
             let v_target = _mm512_set1_pd(hist_target);
             let v_stop = _mm512_set1_pd(hist_stop);
@@ -821,7 +821,7 @@ impl ScenarioSimulator {
             }
         }
 
-        // 2. Scalar Processing (Hit Block or Tail)
+        // Scalar Processing (Hit Block or Tail)
         let scalar_start_offset = hit_idx_offset.unwrap_or(loop_len);
 
         // Explicit unsafe block for raw pointer dereferencing in the scalar tail
@@ -853,7 +853,7 @@ impl ScenarioSimulator {
             }
         }
 
-        // 3. Time Out
+        // Time Out
         let final_idx = offset_start + search_len - 1;
         let final_close = ts.close_prices[final_idx];
         let close_change =

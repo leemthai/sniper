@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-
+use crate::config::{MomentumPct, PriceLike, VolRatio, VolatilityPct};
 use crate::models::OhlcvTimeSeries;
-use crate::config::{MomentumPct, VolatilityPct, VolRatio, PriceLike};
 
 /// A normalized "Fingerprint" of the market conditions at a specific moment in time.
 /// Used to find historical matches for the Ghost Runner simulation.
@@ -40,24 +39,38 @@ impl fmt::Display for MarketState {
 impl MarketState {
     /// Calculates the fingerprint for a specific index.
     /// `lookback`: Number of candles to use for Momentum and Volume MA.
-    pub(crate) fn calculate(ts: &OhlcvTimeSeries, idx: usize, trend_lookback: usize) -> Option<Self> {
+    pub(crate) fn calculate(
+        ts: &OhlcvTimeSeries,
+        idx: usize,
+        trend_lookback: usize,
+    ) -> Option<Self> {
         // Safety check
         if idx < trend_lookback || trend_lookback == 0 {
             return None;
         }
 
         let current = ts.get_candle(idx);
-        
-        // 1. Volatility (Unchanged)
-        let volatility = VolatilityPct::calculate(current.high_price.value(), current.low_price.value(), current.close_price.value());
 
-        // 2. Momentum (Adaptive - O(1) Lookup)
+        // Volatility (Unchanged)
+        let volatility = VolatilityPct::calculate(
+            current.high_price.value(),
+            current.low_price.value(),
+            current.close_price.value(),
+        );
+
+        // Momentum (Adaptive - O(1) Lookup)
         let prev_n = ts.get_candle(idx - trend_lookback);
-        let momentum = MomentumPct::calculate(current.close_price.value(), prev_n.close_price.value());
+        let momentum =
+            MomentumPct::calculate(current.close_price.value(), prev_n.close_price.value());
 
-        // 3. Relative Volume (O(1) Lookup)
+        // Relative Volume (O(1) Lookup)
         // We now read the pre-calculated value directly.
-        let rel_vol = ts.relative_volumes.get(idx).copied().unwrap_or_else(|| panic!("something gone wrong with idx value, {},  in market_state::calculate ", idx));
+        let rel_vol = ts.relative_volumes.get(idx).copied().unwrap_or_else(|| {
+            panic!(
+                "something gone wrong with idx value, {},  in market_state::calculate ",
+                idx
+            )
+        });
 
         Some(Self {
             volatility_pct: volatility,

@@ -1,5 +1,5 @@
-use std::hash::{Hash, Hasher};
 use serde::{Deserialize, Serialize};
+use std::hash::{Hash, Hasher};
 
 use colorgrad::Gradient;
 use eframe::egui::{Color32, PointerButton, Rect, Ui, Vec2b};
@@ -14,7 +14,7 @@ use crate::config::{CandleResolution, Price, PriceLike};
 
 use crate::engine::SniperEngine;
 
-use crate::models::{CVACore, ScoreType, TradingModel, TradeOpportunity, find_matching_ohlcv};
+use crate::models::{CVACore, ScoreType, TradeOpportunity, TradingModel, find_matching_ohlcv};
 
 use crate::ui::ui_text::UI_TEXT;
 
@@ -114,7 +114,7 @@ fn create_time_axis(
             let mut current_visual_start = 0.0;
 
             for seg in &segments {
-                // 1. Calculate Width using Timestamp Buckets (Matches Render Logic)
+                // Calc Width using Timestamp Buckets (Matches Render Logic)
                 // Integer division snaps timestamps to the grid (e.g. Daily buckets)
                 let start_bucket = seg.start_ts / agg_interval_ms;
                 let end_bucket = seg.end_ts / agg_interval_ms;
@@ -178,7 +178,7 @@ impl PlotView {
         )
         .expect(&UI_TEXT.plot_missing_klines);
 
-        // 2. Calculate Bounds (Using Helper)
+        // Calculate Bounds (Using Helper)
         let (view_min, view_max, total_visual_width) =
             self.calculate_view_bounds(trading_model, current_segment_idx, resolution);
 
@@ -224,7 +224,7 @@ impl PlotView {
                     );
                 }
 
-                // 1. Get the STRICT Price Horizon limits for the "Ghosting" logic
+                // Get the STRICT Price Horizon limits for the "Ghosting" logic
                 let (ph_min, ph_max) = cva_results.price_range.min_max();
 
                 // FIX: Calculate STRICT clip rect based on visible plot bounds.
@@ -257,14 +257,14 @@ impl PlotView {
                     selected_opportunity: &selected_opportunity,
                 };
 
-                // 2. Define Layer Stack (Dynamic)
+                // Define Layer Stack (Dynamic)
                 let mut layers: Vec<Box<dyn PlotLayer>> = Vec::with_capacity(7); // '7' is basically a hint. If require  more capacity, Rust will allocate at run-time np.
 
                 // LOGIC: Only show Global Context layers (Volume/Zones) if we are viewing the FULL HISTORY ("Show All").
                 // If viewing a specific segment, leave these out as not relevant.
                 let is_show_all = current_segment_idx.is_none();
 
-                // 1. Global Context Layers (Only in Show All)
+                // Global Context Layers (Only in Show All)
                 if is_show_all {
                     if visibility.background {
                         layers.push(Box::new(BackgroundLayer));
@@ -275,13 +275,13 @@ impl PlotView {
                     if visibility.low_wicks || visibility.high_wicks {
                         layers.push(Box::new(ReversalZoneLayer));
                     }
-                    // 3. Overlays (Separators)
+                    // Overlays (Separators)
                     if visibility.separators {
                         layers.push(Box::new(SegmentSeparatorLayer));
                     }
                 }
 
-                // 2. Always Available Layers (Context Agnostic)
+                // Always Available Layers (Context Agnostic)
                 if visibility.price_line {
                     layers.push(Box::new(PriceLineLayer));
                 }
@@ -301,19 +301,19 @@ impl PlotView {
                     layers.push(Box::new(OpportunityLayer));
                 }
 
-                // 3. Render Loop
+                // Render Loop
                 for layer in layers {
                     layer.render(plot_ui, &ctx);
                 }
             });
 
         let r = plot_response.response;
-        // 1. Double Click -> Reset (Lock)
+        // Double Click -> Reset (Lock)
         if r.double_clicked() {
             return PlotInteraction::RequestReset;
         }
 
-        // 2. Dragging -> Break Lock (Unlock)
+        // Dragging -> Break Lock (Unlock)
         // Note: we explicitly check if Y drag is allowed by config,
         // though we hardcoded it in Plot::new anyway.
         if r.dragged_by(PointerButton::Primary) || r.dragged_by(PointerButton::Secondary) {
@@ -322,7 +322,7 @@ impl PlotView {
             return PlotInteraction::UserInteracted;
         }
 
-        // 3. Zooming (Scroll) -> Break Lock
+        // Zooming (Scroll) -> Break Lock
         if r.hovered() && ui.input(|i| i.raw_scroll_delta.y.abs() > 0.0) {
             return PlotInteraction::UserInteracted;
         }
@@ -382,13 +382,13 @@ impl PlotView {
         let (ph_min, ph_max) = cva_results.price_range.min_max();
         let current_price = current_price_opt.unwrap_or_default();
 
-        // 1. Calculate Standard Union (PH + Price)
+        // Calculate Standard Union (PH + Price)
         // We intentionally ignore model.segments for the *Final* calculation to keep Sniper View,
         // but we calculate them below for the Debug Log you requested.
         let final_min = ph_min.min(current_price.value());
         let final_max = ph_max.max(current_price.value());
 
-        // 2. Apply Configured Padding
+        // Apply Configured Padding
         let range = final_max - final_min;
         let pad = range * PLOT_CONFIG.plot_y_padding_pct;
 
@@ -457,7 +457,7 @@ impl PlotView {
 
         let base_price = current_price.value().max(1.0);
 
-        // --- 1. ZOOM LIMITS (Range) ---
+        // ZOOM LIMITS (Range)
         let min_allowed_range = base_price * 0.00001; // 0.001%
         let max_allowed_range = base_price * 2.0; // 200% (View 0 to 180k for BTC)
 
@@ -475,7 +475,7 @@ impl PlotView {
             changed = true;
         }
 
-        // --- 2. PAN LIMITS (Position) ---
+        // PAN LIMITS (Position)
 
         // A. Hard Floor: Bottom cannot be negative
         if min < 0.0 {
@@ -598,10 +598,10 @@ fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
     AxisHints::new_y()
         .label(label)
         .formatter(|mark, range| {
-            // 1. Calculate the Visible Span
+            //Calculate the Visible Span
             let span = range.end() - range.start();
 
-            // 2. Decide Precision based on Zoom Level (Span)
+            // Decide Precision based on Zoom Level (Span)
             // This ensures all labels share the same width/precision
             // regardless of their individual value.
             let decimals = if span >= 1000.0 {
@@ -614,7 +614,6 @@ fn create_y_axis(pair_name: &str) -> AxisHints<'static> {
                 8 // Micro range: $0.00004500
             };
 
-            // 3. Format
             // Forces exactly 'decimals' places.
             format!("${:.1$}", mark.value, decimals)
         })

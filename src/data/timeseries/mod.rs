@@ -1,11 +1,11 @@
-// 1. Native Only: The Binance Kline Logic
+// Native Only: The Binance Kline Logic
 #[cfg(not(target_arch = "wasm32"))]
-pub mod bn_kline; 
+pub mod bn_kline;
 
-// 2. Shared: The binary cache format (used by make_demo_cache AND wasm_demo)
+// Shared: The binary cache format (used by make_demo_cache AND wasm_demo)
 pub mod cache_file;
 
-// 3. WASM Only: The static loader
+// WASM Only: The static loader
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_demo;
 

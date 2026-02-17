@@ -25,7 +25,7 @@ use crate::models::SyncStatus;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::Pct;
-use crate::config::{CandleResolution, DF, PhPct, Price};
+use crate::config::{CandleResolution, DF, PhPct};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
@@ -46,9 +46,10 @@ use crate::ui::{
 
 use crate::utils::time_utils::AppInstant;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub(crate) enum SortDirection {
     Ascending,
+    #[default]
     Descending,
 }
 
@@ -121,6 +122,21 @@ pub(crate) enum PersistedSelection {
     },
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AutoScaleY(pub bool);
+
+impl AutoScaleY {
+    pub fn value(&self) -> bool {
+        self.0
+    }
+}
+
+impl Default for AutoScaleY {
+    fn default() -> Self {
+        Self(true)
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct App {
@@ -131,6 +147,8 @@ pub struct App {
 
     #[serde(skip)]
     pub(crate) valid_session_pairs: HashSet<String>, // Valid pairs for this session only - this is passed to the engine
+    // #[serde(skip)]
+    // pub(crate) prices: HashMap<String, Price>,
 
     // Persisted user intent (thin, serializable)
     pub(crate) persisted_selection: PersistedSelection,
@@ -158,12 +176,11 @@ pub struct App {
     pub(crate) progress_rx: Option<Receiver<ProgressEvent>>,
     #[serde(skip)]
     pub(crate) data_rx: Option<Receiver<(TimeSeriesCollection, &'static str)>>,
-    #[serde(skip)]
-    pub(crate) prices: HashMap<String, Price>,
+
     #[serde(skip)]
     pub(crate) nav_states: HashMap<String, NavigationState>,
     #[serde(skip)]
-    pub(crate) auto_scale_y: bool,
+    pub(crate) auto_scale_y: AutoScaleY,
     #[serde(skip)]
     pub(crate) ticker_state: TickerState,
 }
@@ -183,16 +200,15 @@ impl Default for App {
             state: AppState::default(),
             progress_rx: None,
             data_rx: None,
-            prices: HashMap::new(),
             scroll_target: None,
             nav_states: HashMap::new(),
             candle_resolution: CandleResolution::default(),
-            auto_scale_y: true,
+            auto_scale_y: AutoScaleY::default(),
             ticker_state: TickerState::default(),
             tf_scope_match_base: false,
             show_candle_range: false,
-            tf_sort_col: SortColumn::LiveRoi, // Default to Money
-            tf_sort_dir: SortDirection::Descending, // Highest first
+            tf_sort_col: SortColumn::default(),
+            tf_sort_dir: SortDirection::default(),
         }
     }
 }
@@ -208,7 +224,6 @@ impl App {
         Self::configure_fonts(&cc.egui_ctx);
 
         app.plot_view = PlotView::new();
-        app.prices = HashMap::new();
         app.state = AppState::Bootstrapping(BootstrapState::default());
 
         let (data_tx, data_rx) = mpsc::channel();
@@ -267,28 +282,27 @@ impl App {
     /// - If found: Selects that specific Op.
     /// - If not: Selects the Pair (Market View).
     pub(crate) fn jump_to_pair(&mut self, pair: String) {
-        // 1. Same Pair Check (Preserve Context)
+        // Same Pair Check (Preserve Context)
         if matches!(self.selection, Selection::Pair(ref p) if p == &pair) {
             self.update_scroll_to_selection();
             return;
         }
 
-        // 2. Find Best Op (Smart Lookup)
+        // Generate master list of tf ops
         let best_op = self.engine.as_ref().and_then(|e| {
-            e.get_trade_finder_rows(Some(&self.prices))
+            e.get_trade_finder_rows()
                 .into_iter()
                 .find(|r| r.pair_name == pair)
                 .and_then(|r| r.opportunity)
         });
 
-        // 3. Apply Selection
+        // Apply Selection
         if let Some(op) = best_op {
             self.select_opportunity(op, ScrollBehavior::Center, "jump to pair");
         } else {
             self.selection = Selection::Pair(pair);
         }
 
-        // 4. Final Polish
         self.update_scroll_to_selection();
     }
 
@@ -543,12 +557,12 @@ impl App {
         self.update_loading_progress(state);
         ctx.request_repaint();
 
-        // 2. Check if backfill completed
+        // Check if backfill completed
         if let Some(next_state) = self.finalize_bootstrap_if_ready() {
             return next_state;
         }
 
-        // 3. Still bootstrapping → render loading UI
+        // Still bootstrapping → render loading UI
         bootstrap::render(ctx, state);
 
         // Remain in Bootstrapping
@@ -657,19 +671,19 @@ impl App {
     fn configure_fonts(ctx: &Context) {
         let mut fonts = FontDefinitions::default();
 
-        // 1. Load the MONO Font (For Data/Tables)
+        // Load the MONO Font (For Data/Tables)
         // Keep scale at 0.85 or tweak as needed
         let mut font_data_mono =
             FontData::from_static(include_bytes!("../fonts/HackNerdFont-Regular.ttf"));
         font_data_mono.tweak.scale = 0.85;
 
-        // 2. Load the PROPO Font (For General UI)
+        // Load the PROPO Font (For General UI)
         // This is the new file you downloaded
         let mut font_data_propo =
             FontData::from_static(include_bytes!("../fonts/HackNerdFontPropo-Regular.ttf"));
         font_data_propo.tweak.scale = 0.85; // Match scale so they look consistent
 
-        // 3. Register them
+        // Register them
         fonts
             .font_data
             .insert("hack_mono".to_owned(), Arc::new(font_data_mono));
@@ -764,7 +778,7 @@ impl App {
     #[cfg(feature = "ph_audit")]
     fn try_run_audit(&self, ctx: &Context) {
         if let Some(e) = &self.engine {
-            // 1. ACCESS DATA FIRST
+            // ACCESS DATA FIRST
             // We need to know what pairs we actually HAVE before we decide what to wait for.
             let ts_guard = e.timeseries.read().unwrap();
 
@@ -774,7 +788,7 @@ impl App {
                 return;
             }
 
-            // 2. CHECK TICKER (Smart Wait)
+            // CHECK TICKER (Smart Wait)
             // Only wait for prices on pairs that actually exist in our KLine data.
             let mut waiting_for_price = false;
 
@@ -799,7 +813,7 @@ impl App {
                 return;
             }
 
-            // 3. EXECUTE
+            // EXECUTE
             // We hold the lock from step 1, so we drop it now to allow the runner to use it if needed
             // (though we pass a ref, so dropping is just good hygiene here)
             drop(ts_guard);

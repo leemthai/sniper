@@ -33,19 +33,19 @@ impl GlobalRateLimiter {
                 let mut guard = self.inner.lock().await;
                 let now_idx = Self::get_current_minute_idx();
 
-                // 1. Check for New Minute (Wall Clock)
+                // Check for New Minute (Wall Clock)
                 if now_idx > guard.current_minute_idx {
                     guard.used_weight = 0;
                     guard.current_minute_idx = now_idx;
                 }
 
-                // 2. Check Capacity
+                // Check Capacity
                 if guard.used_weight + cost <= guard.limit {
                     guard.used_weight += cost;
                     return; // Success
                 }
 
-                // 3. Calculate Wait (Until next :00)
+                // Calculate Wait (Until next :00)
                 let now_secs = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or(Duration::ZERO)

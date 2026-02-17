@@ -127,12 +127,12 @@ impl SniperEngine {
         shared_config: SharedConfiguration,
         active_engine_pairs: Vec<String>,
     ) -> Self {
-        // 1. Create Channels
+        // Create Channels
         let (_candle_tx, candle_rx) = channel();
         let (job_tx, job_rx) = channel::<JobRequest>();
         let (result_tx, result_rx) = channel::<JobResult>();
 
-        // 2. Create the Thread-Safe Data Structure ONCE
+        // Create the Thread-Safe Data Structure ONCE
         // Wrap the collection in RwLock (for writing) and Arc (for sharing)
         let timeseries_arc = Arc::new(RwLock::new(timeseries));
 
@@ -239,17 +239,14 @@ impl SniperEngine {
     }
 
     /// Generates the master list for the Trade Finder (TEMP shouldn't this be in UI code somewhere?!?)
-    pub(crate) fn get_trade_finder_rows(
-        &self,
-        overrides: Option<&HashMap<String, Price>>,
-    ) -> Vec<TradeFinderRow> {
+    pub(crate) fn get_trade_finder_rows(&self) -> Vec<TradeFinderRow> {
         crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
             let mut rows = Vec::new();
 
             let now_ms = TimeUtils::now_timestamp_ms();
             let day_ms = 86_400_000;
 
-            // 1. Group Ledger Opportunities by Pair for fast lookup
+            // Group Ledger Opportunities by Pair for fast lookup
             let mut ops_by_pair: HashMap<String, Vec<&TradeOpportunity>> = HashMap::new();
             for op in self.engine_ledger.get_all() {
                 ops_by_pair
@@ -261,18 +258,18 @@ impl SniperEngine {
             let ts_guard = self.timeseries.read().unwrap();
 
             for pair in self.pairs_states.keys() {
-                // 2. Get Context (Price)
-                // STRICT MODE: Do not default to 0.0. If no price, skip the pair.
-                let price_opt = overrides
-                    .and_then(|map| map.get(pair).copied())
-                    .or_else(|| self.get_price(pair));
+                // Get Price
+                let price = self.get_price(pair);
+                // let price_opt = overrides
+                //     .and_then(|map| map.get(pair).copied())
+                //     .or_else(|| self.get_price(pair));
 
-                let current_price = match price_opt {
+                let price = match price {
                     Some(p) if p.is_positive() => p,
                     _ => continue,
                 };
 
-                // 3. Calculate Volume & Market State (From TimeSeries)
+                // Calculate Volume & Market State (From TimeSeries)
                 // We do this for every pair regardless of whether it has ops
                 let mut vol_24h = QuoteVol::new(0.0);
 
@@ -316,7 +313,7 @@ impl SniperEngine {
                             quote_volume_24h: vol_24h,
                             market_state: Some(op.market_state),
                             opportunity: Some(op.clone()),
-                            current_price,
+                            current_price: price,
                         });
                     }
                 } else {
@@ -326,7 +323,7 @@ impl SniperEngine {
                         quote_volume_24h: vol_24h,
                         market_state: None,
                         opportunity: None,
-                        current_price,
+                        current_price: price,
                     });
                 }
             }
@@ -479,12 +476,12 @@ impl SniperEngine {
         // so we just iterate logic directly.
         let push_pair =
             |pair: String, target_queue: &mut VecDeque<_>, config: &SharedConfiguration| {
-                // 1. Lookup PH (Specific to pair)
+                // Lookup PH (Specific to pair)
                 let ph_pct = config
                     .get_ph(&pair)
                     .expect("We must have value for ph_pct for this pair at all times");
 
-                // 2. Lookup Station (Specific to pair)
+                // Lookup Station (Specific to pair)
                 let station = config.get_station(&pair).unwrap_or_else(|| {
                     panic!(
                         "trigger_global_recalc must have station set for pair {}",
@@ -556,10 +553,10 @@ impl SniperEngine {
     }
 
     fn tune_pair_internal(&self, pair: &str, tuner_station: &TunerStation) -> Option<PhPct> {
-        // 1. Get live price
+        // Get live price
         let price = self.get_price(pair)?;
 
-        // 2. Get OHLCV
+        // Get OHLCV
         let ts_guard = self.timeseries.read().unwrap();
         let ohlcv = find_matching_ohlcv(
             &ts_guard.series_data,
@@ -568,7 +565,7 @@ impl SniperEngine {
         )
         .ok()?;
 
-        // 3. Run worker
+        // Run worker
         worker::tune_to_station(
             ohlcv,
             price,
@@ -604,7 +601,7 @@ impl SniperEngine {
 
         let ts_lock = self.timeseries.clone();
 
-        // 2. Write Lock (on local Arc)
+        // Write Lock (on local Arc)
         if let Ok(mut ts_collection) = ts_lock.write() {
             for candle in updates {
                 // Find and update the matching time series
@@ -685,7 +682,7 @@ impl SniperEngine {
         // Access TimeSeries mainly for High/Low checks on the latest candle
         let ts_guard = self.timeseries.read().unwrap();
 
-        // 1. Scan Ledger
+        // Scan Ledger
         for (id, op) in &self.engine_ledger.opportunities {
             // A. Get Data context
             let pair = &op.pair_name;
@@ -807,7 +804,7 @@ impl SniperEngine {
             }
         }
 
-        // 3. Update Ledger
+        // Update Ledger
         for id in &ids_to_remove {
             #[cfg(debug_assertions)]
             if DF.log_ledger {

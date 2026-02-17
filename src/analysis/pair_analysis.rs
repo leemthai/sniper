@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 
-use crate::config::{PhPct, Price, BASE_INTERVAL, TIME_DECAY_FACTOR, ZONE_COUNT};
+use crate::config::{BASE_INTERVAL, PhPct, Price, TIME_DECAY_FACTOR, ZONE_COUNT};
 use crate::data::timeseries::TimeSeriesCollection;
 use crate::domain::price_horizon;
 
@@ -15,8 +15,7 @@ pub(crate) fn pair_analysis_pure(
     current_price: Price,
     ph_pct: PhPct,
 ) -> Result<CVACore> {
-    // 1. Find the Data
-    // find_matching_ohlcv returns Result, so we use with_context to add the error message
+    // Find the Data
     let ohlcv_time_series = find_matching_ohlcv(
         &timeseries_data.series_data,
         &pair_name,
@@ -29,7 +28,7 @@ pub(crate) fn pair_analysis_pure(
     let (slice_ranges, price_range) =
         price_horizon::auto_select_ranges(ohlcv_time_series, current_price, ph_pct);
 
-    // 3. Validation
+    // Validation
     let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();
 
     if total_candle_count < MIN_CANDLES_FOR_ANALYSIS {
@@ -78,7 +77,12 @@ pub(crate) fn pair_analysis_pure(
         ranges: slice_ranges.clone(),
     };
 
-    let mut cva_results = timeseries_slice.generate_cva_results(ZONE_COUNT, pair_name.clone(), dynamic_decay_factor, price_range);
+    let mut cva_results = timeseries_slice.generate_cva_results(
+        ZONE_COUNT,
+        pair_name.clone(),
+        dynamic_decay_factor,
+        price_range,
+    );
 
     // Store the raw ranges for the UI Navigator
     cva_results.included_ranges = slice_ranges.clone();
@@ -92,7 +96,7 @@ pub(crate) fn pair_analysis_pure(
         let max_idx = ohlcv_time_series.klines().saturating_sub(1);
         let start_idx = (*first_start).min(max_idx);
         let end_idx = (last_end.saturating_sub(1)).min(max_idx); // range end is exclusive
-        
+
         // Use get_candle to retrieve the actual timestamp from DB
         cva_results.start_timestamp_ms = ohlcv_time_series.get_candle(start_idx).timestamp_ms;
         cva_results.end_timestamp_ms = ohlcv_time_series.get_candle(end_idx).timestamp_ms;

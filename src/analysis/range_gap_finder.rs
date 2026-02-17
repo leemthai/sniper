@@ -4,14 +4,14 @@ use crate::utils::TimeUtils;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GapReason {
-    None,              // Start of data
+    None, // Start of data
     #[allow(unused)]
-    PriceMismatch,     // Indices were skipped (Price out of PH)
+    PriceMismatch, // Indices were skipped (Price out of PH)
     MissingSourceData, // Indices contiguous, but Time jumped (Exchange down/Delisted)
 
-    PriceAbovePH,     // Excluded because Price > Max PH
-    PriceBelowPH,     // Excluded because Price < Min PH
-    PriceMixed,       // Generic/Mixed (rare, if price teleported across range)
+    PriceAbovePH, // Excluded because Price > Max PH
+    PriceBelowPH, // Excluded because Price < Min PH
+    PriceMixed,   // Generic/Mixed (rare, if price teleported across range)
 }
 
 #[derive(Debug, Clone)]
@@ -24,7 +24,7 @@ pub(crate) struct DisplaySegment {
 
     pub low_price: LowPrice,
     pub high_price: HighPrice,
-    
+
     // Gap *preceding* this segment
     pub gap_reason: GapReason,
     pub gap_duration_str: String,
@@ -33,9 +33,8 @@ pub(crate) struct DisplaySegment {
 pub(crate) struct RangeGapFinder;
 
 impl RangeGapFinder {
-
-pub(crate) fn analyze(
-        timeseries: &OhlcvTimeSeries, 
+    pub(crate) fn analyze(
+        timeseries: &OhlcvTimeSeries,
         ph_ranges: &[(usize, usize)],
         price_bounds: (Price, Price),
         merge_tolerance_ms: i64, // <--- NEW ARGUMENT
@@ -46,7 +45,7 @@ pub(crate) fn analyze(
 
         let interval_ms = timeseries.pair_interval.interval_ms;
         // Tolerance for detecting "Missing Source Data" (Exchange Down)
-        let source_gap_tolerance = (interval_ms as f64 * 1.1) as i64; 
+        let source_gap_tolerance = (interval_ms as f64 * 1.1) as i64;
 
         // --- PASS 1: Generate Raw Segments ---
         // This splits ranges based on Price Horizon gaps AND Source Data gaps
@@ -56,42 +55,44 @@ pub(crate) fn analyze(
         let mut first_segment = true;
 
         for &(range_start, range_end) in ph_ranges {
-            if range_start >= timeseries.timestamps.len() { continue; }
+            if range_start >= timeseries.timestamps.len() {
+                continue;
+            }
             let safe_end = range_end.min(timeseries.timestamps.len());
-            
+
             let mut current_sub_start = range_start;
-            
+
             for i in range_start..safe_end {
                 let current_ts = timeseries.timestamps[i];
-                
+
                 // Look ahead to check continuity within this range (Source Data Gaps)
                 if i + 1 < safe_end {
-                    let next_ts = timeseries.timestamps[i+1];
+                    let next_ts = timeseries.timestamps[i + 1];
                     let diff = next_ts - current_ts;
-                    
+
                     if diff > source_gap_tolerance {
                         // Found Source Gap inside PH Range
                         let sub_end = i + 1;
-                        
+
                         raw_segments.push(Self::create_segment(
-                            timeseries, 
-                            current_sub_start, 
-                            sub_end, 
-                            prev_segment_end_idx, 
+                            timeseries,
+                            current_sub_start,
+                            sub_end,
+                            prev_segment_end_idx,
                             prev_segment_end_ts,
                             first_segment,
-                            price_bounds
+                            price_bounds,
                         ));
-                        
+
                         first_segment = false;
                         prev_segment_end_idx = sub_end;
                         prev_segment_end_ts = timeseries.timestamps[sub_end - 1];
-                        
+
                         current_sub_start = i + 1;
                     }
                 }
             }
-            
+
             // Push the final chunk of this range
             if current_sub_start < safe_end {
                 raw_segments.push(Self::create_segment(
@@ -101,7 +102,7 @@ pub(crate) fn analyze(
                     prev_segment_end_idx,
                     prev_segment_end_ts,
                     first_segment,
-                    price_bounds
+                    price_bounds,
                 ));
                 first_segment = false;
                 prev_segment_end_idx = safe_end;
@@ -112,7 +113,9 @@ pub(crate) fn analyze(
         }
 
         // --- PASS 2: COALESCE (Merge small price gaps) ---
-        if raw_segments.is_empty() { return vec![]; }
+        if raw_segments.is_empty() {
+            return vec![];
+        }
 
         let mut merged_segments: Vec<DisplaySegment> = Vec::new();
         let mut current = raw_segments[0].clone();
@@ -120,38 +123,45 @@ pub(crate) fn analyze(
         for next in raw_segments.into_iter().skip(1) {
             // Gap duration between current segment end and next segment start
             let gap_duration = next.start_ts - current.end_ts;
-            
+
             // Check if gap is structural (Missing Data) or filter-based (Price)
             let is_source_hole = matches!(next.gap_reason, GapReason::MissingSourceData);
 
             if !is_source_hole && gap_duration <= merge_tolerance_ms {
                 // MERGE: The price excursion was short enough to ignore.
-                
-                // 1. Calculate how many candles we are "filling in" from the exclusion zone
+
+                // Calculate how many candles we are "filling in" from the exclusion zone
                 // Indices between [current.end_idx ... next.start_idx) are the ones we skipped.
                 // Since !is_source_hole, these indices exist in the DB, just not in PH range.
                 let skipped_count = next.start_idx.saturating_sub(current.end_idx);
 
-                // 2. Update Bounds (Include the excursion candles!)
-                // We must scan the indices *between* the segments to capture the price 
+                // Update Bounds (Include the excursion candles!)
+                // We must scan the indices *between* the segments to capture the price
                 // that triggered the exclusion (Price < PH or Price > PH).
                 for i in current.end_idx..next.start_idx {
-                     let l = timeseries.low_prices[i];
-                     let h = timeseries.high_prices[i];
-                     if l < current.low_price { current.low_price = l; }
-                     if h > current.high_price { current.high_price = h; }
+                    let l = timeseries.low_prices[i];
+                    let h = timeseries.high_prices[i];
+                    if l < current.low_price {
+                        current.low_price = l;
+                    }
+                    if h > current.high_price {
+                        current.high_price = h;
+                    }
                 }
 
-                // 3. Update Bounds (Merge the next segment's bounds)
-                if next.low_price < current.low_price { current.low_price = next.low_price; }
-                if next.high_price > current.high_price { current.high_price = next.high_price; }
-
+                // Update Bounds (Merge the next segment's bounds)
+                if next.low_price < current.low_price {
+                    current.low_price = next.low_price;
+                }
+                if next.high_price > current.high_price {
+                    current.high_price = next.high_price;
+                }
 
                 // 4. Extend current segment
                 current.end_idx = next.end_idx;
                 current.end_ts = next.end_ts;
                 current.candle_count += next.candle_count + skipped_count;
-                
+
                 // Note: current.gap_reason stays as whatever started the *merged* block
             } else {
                 // Cannot merge (Too long OR Data missing). Finalize current.
@@ -173,16 +183,14 @@ pub(crate) fn analyze(
         is_first: bool,
         bounds: (Price, Price),
     ) -> DisplaySegment {
-
-
         let start_ts = ts.timestamps[start];
-        let end_ts = ts.timestamps[end - 1]; 
-        
+        let end_ts = ts.timestamps[end - 1];
+
         let (reason, duration_str) = if is_first {
             (GapReason::None, String::new())
         } else {
             let time_gap = start_ts - prev_end_ts;
-            
+
             let reason = if start == prev_end_idx {
                 GapReason::MissingSourceData
             } else {
@@ -191,7 +199,7 @@ pub(crate) fn analyze(
                     let low = ts.low_prices[prev_end_idx];
                     let high = ts.high_prices[prev_end_idx];
                     let (min_ph, max_ph) = bounds;
-                    
+
                     if low > max_ph {
                         GapReason::PriceAbovePH
                     } else if high < min_ph {
@@ -203,7 +211,7 @@ pub(crate) fn analyze(
                     GapReason::PriceMixed
                 }
             };
-            
+
             (reason, TimeUtils::format_duration(time_gap))
         };
 
@@ -211,13 +219,17 @@ pub(crate) fn analyze(
         // We iterate the slice to find bounds. This is done in the Worker, so it's safe.
         let mut seg_low = ts.low_prices[start];
         let mut seg_high = ts.high_prices[start];
-        
+
         // Note: 'end' is exclusive
         for i in start..end {
             let l = ts.low_prices[i];
             let h = ts.high_prices[i];
-            if l < seg_low { seg_low = l; }
-            if h > seg_high { seg_high = h; }
+            if l < seg_low {
+                seg_low = l;
+            }
+            if h > seg_high {
+                seg_high = h;
+            }
         }
 
         DisplaySegment {

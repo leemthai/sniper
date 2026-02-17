@@ -73,7 +73,6 @@ pub struct PriceStreamManager {
     candle_tx: Option<Sender<LiveCandle>>,
 }
 
-// ... build_combined_stream_url ...
 #[cfg(not(target_arch = "wasm32"))]
 fn build_combined_stream_url(symbols: &[String]) -> String {
     let interval = crate::utils::TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
@@ -133,10 +132,10 @@ impl PriceStreamManager {
             thread::spawn(move || {
                 let rt = Runtime::new().expect("Failed to create runtime");
                 rt.block_on(async move {
-                    // 1. PULL (Batch Snapshot)
+                    // PULL (Batch Snapshot)
                     warm_up_prices(prices_arc.clone(), &symbols_for_warmup).await;
 
-                    // 2. PUSH (Live Updates)
+                    // PUSH (Live Updates)
                     // We now pass 'candle_tx' down the chain
                     run_combined_price_stream_with_reconnect(
                         &symbols_lower,
@@ -358,12 +357,12 @@ async fn run_combined_price_stream(
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                     // Check Event Type "e"
                     if let Some("kline") = v["data"]["e"].as_str() {
-                        // 1. SEND TO ENGINE (History/Heartbeat)
+                        // SEND TO ENGINE (History/Heartbeat)
                         if let Some(tx) = &candle_tx {
                             parse_and_send_kline(&v["data"], tx);
                         }
 
-                        // 2. UPDATE LIVE PRICE CACHE (UI Display)
+                        // UPDATE LIVE PRICE CACHE (UI Display)
                         // We use the current candle close ("c") as the live price
                         if let Some(k) = v["data"].get("k") {
                             if let Some(c_str) = k["c"].as_str() {
@@ -430,14 +429,14 @@ async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, Price>>>, symbols:
         symbol_status: None,
     };
 
-    // 1. Make the Request
+    // Make the Request
     match client.ticker_price(params).await {
         Ok(response) => {
-            // 2. Await the data extraction (It returns a Result<TickerPriceResponse>)
+            // Await the data extraction (It returns a Result<TickerPriceResponse>)
             match response.data().await {
                 Ok(ticker_data) => {
                     match ticker_data {
-                        // 3. Match the Vector Variant
+                        // Match the Vector Variant
                         TickerPriceResponse::TickerPriceResponse2(all_tickers) => {
                             let mut p_lock = prices_arc.lock().unwrap();
                             let mut _updated_count = 0;

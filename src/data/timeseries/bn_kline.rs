@@ -15,9 +15,11 @@ use binance_sdk::spot::{
 use binance_sdk::{errors, errors::ConnectorError as connection_error};
 
 // Local crates
-use crate::config::{BINANCE, BinanceApiConfig, BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice};
 #[cfg(debug_assertions)]
 use crate::config::DF;
+use crate::config::{
+    BINANCE, BaseVol, BinanceApiConfig, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol,
+};
 
 use crate::data::rate_limiter::GlobalRateLimiter;
 use crate::domain::candle::Candle;
@@ -28,7 +30,7 @@ pub trait IntervalToMs {
     fn to_ms(&self) -> i64;
 }
 
-// 2. Implement it for the external type
+// Implement it for the external type
 impl IntervalToMs for KlinesIntervalEnum {
     fn to_ms(&self) -> i64 {
         match self {
@@ -52,7 +54,7 @@ impl IntervalToMs for KlinesIntervalEnum {
     }
 }
 
-// 3. For "MS -> Enum", a static helper is still best,
+// For "MS -> Enum", a static helper is still best,
 //    but we return Result instead of panicking.
 pub fn try_interval_from_ms(ms: i64) -> Result<KlinesIntervalEnum, String> {
     match ms {
@@ -101,8 +103,7 @@ impl AllValidKlines4Pair {
     }
 }
 
-#[derive(Debug)]
-#[derive(PartialOrd, PartialEq)]
+#[derive(Debug, PartialOrd, PartialEq)]
 pub struct BNKline {
     pub open_timestamp_ms: i64, // only necessary field. All others are optional
     pub open_price: Option<OpenPrice>,
@@ -244,10 +245,10 @@ fn process_new_klines(
         // Rare case: the batch had a single item prior to duplicate removal.
         #[cfg(debug_assertions)]
         if DF.log_price_stream_updates {
-        log::info!(
-            "Rare case where new klines was single item before duplicate removal for {}.",
-            pair_interval
-        );
+            log::info!(
+                "Rare case where new klines was single item before duplicate removal for {}.",
+                pair_interval
+            );
         }
         // We return true to indicate "batch caused immediate completion"
         all_klines.splice(0..0, Vec::<BNKline>::new());
@@ -368,7 +369,7 @@ pub async fn load_klines(
     let pair_name = pair_interval.bn_name().to_string();
 
     loop {
-        // 1. GLOBAL RATE LIMIT CHECK
+        // GLOBAL RATE LIMIT CHECK
         // This will sleep automatically if the bucket is empty.
         // It coordinates across ALL threads.
         limiter.acquire(call_weight, &pair_name).await;
@@ -383,11 +384,11 @@ pub async fn load_klines(
         .start_time(start_time)
         .build()?;
 
-        // 2. FETCH (Ignore headers, we track locally)
+        // FETCH (Ignore headers, we track locally)
         let (_rate_limits, new_klines) =
             fetch_binance_klines_with_limits(&rest_client, params, &pair_interval).await?;
 
-        // 3. PROCESS
+        // PROCESS
         let (new_end_time, batch_read_all) = process_new_klines(
             new_klines,
             limit_klines_returned,

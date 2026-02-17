@@ -3,7 +3,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    anyhow::{anyhow, Context, Result},
+    anyhow::{Context, Result, anyhow},
     serde_json::Value,
     std::collections::HashMap,
     std::path::PathBuf,
@@ -12,8 +12,8 @@ use {
     zone_sniper::config::{BASE_INTERVAL, DEMO, PERSISTENCE, Price, PriceLike},
     zone_sniper::data::price_stream::PriceStreamManager,
     zone_sniper::data::storage::{MarketDataStorage, SqliteStorage},
-    zone_sniper::data::timeseries::cache_file::CacheFile,
     zone_sniper::data::timeseries::TimeSeriesCollection,
+    zone_sniper::data::timeseries::cache_file::CacheFile,
     zone_sniper::domain::pair_interval::PairInterval,
     zone_sniper::models::OhlcvTimeSeries,
     zone_sniper::utils::TimeUtils,
@@ -27,12 +27,12 @@ const DEMO_CANDLE_LIMIT: usize = 50_000;
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 1. Setup Logging
+    // Setup Logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    // 2. Configuration from demo.rs
+    // Configuration from demo.rs
     let demo_pairs = DEMO.resources.pairs;
-    
+
     let interval_ms = BASE_INTERVAL.as_millis() as i64;
     let interval_str = TimeUtils::interval_to_string(interval_ms);
     let db_path = "klines.sqlite";
@@ -41,8 +41,9 @@ async fn main() -> Result<()> {
     log::info!("Target Interval: {}", interval_str);
     log::info!("Selected Pairs (from demo.rs): {:?}", demo_pairs);
 
-    // 3. Connect to DB
-    let storage = SqliteStorage::new(db_path).await
+    // Connect to DB
+    let storage = SqliteStorage::new(db_path)
+        .await
         .context("Failed to connect to SQLite DB. Run the Native App first to populate data!")?;
 
     let mut series_list = Vec::new();
@@ -50,9 +51,9 @@ async fn main() -> Result<()> {
     // 4. Extract Data
     for &pair in demo_pairs {
         log::info!("Extracting {}...", pair);
-        
+
         let mut candles = storage.load_candles(pair, interval_str, None).await?;
-        
+
         if candles.is_empty() {
             log::warn!("⚠ No data found for {}. Skipping.", pair);
             continue;
@@ -62,7 +63,10 @@ async fn main() -> Result<()> {
         if candles.len() > DEMO_CANDLE_LIMIT {
             let start = candles.len() - DEMO_CANDLE_LIMIT;
             candles = candles.drain(start..).collect();
-            log::info!("   ✂ Truncated to last {} candles for file size safety.", DEMO_CANDLE_LIMIT);
+            log::info!(
+                "   ✂ Truncated to last {} candles for file size safety.",
+                DEMO_CANDLE_LIMIT
+            );
         }
 
         let pair_interval = PairInterval {
@@ -92,7 +96,7 @@ async fn main() -> Result<()> {
     let output_path = PathBuf::from(PERSISTENCE.kline.directory).join(&demo_filename);
 
     log::info!("📦 Serializing to {:?}", output_path);
-    
+
     let cache_file = CacheFile::new(interval_ms, collection, PERSISTENCE.kline.version);
     cache_file.save_to_path(&output_path)?;
 
@@ -102,14 +106,12 @@ async fn main() -> Result<()> {
     write_demo_prices_json(&prices)?;
 
     log::info!("✅ Success!");
-    
+
     Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn fetch_current_prices_for_demo_pairs(
-    demo_pairs: &[&str],
-) -> Result<HashMap<String, Price>> {
+fn fetch_current_prices_for_demo_pairs(demo_pairs: &[&str]) -> Result<HashMap<String, Price>> {
     let stream = PriceStreamManager::new();
 
     let symbols: Vec<String> = demo_pairs.iter().map(|s| s.to_string()).collect();

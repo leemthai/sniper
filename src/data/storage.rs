@@ -7,7 +7,7 @@ use crate::domain::candle::Candle;
 // WASM imports
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::{BaseVol, QuoteVol, OpenPrice, HighPrice, LowPrice, ClosePrice, PriceLike},
+    crate::config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, PriceLike, QuoteVol},
     sqlx::ConnectOptions,
     sqlx::{
         Pool, QueryBuilder, Row, Sqlite,
@@ -17,7 +17,7 @@ use {
     std::time::Duration,
 };
 
-// --- 1. THE INTERFACE ---
+// THE INTERFACE
 
 /// The contract that any storage engine (SQLite or Memory) must obey.
 #[async_trait]
@@ -40,9 +40,7 @@ pub trait MarketDataStorage: Send + Sync {
     ) -> Result<Vec<Candle>>;
 }
 
-// ============================================================================
-// 2. NATIVE IMPLEMENTATION (SQLite)
-// ============================================================================
+// NATIVE IMPLEMENTATION (SQLite)
 
 #[cfg(not(target_arch = "wasm32"))]
 pub struct SqliteStorage {
@@ -103,8 +101,8 @@ impl MarketDataStorage for SqliteStorage {
     async fn get_last_candle_time(&self, pair: &str, interval: &str) -> Result<Option<i64>> {
         let result = sqlx::query(
             r#"
-            SELECT MAX(open_time) as last_time 
-            FROM klines 
+            SELECT MAX(open_time) as last_time
+            FROM klines
             WHERE symbol = ? AND interval = ?
             "#,
         )
@@ -160,15 +158,15 @@ impl MarketDataStorage for SqliteStorage {
         let query_str = if start_time.is_some() {
             r#"
             SELECT open_time, open, high, low, close, base_vol, quote_vol
-            FROM klines 
+            FROM klines
             WHERE symbol = ? AND interval = ? AND open_time >= ?
             ORDER BY open_time ASC
             "#
         } else {
             r#"
             SELECT open_time, open, high, low, close, base_vol, quote_vol
-            FROM klines 
-            WHERE symbol = ? AND interval = ? 
+            FROM klines
+            WHERE symbol = ? AND interval = ?
             ORDER BY open_time ASC
             "#
         };
@@ -200,9 +198,7 @@ impl MarketDataStorage for SqliteStorage {
     }
 }
 
-// ============================================================================
-// 3. WASM IMPLEMENTATION (In-Memory / Static)
-// ============================================================================
+// WASM IMPLEMENTATION (In-Memory / Static)
 
 #[cfg(target_arch = "wasm32")]
 pub struct WasmStorage;

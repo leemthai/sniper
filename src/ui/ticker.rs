@@ -1,18 +1,17 @@
 // use std::collections::HashMap;
 use eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2};
 
-use crate::config::{Price, PriceLike, TICKER, BASE_INTERVAL};
+use crate::config::{BASE_INTERVAL, Price, PriceLike, TICKER};
 use crate::engine::SniperEngine;
 
-
-use crate::models::{find_matching_ohlcv};
+use crate::models::find_matching_ohlcv;
 use crate::utils::TimeUtils;
 use crate::utils::time_utils::AppInstant;
 
 pub(crate) struct TickerItem {
     pub symbol: String,
     pub price: Price,
-    pub change: f64,           // Difference since last update
+    pub change: f64, // Difference since last update
     pub url: Option<String>,
 }
 
@@ -79,7 +78,7 @@ impl TickerState {
             let now_ms = TimeUtils::now_timestamp_ms();
             let day_ago_ms = now_ms - (24 * 60 * 60 * 1000); // 24 Hours ago
 
-            // 1. Sync Pairs with Engine
+            // Sync Pairs with Engine
             let pairs = engine.get_all_pair_names();
 
             for pair in pairs {
@@ -126,7 +125,7 @@ impl TickerState {
                 }
             }
 
-            // 2. Inject Custom Messages
+            // Inject Custom Messages
             for (text, url) in TICKER.custom_messages {
                 let symbol_key = text.to_string();
 
@@ -291,20 +290,20 @@ impl TickerState {
     }
 
     fn format_item(&self, item: &TickerItem) -> String {
-        // 1. Custom Message / Link
+        // Custom Message / Link
         if item.url.is_some() {
             return format!("{} 🔗", item.symbol);
         }
 
-        // 2. Static Message (WASM or Custom)
+        // Static Message (WASM or Custom)
         if item.price.value() == 0.0 && item.change == 0.0 {
             return item.symbol.clone();
         }
 
-        // 2. Price
+        // Price
         let price_str = format!("{}", item.price);
 
-        // 3. Formatted Percent
+        // Formatted Percent
         let pct = self.calculate_pct(item);
 
         // 4. Stable Precision Logic

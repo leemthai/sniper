@@ -1,5 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 #[cfg(debug_assertions)]
@@ -38,9 +38,7 @@ impl SharedConfiguration {
     pub(crate) fn ensure_all_stations_initialized(&self, pairs: &[String]) {
         let mut data = self.inner.write().unwrap();
         for pair in pairs {
-            data.station_overrides
-                .entry(pair.clone())
-                .or_default();
+            data.station_overrides.entry(pair.clone()).or_default();
         }
         #[cfg(debug_assertions)]
         if DF.log_station_overrides {

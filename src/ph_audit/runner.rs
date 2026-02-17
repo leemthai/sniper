@@ -3,7 +3,7 @@ use strum::IntoEnumIterator;
 
 use crate::analysis::pair_analysis;
 
-use crate::config::{OptimizationStrategy, StationId, BASE_INTERVAL, PhPct, Price, PriceLike};
+use crate::config::{BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, StationId};
 
 use crate::data::timeseries::TimeSeriesCollection;
 
@@ -24,7 +24,7 @@ pub fn execute_audit(
     reporter.add_header();
 
     for &pair in config::AUDIT_PAIRS {
-        // 1. Validate Data Exists
+        // Validate Data Exists
         if find_matching_ohlcv(
             &ts_collection.series_data,
             pair,
@@ -36,7 +36,7 @@ pub fn execute_audit(
             continue;
         }
 
-        // 2. Validate Live Price Exists (Strict)
+        // Validate Live Price Exists (Strict)
         let Some(&live_price) = current_prices.get(pair) else {
             println!("Skipping {} (No Live Price Available)", pair);
             continue;
@@ -49,9 +49,9 @@ pub fn execute_audit(
 
         println!(">> Scanning {} @ ${:.4}...", pair, live_price);
 
-        // 3. Loop Strategies
+        // Loop Strategies
         for strategy in OptimizationStrategy::iter() {
-            // 4. Loop PH Levels
+            // Loop PH Levels
             for &ph_pct in config::PH_LEVELS {
                 run_single_simulation(
                     pair,
@@ -80,13 +80,16 @@ fn run_single_simulation(
     ts_collection: &TimeSeriesCollection,
     reporter: &mut AuditReporter,
 ) {
-    let ohlcv = find_matching_ohlcv(&ts_collection.series_data, pair, BASE_INTERVAL.as_millis() as i64).unwrap(); // Unwrap is safe here because we checked existence in the main loop
+    let ohlcv = find_matching_ohlcv(
+        &ts_collection.series_data,
+        pair,
+        BASE_INTERVAL.as_millis() as i64,
+    )
+    .unwrap(); // Unwrap is safe here because we checked existence in the main loop
     let start_time = AppInstant::now();
 
     // C. Run Pipeline (Using worker internals)
-    // 1. CVA
-    let cva_res =
-        pair_analysis::pair_analysis_pure(pair.to_string(), ts_collection, price, ph_pct);
+    let cva_res = pair_analysis::pair_analysis_pure(pair.to_string(), ts_collection, price, ph_pct);
 
     let strat_name = format!("{:?}", strategy);
 
@@ -97,8 +100,15 @@ fn run_single_simulation(
     let cva = cva_res.unwrap();
     let ph_candles = cva.relevant_candle_count;
 
-    // 2. Pathfinder (Scout + Drill)
-    let pf_result = worker::run_pathfinder_simulations(ohlcv, price, ph_pct, *strategy, StationId::default(), Some(&cva));
+    // Pathfinder (Scout + Drill)
+    let pf_result = worker::run_pathfinder_simulations(
+        ohlcv,
+        price,
+        ph_pct,
+        *strategy,
+        StationId::default(),
+        Some(&cva),
+    );
     let elapsed = start_time.elapsed().as_millis();
     let opportunities = pf_result.opportunities;
     let trend_k = pf_result.trend_lookback; // Truth from the engine
@@ -110,15 +120,17 @@ fn run_single_simulation(
     let top_score = opportunities.first().map(|o| o.calculate_quality_score());
 
     // DISPLAY LOGIC: Convert ms to hours for CSV readability
-    let durations_hours: Vec<f64> = opportunities.iter()
+    let durations_hours: Vec<f64> = opportunities
+        .iter()
         .take(5)
-        .map(|o| o.avg_duration.to_hours()) 
+        .map(|o| o.avg_duration.to_hours())
         .collect();
-    
+
     // Avg Stop Loss %
     let top_5_b = opportunities.iter().take(5);
     let avg_stop: Option<f64> = if count > 0 {
-        let sum: f64 = top_5_b.clone()
+        let sum: f64 = top_5_b
+            .clone()
             .map(|o| (Price::from(o.stop_price) - o.start_price).abs() / o.start_price)
             .sum();
         Some(sum / top_5_b.count() as f64)

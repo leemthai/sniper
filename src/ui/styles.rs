@@ -1,6 +1,6 @@
 use eframe::egui::{
-    Button, Color32, CornerRadius, CursorIcon, FontId, Response, RichText, Sense, Stroke,
-    StrokeKind, Ui, Vec2, WidgetInfo, WidgetType, Id, Area, Order, Align2, Frame, Layout, Align, Key,
+    Align, Align2, Area, Button, Color32, CornerRadius, CursorIcon, FontId, Frame, Id, Key, Layout,
+    Order, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo, WidgetType,
 };
 
 use crate::config::plot::PLOT_CONFIG;
@@ -77,7 +77,6 @@ pub fn get_momentum_color(value: f64) -> Color32 {
     }
 }
 
-
 /// Extension trait to add semantic styling methods directly to `egui::Ui`.
 pub trait UiStyleExt {
     /// A custom label that acts like a button:
@@ -126,28 +125,36 @@ pub trait UiStyleExt {
     /// - `id_salt`: Unique string for ID.
     /// - `label_text`: Text on the button.
     /// - `content`: Closure to render inside the popup. Should return `true` if we need to close the popup (e.g. selection made).
-    fn custom_dropdown(&mut self, id_salt: &str, label_text: &str, content: impl FnOnce(&mut Ui) -> bool);
-
-
+    fn custom_dropdown(
+        &mut self,
+        id_salt: &str,
+        label_text: &str,
+        content: impl FnOnce(&mut Ui) -> bool,
+    );
 }
 
 impl UiStyleExt for Ui {
-
-        fn custom_dropdown(&mut self, id_salt: &str, label_text: &str, content: impl FnOnce(&mut Ui) -> bool) {
+    fn custom_dropdown(
+        &mut self,
+        id_salt: &str,
+        label_text: &str,
+        content: impl FnOnce(&mut Ui) -> bool,
+    ) {
         let popup_id = self.make_persistent_id(id_salt);
         let global_state_id = Id::new("active_trade_variant_popup"); // Shared key to ensure only 1 opens at a time
 
-        // 1. Draw Trigger Button
+        // Draw Trigger Button
         // Use 'interactive_label_small' style (size 10.0)
         let btn_response = self.interactive_label(
-            label_text, 
-            false, 
+            label_text,
+            false,
             PLOT_CONFIG.color_info,
-            FontId::proportional(10.0)
+            FontId::proportional(10.0),
         );
 
-        // 2. Logic: Is this specific popup open?
-        let is_open = self.data(|d| d.get_temp::<String>(global_state_id) == Some(id_salt.to_string()));
+        // Logic: Is this specific popup open?
+        let is_open =
+            self.data(|d| d.get_temp::<String>(global_state_id) == Some(id_salt.to_string()));
 
         if btn_response.clicked() {
             if is_open {
@@ -159,7 +166,7 @@ impl UiStyleExt for Ui {
             }
         }
 
-        // 3. Render Popup if Open
+        // Render Popup if Open
         if is_open {
             let area = Area::new(popup_id)
                 .order(Order::Tooltip)
@@ -179,7 +186,10 @@ impl UiStyleExt for Ui {
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(&UI_TEXT.label_risk_select).strong().small());
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.button(RichText::new(&UI_TEXT.icon_close).size(10.0)).clicked() {
+                                if ui
+                                    .button(RichText::new(&UI_TEXT.icon_close).size(10.0))
+                                    .clicked()
+                                {
                                     ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
                                 }
                             });
@@ -197,13 +207,14 @@ impl UiStyleExt for Ui {
             // 4. Click Outside Logic
             if self.input(|i| i.pointer.primary_clicked()) {
                 // Did we click inside the popup?
-                let in_popup = area_response.response.rect.contains(
-                    self.input(|i| i.pointer.interact_pos().unwrap_or_default())
-                );
+                let in_popup = area_response
+                    .response
+                    .rect
+                    .contains(self.input(|i| i.pointer.interact_pos().unwrap_or_default()));
                 // Did we click the button that opened it? (If so, let button logic handle toggle)
-                let on_button = btn_response.rect.contains(
-                    self.input(|i| i.pointer.interact_pos().unwrap_or_default())
-                );
+                let on_button = btn_response
+                    .rect
+                    .contains(self.input(|i| i.pointer.interact_pos().unwrap_or_default()));
 
                 if !in_popup && !on_button {
                     self.data_mut(|d| d.remove_temp::<String>(global_state_id));
@@ -217,27 +228,6 @@ impl UiStyleExt for Ui {
         }
     }
 
-
-    // fn subtle_vertical_separator(&mut self) {
-    //     let height = 12.0; // Fixed height for a clean look
-    //     let width = 1.0;
-    //     let color = PLOT_CONFIG.color_widget_border; // Use theme border color
-
-    //     let (rect, _resp) = self.allocate_exact_size(Vec2::new(width + 8.0, height), Sense::hover()); // 4px padding on sides
-        
-    //     if self.is_rect_visible(rect) {
-    //         let center_x = rect.center().x;
-    //         self.painter().line_segment(
-    //             [
-    //                 Pos2::new(center_x, rect.top()),
-    //                 Pos2::new(center_x, rect.bottom())
-    //             ],
-    //             Stroke::new(1.0, color)
-    //         );
-    //     }
-    // }
-
-
     fn interactive_label(
         &mut self,
         text: &str,
@@ -245,16 +235,15 @@ impl UiStyleExt for Ui {
         idle_color: Color32,
         font_id: FontId,
     ) -> Response {
-
         let padding = Vec2::new(4.0, 4.0);
 
-        // 1. Calculate Size
+        // Calculate Size
         let galley = self
             .painter()
             .layout_no_wrap(text.to_string(), font_id, idle_color);
         let desired_size = galley.size() + padding * 2.0;
 
-        // 2. Allocate
+        // Allocate
         let (rect, response) = self.allocate_exact_size(desired_size, Sense::click());
         response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, is_selected, text));
 
@@ -287,7 +276,7 @@ impl UiStyleExt for Ui {
     }
 
     fn help_button(&mut self, text: &str) -> bool {
-        // 1. Use a Scope to modify styles for just this button
+        // Use a Scope to modify styles for just this button
         self.scope(|ui| {
             let visuals = ui.visuals_mut();
 
@@ -305,11 +294,11 @@ impl UiStyleExt for Ui {
             visuals.widgets.hovered.expansion = 0.0;
             visuals.widgets.active.expansion = 0.0;
 
-            // 2. Create Content WITHOUT explicit .color()
+            // Create Content WITHOUT explicit .color()
             // We rely on the 'visuals...fg_stroke' settings above to color it.
             let content = RichText::new(text).strong();
 
-            // 3. Render
+            // Render
             let btn = Button::new(content)
                 .fill(PLOT_CONFIG.color_help_fg)
                 .corner_radius(CornerRadius::same(12))

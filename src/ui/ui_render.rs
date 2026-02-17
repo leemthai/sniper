@@ -17,7 +17,7 @@ use crate::analysis::market_state::MarketState;
 
 use crate::app::{
     App,
-    root::{Selection, SortDirection},
+    root::{AutoScaleY, Selection, SortDirection},
 };
 
 use crate::config::{
@@ -46,10 +46,11 @@ use crate::utils::TimeUtils;
 
 const CELL_PADDING_Y: f32 = 4.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub(crate) enum SortColumn {
     PairName,
     TargetPrice,
+    #[default]
     LiveRoi,
     AnnualizedRoi,
     AvgDuration,
@@ -117,7 +118,7 @@ impl App {
                                     nav.last_viewed_segment_idx = idx;
                                 }
                                 self.set_nav_state(nav);
-                                self.auto_scale_y = true;
+                                self.auto_scale_y = AutoScaleY(true);
                                 ctx.request_repaint();
                             }
                         } else {
@@ -141,7 +142,7 @@ impl App {
                 ui.heading("Press keys to execute commands");
                 ui.add_space(10.0);
 
-                // 1. General Shortcuts
+                // General Shortcuts
                 let mut _general_shortcuts = vec![
                     ("ESC", UI_TEXT.kbs_close_all_panes.as_str()),
                     ("K (or H)", UI_TEXT.kbs_open_close.as_str()),
@@ -170,33 +171,6 @@ impl App {
                     .show(ui, |ui| {
                         Self::render_shortcut_rows(ui, &_general_shortcuts);
                     });
-
-                // if is_sim_mode {
-                //     ui.add_space(10.0);
-                //     ui.separator();
-                //     ui.add_space(5.0);
-                //     ui.heading(&UI_TEXT.sim_mode_controls);
-                //     ui.add_space(5.0);
-
-                //     ui.add_space(5.0);
-
-                //     let mut _sim_shortcuts = vec![
-                //         ("D", UI_TEXT.sim_help_sim_toggle_direction.as_str()),
-                //         ("X", UI_TEXT.sim_help_sim_step_size.as_str()),
-                //         ("A", UI_TEXT.sim_help_sim_activate_price_change.as_str()),
-                //         ("Y", UI_TEXT.sim_help_sim_jump_hvz.as_str()),
-                //         ("L", UI_TEXT.sim_help_sim_jump_lower_wicks.as_str()),
-                //         ("W", UI_TEXT.sim_help_sim_jump_higher_wicks.as_str()),
-                //     ];
-
-                //     Grid::new("sim_shortcuts_grid")
-                //         .num_columns(2)
-                //         .spacing([20.0, 8.0])
-                //         .striped(true)
-                //         .show(ui, |ui| {
-                //             Self::render_shortcut_rows(ui, &_sim_shortcuts);
-                //         });
-                // }
 
                 #[cfg(debug_assertions)]
                 {
@@ -252,13 +226,12 @@ impl App {
                 ui.add_space(10.0);
                 ui.separator();
 
-                // 2. ACTIVE TARGET (New Context Panel)
+                // ACTIVE TARGET (New Context Panel)
                 self.render_active_target_panel(ui);
 
                 ui.separator();
 
-                // 3. MARKET SCANNER (Formerly Trade Finder)
-                // We will rename/update this function next
+                // MARKET SCANNER (Formerly Trade Finder)
                 self.render_trade_finder_content(ui);
             });
     }
@@ -273,7 +246,7 @@ impl App {
             .show(ctx, |ui| {
                 // --- TOP TOOLBAR ---
                 ui.horizontal(|ui| {
-                    // 1. CANDLE RESOLUTION
+                    // CANDLE RESOLUTION
                     ui.label(
                         RichText::new(&UI_TEXT.tb_time)
                             .size(16.0)
@@ -289,7 +262,7 @@ impl App {
 
                     self.render_optimization_strategy(ui);
 
-                    // 2. LAYER VISIBILITY
+                    // LAYER VISIBILITY
                     ui.checkbox(&mut self.plot_visibility.sticky, &UI_TEXT.tb_sticky);
                     ui.checkbox(&mut self.plot_visibility.low_wicks, &UI_TEXT.tb_low_wicks);
                     ui.checkbox(&mut self.plot_visibility.high_wicks, &UI_TEXT.tb_high_wicks);
@@ -310,8 +283,8 @@ impl App {
                     ui.checkbox(&mut self.plot_visibility.price_line, &UI_TEXT.tb_live_price);
                     ui.checkbox(&mut self.plot_visibility.opportunities, &UI_TEXT.tb_targets);
 
-                    // STATUS INDICATOR (TEMP but very useful)
-                    if self.auto_scale_y {
+                    // STATUS INDICATOR
+                    if self.auto_scale_y.value() {
                         ui.label(
                             RichText::new(&UI_TEXT.tb_y_locked)
                                 .small()
@@ -366,7 +339,7 @@ impl App {
                 // This requires us to clone it because it's Copy/Clone
                 let nav_state = self.get_nav_state();
 
-                // 1. Safety Check: Engine existence
+                // Safety Check: Engine existence
                 let Some(engine) = &self.engine else {
                     render_fullscreen_message(
                         ui,
@@ -377,7 +350,7 @@ impl App {
                     return;
                 };
 
-                // 2. Safety Check: Selected Pair
+                // Safety Check: Selected Pair
                 let Some(pair) = self.selection.pair_owned() else {
                     render_fullscreen_message(
                         ui,
@@ -388,7 +361,7 @@ impl App {
                     return;
                 };
 
-                // 3. Get Price State (Do we have a live price?)
+                // Get Price
                 let current_price = engine.get_price(&pair);
 
                 let (is_calculating, last_error) = engine.get_pair_status(&pair);
@@ -416,7 +389,7 @@ impl App {
                         engine,
                         self.candle_resolution,
                         nav_state.current_segment_idx,
-                        self.auto_scale_y,
+                        self.auto_scale_y.value(),
                         self.selection.opportunity().cloned(),
                     );
 
@@ -424,11 +397,11 @@ impl App {
                     match interaction {
                         PlotInteraction::UserInteracted => {
                             // User wants control. Disable auto-scale.
-                            self.auto_scale_y = false;
+                            self.auto_scale_y = AutoScaleY(false);
                         }
                         PlotInteraction::RequestReset => {
                             // User requested reset. Re-enable auto-scale.
-                            self.auto_scale_y = true;
+                            self.auto_scale_y = AutoScaleY(true);
                         }
                         PlotInteraction::None => {}
                     }
@@ -471,15 +444,15 @@ impl App {
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        // 1. Simulation / Live Mode
+                        // Price
                         self.render_price(ui);
 
-                        // 2. Zone Info
+                        // Zone Info
                         self.render_status_zone_info(ui);
 
                         ui.separator();
 
-                        // 3. Coverage
+                        // Coverage
                         self.render_status_coverage(ui);
 
                         // 4. Candle Stats
@@ -502,7 +475,7 @@ impl App {
         let mut filter_changed = false;
         ui.add_space(10.0);
 
-        // --- 2. SCOPE TOGGLE ---
+        // SCOPE TOGGLE
         ui.horizontal(|ui| {
             // Item count
             ui.label(
@@ -696,9 +669,9 @@ impl App {
         ui.scope(|ui| {
             let visuals = ui.visuals_mut();
 
-            // 1. Set "Selected" color
+            // Set "Selected" color
             visuals.selection.bg_fill = PLOT_CONFIG.color_tf_selected;
-            // 2. Set "Stripe" color
+            // Set "Stripe" color
             visuals.faint_bg_color = Color32::from_white_alpha(15);
 
             let mut builder = TableBuilder::new(ui)
@@ -996,7 +969,7 @@ impl App {
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
 
-                    // 1. ROI (Primary) + Icon
+                    // ROI (Primary) + Icon
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(RichText::new(&UI_TEXT.icon_strategy_roi).size(10.0)); // Mountain
@@ -1007,7 +980,7 @@ impl App {
                         );
                     });
 
-                    // 2. AROI (Secondary) + Icon
+                    // AROI (Secondary) + Icon
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(RichText::new(&UI_TEXT.icon_strategy_aroi).size(10.0)); // Lightning
@@ -1018,7 +991,7 @@ impl App {
                         );
                     });
 
-                    // 3. Score (Conditional)
+                    // Score (Conditional)
                     // Show if sorting by Score OR if the trade was born from Balance strategy
                     let show_score = self.tf_sort_col == SortColumn::Score
                         || op.strategy == OptimizationStrategy::Balanced;
@@ -1111,7 +1084,7 @@ impl App {
 
     fn get_filtered_rows(&self) -> Vec<TradeFinderRow> {
         let raw_rows = if let Some(eng) = &self.engine {
-            eng.get_trade_finder_rows(Some(&self.prices))
+            eng.get_trade_finder_rows()
         } else {
             vec![]
         };
@@ -1138,7 +1111,7 @@ impl App {
             !base_asset.is_empty() && pair.starts_with(base_asset)
         };
 
-        // 1. Group by Pair
+        // Group by Pair
         let mut pair_groups: HashMap<String, Vec<TradeFinderRow>> = HashMap::new();
         for row in raw_rows {
             if is_in_scope(&row.pair_name) {
@@ -1151,7 +1124,7 @@ impl App {
 
         let mut final_rows = Vec::new();
 
-        // 2. Process Each Pair
+        // Process Each Pair
         for (_, mut rows) in pair_groups {
             // Grab metadata from first row for potential placeholder
             let sample = rows[0].clone();
@@ -1173,7 +1146,7 @@ impl App {
                 }
             });
 
-            // 3. Result Logic
+            // Result Logic
             if !rows.is_empty() {
                 final_rows.append(&mut rows);
             } else {
@@ -1297,7 +1270,7 @@ impl App {
 
                     ui.add_space(5.0);
 
-                    // 2. Context Status
+                    // Context Status
                     if let Some(op) = opp_opt {
                         // A. Trade is Locked
                         ui.horizontal(|ui| {
@@ -1602,7 +1575,7 @@ impl App {
 
     fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            // 1. Determine which variant is currently active
+            // Determine which variant is currently active
             let active_stop_price = if let Some(sel) = &self.selection.opportunity() {
                 // FIX: Check exact UUID match.
                 // Previous logic checked target_zone_id, which is now often 0 for generated trades,
@@ -1616,7 +1589,7 @@ impl App {
                 op.stop_price
             };
 
-            // 2. Find the index (1-based)
+            // Find the index (1-based)
             let current_index = op
                 .variants
                 .iter()
@@ -1624,7 +1597,7 @@ impl App {
                 .unwrap_or(0)
                 + 1;
 
-            // 3. Generate Label "#/# Vrts"
+            // Generate Label "#/# Vrts"
             let label_text = format!(
                 "{}/{} {} ▾",
                 current_index,
@@ -1659,12 +1632,12 @@ impl App {
                     let is_current = variant.stop_price == active_stop_price;
 
                     if ui.selectable_label(is_current, text).clicked() {
-                        // 1. Construct the specific variant opportunity
+                        // Construct the specific variant opportunity
                         let mut new_selected = op.clone();
                         new_selected.stop_price = variant.stop_price;
                         new_selected.simulation = variant.simulation.clone();
 
-                        // 2. Use the Helper
+                        // Use the Helper
                         self.select_opportunity(
                             new_selected,
                             ScrollBehavior::None,
@@ -1729,7 +1702,7 @@ impl App {
 
     fn sort_trade_finder_rows(&self, rows: &mut [TradeFinderRow]) {
         rows.sort_by(|a, b| {
-            // 1. Always push "No Opportunity" rows to the bottom
+            // Always push "No Opportunity" rows to the bottom
             let a_has = a.opportunity.is_some();
             let b_has = b.opportunity.is_some();
 
@@ -1743,7 +1716,7 @@ impl App {
                 }
             }
 
-            // 2. Standard Sort
+            // Standard Sort
             let cmp = match self.tf_sort_col {
                 SortColumn::PairName => a.pair_name.cmp(&b.pair_name),
 

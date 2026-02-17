@@ -41,7 +41,6 @@ impl Zone {
         let zone_height = (price_max - price_min) / zone_count as f64;
         let price_bottom = price_min + (index as f64 * zone_height);
         let price_top = price_bottom + zone_height;
-        // let price_center = price_bottom + (zone_height / 2.0);
 
         Self {
             index,
@@ -290,7 +289,7 @@ impl TradingModel {
             // Resource: Total Candles (Opportunity count)
             // Note: Use total_candles, NOT sum of scores (which is inflated by width)
 
-            // 1. Low Wicks
+            // Low Wicks
             let (low_wicks, low_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::LowWickCount),
                 config.reversal,
@@ -298,7 +297,7 @@ impl TradingModel {
                 "LOW WICKS",
             );
 
-            // 2. High Wicks
+            // High Wicks
             let (high_wicks, high_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::HighWickCount),
                 config.reversal,

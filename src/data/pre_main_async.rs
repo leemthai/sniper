@@ -36,11 +36,11 @@ async fn sync_pair(
 ) -> Result<(OhlcvTimeSeries, usize)> {
     let interval_str = TimeUtils::interval_to_string(interval_ms);
 
-    // 1. Check DB for last candle
+    // Check DB for last candle
     let last_time = storage.get_last_candle_time(&pair, interval_str).await?;
     let start_fetch = last_time.map(|t| t + 1);
 
-    // 2. Fetch API (Real Delta Sync)
+    // Fetch API (Real Delta Sync)
     let new_candles = provider
         .fetch_candles(&pair, interval_ms, start_fetch)
         .await?;
@@ -53,7 +53,7 @@ async fn sync_pair(
             .await?;
     }
 
-    // 3. Load from DB
+    // Load from DB
     let full_history = storage.load_candles(&pair, interval_str, None).await?;
 
     let pair_interval = PairInterval {

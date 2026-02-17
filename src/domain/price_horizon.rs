@@ -8,10 +8,10 @@ pub fn auto_select_ranges(
     current_price: Price,
     ph_pct: PhPct,
 ) -> (Vec<(usize, usize)>, (LowPrice, HighPrice)) {
-    // 1. Calculate the user-defined price range
+    // Calculate the user-defined price range
     let (price_min, price_max) = calculate_price_range(current_price, ph_pct);
 
-    // 2. Find all ranges where price is relevant
+    // Find all ranges where price is relevant
     let ranges = crate::trace_time!("Scan All Candles", 3_000, {
         find_relevant_ranges(timeseries, price_min, price_max)
     });
@@ -41,8 +41,7 @@ fn find_relevant_ranges(
 
         // Check if candle overlaps with relevant price range.
         // Overlap exists if candle_low <= range_max AND candle_high >= range_min.
-        let is_relevant = candle.low_price <= price_max
-            && candle.high_price >= price_min;
+        let is_relevant = candle.low_price <= price_max && candle.high_price >= price_min;
 
         if is_relevant {
             // Start a new range if we're not in one

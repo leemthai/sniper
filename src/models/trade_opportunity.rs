@@ -28,8 +28,6 @@ mod profile {
     use super::*;
     pub const MIN_ROI: RoiPct = RoiPct::new(0.001);
     pub const MIN_AROI: AroiPct = AroiPct::new(0.20);
-    // pub const WEIGHT_ROI: Weight = Weight::new(1.0);
-    // pub const WEIGHT_AROI: Weight = Weight::new(0.002);
 }
 
 mod optimization {
@@ -289,12 +287,12 @@ impl TradeOpportunity {
         current_low: Price,
         current_time: DateTime<Utc>,
     ) -> Option<TradeOutcome> {
-        // 1. Check Expiry (Hard Limit)
+        // Check Expiry (Hard Limit)
         if current_time > self.created_at + ChronoDuration::from(self.max_duration) {
             return Some(TradeOutcome::Timeout);
         }
 
-        // 2. Check Price Levels
+        // Check Price Levels
         match self.direction {
             TradeDirection::Long => {
                 // Pessimistic: Check Stop first
@@ -338,10 +336,10 @@ impl TradeOpportunity {
 
     /// Calculates the Expected ROI % using a dynamic live price.
     pub(crate) fn live_roi(&self, current_price: Price) -> RoiPct {
-        // 1. Get the baseline "True PnL" from the simulation (e.g. 7.0%)
+        // Get the baseline "True PnL" from the simulation (e.g. 7.0%)
         let base_roi = self.expected_roi();
 
-        // 2. Calculate how much price has moved in our favor since entry
+        // Calculate how much price has moved in our favor since entry
         // Long: (Current - Start) / Start
         // Short: (Start - Current) / Start
         let price_drift_pct = match self.direction {
@@ -349,7 +347,7 @@ impl TradeOpportunity {
             TradeDirection::Short => (self.start_price - current_price) / self.start_price,
         };
 
-        // 3. Adjust the ROI
+        // Adjust the ROI
         // If price moved +1% in our favor, our expected return improves by +1% (simplification)
         RoiPct::new(base_roi.value() + price_drift_pct)
     }

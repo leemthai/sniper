@@ -8,10 +8,9 @@ pub(crate) struct TargetZone {
 }
 
 /// Identifies target zones using the "Islands" strategy (Threshold + Clustering).
-/// 
-/// 1. Filters all zones that meet the `threshold`.
-/// 2. Clusters them together if they are within `max_gap` of each other.
-/// 3. Computes the mass and center of gravity for each cluster.
+/// Filters all zones that meet the `threshold`.
+/// Clusters them together if they are within `max_gap` of each other.
+/// Computes the mass and center of gravity for each cluster.
 pub(crate) fn find_target_zones(scores: &[f64], threshold: f64, max_gap: usize) -> Vec<TargetZone> {
     if scores.is_empty() {
         return Vec::new();
@@ -35,34 +34,9 @@ pub(crate) fn find_target_zones(scores: &[f64], threshold: f64, max_gap: usize) 
 
     // Helper to finalize a cluster
     let mut finalize_cluster = |start: usize, end: usize| {
-        // let mut sum_score = 0.0;
-        // let mut sum_weighted_index = 0.0;
-        // let mut max_score = 0.0;
-
-        // // Iterate inclusive range [start, end]
-        // for i in start..=end {
-        //     // Safety check although indices come from bounds
-        //     if let Some(&s) = scores.get(i) {
-        //         sum_score += s;
-        //         sum_weighted_index += i as f64 * s;
-        //         if s > max_score {
-        //             max_score = s;
-        //         }
-        //     }
-        // }
-
-        // let com = if sum_score > 0.0 {
-        //     sum_weighted_index / sum_score
-        // } else {
-        //     (start + end) as f64 / 2.0
-        // };
-
         targets.push(TargetZone {
             start_idx: start,
             end_idx: end,
-            // strength_mass: sum_score,
-            // peak_score: max_score,
-            // center_of_mass: com,
         });
     };
 

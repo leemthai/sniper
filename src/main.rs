@@ -52,7 +52,7 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
 
     log::info!("🚀 Zone Sniper starting in WASM mode...");
 
-    // 1. Get DOM elements
+    // Get DOM elements
     let window = web_sys::window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
     let canvas = document
@@ -61,11 +61,11 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
         .dyn_into::<web_sys::HtmlCanvasElement>()
         .map_err(|_| "the_canvas_id was not a valid HtmlCanvasElement")?;
 
-    // 2. Prepare Args (Default for Web)
+    // Prepare Args (Default for Web)
     // We construct the Cli struct manually or use default if derived
     let args = Cli { prefer_api: false };
 
-    // 3. Start App
+    // Start App
     // We pass 'args' into run_app. The App itself handles loading the Demo Data
     // via its internal async loading state.
     eframe::WebRunner::new()
@@ -77,7 +77,7 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
         .await
 }
 
-// --- 3. NATIVE SPECIFIC CODE ---
+// NATIVE SPECIFIC CODE
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
@@ -98,15 +98,13 @@ fn main() -> eframe::Result {
     builder
         .filter(None, global_level) // Default for everyone
         .filter(Some("zone_sniper"), my_code_level) // Override for us
-        
         // NUCLEAR OPTION: Explicitly silence the noisy neighbors (TEMP but this fails as well I think)
-        .filter_module("reqwest", log::LevelFilter::Error) 
+        .filter_module("reqwest", log::LevelFilter::Error)
         .filter_module("hyper", log::LevelFilter::Error)
         .filter_module("tungstenite", log::LevelFilter::Error)
         .filter_module("tokio_tungstenite", log::LevelFilter::Error)
         .filter_module("sqlx", log::LevelFilter::Error)
         .filter_module("binance_sdk", log::LevelFilter::Error)
-        
         .init();
 
     // B. Parse Args
