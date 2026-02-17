@@ -265,7 +265,7 @@ impl SniperEngine {
                 // STRICT MODE: Do not default to 0.0. If no price, skip the pair.
                 let price_opt = overrides
                     .and_then(|map| map.get(pair).copied())
-                    .or_else(|| self.price_stream.get_price(pair));
+                    .or_else(|| self.get_price(pair));
 
                 let current_price = match price_opt {
                     Some(p) if p.is_positive() => p,
@@ -423,15 +423,6 @@ impl SniperEngine {
         self.price_stream.get_price(pair)
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn set_stream_suspended(&self, suspended: bool) {
-        if suspended {
-            self.price_stream.suspend();
-        } else {
-            self.price_stream.resume();
-        }
-    }
-
     pub(crate) fn get_all_pair_names(&self) -> Vec<String> {
         self.timeseries.read().unwrap().unique_pair_names()
     }
@@ -464,8 +455,10 @@ impl SniperEngine {
         }
     }
 
-    /// The trigger_global_recalc function is a "Reset Button" for the engine's work queue. Its purpose is to cancel any
-    /// pending jobs and immediately schedule a fresh analysis for every single pair using the current global settings.
+    /**
+    The trigger_global_recalc function is a "Reset Button" for the engine's work queue. Its purpose is to cancel any
+    pending jobs and immediately schedule a fresh analysis for every single pair using the current global settings.
+    */
     pub(crate) fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
         self.queue.clear();
 
@@ -521,17 +514,19 @@ impl SniperEngine {
         }
     }
 
-    /// Forces a recalculation for a single pair.
-    ///
-    /// Semantics:
-    /// - Applies to ONE pair only.
-    /// - Does NOT clear or reorder the global queue.
-    /// - Any existing queued job for this pair is replaced with a fresh one.
-    /// - Jobs for other pairs are never affected.
-    /// - Execution still flows through the normal queue (no direct dispatch).
-    ///
-    /// This is used when the caller knows the current model for this pair
-    /// is stale (e.g. user action, parameter change).
+    /**
+    Forces a recalculation for a single pair.
+
+    Semantics:
+    - Applies to ONE pair only.
+    - Does NOT clear or reorder the global queue.
+    - Any existing queued job for this pair is replaced with a fresh one.
+    - Jobs for other pairs are never affected.
+    - Execution still flows through the normal queue (no direct dispatch).
+
+    This is used when the caller knows the current model for this pair
+    is stale (e.g. user action, parameter change).
+    */
     pub(crate) fn invalidate_pair_and_recalc(
         &mut self,
         pair: &str,
@@ -562,7 +557,7 @@ impl SniperEngine {
 
     fn tune_pair_internal(&self, pair: &str, tuner_station: &TunerStation) -> Option<PhPct> {
         // 1. Get live price
-        let price = self.price_stream.get_price(pair)?;
+        let price = self.get_price(pair)?;
 
         // 2. Get OHLCV
         let ts_guard = self.timeseries.read().unwrap();
@@ -663,7 +658,7 @@ impl SniperEngine {
                 if DF.log_engine_core {
                     log::info!("Enqueueing job for {} (candle closed)", candle.symbol);
                 }
-                
+
                 // Enqueue the analysis job
                 self.enqueue_or_replace(EngineJob {
                     pair: candle.symbol.clone(),
@@ -889,7 +884,7 @@ impl SniperEngine {
 
         let pairs: Vec<String> = self.active_engine_pairs.to_vec();
         for pair_name in pairs {
-            let Some(current_price) = self.price_stream.get_price(&pair_name) else {
+            let Some(current_price) = self.get_price(&pair_name) else {
                 continue;
             };
 
@@ -999,11 +994,11 @@ impl SniperEngine {
     }
 
     fn dispatch_job(&mut self, job: EngineJob) {
-        if let Some(state) = self.pairs_states.get_mut(&job.pair) {
-            // Resolve Price
-            let live_price = self.price_stream.get_price(&job.pair);
-            let final_price_opt = job.price_override.or(live_price);
+        // Get price (immutable borrow) before doing the mutable borrow to avoid borrow issues
+        let live_price = self.get_price(&job.pair);
+        let final_price_opt = job.price_override.or(live_price);
 
+        if let Some(state) = self.pairs_states.get_mut(&job.pair) {
             // 🔴 THIS IS THE FIX for the engine violation - refuse to queue a new job for the same pair if already being calculated
             // Why do we do that? Because any job enqueued for a pair that is already calculating is guaranteed to be stale by the time it runs,
             // so it wastes work and risks overwriting newer state with older assumptions.

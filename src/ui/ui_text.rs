@@ -18,8 +18,8 @@ pub const ICON_Y_AXIS: &str = "\u{f0e79}";
 pub const ICON_RUST: &str = "\u{e7a8}";
 pub const ICON_DOLLAR_BAG: &str = "\u{ef8d}";
 pub const ICON_PULSE: &str = "\u{e234}";
-pub const ICON_RULER: &str = "\u{e21b}"; // "measuring" 
-pub const ICON_COG: &str = "\u{f013}"; // "working" 
+pub const ICON_RULER: &str = "\u{e21b}"; // "measuring"
+pub const ICON_COG: &str = "\u{f013}"; // "working"
 pub const ICON_QUEUE: &str = "\u{f1571}"; // queue sizes...
 pub const ICON_HELP: &str = "\u{f02d6}";
 pub const ICON_KEYBOARD: &str = "\u{f0313}";
@@ -44,9 +44,9 @@ pub const ICON_UNFILTERED: &str = "\u{f14ef}";
 pub const ICON_RECENTER: &str = "\u{f0622}";
 pub const ICON_TEST: &str = "\u{f0d2f}"; // Just for testing stuff out.
 
-pub const ICON_STRATEGY_ROI:  &str = "\u{ef08}"; // For ROI strategy => high yield / long term / distasnce . Try e2a6 if ef08 looks nonce
-pub const ICON_STRATEGY_AROI:  &str = "\u{f046e}"; // For AROI strategy => fast / speedy / sprint / turnover
-pub const ICON_STRATEGY_BALANCED:  &str = "\u{f24e}"; // For balanced strategy => middle path / scale  - other scales are available
+pub const ICON_STRATEGY_ROI: &str = "\u{ef08}"; // For ROI strategy => high yield / long term / distasnce . Try e2a6 if ef08 looks nonce
+pub const ICON_STRATEGY_AROI: &str = "\u{f046e}"; // For AROI strategy => fast / speedy / sprint / turnover
+pub const ICON_STRATEGY_BALANCED: &str = "\u{f24e}"; // For balanced strategy => middle path / scale  - other scales are available
 pub const ICON_STRATEGY: &str = "\u{ed5f}";
 pub const ICON_STRATEGY_LOG_GROWTH: &str = "\u{f148}";
 
@@ -232,21 +232,6 @@ pub struct UiText {
     pub sp_coverage_resistance: String,
     pub sp_stream_status: String,
 
-    // Simulation stuff
-    #[cfg(target_arch = "wasm32")]
-    pub sp_simulation_mode: String,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub sp_simulation_mode: String,
-
-    pub sim_help_sim_toggle_direction: String,
-    pub sim_help_sim_step_size: String,
-    pub sim_help_sim_activate_price_change: String,
-    pub sim_help_sim_jump_hvz: String,
-    pub sim_help_sim_jump_lower_wicks: String,
-    pub sim_help_sim_jump_higher_wicks: String,
-    pub sim_mode_controls: String,
-    pub sim_step: String,
-
     pub kbs_name_long: String,
     pub kbs_name: String,
     pub kbs_open_close: String,
@@ -303,25 +288,6 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         sp_coverage_support: "Support".to_string(),
         sp_coverage_resistance: "Resist.".to_string(),
         sp_stream_status: "Stream Status".to_string(),
-
-        // Simulation
-        sp_simulation_mode: if cfg!(target_arch = "wasm32") {
-            "WEB DEMO (OFFLINE)"
-        } else {
-            "SIMULATION MODE"
-        }
-        .to_string(),
-
-        // Simulation help text (part of main help panel)
-        // sim_mode_name: "Simulation Mode".to_string(),
-        sim_mode_controls: "Simulation Mode Controls".to_string(),
-        sim_help_sim_toggle_direction: "Toggle price direction (UP / DOWN)".to_string(),
-        sim_help_sim_step_size: "Cycle step size (0.1% -> 1% -> 5% -> 10%)".to_string(),
-        sim_help_sim_activate_price_change: "Activate price change".to_string(),
-        sim_help_sim_jump_hvz: "Jump to next High Volume Zone".to_string(),
-        sim_help_sim_jump_lower_wicks: "Jump to next Demand Zone".to_string(),
-        sim_help_sim_jump_higher_wicks: "Jump to next Supply Zone".to_string(),
-        sim_step: "Step".to_string(),
 
         // Price Horion Help Panel
         ph_help_title: "Price Horizon Guide".to_string(),

@@ -5,15 +5,12 @@ use std::{
     sync::{Arc, mpsc, mpsc::Receiver},
 };
 
-
 use eframe::{
-    egui::{
-        CentralPanel, Context, FontData, FontDefinitions, FontFamily, 
-        Key, ProgressBar, Visuals,
-    },
     Frame, Storage,
+    egui::{
+        CentralPanel, Context, FontData, FontDefinitions, FontFamily, Key, ProgressBar, Visuals,
+    },
 };
-
 
 #[cfg(not(target_arch = "wasm32"))]
 use {crate::data::ledger_io, std::thread, tokio::runtime::Runtime};
@@ -26,26 +23,25 @@ use crate::app::{
 };
 use crate::models::SyncStatus;
 
-use crate::config::{CandleResolution, PhPct, Price, PriceLike, DF};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::Pct;
+use crate::config::{CandleResolution, DF, PhPct, Price};
 
 use crate::data::fetch_pair_data;
 use crate::data::timeseries::TimeSeriesCollection;
 
 use crate::engine::SniperEngine;
 
-use crate::models::{restore_engine_ledger, ProgressEvent, TradeOpportunity};
+use crate::models::{ProgressEvent, TradeOpportunity, restore_engine_ledger};
 
 use crate::shared::SharedConfiguration;
 
 use crate::ui::{
-    app_simulation::{SimDirection, SimStepSize},
     config::UI_CONFIG,
     screens::bootstrap,
     ticker::TickerState,
     ui_plot_view::{PlotView, PlotVisibility},
-    ui_render::{SortColumn, NavigationTarget, NavigationState, ScrollBehavior},
+    ui_render::{NavigationState, NavigationTarget, ScrollBehavior, SortColumn},
 };
 
 use crate::utils::time_utils::AppInstant;
@@ -163,19 +159,13 @@ pub struct App {
     #[serde(skip)]
     pub(crate) data_rx: Option<Receiver<(TimeSeriesCollection, &'static str)>>,
     #[serde(skip)]
-    pub(crate) sim_step_size: SimStepSize,
-    #[serde(skip)]
-    pub(crate) sim_direction: SimDirection,
-    #[serde(skip)]
-    pub(crate) simulated_prices: HashMap<String, Price>,
+    pub(crate) prices: HashMap<String, Price>,
     #[serde(skip)]
     pub(crate) nav_states: HashMap<String, NavigationState>,
     #[serde(skip)]
     pub(crate) auto_scale_y: bool,
     #[serde(skip)]
     pub(crate) ticker_state: TickerState,
-    #[serde(skip)]
-    pub(crate) show_opportunity_details: bool,
 }
 
 impl Default for App {
@@ -193,15 +183,12 @@ impl Default for App {
             state: AppState::default(),
             progress_rx: None,
             data_rx: None,
-            sim_step_size: SimStepSize::default(),
-            sim_direction: SimDirection::default(),
-            simulated_prices: HashMap::new(),
+            prices: HashMap::new(),
             scroll_target: None,
             nav_states: HashMap::new(),
             candle_resolution: CandleResolution::default(),
             auto_scale_y: true,
             ticker_state: TickerState::default(),
-            show_opportunity_details: false,
             tf_scope_match_base: false,
             show_candle_range: false,
             tf_sort_col: SortColumn::LiveRoi, // Default to Money
@@ -221,7 +208,7 @@ impl App {
         Self::configure_fonts(&cc.egui_ctx);
 
         app.plot_view = PlotView::new();
-        app.simulated_prices = HashMap::new();
+        app.prices = HashMap::new();
         app.state = AppState::Bootstrapping(BootstrapState::default());
 
         let (data_tx, data_rx) = mpsc::channel();
@@ -288,7 +275,7 @@ impl App {
 
         // 2. Find Best Op (Smart Lookup)
         let best_op = self.engine.as_ref().and_then(|e| {
-            e.get_trade_finder_rows(Some(&self.simulated_prices))
+            e.get_trade_finder_rows(Some(&self.prices))
                 .into_iter()
                 .find(|r| r.pair_name == pair)
                 .and_then(|r| r.opportunity)
@@ -352,114 +339,10 @@ impl App {
 
         self.nav_states.insert(pair, state);
     }
-    
+
     /// Ensures a navigation state entry exists for the specified pair, inserting a default if absent.
     pub(crate) fn ensure_nav_state_for_pair(&mut self, pair: &str) {
         self.nav_states.entry(pair.to_owned()).or_default();
-    }
-    
-    pub(crate) fn is_simulation_mode(&self) -> bool {
-        // WASM is always offline/simulation
-        #[cfg(target_arch = "wasm32")]
-        return true;
-
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(e) = &self.engine {
-            e.price_stream.is_suspended()
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn get_display_price(&self, pair: &str) -> Option<Price> {
-        if let Some(sim_price) = self.simulated_prices.get(pair) {
-            return Some(*sim_price);
-        }
-        if let Some(e) = &self.engine {
-            return e.get_price(pair);
-        }
-        None
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn toggle_simulation_mode(&mut self) {
-        if let Some(e) = &self.engine {
-            let is_sim = !e.price_stream.is_suspended();
-            e.set_stream_suspended(is_sim);
-
-            if is_sim {
-                let all_pairs = e.get_all_pair_names();
-                for pair in all_pairs {
-                    if let Some(live_price) = e.get_price(&pair) {
-                        self.simulated_prices.insert(pair, live_price);
-                    }
-                }
-            } else {
-                self.simulated_prices.clear();
-            }
-        }
-    }
-
-    pub(crate) fn adjust_simulated_price_by_percent(&mut self, percent: f64) {
-        let Some(pair) = self.selection.pair_owned() else {
-            return;
-        };
-        let current_price = self.get_display_price(&pair).unwrap_or(Price::new(0.0));
-        if !current_price.is_positive() {
-            return;
-        }
-
-        let change = current_price * percent;
-        let new_price = current_price + change;
-
-        self.simulated_prices
-            .insert(pair.clone(), Price::new(new_price));
-    }
-
-    pub(crate) fn jump_to_next_zone(&mut self, zone_type: &str) {
-        if let Some(e) = &self.engine {
-            let Some(pair) = self.selection.pair() else {
-                return;
-            };
-            let Some(current_price) = self.get_display_price(pair) else {
-                return;
-            };
-            let Some(model) = e.get_model(pair) else {
-                return;
-            };
-
-            let superzones = match zone_type {
-                "sticky" => Some(&model.zones.sticky_superzones),
-                "low-wick" => Some(&model.zones.low_wicks_superzones),
-                "high-wick" => Some(&model.zones.high_wicks_superzones),
-                _ => None,
-            };
-
-            if let Some(superzones) = superzones {
-                if superzones.is_empty() {
-                    return;
-                }
-
-                let target = match self.sim_direction {
-                    SimDirection::Up => superzones
-                        .iter()
-                        .filter(|sz| sz.price_center > current_price)
-                        .min_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
-                    SimDirection::Down => superzones
-                        .iter()
-                        .filter(|sz| sz.price_center < current_price)
-                        .max_by(|a, b| a.price_center.partial_cmp(&b.price_center).unwrap()),
-                };
-
-                if let Some(target_zone) = target {
-                    let jump_price = match self.sim_direction {
-                        SimDirection::Up => target_zone.price_center * 1.0001,
-                        SimDirection::Down => target_zone.price_center * 0.9999,
-                    };
-                    self.simulated_prices.insert(pair.to_string(), jump_price);
-                }
-            }
-        }
     }
 
     pub(crate) fn handle_global_shortcuts(&mut self, ctx: &Context) {
@@ -503,52 +386,11 @@ impl App {
             if i.key_pressed(Key::Escape) {
                 self.show_debug_help = false;
                 self.show_ph_help = false;
-                self.show_opportunity_details = false
-            }
-
-            // Gate the 'S' key so it only works on Native
-            #[cfg(not(target_arch = "wasm32"))]
-            if i.key_pressed(Key::S) {
-                self.toggle_simulation_mode();
-            }
-
-            // Toggle 'O'pportunity Explainer
-            if i.key_pressed(Key::O) {
-                self.show_opportunity_details = !self.show_opportunity_details;
             }
 
             // Toggle 'T'ime Machine Panel
             if i.key_pressed(Key::T) {
                 self.show_candle_range = !self.show_candle_range;
-            }
-
-            if self.is_simulation_mode() {
-                if i.key_pressed(Key::Y) {
-                    self.jump_to_next_zone("sticky");
-                }
-                if i.key_pressed(Key::L) {
-                    self.jump_to_next_zone("low-wick");
-                }
-                if i.key_pressed(Key::W) {
-                    self.jump_to_next_zone("high-wick");
-                }
-                if i.key_pressed(Key::D) {
-                    self.sim_direction = match self.sim_direction {
-                        SimDirection::Up => SimDirection::Down,
-                        SimDirection::Down => SimDirection::Up,
-                    };
-                }
-                if i.key_pressed(Key::X) {
-                    self.sim_step_size.cycle();
-                }
-                if i.key_pressed(Key::A) {
-                    let percent = self.sim_step_size.as_percentage();
-                    let adj = match self.sim_direction {
-                        SimDirection::Up => percent,
-                        SimDirection::Down => -percent,
-                    };
-                    self.adjust_simulated_price_by_percent(adj);
-                }
             }
         });
     }
@@ -660,7 +502,6 @@ impl App {
 
         // Modals
         self.render_help_panel(ctx);
-        self.render_opportunity_details_modal(ctx);
 
         // Performance logging
         if engine_time + left_panel_time + plot_time > 500_000 {
@@ -945,7 +786,7 @@ impl App {
 
                 if has_data {
                     // If we have data, we MUST wait for a live price
-                    if e.price_stream.get_price(pair).is_none() {
+                    if e.get_price(pair).is_none() {
                         waiting_for_price = true;
                         break;
                     }
@@ -968,7 +809,7 @@ impl App {
             // Gather Live Prices (Only for the ones we found)
             let mut live_prices = std::collections::HashMap::new();
             for &pair in crate::ph_audit::config::AUDIT_PAIRS {
-                if let Some(p) = e.price_stream.get_price(pair) {
+                if let Some(p) = e.get_price(pair) {
                     live_prices.insert(pair.to_string(), p);
                 }
             }
@@ -1046,7 +887,6 @@ fn setup_custom_visuals(ctx: &Context) {
 
     // Set the custom visuals
     ctx.set_visuals(visuals);
-    // Disable text selection globally. This stops the I-Beam cursor appearing on labels/buttons unless it is a text edit box.
-    // Also prevents any text from being selectable
+    // Disable text selection globally. This stops the I-Beam cursor appearing on labels/buttons unless it is a text edit box. Also prevents any text from being selectable
     ctx.style_mut(|s| s.interaction.selectable_labels = false);
 }
