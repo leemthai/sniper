@@ -1,5 +1,5 @@
-use chrono::Local;
 use crate::config::PhPct;
+use chrono::Local;
 
 pub struct AuditReporter {
     buffer: Vec<String>,
@@ -36,9 +36,8 @@ impl AuditReporter {
         exec_ms: u128,
         durations_hours: &[f64],
     ) {
-
         let ts = Local::now().format("%Y-%m-%d %H:%M:%S");
-        
+
         let mut d_str = String::new();
         for i in 0..5 {
             if let Some(hrs) = durations_hours.get(i) {
@@ -49,16 +48,19 @@ impl AuditReporter {
         }
 
         // FIX: Conditional Formatting based on Strategy
-        let score_str = top_score.map(|v| {
-            if strategy.contains("ROI") {
-                format!("{:.2}%", v) // MaxROI or MaxAROI -> Add % to show this is a % score not a raw score....
-            } else {
-                format!("{:.2}", v)  // Balanced -> Raw Score
-            }
-        }).unwrap_or_default();
-        
-        // FIX: High Precision for Stop Loss
-        let stop_str = avg_stop_pct.map(|v| format!("{:.4}%", v * 100.0)).unwrap_or_default();
+        let score_str = top_score
+            .map(|v| {
+                if strategy.contains("ROI") {
+                    format!("{:.2}%", v)
+                } else {
+                    format!("{:.2}", v)
+                }
+            })
+            .unwrap_or_default();
+
+        let stop_str = avg_stop_pct
+            .map(|v| format!("{:.4}%", v * 100.0))
+            .unwrap_or_default();
 
         let row = format!(
             "{},{},{},{},{},{},{},{},{},{},{},{}{}",

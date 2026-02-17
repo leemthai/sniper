@@ -181,7 +181,7 @@ impl TradingModel {
                                  params: ZoneParams,
                                  resource_total: f64,
                                  _layer_name: &str| {
-                // STEP 1: VIABILITY GATE (Absolute)
+                // VIABILITY GATE (Absolute)
                 // Filter out bins that represent insignificant noise relative to the total.
                 let viable_data: Vec<f64> = if resource_total > 0.0 {
                     raw_data
@@ -198,15 +198,15 @@ impl TradingModel {
                     raw_data.to_vec()
                 };
 
-                // STEP 2: SMOOTH
+                // SMOOTH
                 let smooth_window =
                     ((zone_count as f64 * params.smooth_pct.value()).ceil() as usize).max(1) | 1;
                 let smoothed = smooth_data(&viable_data, smooth_window);
 
-                // STEP 3: NORMALIZE (Max)
+                // NORMALIZE (Max)
                 let normalized = normalize_max(&smoothed);
 
-                // STEP 4: ADAPTIVE THRESHOLD (Relative)
+                // ADAPTIVE THRESHOLD (Relative)
                 let (mean, std_dev) = mean_and_stddev(&normalized);
 
                 // Threshold = Mean + (Sigma * StdDev)
@@ -215,7 +215,6 @@ impl TradingModel {
                 let adaptive_threshold =
                     (mean + (params.sigma.value() * std_dev)).clamp(0.05, 0.95);
 
-                // --- DIAGNOSTIC LOGGING ---
                 #[cfg(debug_assertions)]
                 if DF.log_zones {
                     let count = normalized.len();
@@ -256,9 +255,8 @@ impl TradingModel {
                         (above as f64 / count as f64) * 100.0
                     );
                 }
-                // --------------------------
 
-                // STEP 5: FIND TARGETS
+                // FIND TARGETS
                 let gap = (zone_count as f64 * params.gap_pct.value()).ceil() as usize;
                 // Note: We use 'normalized' data against the adaptive threshold.
                 // We SKIP the 'Sharpening/Contrast' step because Z-Score handles the filtering statistically.
@@ -274,7 +272,7 @@ impl TradingModel {
                 (zones, superzones)
             };
 
-            // --- Sticky Zones ---
+            // Sticky Zones
             // Resource: Total Volume in this range
             let total_volume: f64 = cva.get_scores_ref(ScoreType::FullCandleTVW).iter().sum();
 
@@ -285,7 +283,7 @@ impl TradingModel {
                 "STICKY",
             );
 
-            // --- Reversal Zones ---
+            // Reversal Zones
             // Resource: Total Candles (Opportunity count)
             // Note: Use total_candles, NOT sum of scores (which is inflated by width)
 
@@ -305,7 +303,7 @@ impl TradingModel {
                 "HIGH WICKS",
             );
 
-            // --- Calculate Coverage Statistics ---
+            // Calculate Coverage Statistics
             let calc_coverage = |zones: &[Zone]| -> f64 {
                 if zone_count == 0 {
                     return 0.0;

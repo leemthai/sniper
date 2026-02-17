@@ -101,26 +101,6 @@ impl SharedConfiguration {
     pub(crate) fn insert_ph(&self, key: String, value: PhPct) {
         self.inner.write().unwrap().ph_overrides.insert(key, value);
     }
-
-    // Ensure default PH if needed
-    // pub fn ensure_ph_default(&self, key: String, default_value: PhPct) {
-    //     self.inner
-    //         .write()
-    //         .unwrap()
-    //         .ph_overrides
-    //         .entry(key)
-    //         .or_insert(default_value);
-    // }
-
-    // // Utility to get all station overrides
-    // pub fn get_all_stations(&self) -> HashMap<String, StationId> {
-    //     self.inner.read().unwrap().station_overrides.clone()
-    // }
-
-    // // Utility to get all PH overrides
-    // pub fn get_all_phs(&self) -> HashMap<String, PhPct> {
-    //     self.inner.read().unwrap().ph_overrides.clone()
-    // }
 }
 
 // --- SERDE MAGIC ---

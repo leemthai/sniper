@@ -3,7 +3,6 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
-// Only import thread crate on non-WASM target
 #[cfg(not(target_arch = "wasm32"))]
 use {std::sync::mpsc::Receiver, std::thread};
 
@@ -112,12 +111,10 @@ pub(crate) fn tune_to_station(
         scan_points.push(station.scan_ph_min.value()); // Fallback
     }
 
-    // Run Simulations
-    // We store: (PH, Score, Duration_Hours, Candidate_Count)
+    // Run Simulation. We store: (PH, Score, Duration_Hours, Candidate_Count)
     let mut results: Vec<ProbeResult> = Vec::new();
 
     for &ph in &scan_points {
-        // Run the Optimized Pathfinder
         let result = run_pathfinder_simulations(
             ohlcv,
             current_price,

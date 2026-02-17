@@ -1,11 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::config::{VolatilityPct, Price, PriceRange, LowPrice, HighPrice, PhPct};
+use crate::config::{HighPrice, LowPrice, PhPct, Price, PriceRange, VolatilityPct};
 use crate::utils::TimeUtils;
 
 pub(crate) const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
-// pub(crate) const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.001); // TEMP put this value in for testing purposes if you want rapid re-triggering caused by prices...
 pub(crate) const MIN_CANDLES_FOR_ANALYSIS: usize = 250;
 pub(crate) const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
 
@@ -16,8 +15,8 @@ pub(crate) struct CVACore {
     // Active metrics (volume-weighted)
     pub candle_bodies_vw: Vec<f64>, // Mapped to FullCandleTVW
 
-    pub low_wick_counts: Vec<f64>, 
-    pub high_wick_counts: Vec<f64>, 
+    pub low_wick_counts: Vec<f64>,
+    pub high_wick_counts: Vec<f64>,
 
     pub total_candles: usize,
 
@@ -51,7 +50,6 @@ pub(crate) enum ScoreType {
 }
 
 impl fmt::Display for ScoreType {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ScoreType::FullCandleTVW => write!(f, "Full Candle Temporal-Volume Weighted"),
@@ -115,7 +113,6 @@ impl CVACore {
             });
     }
 
-
     pub(crate) fn distribute_conserved_volume(
         &mut self,
         st: ScoreType,
@@ -154,7 +151,6 @@ impl CVACore {
             });
     }
 
-    // Updated Constructor to match src/models/timeseries.rs usage
     pub(crate) fn new(
         min_price: LowPrice,
         max_price: HighPrice,
@@ -166,8 +162,8 @@ impl CVACore {
         interval_ms: i64,
         volatility_pct: VolatilityPct,
     ) -> Self {
-        
-        let price_range : PriceRange<Price> = PriceRange::new(min_price.into(), max_price.into(), zone_count);
+        let price_range: PriceRange<Price> =
+            PriceRange::new(min_price.into(), max_price.into(), zone_count);
         let n_slices = price_range.n_chunks;
 
         CVACore {
@@ -178,8 +174,8 @@ impl CVACore {
             price_range,
             zone_count,
             total_candles,
-            relevant_candle_count, 
-            interval_ms,           
+            relevant_candle_count,
+            interval_ms,
             volatility_pct,
             included_ranges: Vec::new(),
             start_timestamp_ms: 0,

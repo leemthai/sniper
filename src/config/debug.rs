@@ -29,7 +29,6 @@ pub struct LogFlags {
 
     pub log_candle_update: bool,
 
-
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
     pub log_wasm_demo: bool,
 
@@ -40,7 +39,6 @@ pub struct LogFlags {
 
     pub log_startup_prices: bool,
 
-    // These two need moving out to somehwere else!!!!!!!!!
     // Limit how many pairs are loaded in Debug mode.
     pub max_pairs_load: usize,
 
@@ -48,20 +46,18 @@ pub struct LogFlags {
     pub wipe_ledger_on_startup: bool,
 
     pub log_pairs: bool,
-
 }
 
 pub const DF: LogFlags = LogFlags {
-    
     log_results_repo: true,
     log_ledger: false,
     log_station_overrides: false,
     log_ph_overrides: false,
-    
+
     log_selection: false,
     log_startup_prices: false,
     wipe_ledger_on_startup: false,
-    
+
     log_tuner: false,
 
     log_pairs: false,

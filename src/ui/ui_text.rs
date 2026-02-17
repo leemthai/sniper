@@ -50,13 +50,6 @@ pub const ICON_STRATEGY_BALANCED: &str = "\u{f24e}"; // For balanced strategy =>
 pub const ICON_STRATEGY: &str = "\u{ed5f}";
 pub const ICON_STRATEGY_LOG_GROWTH: &str = "\u{f148}";
 
-// pub const ICON_CROSSHAIR: &str  = "\u{f05b}"; // (Crosshairs)
-// pub const ICON_GLOBE: &str      = "\u{f0ac}"; // (Globe)
-// pub const ICON_TIME_LAPSE: &str = "\u{f051a}";
-// These 2 unused yet but will be useful in future - up and down triangles
-// pub const ICON_GAIN: &str   = "\u{f0d8}"; // d (Caret Up / Triangle Up)
-// pub const ICON_LOSS: &str = "\u{f0d7}"; // d (Caret Down / Triangle Down)
-
 pub struct UiText {
     pub icon_strategy: String,
     pub label_goal: String,

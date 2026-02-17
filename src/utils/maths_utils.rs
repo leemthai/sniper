@@ -16,12 +16,6 @@ pub(crate) fn get_max(vec: &[f64]) -> f64 {
     vec[max_index]
 }
 
-// #[inline]
-// pub(crate) fn get_min(vec: &[f64]) -> f64 {
-//     let max_index: usize = vec.argmin();
-//     vec[max_index]
-// }
-
 // Normalizes a vector of (positive) f64 to 0.0 to 1.0. Guarantees largest value is 1.0
 // Smallest output value will be 0.0 iff smallest input value = 0.0
 // Name: `Max normalization`, `Max-Abs normalization`, or `L∞ normalization`
@@ -32,9 +26,6 @@ pub(crate) fn normalize_max(vec: &[f64]) -> Vec<f64> {
     // If the largest value is 0 or non-positive, scaling may result in NaNs or -1.0
     // for all elements. For this example, we simply return.
     if max_value <= f64::EPSILON {
-        // In a real application, you might panic here or log an error
-        // depending on your specific requirements.
-        // log::warn!("Warning: max_value is <= 0.0. Returning original data.");
         return vec.to_vec();
     }
 

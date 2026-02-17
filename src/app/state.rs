@@ -1,10 +1,7 @@
-// src/app/state.rs
-
 use crate::models::SyncStatus;
 
 #[derive(Clone)]
 pub(crate) struct RunningState;
-
 
 pub(crate) enum AppState {
     Bootstrapping(BootstrapState),
@@ -32,4 +29,3 @@ pub(crate) struct TuningState {
     pub(crate) total: usize,
     pub(crate) completed: usize,
 }
-

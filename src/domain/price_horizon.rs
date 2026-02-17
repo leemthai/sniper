@@ -62,7 +62,6 @@ fn find_relevant_ranges(
         ranges.push((start, total_candles));
     }
 
-    // FIX: The Safety Anchor
     // If we found NOTHING (price is totally out of range),
     // grab the most recent candle so we have something to expand from.
     if ranges.is_empty() {
