@@ -2,19 +2,16 @@
 /.idea/
 /.vscode/
 /dist/
+/.continue/
+/_private/
 .states.json
 .ledger.bin
 repomix*.*
 zone_sniper.code-workspace
 fresh_start*
-/.continue/
-_private/
 klines.sql*
 results.sql*
 # Ignore all .bin files in the /kline_data folder
 /kline_data/kd*.bin
 # EXCEPT any demo files
 !/kline_data/demo*.bin
-GEMINI.md
-
-
