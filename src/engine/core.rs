@@ -384,7 +384,7 @@ impl SniperEngine {
         }
         let d2 = t2.elapsed().as_micros();
 
-        // Enqueue any pairs that have changed price significantly
+        // Enqueue pairs that have changed price significantly
         let t3 = AppInstant::now();
         self.trigger_recalcs_on_price_changes();
         let d3 = t3.elapsed().as_micros();
