@@ -5,17 +5,16 @@ use crate::analysis::{
     zone_scoring::find_target_zones,
 };
 
-use crate::config::{Price, ZoneClassificationConfig, ZoneParams};
-
 #[cfg(debug_assertions)]
 use crate::config::DF;
+use crate::config::{Price, ZoneClassificationConfig, ZoneParams};
 
 use crate::models::{
     CVACore, DEFAULT_ZONE_CONFIG, OhlcvTimeSeries, SEGMENT_MERGE_TOLERANCE_MS, ScoreType,
     TradeOpportunity,
 };
 
-use crate::utils::maths_utils::{mean_and_stddev, normalize_max, smooth_data};
+use crate::utils::{mean_and_stddev, normalize_max, smooth_data};
 
 /// A single price zone with its properties
 #[derive(Debug, Clone)]

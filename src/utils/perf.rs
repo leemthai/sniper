@@ -5,19 +5,23 @@ macro_rules! trace_time {
         // Check the global flag
         if $crate::config::DF.log_performance {
             // FIX: Use AppInstant instead of std::time::Instant
-            let start = $crate::utils::time_utils::AppInstant::now();
+            let start = $crate::utils::AppInstant::now();
             let result = $block;
             let elapsed = start.elapsed();
             let micros = elapsed.as_micros();
-            
+
             if micros > $threshold_micros {
-                let mode = if cfg!(debug_assertions) { "DEBUG" } else { "RELEASE" };
-                
-                log::error!( 
-                    "🐢 SLOW [{}]: '{}' took {:.3}ms (Threshold: {:.3}ms)", 
+                let mode = if cfg!(debug_assertions) {
+                    "DEBUG"
+                } else {
+                    "RELEASE"
+                };
+
+                log::error!(
+                    "🐢 SLOW [{}]: '{}' took {:.3}ms (Threshold: {:.3}ms)",
                     mode,
-                    $name, 
-                    micros as f64 / 1000.0, 
+                    $name,
+                    micros as f64 / 1000.0,
                     $threshold_micros as f64 / 1000.0
                 );
             }

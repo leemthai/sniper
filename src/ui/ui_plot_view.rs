@@ -16,16 +16,12 @@ use crate::engine::SniperEngine;
 
 use crate::models::{CVACore, ScoreType, TradeOpportunity, TradingModel, find_matching_ohlcv};
 
-use crate::ui::ui_text::UI_TEXT;
-
-use crate::utils::TimeUtils;
-use crate::utils::maths_utils;
-
-// Import the new Layer System
-use crate::ui::plot_layers::{
+use crate::ui::{
     BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,
-    PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer,
+    PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer, UI_TEXT,
 };
+
+use crate::utils::{epoch_ms_to_date_string, normalize_max, smooth_data};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub(crate) struct PlotVisibility {
@@ -129,7 +125,7 @@ fn create_time_axis(
                     // Reconstruct the Timestamp for this bucket
                     let bucket_ts = (start_bucket + local_offset) * agg_interval_ms;
 
-                    return TimeUtils::epoch_ms_to_date_string(bucket_ts);
+                    return epoch_ms_to_date_string(bucket_ts);
                 }
 
                 current_visual_start = current_visual_end + gap_width;
@@ -543,10 +539,10 @@ impl PlotView {
 
             // Apply Smoothing
             let smoothing_window = ((zone_count as f64 * 0.02).ceil() as usize).max(1) | 1;
-            let smoothed_data = maths_utils::smooth_data(&raw_data_vec, smoothing_window);
+            let smoothed_data = smooth_data(&raw_data_vec, smoothing_window);
 
             // Normalize
-            let data_for_display = maths_utils::normalize_max(&smoothed_data);
+            let data_for_display = normalize_max(&smoothed_data);
 
             let indices: Vec<usize> = (0..zone_count).collect();
 

@@ -5,7 +5,7 @@ use std::ops::{Add, Div, Mul, Sub};
 use std::time::Duration;
 use strum_macros::{Display, EnumIter};
 
-use crate::ui::config::UI_TEXT;
+use crate::ui::UI_TEXT;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, Default)]
 pub enum CandleResolution {
@@ -284,6 +284,7 @@ pub(crate) struct DurationMs(i64);
 
 impl DurationMs {
     const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
+    #[cfg(feature = "ph_audit")]
     const MS_IN_HOURS: f64 = 3_600_000.0;
 
     pub(crate) const fn new(ms: i64) -> Self {
@@ -298,6 +299,7 @@ impl DurationMs {
         DurationMs::new((self.0 as f64 * factor).round() as i64)
     }
 
+    #[cfg(feature = "ph_audit")]
     pub(crate) fn to_hours(self) -> f64 {
         if self.0 <= 0 {
             0.0

@@ -1,5 +1,5 @@
 //! File persistence and serialization configuration
-use crate::utils::TimeUtils;
+use crate::utils::interval_to_string;
 
 /// Configuration for Kline Data Persistence
 pub struct KlinePersistenceConfig {
@@ -42,7 +42,7 @@ pub const PERSISTENCE: PersistenceConfig = PersistenceConfig {
 pub fn kline_cache_filename(interval_ms: i64) -> String {
     // Note: Assuming you renamed this to 'interval_to_string' in TimeUtils earlier.
     // If not, stick to 'interval_ms_to_string'.
-    let interval_str = TimeUtils::interval_to_string(interval_ms);
+    let interval_str = interval_to_string(interval_ms);
 
     format!(
         "{}_{}_v{}.bin",
@@ -55,16 +55,22 @@ pub fn kline_cache_filename(interval_ms: i64) -> String {
 
 #[macro_export]
 macro_rules! kline_data_dir {
-    () => { "kline_data" };
+    () => {
+        "kline_data"
+    };
 }
 
 #[macro_export]
 macro_rules! demo_prices_file {
-    () => { "demo_prices.json" };
+    () => {
+        "demo_prices.json"
+    };
 }
 
 #[macro_export]
 macro_rules! demo_cache_file {
     // You must update this string manually if you change the interval constant
-    () => { "demo_kd_5m_v4.bin" };
+    () => {
+        "demo_kd_5m_v4.bin"
+    };
 }

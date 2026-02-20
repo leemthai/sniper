@@ -1,10 +1,10 @@
 #[cfg(not(target_arch = "wasm32"))]
 use {
+    crate::config::PERSISTENCE,
+    crate::models::OpportunityLedger,
+    anyhow::Result,
     std::fs::File,
     std::io::{BufReader, BufWriter},
-    crate::config::PERSISTENCE,
-    crate::models::ledger::OpportunityLedger,
-    anyhow::Result,
 };
 
 #[cfg(not(target_arch = "wasm32"))]

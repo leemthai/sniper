@@ -1,3 +1,3 @@
-// src/ui/screens/mod.rs
+mod bootstrap;
 
-pub(crate) mod bootstrap;
+pub(crate) use bootstrap::render_bootstrap;

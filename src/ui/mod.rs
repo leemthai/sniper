@@ -1,15 +1,31 @@
-// pub mod archived_app_simulation;
-pub mod config;
-pub mod plot_layers;
-pub mod styles;
-pub mod ticker;
-pub mod time_tuner;
-pub mod ui_panels;
-pub mod ui_plot_view;
-pub mod ui_render;
-pub mod ui_text;
+mod plot_layers;
+mod screens;
+mod styles;
+mod ticker;
+mod time_tuner;
+mod ui_config;
+mod ui_panels;
+mod ui_plot_view;
+mod ui_render;
+mod ui_text;
 
-// Re-export main app
-pub use config::UI_CONFIG;
+pub(crate) use plot_layers::{
+    BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,
+    PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer,
+};
 
-pub(crate) mod screens;
+pub(crate) use screens::render_bootstrap;
+
+pub(crate) use styles::{
+    DirectionColor, UiStyleExt, apply_opacity, get_momentum_color, get_outcome_color,
+};
+pub(crate) use ticker::TickerState;
+
+pub(crate) use time_tuner::{TunerAction, render_time_tuner};
+
+pub(crate) use ui_config::{UI_CONFIG, UI_TEXT};
+pub(crate) use ui_panels::CandleRangePanel;
+pub(crate) use ui_plot_view::{PlotCache, PlotInteraction, PlotView, PlotVisibility};
+pub(crate) use ui_render::{
+    NavigationState, NavigationTarget, ScrollBehavior, SortColumn, TradeFinderRow,
+};

@@ -1,17 +1,19 @@
 use std::sync::{Arc, RwLock};
-use crate::config::{OptimizationStrategy, StationId, PhPct, Price};
+
+use crate::config::{OptimizationStrategy, PhPct, Price, StationId};
+
 use crate::data::timeseries::TimeSeriesCollection;
+
 use crate::models::TradingModel;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum JobMode {
     /// Standard operation: Calculate CVA, then run Pathfinder (Scouts/Drills)
     FullAnalysis,
-    
+
     /// Visualization only: Calculate CVA (Zones/Volume Profile) but SKIP Pathfinder.
     /// Used when clicking an existing trade to restore the chart context.
     ContextOnly,
-    
 }
 
 /// A request to calculate a model for a specific pair
@@ -27,7 +29,6 @@ pub(crate) struct JobRequest {
     pub strategy: OptimizationStrategy,
     pub station_id: StationId,
     pub mode: JobMode,
-    
 }
 
 /// The result returned by the worker

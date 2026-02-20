@@ -37,14 +37,11 @@ use crate::models::{ProgressEvent, TradeOpportunity, restore_engine_ledger};
 use crate::shared::SharedConfiguration;
 
 use crate::ui::{
-    config::UI_CONFIG,
-    screens::bootstrap,
-    ticker::TickerState,
-    ui_plot_view::{PlotView, PlotVisibility},
-    ui_render::{NavigationState, NavigationTarget, ScrollBehavior, SortColumn},
+    NavigationState, NavigationTarget, PlotView, PlotVisibility, ScrollBehavior, SortColumn,
+    TickerState, UI_CONFIG, render_bootstrap,
 };
 
-use crate::utils::time_utils::AppInstant;
+use crate::utils::AppInstant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub(crate) enum SortDirection {
@@ -563,7 +560,7 @@ impl App {
         }
 
         // Still bootstrapping → render loading UI
-        bootstrap::render(ctx, state);
+        render_bootstrap(ctx, state);
 
         // Remain in Bootstrapping
         AppState::Bootstrapping(state.clone())

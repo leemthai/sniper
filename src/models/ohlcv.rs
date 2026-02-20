@@ -6,10 +6,9 @@ use crate::config::{
     VolatilityPct,
 };
 
-use crate::domain::candle::Candle;
-use crate::domain::pair_interval::PairInterval;
+use crate::domain::{Candle, PairInterval};
 
-use crate::models::cva::{CVACore, ScoreType};
+use crate::models::{CVACore, ScoreType};
 
 const RVOL_WINDOW: usize = 20;
 

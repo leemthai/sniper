@@ -10,7 +10,7 @@ use crate::config::{
 use crate::models::OhlcvTimeSeries;
 use crate::models::TradeDirection;
 
-use crate::utils::time_utils::AppInstant;
+use crate::utils::AppInstant;
 
 const WEIGHT_VOLATILITY: Weight = Weight::new(10.0);
 const WEIGHT_MOMENTUM: Weight = Weight::new(5.0);

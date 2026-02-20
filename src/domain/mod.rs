@@ -1,8 +1,11 @@
 // Domain types and value objects
-pub mod price_horizon;
-pub mod candle;
-pub mod pair_interval;
+mod candle;
+mod pair_interval;
+mod price_horizon;
 
 // Re-export commonly used types
-pub use candle::Candle;
-pub use pair_interval::PairInterval;
+pub(crate) use candle::Candle;
+pub(crate) use price_horizon::{auto_select_ranges, calculate_price_range};
+
+// Re-export commonly used types to the world
+pub use pair_interval::PairInterval; // make_demo_cache.rs uses it

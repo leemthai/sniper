@@ -1,3 +1,6 @@
-pub mod config;
-pub mod reporter;
-pub mod runner;
+mod audit_config;
+mod reporter;
+mod runner;
+
+pub use audit_config::{AUDIT_PAIRS, PH_LEVELS};
+pub use reporter::AuditReporter;

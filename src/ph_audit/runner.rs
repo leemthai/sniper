@@ -7,13 +7,15 @@ use crate::config::{BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike
 
 use crate::data::timeseries::TimeSeriesCollection;
 
-use crate::engine::worker;
+use crate::engine::run_pathfinder_simulations;
+
 use crate::models::find_matching_ohlcv;
 
 use crate::utils::time_utils::AppInstant;
 
-use super::{config, reporter::AuditReporter};
+use crate::ph_audit::{AUDIT_PAIRS, AuditReporter, PH_LEVELS};
 
+#[cfg(feature = "ph_audit")]
 pub fn execute_audit(
     ts_collection: &TimeSeriesCollection,
     current_prices: &HashMap<String, Price>, // NEW: Live prices from Ticker
@@ -23,7 +25,7 @@ pub fn execute_audit(
     let mut reporter = AuditReporter::new();
     reporter.add_header();
 
-    for &pair in config::AUDIT_PAIRS {
+    for &pair in AUDIT_PAIRS {
         // Validate Data Exists
         if find_matching_ohlcv(
             &ts_collection.series_data,
@@ -52,7 +54,7 @@ pub fn execute_audit(
         // Loop Strategies
         for strategy in OptimizationStrategy::iter() {
             // Loop PH Levels
-            for &ph_pct in config::PH_LEVELS {
+            for &ph_pct in PH_LEVELS {
                 run_single_simulation(
                     pair,
                     live_price,
@@ -101,7 +103,7 @@ fn run_single_simulation(
     let ph_candles = cva.relevant_candle_count;
 
     // Pathfinder (Scout + Drill)
-    let pf_result = worker::run_pathfinder_simulations(
+    let pf_result = run_pathfinder_simulations(
         ohlcv,
         price,
         ph_pct,

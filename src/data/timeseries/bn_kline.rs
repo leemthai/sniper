@@ -22,9 +22,9 @@ use crate::config::{
 };
 
 use crate::data::rate_limiter::GlobalRateLimiter;
-use crate::domain::candle::Candle;
-use crate::domain::pair_interval::PairInterval;
-use crate::utils::TimeUtils;
+use crate::domain::Candle;
+use crate::domain::PairInterval;
+use crate::utils::*;
 
 pub trait IntervalToMs {
     fn to_ms(&self) -> i64;
@@ -34,22 +34,22 @@ pub trait IntervalToMs {
 impl IntervalToMs for KlinesIntervalEnum {
     fn to_ms(&self) -> i64 {
         match self {
-            KlinesIntervalEnum::Interval1s => TimeUtils::MS_IN_S,
-            KlinesIntervalEnum::Interval1m => TimeUtils::MS_IN_MIN,
-            KlinesIntervalEnum::Interval3m => TimeUtils::MS_IN_3_MIN,
-            KlinesIntervalEnum::Interval5m => TimeUtils::MS_IN_5_MIN,
-            KlinesIntervalEnum::Interval15m => TimeUtils::MS_IN_15_MIN,
-            KlinesIntervalEnum::Interval30m => TimeUtils::MS_IN_30_MIN,
-            KlinesIntervalEnum::Interval1h => TimeUtils::MS_IN_H,
-            KlinesIntervalEnum::Interval2h => TimeUtils::MS_IN_2_H,
-            KlinesIntervalEnum::Interval4h => TimeUtils::MS_IN_4_H,
-            KlinesIntervalEnum::Interval6h => TimeUtils::MS_IN_6_H,
-            KlinesIntervalEnum::Interval8h => TimeUtils::MS_IN_8_H,
-            KlinesIntervalEnum::Interval12h => TimeUtils::MS_IN_12_H,
-            KlinesIntervalEnum::Interval1d => TimeUtils::MS_IN_D,
-            KlinesIntervalEnum::Interval3d => TimeUtils::MS_IN_3_D,
-            KlinesIntervalEnum::Interval1w => TimeUtils::MS_IN_W,
-            KlinesIntervalEnum::Interval1M => TimeUtils::MS_IN_1_M,
+            KlinesIntervalEnum::Interval1s => MS_IN_S,
+            KlinesIntervalEnum::Interval1m => MS_IN_MIN,
+            KlinesIntervalEnum::Interval3m => MS_IN_3_MIN,
+            KlinesIntervalEnum::Interval5m => MS_IN_5_MIN,
+            KlinesIntervalEnum::Interval15m => MS_IN_15_MIN,
+            KlinesIntervalEnum::Interval30m => MS_IN_30_MIN,
+            KlinesIntervalEnum::Interval1h => MS_IN_H,
+            KlinesIntervalEnum::Interval2h => MS_IN_2_H,
+            KlinesIntervalEnum::Interval4h => MS_IN_4_H,
+            KlinesIntervalEnum::Interval6h => MS_IN_6_H,
+            KlinesIntervalEnum::Interval8h => MS_IN_8_H,
+            KlinesIntervalEnum::Interval12h => MS_IN_12_H,
+            KlinesIntervalEnum::Interval1d => MS_IN_D,
+            KlinesIntervalEnum::Interval3d => MS_IN_3_D,
+            KlinesIntervalEnum::Interval1w => MS_IN_W,
+            KlinesIntervalEnum::Interval1M => MS_IN_1_M,
         }
     }
 }
@@ -58,22 +58,22 @@ impl IntervalToMs for KlinesIntervalEnum {
 //    but we return Result instead of panicking.
 pub fn try_interval_from_ms(ms: i64) -> Result<KlinesIntervalEnum, String> {
     match ms {
-        TimeUtils::MS_IN_S => Ok(KlinesIntervalEnum::Interval1s),
-        TimeUtils::MS_IN_MIN => Ok(KlinesIntervalEnum::Interval1m),
-        TimeUtils::MS_IN_3_MIN => Ok(KlinesIntervalEnum::Interval3m),
-        TimeUtils::MS_IN_5_MIN => Ok(KlinesIntervalEnum::Interval5m),
-        TimeUtils::MS_IN_15_MIN => Ok(KlinesIntervalEnum::Interval15m),
-        TimeUtils::MS_IN_30_MIN => Ok(KlinesIntervalEnum::Interval30m),
-        TimeUtils::MS_IN_H => Ok(KlinesIntervalEnum::Interval1h),
-        TimeUtils::MS_IN_2_H => Ok(KlinesIntervalEnum::Interval2h),
-        TimeUtils::MS_IN_4_H => Ok(KlinesIntervalEnum::Interval4h),
-        TimeUtils::MS_IN_6_H => Ok(KlinesIntervalEnum::Interval6h),
-        TimeUtils::MS_IN_8_H => Ok(KlinesIntervalEnum::Interval8h),
-        TimeUtils::MS_IN_12_H => Ok(KlinesIntervalEnum::Interval12h),
-        TimeUtils::MS_IN_D => Ok(KlinesIntervalEnum::Interval1d),
-        TimeUtils::MS_IN_3_D => Ok(KlinesIntervalEnum::Interval3d),
-        TimeUtils::MS_IN_W => Ok(KlinesIntervalEnum::Interval1w),
-        TimeUtils::MS_IN_1_M => Ok(KlinesIntervalEnum::Interval1M),
+        MS_IN_S => Ok(KlinesIntervalEnum::Interval1s),
+        MS_IN_MIN => Ok(KlinesIntervalEnum::Interval1m),
+        MS_IN_3_MIN => Ok(KlinesIntervalEnum::Interval3m),
+        MS_IN_5_MIN => Ok(KlinesIntervalEnum::Interval5m),
+        MS_IN_15_MIN => Ok(KlinesIntervalEnum::Interval15m),
+        MS_IN_30_MIN => Ok(KlinesIntervalEnum::Interval30m),
+        MS_IN_H => Ok(KlinesIntervalEnum::Interval1h),
+        MS_IN_2_H => Ok(KlinesIntervalEnum::Interval2h),
+        MS_IN_4_H => Ok(KlinesIntervalEnum::Interval4h),
+        MS_IN_6_H => Ok(KlinesIntervalEnum::Interval6h),
+        MS_IN_8_H => Ok(KlinesIntervalEnum::Interval8h),
+        MS_IN_12_H => Ok(KlinesIntervalEnum::Interval12h),
+        MS_IN_D => Ok(KlinesIntervalEnum::Interval1d),
+        MS_IN_3_D => Ok(KlinesIntervalEnum::Interval3d),
+        MS_IN_W => Ok(KlinesIntervalEnum::Interval1w),
+        MS_IN_1_M => Ok(KlinesIntervalEnum::Interval1M),
         _ => Err(format!("Unsupported interval: {}ms", ms)),
     }
 }

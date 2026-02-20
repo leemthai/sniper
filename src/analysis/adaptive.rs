@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::config::{DurationMs, JourneySettings, PhPct, VolatilityPct};
-use crate::utils::maths_utils::remap;
+use crate::utils::remap;
 
 pub struct AdaptiveParameters;
 

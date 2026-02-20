@@ -5,40 +5,41 @@ use std::sync::{Arc, RwLock};
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use chrono::{TimeZone, Utc};
 
-#[cfg(not(target_arch = "wasm32"))]
-use {crate::config::PERSISTENCE, std::path::Path};
-
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
-
 use crate::config::{
     BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, StationId,
     TUNER_CONFIG, TunerStation,
 };
-
-use crate::data::{price_stream::PriceStreamManager, timeseries::TimeSeriesCollection};
+#[cfg(not(target_arch = "wasm32"))]
+use {crate::config::PERSISTENCE, std::path::Path};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::results_repo::{ResultsRepositoryTrait, SqliteResultsRepository, TradeResult};
+use crate::data::{price_stream::PriceStreamManager, timeseries::TimeSeriesCollection};
 
-use crate::models::{
-    DEFAULT_JOURNEY_SETTINGS, LiveCandle, PRICE_RECALC_THRESHOLD_PCT, TradeOpportunity,
-    TradingModel, find_matching_ohlcv, ledger::OpportunityLedger,
+#[cfg(target_arch = "wasm32")]
+use crate::engine::process_request_sync;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::engine::spawn_worker_thread;
+use crate::engine::{
+    tune_to_station, {JobMode, JobRequest, JobResult},
 };
 
+use crate::models::{
+    DEFAULT_JOURNEY_SETTINGS, LiveCandle, OpportunityLedger, PRICE_RECALC_THRESHOLD_PCT,
+    TradeOpportunity, TradingModel, find_matching_ohlcv,
+};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::models::{TradeDirection, TradeOutcome};
 
 use crate::shared::SharedConfiguration;
 
-use crate::utils::{TimeUtils, time_utils::AppInstant};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::now_utc;
+use crate::utils::{AppInstant, now_timestamp_ms};
 
-use crate::engine::{
-    messages::{JobMode, JobRequest, JobResult},
-    worker,
-};
-
-use crate::ui::ui_render::TradeFinderRow;
+use crate::ui::TradeFinderRow;
 
 /// Identifiers of opportunities that were removed from the engine ledger
 /// during an update cycle (pruning, collision resolution, etc).
@@ -138,7 +139,7 @@ impl SniperEngine {
 
         // NATIVE: Pass the receiver to the thread.
         #[cfg(not(target_arch = "wasm32"))]
-        worker::spawn_worker_thread(job_rx, result_tx);
+        spawn_worker_thread(job_rx, result_tx);
 
         // Initialize pair states
         let mut pairs_states = HashMap::new();
@@ -243,7 +244,7 @@ impl SniperEngine {
         crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
             let mut rows = Vec::new();
 
-            let now_ms = TimeUtils::now_timestamp_ms();
+            let now_ms = now_timestamp_ms();
             let day_ms = 86_400_000;
 
             // Group Ledger Opportunities by Pair for fast lookup
@@ -359,7 +360,7 @@ impl SniperEngine {
             // Non-blocking check for work
             if let Ok(req) = self.job_rx.try_recv() {
                 // Run sync calculation
-                worker::process_request_sync(req, self.result_tx.clone());
+                process_request_sync(req, self.result_tx.clone());
             }
         }
 
@@ -452,10 +453,7 @@ impl SniperEngine {
         }
     }
 
-    /**
-    The trigger_global_recalc function is a "Reset Button" for the engine's work queue. Its purpose is to cancel any
-    pending jobs and immediately schedule a fresh analysis for every single pair using the current global settings.
-    */
+    /// "Reset Button" for the engine's work queue. Its purpose is to cancel any pending jobs and immediately schedule a fresh analysis for every pair using current global settings.
     pub(crate) fn trigger_global_recalc(&mut self, priority_pair: Option<String>) {
         self.queue.clear();
 
@@ -566,7 +564,7 @@ impl SniperEngine {
         .ok()?;
 
         // Run worker
-        worker::tune_to_station(
+        tune_to_station(
             ohlcv,
             price,
             tuner_station,
@@ -675,7 +673,7 @@ impl SniperEngine {
     fn tick_prune_ledger(&mut self) -> Vec<String> {
         // GARBAGE COLLECTION: Removes finished trades and archives them.
         // If a wick hits our Stop Loss mid-candle, we want to kill the trade immediately.
-        let time_now_utc = TimeUtils::now_utc();
+        let time_now_utc = now_utc();
         let mut dead_trades: Vec<TradeResult> = Vec::new();
         let mut ids_to_remove: Vec<String> = Vec::new();
 

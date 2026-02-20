@@ -19,7 +19,6 @@ pub(crate) fn get_max(vec: &[f64]) -> f64 {
 // Normalizes a vector of (positive) f64 to 0.0 to 1.0. Guarantees largest value is 1.0
 // Smallest output value will be 0.0 iff smallest input value = 0.0
 // Name: `Max normalization`, `Max-Abs normalization`, or `L∞ normalization`
-#[inline]
 pub(crate) fn normalize_max(vec: &[f64]) -> Vec<f64> {
     let max_value = get_max(vec);
 
@@ -40,7 +39,7 @@ pub(crate) fn normalize_max(vec: &[f64]) -> Vec<f64> {
 /// Applies a simple centered moving average to smooth the data.
 /// window_size should be an odd number (e.g., 3, 5, 7).
 #[inline]
-pub fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
+pub(crate) fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
     if data.is_empty() {
         return Vec::new();
     }
@@ -64,7 +63,7 @@ pub fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
 }
 
 #[inline]
-pub fn mean_and_stddev(data: &[f64]) -> (f64, f64) {
+pub(crate) fn mean_and_stddev(data: &[f64]) -> (f64, f64) {
     let count = data.len();
     if count == 0 {
         return (0.0, 0.0);
@@ -86,7 +85,7 @@ pub fn mean_and_stddev(data: &[f64]) -> (f64, f64) {
 }
 
 /// Linearly maps a value from one range to another while preserving its relative proportion.
-pub fn remap(val: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
+pub(crate) fn remap(val: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
     let t = (val - in_min) / (in_max - in_min);
     out_min + t * (out_max - out_min)
 }

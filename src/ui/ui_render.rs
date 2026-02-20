@@ -1,16 +1,11 @@
 use chrono::Duration;
-
 use eframe::egui::{
     Align, CentralPanel, Color32, ComboBox, Context, FontId, Frame, Grid, Layout, Order, RichText,
     Sense, SidePanel, TopBottomPanel, Ui, Window,
 };
-
 use egui_extras::{Column, TableBuilder, TableRow};
-
 use serde::{Deserialize, Serialize};
-
 use std::{cmp::Ordering, collections::HashMap};
-
 use strum::IntoEnumIterator;
 
 use crate::analysis::market_state::MarketState;
@@ -28,21 +23,18 @@ use crate::config::{
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
-use crate::domain::pair_interval::PairInterval;
+use crate::domain::PairInterval;
 
-use crate::engine::messages::JobMode;
+use crate::engine::JobMode;
 
 use crate::models::{DEFAULT_JOURNEY_SETTINGS, ScoreType, TradeDirection, TradeOpportunity};
 
 use crate::ui::{
-    config::{UI_CONFIG, UI_TEXT},
-    styles::{DirectionColor, UiStyleExt, get_momentum_color, get_outcome_color},
-    time_tuner::{self, TunerAction},
-    ui_panels::CandleRangePanel,
-    ui_plot_view::PlotInteraction,
+    CandleRangePanel, DirectionColor, PlotInteraction, TunerAction, UI_CONFIG, UI_TEXT, UiStyleExt,
+    get_momentum_color, get_outcome_color, render_time_tuner,
 };
 
-use crate::utils::TimeUtils;
+use crate::utils::{format_duration, now_utc};
 
 const CELL_PADDING_Y: f32 = 4.0;
 
@@ -213,7 +205,7 @@ impl App {
             .show(ctx, |ui| {
                 // TIME TUNER
                 if let Some(pair) = self.selection.pair_owned() {
-                    if let Some(action) = time_tuner::render(
+                    if let Some(action) = render_time_tuner(
                         ui,
                         &TUNER_CONFIG,
                         self.shared_config.get_station_opt(Some(pair.clone())),
@@ -927,12 +919,12 @@ impl App {
 
                         // Right: Age (Pushed to edge)
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let now = TimeUtils::now_utc();
+                            let now = now_utc();
                             let age = now - op.created_at;
                             let age_str = if age < Duration::minutes(1) {
                                 "New".to_string()
                             } else {
-                                TimeUtils::format_duration(age.num_milliseconds())
+                                format_duration(age.num_milliseconds())
                             };
 
                             ui.label(
@@ -1045,7 +1037,7 @@ impl App {
                     self.down_from_top(ui);
                     // Avg Duration Only
                     ui.label(
-                        RichText::new(TimeUtils::format_duration(op.avg_duration.value()))
+                        RichText::new(format_duration(op.avg_duration.value()))
                             .small()
                             .color(PLOT_CONFIG.color_text_neutral),
                     );

@@ -16,7 +16,7 @@ use crate::config::{
     ZoneClassificationConfig, ZoneParams,
 };
 
-use crate::ui::config::UI_TEXT;
+use crate::ui::UI_TEXT;
 
 const SAMPLE_COUNT: usize = 50;
 const RISK_REWARD_TESTS: &[f64] = &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0];

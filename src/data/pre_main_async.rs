@@ -14,10 +14,9 @@ use {
     crate::data::provider::{BinanceProvider, MarketDataProvider},
     crate::data::rate_limiter::GlobalRateLimiter,
     crate::data::storage::{MarketDataStorage, SqliteStorage},
-    crate::domain::pair_interval::PairInterval,
-    crate::models::OhlcvTimeSeries,
-    crate::models::SyncStatus,
-    crate::utils::TimeUtils,
+    crate::domain::PairInterval,
+    crate::models::{OhlcvTimeSeries, SyncStatus},
+    crate::utils::interval_to_string,
     anyhow::Result,
     futures::stream::{self, StreamExt},
     std::fs,
@@ -34,7 +33,7 @@ async fn sync_pair(
     storage: Arc<SqliteStorage>,
     provider: Arc<BinanceProvider>,
 ) -> Result<(OhlcvTimeSeries, usize)> {
-    let interval_str = TimeUtils::interval_to_string(interval_ms);
+    let interval_str = interval_to_string(interval_ms);
 
     // Check DB for last candle
     let last_time = storage.get_last_candle_time(&pair, interval_str).await?;

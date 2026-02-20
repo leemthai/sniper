@@ -11,11 +11,11 @@ use crate::config::plot::PLOT_CONFIG;
 
 use crate::models::SyncStatus;
 
-use crate::ui::ui_text::UI_TEXT;
+use crate::ui::UI_TEXT;
 
-use crate::utils::TimeUtils;
+use crate::utils::interval_to_string;
 
-pub(crate) fn render(ctx: &Context, state: &BootstrapState) {
+pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
     CentralPanel::default().show(ctx, |ui| {
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
@@ -29,7 +29,7 @@ pub(crate) fn render(ctx: &Context, state: &BootstrapState) {
             );
 
             // Subtitle / Info
-            let interval_str = TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
+            let interval_str = interval_to_string(BASE_INTERVAL.as_millis() as i64);
             ui.label(
                 RichText::new(format!(
                     "{} {} {}",

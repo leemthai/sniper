@@ -1,5 +1,6 @@
-use crate::config::{StationId, TimeTunerConfig};
 use eframe::egui::{Align, Button, Layout, Ui, vec2};
+
+use crate::config::{StationId, TimeTunerConfig};
 
 #[derive(Debug)]
 pub(crate) enum TunerAction {
@@ -7,7 +8,7 @@ pub(crate) enum TunerAction {
     ConfigureTuner,
 }
 
-pub(crate) fn render(
+pub(crate) fn render_time_tuner(
     ui: &mut Ui,
     time_tuner_config: &TimeTunerConfig,
     active_station_id: Option<StationId>,

@@ -16,13 +16,9 @@ use crate::config::{
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::models::OhlcvTimeSeries;
-use crate::models::{SuperZone, TradeOpportunity, TradingModel};
+use crate::models::{OhlcvTimeSeries, SuperZone, TradeOpportunity, TradingModel};
 
-use crate::ui::styles::{DirectionColor, apply_opacity};
-use crate::ui::ui_plot_view::PlotCache;
-use crate::ui::ui_plot_view::PlotVisibility;
-use crate::ui::ui_text::UI_TEXT;
+use crate::ui::{DirectionColor, PlotCache, PlotVisibility, UI_TEXT, apply_opacity};
 
 pub(crate) struct HorizonLinesLayer;
 

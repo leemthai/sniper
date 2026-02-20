@@ -6,21 +6,23 @@
 
 // Core modules
 pub mod analysis;
+pub mod app;
 pub mod config;
 pub mod data;
 pub mod domain;
+pub mod engine;
 pub mod models;
+#[cfg(feature = "ph_audit")]
+pub mod ph_audit;
+mod shared;
 pub mod ui;
 pub mod utils;
-pub mod engine;
-pub mod ph_audit;
-pub mod app;
-mod shared;
 
-// Re-export commonly used types
-pub use data::{price_stream::PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
-pub use domain::{Candle, PairInterval};
+// Re-export commonly used types outside of crate (for make_demo_cache.rs)
+pub use crate::models::OhlcvTimeSeries;
 pub use app::App;
+pub use data::{TimeSeriesCollection, fetch_pair_data, price_stream::PriceStreamManager};
+pub use domain::PairInterval;
 
 // CLI argument parsing
 use clap::Parser;

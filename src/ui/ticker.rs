@@ -2,11 +2,12 @@
 use eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2};
 
 use crate::config::{BASE_INTERVAL, Price, PriceLike, TICKER};
+
 use crate::engine::SniperEngine;
 
 use crate::models::find_matching_ohlcv;
-use crate::utils::TimeUtils;
-use crate::utils::time_utils::AppInstant;
+
+use crate::utils::{AppInstant, now_timestamp_ms};
 
 pub(crate) struct TickerItem {
     pub symbol: String,
@@ -75,7 +76,7 @@ impl TickerState {
         }
 
         if cfg!(not(target_arch = "wasm32")) {
-            let now_ms = TimeUtils::now_timestamp_ms();
+            let now_ms = now_timestamp_ms();
             let day_ago_ms = now_ms - (24 * 60 * 60 * 1000); // 24 Hours ago
 
             // Sync Pairs with Engine
@@ -371,7 +372,7 @@ impl TickerState {
 
     fn get_rainbow_color(&self, x_pos: f32) -> Color32 {
         // Phase based on Time + Position
-        let time = TimeUtils::now_timestamp_ms() as f64 / 1000.0;
+        let time = now_timestamp_ms() as f64 / 1000.0;
         let phase = (x_pos as f64 * 0.005) + (time * TICKER.rainbow_speed);
 
         // Simple HSV -> RGB logic or sine waves

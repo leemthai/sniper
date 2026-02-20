@@ -1,6 +1,6 @@
 use crate::config::{HighPrice, LowPrice, Price};
 use crate::models::OhlcvTimeSeries;
-use crate::utils::TimeUtils;
+use crate::utils::format_duration;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GapReason {
@@ -212,7 +212,7 @@ impl RangeGapFinder {
                 }
             };
 
-            (reason, TimeUtils::format_duration(time_gap))
+            (reason, format_duration(time_gap))
         };
 
         // NEW: Calculate Min/Max for this segment

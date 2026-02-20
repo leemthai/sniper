@@ -1,8 +1,10 @@
 use anyhow::{Context, Result, bail};
 
 use crate::config::{BASE_INTERVAL, PhPct, Price, TIME_DECAY_FACTOR, ZONE_COUNT};
+
 use crate::data::timeseries::TimeSeriesCollection;
-use crate::domain::price_horizon;
+
+use crate::domain::auto_select_ranges;
 
 use crate::models::{CVACore, MIN_CANDLES_FOR_ANALYSIS, TimeSeriesSlice, find_matching_ohlcv};
 
@@ -25,8 +27,7 @@ pub(crate) fn pair_analysis_pure(
 
     // Price Horizon: Calculate relevant slices based on price
     // Note: The Engine calculates this fresh every time. No "Slice Caching".
-    let (slice_ranges, price_range) =
-        price_horizon::auto_select_ranges(ohlcv_time_series, current_price, ph_pct);
+    let (slice_ranges, price_range) = auto_select_ranges(ohlcv_time_series, current_price, ph_pct);
 
     // Validation
     let total_candle_count: usize = slice_ranges.iter().map(|(start, end)| end - start).sum();

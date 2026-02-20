@@ -1,13 +1,13 @@
-use eframe::egui::{ Button, Grid, RichText, ScrollArea, Ui};
+use eframe::egui::{Button, Grid, RichText, ScrollArea, Ui};
 
 use crate::analysis::range_gap_finder::{DisplaySegment, GapReason};
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::ui::config::UI_TEXT;
-use crate::ui::styles::{UiStyleExt};
+use crate::ui::UI_TEXT;
+use crate::ui::UiStyleExt;
 
-use crate::utils::TimeUtils;
+use crate::utils::epoch_ms_to_date_string;
 
 pub struct CandleRangePanel<'a> {
     segments: &'a [DisplaySegment],
@@ -68,10 +68,7 @@ impl<'a> CandleRangePanel<'a> {
             let next_enabled = self
                 .current_range_idx
                 .is_some_and(|i| i < self.segments.len() - 1);
-            if ui
-                .add_enabled(next_enabled, Button::new("➡"))
-                .clicked()
-            {
+            if ui.add_enabled(next_enabled, Button::new("➡")).clicked() {
                 if let Some(curr) = self.current_range_idx {
                     action = Some(Some(curr + 1));
                 } else {
@@ -131,8 +128,8 @@ impl<'a> CandleRangePanel<'a> {
                             }
 
                             // SEGMENT ROW
-                            let start_date = TimeUtils::epoch_ms_to_date_string(seg.start_ts);
-                            let end_date = TimeUtils::epoch_ms_to_date_string(seg.end_ts);
+                            let start_date = epoch_ms_to_date_string(seg.start_ts);
+                            let end_date = epoch_ms_to_date_string(seg.end_ts);
 
                             // Column 1: Date Range + Count (Clickable)
                             // Format: "2024-01-01 - 2024-02-01 (500c)"

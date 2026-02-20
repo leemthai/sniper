@@ -12,11 +12,10 @@ use {
     zone_sniper::config::{BASE_INTERVAL, DEMO, PERSISTENCE, Price, PriceLike},
     zone_sniper::data::price_stream::PriceStreamManager,
     zone_sniper::data::storage::{MarketDataStorage, SqliteStorage},
-    zone_sniper::data::timeseries::TimeSeriesCollection,
-    zone_sniper::data::timeseries::cache_file::CacheFile,
-    zone_sniper::domain::pair_interval::PairInterval,
+    zone_sniper::data::timeseries::{TimeSeriesCollection, cache_file::CacheFile},
+    zone_sniper::domain::PairInterval,
     zone_sniper::models::OhlcvTimeSeries,
-    zone_sniper::utils::TimeUtils,
+    zone_sniper::utils::interval_to_string,
 };
 
 // Limit demo data to keep WASM binary small (Github limit < 100MB)
@@ -34,7 +33,7 @@ async fn main() -> Result<()> {
     let demo_pairs = DEMO.resources.pairs;
 
     let interval_ms = BASE_INTERVAL.as_millis() as i64;
-    let interval_str = TimeUtils::interval_to_string(interval_ms);
+    let interval_str = interval_to_string(interval_ms);
     let db_path = "klines.sqlite";
 
     log::info!("🚀 Building WASM Demo Cache from local DB: {}", db_path);

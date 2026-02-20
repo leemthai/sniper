@@ -22,22 +22,19 @@ use crate::config::{
 
 use crate::data::timeseries::TimeSeriesCollection;
 
-use crate::domain::price_horizon;
+use crate::domain::{auto_select_ranges, calculate_price_range};
 
-use crate::engine::messages::{JobMode, JobRequest, JobResult};
+use crate::engine::{JobMode, JobRequest, JobResult};
 
 use crate::models::{
     CVACore, DEFAULT_JOURNEY_SETTINGS, OhlcvTimeSeries, TradeDirection, TradeOpportunity,
     TradeVariant, TradingModel, VisualFluff, find_matching_ohlcv,
 };
 
-use crate::utils::{
-    maths_utils::duration_to_candles,
-    time_utils::{AppInstant, TimeUtils},
-};
+use crate::utils::{AppInstant, duration_to_candles, now_utc};
 
 #[cfg(debug_assertions)]
-use crate::ui::ui_text::UI_TEXT;
+use {crate::ui::UI_TEXT, crate::utils::format_duration};
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -49,8 +46,9 @@ pub(crate) fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult
     });
 }
 
-// Public so Audit can see it)
-pub(crate) struct PathfinderResult {
+// Public so Audit can see it
+#[allow(dead_code)]
+pub struct PathfinderResult {
     pub opportunities: Vec<TradeOpportunity>,
     pub trend_lookback: usize, // Trend_K
     pub sim_duration: usize,   // Sim_K
@@ -111,7 +109,7 @@ pub(crate) fn tune_to_station(
         scan_points.push(station.scan_ph_min.value()); // Fallback
     }
 
-    // Run Simulation. We store: (PH, Score, Duration_Hours, Candidate_Count)
+    // Run Simulation to store: PH, Score, Duration_Hours, Candidate_Count
     let mut results: Vec<ProbeResult> = Vec::new();
 
     for &ph in &scan_points {
@@ -126,7 +124,7 @@ pub(crate) fn tune_to_station(
 
         let count = result.opportunities.len();
         if count > 0 {
-            // Calculate Average Duration of top results (in Hours)
+            // Calculate Average Duration of top results
             let duration_hours = result
                 .opportunities
                 .iter()
@@ -292,7 +290,7 @@ pub(crate) fn run_pathfinder_simulations(
         }
     };
 
-    let (price_min, price_max) = price_horizon::calculate_price_range(current_price, ph_pct);
+    let (price_min, price_max) = calculate_price_range(current_price, ph_pct);
 
     // Build Context Object
     let ctx = PathfinderContext {
@@ -410,7 +408,7 @@ fn evaluate_target_candidate(
 
             let opp = TradeOpportunity {
                 id: uuid,
-                created_at: TimeUtils::now_utc(),
+                created_at: now_utc(),
                 ph_pct: ctx.ph_pct,
                 pair_name: ctx.pair_name.to_string(),
                 direction,
@@ -470,7 +468,7 @@ fn apply_diversity_filter(
             for (i, c) in debug_view.iter().take(5).enumerate() {
                 let roi = c.opportunity.expected_roi();
                 let duration = c.opportunity.avg_duration;
-                let dur_str = TimeUtils::format_duration(duration.value());
+                let dur_str = format_duration(duration.value());
                 let aroi = TradeProfile::calculate_annualized_roi(roi, duration);
 
                 log::info!(
@@ -1221,7 +1219,7 @@ fn calculate_exact_candle_count(
     );
 
     if let Ok(ohlcv) = ohlcv_result {
-        let (ranges, _) = price_horizon::auto_select_ranges(ohlcv, price, req.ph_pct);
+        let (ranges, _) = auto_select_ranges(ohlcv, price, req.ph_pct);
         ranges.iter().map(|(s, e)| e - s).sum()
     } else {
         0

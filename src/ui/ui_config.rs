@@ -1,6 +1,6 @@
-use eframe::egui::{Frame, Margin, Stroke, Color32};
+use eframe::egui::{Color32, Frame, Margin, Stroke};
 
-pub use crate::ui::ui_text::{UI_TEXT, UiText};
+pub use crate::ui::ui_text::UI_TEXT;
 
 /// UI Colors for consistent theming
 #[derive(Clone, Copy, Default)]
@@ -29,7 +29,6 @@ pub static UI_CONFIG: UiConfig = UiConfig {
         side_panel: Color32::from_rgb(25, 25, 25),
     },
 };
-
 
 impl UiConfig {
     /// Frame for Left/Right panels (Standard padding)
@@ -67,12 +66,12 @@ impl UiConfig {
         Frame {
             fill: self.colors.central_panel,
             stroke: Stroke::NONE,
-            inner_margin: Margin { 
-                left: 0, 
+            inner_margin: Margin {
+                left: 0,
                 right: 8, // <--- THE GAP allows "PAIRNAME Price" to be fully viewable not smashed against the right border
-                top: 0, 
-                bottom: 0 
-            }, 
+                top: 0,
+                bottom: 0,
+            },
             ..Default::default()
         }
     }
