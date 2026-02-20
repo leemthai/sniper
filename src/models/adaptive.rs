@@ -1,0 +1,56 @@
+use std::time::Duration;
+
+use crate::config::{DurationMs, JourneySettings, PhPct, VolatilityPct};
+
+use crate::utils::remap;
+
+pub struct AdaptiveParameters;
+
+impl AdaptiveParameters {
+    /// Calculates Max Duration using Diffusive Market Physics (Random Walk).
+    /// Formula: Candles = (Ratio + Bias)^2
+    pub(crate) fn calculate_dynamic_journey_duration(
+        ph_pct: PhPct,
+        avg_volatility_pct: VolatilityPct,
+        interval_ms: DurationMs,
+        journey: &JourneySettings,
+    ) -> Duration {
+        // Ratio: How many "Volatility Units" is the target away?
+        let ratio = ph_pct.value() / avg_volatility_pct.as_safe_divisor();
+
+        // Diffusive Time with Bias
+        // We add +3.0 to the ratio before squaring.
+        // Effect:
+        // - Scalp (Ratio 2): (2+3)^2 = 25 candles (vs 4 previously). Gives room to breathe.
+        // - Swing (Ratio 100): (100+3)^2 = 10,609 candles (vs 10,000). Negligible change.
+        let candles = (ratio + 3.0).powi(2);
+
+        // 4. Convert to Time
+        let total_ms = candles * interval_ms.value() as f64;
+
+        Duration::from_millis(total_ms as u64)
+            .clamp(journey.min_journey_duration, journey.max_journey_time)
+    }
+
+    /// Maps Price Horizon % -> Trend Lookback (Candles).
+    pub(crate) fn calculate_trend_lookback_candles(ph_threshold: PhPct) -> usize {
+        // 5m Candle Constants
+        const DAY: f64 = 288.0;
+        const WEEK: f64 = 2016.0;
+        const MONTH: f64 = 8640.0; // 30 Days
+
+        let result = if ph_threshold.value() < 0.05 {
+            // Scalp to Day Trade (2h -> 1 Day)
+            remap(ph_threshold.value(), 0.005, 0.05, 24.0, DAY)
+        } else if ph_threshold.value() < 0.15 {
+            // Swing (1 Day -> 1 Week)
+            remap(ph_threshold.value(), 0.05, 0.15, DAY, WEEK)
+        } else {
+            // Macro (1 Week -> 1 Month at 50% PH, and beyond)
+            // No cap. If user asks for 100% PH, they get ~2 Months lookback.
+            remap(ph_threshold.value(), 0.15, 0.50, WEEK, MONTH)
+        };
+
+        result.round() as usize
+    }
+}
