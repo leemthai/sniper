@@ -7,7 +7,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{PERSISTENCE, kline_cache_filename};
-use crate::data::timeseries::TimeSeriesCollection;
+use crate::data::TimeSeriesCollection;
 
 /// Serialized cache wrapper used for both native and WASM demo builds.
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -4,12 +4,10 @@ use eframe::egui::{
     Align, CentralPanel, Context, Grid, Layout, ProgressBar, RichText, ScrollArea, Ui,
 };
 
-use crate::app::state::BootstrapState;
+use crate::app::{SyncStatus, state::BootstrapState};
 
 use crate::config::BASE_INTERVAL;
 use crate::config::plot::PLOT_CONFIG;
-
-use crate::models::SyncStatus;
 
 use crate::ui::UI_TEXT;
 

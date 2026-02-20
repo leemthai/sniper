@@ -1,6 +1,6 @@
 use eframe::egui::{Button, Grid, RichText, ScrollArea, Ui};
 
-use crate::analysis::range_gap_finder::{DisplaySegment, GapReason};
+use crate::models::{DisplaySegment, GapReason};
 
 use crate::config::plot::PLOT_CONFIG;
 

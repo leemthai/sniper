@@ -1,12 +1,4 @@
-#![cfg(not(target_arch = "wasm32"))]
-
 use serde::{Deserialize, Serialize};
-
-use crate::analysis::market_state::MarketState;
-use crate::config::{
-    OptimizationStrategy, PhPct, Price, PriceLike, StationId, StopPrice, TargetPrice,
-};
-
 use {
     anyhow::{Result, anyhow},
     async_trait::async_trait,
@@ -18,10 +10,13 @@ use {
     tokio::sync::mpsc,
 };
 
-use crate::models::{TradeDirection, TradeOutcome};
-
 #[cfg(debug_assertions)]
 use crate::config::DF;
+use crate::config::{
+    OptimizationStrategy, PhPct, Price, PriceLike, StationId, StopPrice, TargetPrice,
+};
+
+use crate::models::{MarketState, TradeDirection, TradeOutcome};
 
 /// A finalized trade record ready for persistent storage
 #[derive(Debug, Clone, Serialize, Deserialize)]

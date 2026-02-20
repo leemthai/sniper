@@ -8,15 +8,13 @@ use eframe::egui::show_tooltip_at_pointer;
 
 use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
 
-use crate::analysis::range_gap_finder::GapReason;
-
 use crate::config::{
     BASE_INTERVAL, CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike,
 };
 
 use crate::config::plot::PLOT_CONFIG;
 
-use crate::models::{OhlcvTimeSeries, SuperZone, TradeOpportunity, TradingModel};
+use crate::models::{GapReason, OhlcvTimeSeries, SuperZone, TradeOpportunity, TradingModel};
 
 use crate::ui::{DirectionColor, PlotCache, PlotVisibility, UI_TEXT, apply_opacity};
 

@@ -1,5 +1,4 @@
 // Only compile the logic for NATIVE builds.
-// For WASM, this file becomes effectively empty (just a dummy main).
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
@@ -10,9 +9,9 @@ use {
     std::thread,
     std::time::{Duration, Instant},
     zone_sniper::config::{BASE_INTERVAL, DEMO, PERSISTENCE, Price, PriceLike},
-    zone_sniper::data::price_stream::PriceStreamManager,
-    zone_sniper::data::storage::{MarketDataStorage, SqliteStorage},
-    zone_sniper::data::timeseries::{TimeSeriesCollection, cache_file::CacheFile},
+    zone_sniper::data::{
+        CacheFile, MarketDataStorage, PriceStreamManager, SqliteStorage, TimeSeriesCollection,
+    },
     zone_sniper::domain::PairInterval,
     zone_sniper::models::OhlcvTimeSeries,
     zone_sniper::utils::interval_to_string,
@@ -40,14 +39,12 @@ async fn main() -> Result<()> {
     log::info!("Target Interval: {}", interval_str);
     log::info!("Selected Pairs (from demo.rs): {:?}", demo_pairs);
 
-    // Connect to DB
     let storage = SqliteStorage::new(db_path)
         .await
         .context("Failed to connect to SQLite DB. Run the Native App first to populate data!")?;
 
     let mut series_list = Vec::new();
 
-    // 4. Extract Data
     for &pair in demo_pairs {
         log::info!("Extracting {}...", pair);
 
@@ -82,14 +79,12 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // 5. Build Collection
     let collection = TimeSeriesCollection {
         name: "WASM Demo Collection".to_string(),
         version: 1.0,
         series_data: series_list,
     };
 
-    // 6. Generate Filename
     let standard_name = zone_sniper::config::kline_cache_filename(interval_ms);
     let demo_filename = format!("demo_{}", standard_name);
     let output_path = PathBuf::from(PERSISTENCE.kline.directory).join(&demo_filename);

@@ -1,4 +1,4 @@
-use crate::models::SyncStatus;
+use crate::app::SyncStatus;
 
 #[derive(Clone)]
 pub(crate) struct RunningState;

@@ -8,7 +8,7 @@ use crate::config::OptimizationStrategy;
 use crate::config::{DF, Pct, PriceLike};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::data::ledger_io;
+use crate::data::load_ledger;
 
 use crate::models::TradeOpportunity;
 
@@ -312,7 +312,7 @@ pub(crate) fn restore_engine_ledger(valid_session_pairs: &HashSet<String>) -> Op
     let mut ledger = {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            match ledger_io::load_ledger() {
+            match load_ledger() {
                 Ok(l) => {
                     #[cfg(debug_assertions)]
                     if DF.log_ledger {

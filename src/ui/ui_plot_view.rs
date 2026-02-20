@@ -7,14 +7,14 @@ use egui_plot::{
     Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotPoint, PlotUi, VPlacement,
 };
 
-use crate::analysis::range_gap_finder::DisplaySegment;
-
 use crate::config::plot::PLOT_CONFIG;
 use crate::config::{CandleResolution, Price, PriceLike};
 
 use crate::engine::SniperEngine;
 
-use crate::models::{CVACore, ScoreType, TradeOpportunity, TradingModel, find_matching_ohlcv};
+use crate::models::{
+    CVACore, DisplaySegment, ScoreType, TradeOpportunity, TradingModel, find_matching_ohlcv,
+};
 
 use crate::ui::{
     BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,

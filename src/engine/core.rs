@@ -14,9 +14,9 @@ use crate::config::{
 #[cfg(not(target_arch = "wasm32"))]
 use {crate::config::PERSISTENCE, std::path::Path};
 
+use crate::data::{PriceStreamManager, TimeSeriesCollection};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::data::results_repo::{ResultsRepositoryTrait, SqliteResultsRepository, TradeResult};
-use crate::data::{price_stream::PriceStreamManager, timeseries::TimeSeriesCollection};
+use crate::data::{ResultsRepositoryTrait, SqliteResultsRepository, TradeResult};
 
 #[cfg(target_arch = "wasm32")]
 use crate::engine::process_request_sync;

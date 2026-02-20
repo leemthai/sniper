@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap};
 use strum::IntoEnumIterator;
 
-use crate::analysis::market_state::MarketState;
-
 use crate::app::{
     App,
     root::{AutoScaleY, Selection, SortDirection},
@@ -27,7 +25,9 @@ use crate::domain::PairInterval;
 
 use crate::engine::JobMode;
 
-use crate::models::{DEFAULT_JOURNEY_SETTINGS, ScoreType, TradeDirection, TradeOpportunity};
+use crate::models::{
+    DEFAULT_JOURNEY_SETTINGS, MarketState, ScoreType, TradeDirection, TradeOpportunity,
+};
 
 use crate::ui::{
     CandleRangePanel, DirectionColor, PlotInteraction, TunerAction, UI_CONFIG, UI_TEXT, UiStyleExt,

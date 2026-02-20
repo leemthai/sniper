@@ -1,11 +1,10 @@
+// Native-only code i.e. gated in mod.rs by #[cfg(not(target_arch = "wasm32"))] so no need to gate internally here
+
 use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::domain::Candle;
-// use ;
 
-// WASM imports
-#[cfg(not(target_arch = "wasm32"))]
 use {
     crate::config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, PriceLike, QuoteVol},
     sqlx::ConnectOptions,
@@ -16,8 +15,6 @@ use {
     std::str::FromStr,
     std::time::Duration,
 };
-
-// THE INTERFACE
 
 /// The contract that any storage engine (SQLite or Memory) must obey.
 #[async_trait]
@@ -40,14 +37,10 @@ pub trait MarketDataStorage: Send + Sync {
     ) -> Result<Vec<Candle>>;
 }
 
-// NATIVE IMPLEMENTATION (SQLite)
-
-#[cfg(not(target_arch = "wasm32"))]
 pub struct SqliteStorage {
     pool: Pool<Sqlite>,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl SqliteStorage {
     /// Connect to (or create) the database file
     pub async fn new(db_path: &str) -> Result<Self> {
@@ -68,14 +61,10 @@ impl SqliteStorage {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 impl MarketDataStorage for SqliteStorage {
     async fn initialize(&self) -> Result<()> {
-        // We don't need manual PRAGMA queries here anymore because
-        // SqliteConnectOptions in new() handles them for every connection.
-
-        // Create Table
+        // We don't need manual PRAGMA queries here anymore because SqliteConnectOptions in new() handles them for every connection.
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS klines (
@@ -195,51 +184,5 @@ impl MarketDataStorage for SqliteStorage {
             .collect();
 
         Ok(candles)
-    }
-}
-
-// WASM IMPLEMENTATION (In-Memory / Static)
-
-#[cfg(target_arch = "wasm32")]
-pub struct WasmStorage;
-
-#[cfg(target_arch = "wasm32")]
-impl WasmStorage {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[async_trait]
-impl MarketDataStorage for WasmStorage {
-    async fn initialize(&self) -> Result<()> {
-        // In the future, this is where we parse the binary blob
-        Ok(())
-    }
-
-    async fn get_last_candle_time(&self, _pair: &str, _interval: &str) -> Result<Option<i64>> {
-        // WASM is static, so we don't update.
-        Ok(None)
-    }
-
-    async fn insert_candles(
-        &self,
-        _pair: &str,
-        _interval: &str,
-        _candles: &[Candle],
-    ) -> Result<u64> {
-        // No-op for now
-        Ok(0)
-    }
-
-    async fn load_candles(
-        &self,
-        _pair: &str,
-        _interval: &str,
-        _start_time: Option<i64>,
-    ) -> Result<Vec<Candle>> {
-        // TODO: Hook this up to the existing static memory cache
-        Ok(Vec::new())
     }
 }

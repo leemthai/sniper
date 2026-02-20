@@ -1,10 +1,3 @@
-// Std library crates
-use std::collections::HashSet;
-use std::convert::TryFrom;
-use std::error::Error;
-use std::fmt;
-
-// External crates
 use anyhow::{Result, bail};
 use binance_sdk::config::ConfigurationRestApi;
 use binance_sdk::models::RestApiRateLimit;
@@ -13,6 +6,10 @@ use binance_sdk::spot::{
     rest_api::{KlinesIntervalEnum, KlinesItemInner, KlinesParams, RestApi},
 };
 use binance_sdk::{errors, errors::ConnectorError as connection_error};
+use std::collections::HashSet;
+use std::convert::TryFrom;
+use std::error::Error;
+use std::fmt;
 
 // Local crates
 #[cfg(debug_assertions)]
@@ -21,38 +18,9 @@ use crate::config::{
     BINANCE, BaseVol, BinanceApiConfig, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol,
 };
 
-use crate::data::rate_limiter::GlobalRateLimiter;
-use crate::domain::Candle;
-use crate::domain::PairInterval;
-use crate::utils::*;
-
-pub trait IntervalToMs {
-    fn to_ms(&self) -> i64;
-}
-
-// Implement it for the external type
-impl IntervalToMs for KlinesIntervalEnum {
-    fn to_ms(&self) -> i64 {
-        match self {
-            KlinesIntervalEnum::Interval1s => MS_IN_S,
-            KlinesIntervalEnum::Interval1m => MS_IN_MIN,
-            KlinesIntervalEnum::Interval3m => MS_IN_3_MIN,
-            KlinesIntervalEnum::Interval5m => MS_IN_5_MIN,
-            KlinesIntervalEnum::Interval15m => MS_IN_15_MIN,
-            KlinesIntervalEnum::Interval30m => MS_IN_30_MIN,
-            KlinesIntervalEnum::Interval1h => MS_IN_H,
-            KlinesIntervalEnum::Interval2h => MS_IN_2_H,
-            KlinesIntervalEnum::Interval4h => MS_IN_4_H,
-            KlinesIntervalEnum::Interval6h => MS_IN_6_H,
-            KlinesIntervalEnum::Interval8h => MS_IN_8_H,
-            KlinesIntervalEnum::Interval12h => MS_IN_12_H,
-            KlinesIntervalEnum::Interval1d => MS_IN_D,
-            KlinesIntervalEnum::Interval3d => MS_IN_3_D,
-            KlinesIntervalEnum::Interval1w => MS_IN_W,
-            KlinesIntervalEnum::Interval1M => MS_IN_1_M,
-        }
-    }
-}
+use crate::data::GlobalRateLimiter;
+use crate::domain::{Candle, PairInterval};
+use crate::utils::*; // TEMP get rid of this soon once we have enum time intervals
 
 // For "MS -> Enum", a static helper is still best,
 //    but we return Result instead of panicking.
@@ -80,26 +48,12 @@ pub fn try_interval_from_ms(ms: i64) -> Result<KlinesIntervalEnum, String> {
 
 #[derive(Debug)]
 pub struct AllValidKlines4Pair {
-    // A pair name (e.g. "SOLUSDT"), plus the interval scanned, plus a BNKline list (in any order)
     pub klines: Vec<BNKline>,
-    pub pair_interval: PairInterval,
 }
 
 impl AllValidKlines4Pair {
-    // Associated functions.
-    pub fn new(klines: Vec<BNKline>, pair_interval: PairInterval) -> Self {
-        AllValidKlines4Pair {
-            pair_interval,
-            klines,
-        }
-    }
-
-    pub fn first_timestamp_ms(&self) -> i64 {
-        self.klines[0].open_timestamp_ms
-    }
-
-    pub fn last_timestamp_ms(&self) -> i64 {
-        self.klines[self.klines.len() - 1].open_timestamp_ms
+    pub fn new(klines: Vec<BNKline>) -> Self {
+        AllValidKlines4Pair { klines }
     }
 }
 
@@ -134,9 +88,9 @@ impl fmt::Display for BNKlineError {
     }
 }
 
-/*
-The function's purpose is to safely and cleanly extract a floating-point number from a potentially heterogeneous enum type. It returns a Some(f64) only if the input was the String variant of the enum and that string could be successfully parsed. In all other cases—the input was a different enum variant or the string was invalid—it returns None.
-*/
+// Safely and cleanly extract a floating-point number from a potentially heterogeneous enum type.
+// It returns a Some(f64) only if the input was the String variant of the enum and that string could be successfully parsed.
+// In all other cases—the input was a different enum variant or the string was invalid—it returns None.
 fn convert_kline_item_inner_enum_string_to_float(kline: Option<KlinesItemInner>) -> Option<f64> {
     kline.and_then(|inner| {
         if let KlinesItemInner::String(s) = inner {
@@ -162,9 +116,6 @@ impl TryFrom<Vec<KlinesItemInner>> for BNKline {
             _ => return Err(BNKlineError::InvalidType("open_time".to_string())),
         };
 
-        // This kind is deffo kinda shitty re: potential errors
-        // e.g what happens if convert_klines_inner_to_float goes wrong ???
-        // We should just fill a "None" in somehow. Deffo doesn't do that yet.
         let open_price = convert_kline_item_inner_enum_string_to_float(items.next());
         let high_price = convert_kline_item_inner_enum_string_to_float(items.next());
         let low_price = convert_kline_item_inner_enum_string_to_float(items.next());
@@ -173,7 +124,6 @@ impl TryFrom<Vec<KlinesItemInner>> for BNKline {
         let _ = items.next(); // TEMP this used to be close_time as we don't use it so skip
         let quote_asset_volume = convert_kline_item_inner_enum_string_to_float(items.next());
 
-        // Return the constructed struct on success.
         Ok(BNKline {
             open_timestamp_ms,
             open_price: open_price.map(OpenPrice::new),
@@ -409,7 +359,7 @@ pub async fn load_klines(
             pair_interval
         );
     } else {
-        let pair_kline = AllValidKlines4Pair::new(all_klines, pair_interval);
+        let pair_kline = AllValidKlines4Pair::new(all_klines);
         Ok(pair_kline)
     }
 }

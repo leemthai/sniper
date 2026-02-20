@@ -7,14 +7,13 @@ use chrono::Duration as ChronoDuration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::analysis::market_state::MarketState;
-use crate::analysis::scenario_simulator::EmpiricalOutcomeStats;
-
 use crate::config::{
     AroiPct, DurationMs, JourneySettings, OptimalSearchSettings, OptimizationStrategy, Pct, PhPct,
     Price, RoiPct, Sigma, StationId, StopPrice, TargetPrice, TradeProfile,
     ZoneClassificationConfig, ZoneParams,
 };
+
+use crate::models::{EmpiricalOutcomeStats, MarketState};
 
 use crate::ui::UI_TEXT;
 

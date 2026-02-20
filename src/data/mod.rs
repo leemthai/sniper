@@ -1,20 +1,30 @@
-pub mod pre_main_async;
-pub use pre_main_async::fetch_pair_data;
+mod pre_main_async;
+mod price_stream;
+#[cfg(not(target_arch = "wasm32"))]
+mod provider;
+#[cfg(not(target_arch = "wasm32"))]
+mod storage;
 
-pub mod price_stream;
-pub use price_stream::PriceStreamManager;
-
-pub mod timeseries;
-pub use timeseries::TimeSeriesCollection;
-
-pub mod storage;
-
-pub mod provider;
+mod timeseries;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub mod results_repo;
-
-pub mod ledger_io;
+mod results_repo;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub mod rate_limiter;
+mod ledger_io;
+
+pub use pre_main_async::fetch_pair_data; // Must be pub not pub(crate)
+pub use price_stream::PriceStreamManager; // Must be pub not pub(crate)
+#[cfg(not(target_arch = "wasm32"))]
+pub use storage::{MarketDataStorage, SqliteStorage};
+#[cfg(target_arch = "wasm32")]
+pub use timeseries::WasmDemoData;
+pub use timeseries::{CacheFile, TimeSeriesCollection};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use {
+    ledger_io::{load_ledger, save_ledger},
+    provider::{BinanceProvider, MarketDataProvider},
+    results_repo::{ResultsRepositoryTrait, SqliteResultsRepository, TradeResult},
+    timeseries::{GlobalRateLimiter, load_klines},
+};

@@ -2,33 +2,26 @@ use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
-
+use uuid::Uuid;
 #[cfg(not(target_arch = "wasm32"))]
 use {std::sync::mpsc::Receiver, std::thread};
-
-use uuid::Uuid;
-
-use crate::analysis::{
-    adaptive::AdaptiveParameters,
-    market_state::MarketState,
-    pair_analysis::pair_analysis_pure,
-    scenario_simulator::{DEFAULT_SIMILARITY, EmpiricalOutcomeStats, ScenarioSimulator},
-};
 
 use crate::config::{
     BASE_INTERVAL, DF, DurationMs, HighPrice, LowPrice, OptimizationStrategy, Pct, PhPct, Price,
     PriceLike, StationId, StopPrice, TUNER_SCAN_STEPS, TargetPrice, TradeProfile, TunerStation,
 };
 
-use crate::data::timeseries::TimeSeriesCollection;
+use crate::data::TimeSeriesCollection;
 
 use crate::domain::{auto_select_ranges, calculate_price_range};
 
 use crate::engine::{JobMode, JobRequest, JobResult};
 
 use crate::models::{
-    CVACore, DEFAULT_JOURNEY_SETTINGS, OhlcvTimeSeries, TradeDirection, TradeOpportunity,
-    TradeVariant, TradingModel, VisualFluff, find_matching_ohlcv,
+    AdaptiveParameters, CVACore, DEFAULT_JOURNEY_SETTINGS, DEFAULT_SIMILARITY,
+    EmpiricalOutcomeStats, MarketState, OhlcvTimeSeries, ScenarioSimulator, TradeDirection,
+    TradeOpportunity, TradeVariant, TradingModel, VisualFluff, find_matching_ohlcv,
+    pair_analysis_pure,
 };
 
 use crate::utils::{AppInstant, duration_to_candles, now_utc};

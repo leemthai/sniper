@@ -13,7 +13,7 @@ use eframe::{
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-use {crate::data::ledger_io, std::thread, tokio::runtime::Runtime};
+use {crate::data::save_ledger, std::thread, tokio::runtime::Runtime};
 
 use crate::Cli;
 
@@ -21,18 +21,16 @@ use crate::app::{
     phases::phase_view::PhaseView,
     state::{AppState, BootstrapState, RunningState, TuningState},
 };
-use crate::models::SyncStatus;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::config::Pct;
 use crate::config::{CandleResolution, DF, PhPct};
 
-use crate::data::fetch_pair_data;
-use crate::data::timeseries::TimeSeriesCollection;
+use crate::data::{TimeSeriesCollection, fetch_pair_data};
 
 use crate::engine::SniperEngine;
 
-use crate::models::{ProgressEvent, TradeOpportunity, restore_engine_ledger};
+use crate::models::{TradeOpportunity, restore_engine_ledger};
 
 use crate::shared::SharedConfiguration;
 
@@ -42,6 +40,21 @@ use crate::ui::{
 };
 
 use crate::utils::AppInstant;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SyncStatus {
+    Pending,
+    Syncing,
+    Completed(usize), // number of new candles
+    Failed(String),   // Error message
+}
+
+#[derive(Debug, Clone)]
+pub struct ProgressEvent {
+    pub index: usize,
+    pub pair: String,
+    pub status: SyncStatus,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub(crate) enum SortDirection {
@@ -873,7 +886,7 @@ impl eframe::App for App {
         // Snapshot the Engine Ledger
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(e) = &self.engine {
-            if let Err(err) = ledger_io::save_ledger(&e.engine_ledger) {
+            if let Err(err) = save_ledger(&e.engine_ledger) {
                 log::error!("Failed to save ledger: {}", err);
             }
         }

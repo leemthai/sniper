@@ -1,4 +1,5 @@
-#[cfg(not(target_arch = "wasm32"))]
+// Native-only code i.e. gated in mod.rs by #[cfg(not(target_arch = "wasm32"))] so no need to gate internally here
+
 use {
     crate::config::PERSISTENCE,
     crate::models::OpportunityLedger,
@@ -7,7 +8,6 @@ use {
     std::io::{BufReader, BufWriter},
 };
 
-#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn save_ledger(ledger: &OpportunityLedger) -> Result<()> {
     let path = PERSISTENCE.app.ledger_path;
     let file = File::create(path)?;
@@ -16,7 +16,6 @@ pub(crate) fn save_ledger(ledger: &OpportunityLedger) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn load_ledger() -> Result<OpportunityLedger> {
     let path = PERSISTENCE.app.ledger_path;
     if !std::path::Path::new(path).exists() {

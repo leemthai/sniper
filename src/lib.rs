@@ -5,7 +5,6 @@
 #![allow(clippy::too_many_arguments)]
 
 // Core modules
-pub mod analysis;
 pub mod app;
 pub mod config;
 pub mod data;
@@ -21,7 +20,7 @@ pub mod utils;
 // Re-export commonly used types outside of crate (for make_demo_cache.rs)
 pub use crate::models::OhlcvTimeSeries;
 pub use app::App;
-pub use data::{TimeSeriesCollection, fetch_pair_data, price_stream::PriceStreamManager};
+pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
 pub use domain::PairInterval;
 
 // CLI argument parsing

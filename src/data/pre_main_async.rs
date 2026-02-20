@@ -2,20 +2,21 @@
 use std::sync::mpsc::Sender;
 
 use crate::Cli;
-use crate::data::timeseries::TimeSeriesCollection;
-use crate::models::ProgressEvent;
+use crate::app::ProgressEvent;
+use crate::data::TimeSeriesCollection;
 
 #[cfg(target_arch = "wasm32")]
-use {crate::config::DEMO, crate::data::timeseries::wasm_demo::WasmDemoData};
+use {crate::config::DEMO, crate::data::WasmDemoData};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
+    crate::app::SyncStatus,
     crate::config::{BASE_INTERVAL, BINANCE},
-    crate::data::provider::{BinanceProvider, MarketDataProvider},
-    crate::data::rate_limiter::GlobalRateLimiter,
-    crate::data::storage::{MarketDataStorage, SqliteStorage},
+    crate::data::{
+        BinanceProvider, GlobalRateLimiter, MarketDataProvider, MarketDataStorage, SqliteStorage,
+    },
     crate::domain::PairInterval,
-    crate::models::{OhlcvTimeSeries, SyncStatus},
+    crate::models::OhlcvTimeSeries,
     crate::utils::interval_to_string,
     anyhow::Result,
     futures::stream::{self, StreamExt},

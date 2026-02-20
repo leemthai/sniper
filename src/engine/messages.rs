@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::config::{OptimizationStrategy, PhPct, Price, StationId};
 
-use crate::data::timeseries::TimeSeriesCollection;
+use crate::data::TimeSeriesCollection;
 
 use crate::models::TradingModel;
 
