@@ -1,15 +1,14 @@
-use eframe::egui::{
-    Align, CentralPanel, Context, Grid, Layout, ProgressBar, RichText, ScrollArea, Ui,
+use {
+    crate::{
+        app::{BootstrapState, SyncStatus},
+        config::{BASE_INTERVAL, PLOT_CONFIG},
+        ui::UI_TEXT,
+        utils::interval_to_string,
+    },
+    eframe::egui::{
+        Align, CentralPanel, Context, Grid, Layout, ProgressBar, RichText, ScrollArea, Ui,
+    },
 };
-
-use crate::app::{BootstrapState, SyncStatus};
-
-use crate::config::BASE_INTERVAL;
-use crate::config::plot::PLOT_CONFIG;
-
-use crate::ui::UI_TEXT;
-
-use crate::utils::interval_to_string;
 
 pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
     CentralPanel::default().show(ctx, |ui| {

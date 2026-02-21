@@ -1,12 +1,12 @@
-use eframe::egui::{
-    Align, Align2, Area, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Order, Response,
-    RichText, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo, WidgetType,
+use {
+    crate::{config::PLOT_CONFIG, models::TradeDirection, ui::UI_CONFIG},
+    eframe::egui::{
+        Align, Align2, Area, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Order,
+        Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo, WidgetType,
+    },
 };
 
-use crate::config::plot::PLOT_CONFIG;
-use crate::models::TradeDirection;
-use crate::ui::ui_config::UI_CONFIG;
-use crate::ui::ui_text::UI_TEXT;
+use crate::ui::UI_TEXT;
 
 /// Creates a colored sub-section headingusing the configured label color
 pub(crate) fn colored_subsection_heading(text: impl Into<String>) -> RichText {

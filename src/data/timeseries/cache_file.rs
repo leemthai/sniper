@@ -1,13 +1,17 @@
-use std::fs::File;
-use std::io::{BufReader, BufWriter};
-use std::path::{Path, PathBuf};
-
-use anyhow::{Context, Result};
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
-
-use crate::config::{PERSISTENCE, kline_cache_filename};
-use crate::data::TimeSeriesCollection;
+use {
+    crate::{
+        config::{PERSISTENCE, kline_cache_filename},
+        data::TimeSeriesCollection,
+    },
+    anyhow::{Context, Result},
+    chrono::Utc,
+    serde::{Deserialize, Serialize},
+    std::{
+        fs::File,
+        io::{BufReader, BufWriter},
+        path::{Path, PathBuf},
+    },
+};
 
 /// Serialized cache wrapper used for both native and WASM demo builds.
 #[derive(Serialize, Deserialize, Debug, Clone)]

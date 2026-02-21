@@ -1,6 +1,7 @@
-use eframe::egui::{Align, Button, Layout, Ui, vec2};
-
-use crate::config::{StationId, TimeTunerConfig};
+use {
+    crate::config::{StationId, TimeTunerConfig},
+    eframe::egui::{Align, Button, Layout, Ui, vec2},
+};
 
 #[derive(Debug)]
 pub(crate) enum TunerAction {

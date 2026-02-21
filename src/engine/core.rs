@@ -1,45 +1,46 @@
-use std::collections::{HashMap, VecDeque};
-use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, RwLock};
+use {
+    crate::{
+        config::{
+            BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, StationId,
+            TUNER_CONFIG, TunerStation,
+        },
+        data::{PriceStreamManager, TimeSeriesCollection},
+        engine::{JobMode, JobRequest, JobResult, tune_to_station},
+        models::{
+            DEFAULT_JOURNEY_SETTINGS, LiveCandle, OpportunityLedger, PRICE_RECALC_THRESHOLD_PCT,
+            TradeOpportunity, TradingModel, find_matching_ohlcv,
+        },
+        shared::SharedConfiguration,
+        ui::TradeFinderRow,
+        utils::{AppInstant, now_timestamp_ms},
+    },
+    std::{
+        collections::{HashMap, VecDeque},
+        sync::{
+            Arc, RwLock,
+            mpsc::{Receiver, Sender, channel},
+        },
+    },
+};
+
+#[cfg(target_arch = "wasm32")]
+use crate::engine::process_request_sync;
+
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    crate::config::PERSISTENCE,
+    crate::data::{ResultsRepositoryTrait, SqliteResultsRepository, TradeResult},
+    crate::engine::spawn_worker_thread,
+    crate::models::{TradeDirection, TradeOutcome},
+    crate::utils::now_utc,
+    std::path::Path,
+};
 
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use chrono::{TimeZone, Utc};
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
-use crate::config::{
-    BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, QuoteVol, StationId,
-    TUNER_CONFIG, TunerStation,
-};
-#[cfg(not(target_arch = "wasm32"))]
-use {crate::config::PERSISTENCE, std::path::Path};
-
-use crate::data::{PriceStreamManager, TimeSeriesCollection};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::data::{ResultsRepositoryTrait, SqliteResultsRepository, TradeResult};
-
-#[cfg(target_arch = "wasm32")]
-use crate::engine::process_request_sync;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::engine::spawn_worker_thread;
-use crate::engine::{
-    tune_to_station, {JobMode, JobRequest, JobResult},
-};
-
-use crate::models::{
-    DEFAULT_JOURNEY_SETTINGS, LiveCandle, OpportunityLedger, PRICE_RECALC_THRESHOLD_PCT,
-    TradeOpportunity, TradingModel, find_matching_ohlcv,
-};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::models::{TradeDirection, TradeOutcome};
-
-use crate::shared::SharedConfiguration;
-
-#[cfg(not(target_arch = "wasm32"))]
-use crate::utils::now_utc;
-use crate::utils::{AppInstant, now_timestamp_ms};
-
-use crate::ui::TradeFinderRow;
 
 /// Identifiers of opportunities that were removed from the engine ledger
 /// during an update cycle (pruning, collision resolution, etc).

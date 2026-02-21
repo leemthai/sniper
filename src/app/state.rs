@@ -1,16 +1,16 @@
-use eframe::egui::Context;
-use serde::{Deserialize, Serialize};
-use std::fmt;
-
-use crate::app::App;
-use crate::models::TradeOpportunity;
+use {
+    crate::{app::App, models::TradeOpportunity},
+    eframe::egui::Context,
+    serde::{Deserialize, Serialize},
+    std::fmt,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncStatus {
     Pending,
     Syncing,
     Completed(usize), // number of new candles
-    Failed(String),   // Error message
+    Failed(String),   // Error
 }
 
 #[derive(Debug, Clone)]

@@ -1,44 +1,41 @@
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, mpsc, mpsc::Receiver},
-};
-
-use eframe::{
-    Frame, Storage,
-    egui::{
-        CentralPanel, Context, FontData, FontDefinitions, FontFamily, Key, ProgressBar, Visuals,
+use {
+    eframe::{
+        Frame, Storage,
+        egui::{
+            CentralPanel, Context, FontData, FontDefinitions, FontFamily, Key, ProgressBar, Visuals,
+        },
+    },
+    serde::{Deserialize, Serialize},
+    std::{
+        collections::{HashMap, HashSet},
+        sync::{Arc, mpsc, mpsc::Receiver},
     },
 };
 
-#[cfg(not(target_arch = "wasm32"))]
-use {crate::data::save_ledger, std::thread, tokio::runtime::Runtime};
-
-use crate::Cli;
-
-use crate::app::{
-    AppState, AutoScaleY, BootstrapState, PersistedSelection, PhaseView, ProgressEvent,
-    RunningState, Selection, SortDirection, SyncStatus, TuningState,
+use crate::{
+    Cli,
+    app::{
+        AppState, AutoScaleY, BootstrapState, PersistedSelection, PhaseView, ProgressEvent,
+        RunningState, Selection, SortDirection, SyncStatus, TuningState,
+    },
+    config::{CandleResolution, DF, PhPct},
+    data::{TimeSeriesCollection, fetch_pair_data},
+    engine::SniperEngine,
+    models::{TradeOpportunity, restore_engine_ledger},
+    shared::SharedConfiguration,
+    ui::{
+        NavigationState, NavigationTarget, PlotView, PlotVisibility, ScrollBehavior, SortColumn,
+        TickerState, UI_CONFIG, render_bootstrap,
+    },
+    utils::AppInstant,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::config::Pct;
-use crate::config::{CandleResolution, DF, PhPct};
-
-use crate::data::{TimeSeriesCollection, fetch_pair_data};
-
-use crate::engine::SniperEngine;
-
-use crate::models::{TradeOpportunity, restore_engine_ledger};
-
-use crate::shared::SharedConfiguration;
-
-use crate::ui::{
-    NavigationState, NavigationTarget, PlotView, PlotVisibility, ScrollBehavior, SortColumn,
-    TickerState, UI_CONFIG, render_bootstrap,
+use {
+    crate::{config::Pct, data::save_ledger},
+    std::thread,
+    tokio::runtime::Runtime,
 };
-
-use crate::utils::AppInstant;
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]

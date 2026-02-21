@@ -1,13 +1,12 @@
-use eframe::egui::{Button, Grid, RichText, ScrollArea, Ui};
-
-use crate::models::{DisplaySegment, GapReason};
-
-use crate::config::plot::PLOT_CONFIG;
-
-use crate::ui::UI_TEXT;
-use crate::ui::UiStyleExt;
-
-use crate::utils::epoch_ms_to_date_string;
+use {
+    crate::{
+        config::PLOT_CONFIG,
+        models::{DisplaySegment, GapReason},
+        ui::{UI_TEXT, UiStyleExt},
+        utils::epoch_ms_to_date_string,
+    },
+    eframe::egui::{Button, Grid, RichText, ScrollArea, Ui},
+};
 
 pub struct CandleRangePanel<'a> {
     segments: &'a [DisplaySegment],

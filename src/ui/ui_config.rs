@@ -16,7 +16,6 @@ pub struct UiColors {
 #[derive(Default, Clone, Copy)]
 pub struct UiConfig {
     pub colors: UiColors,
-    // pub max_journey_zone_lines: usize,
 }
 
 /// Global UI configuration instance

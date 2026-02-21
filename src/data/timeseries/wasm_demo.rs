@@ -1,10 +1,13 @@
-use crate::config::DEMO;
-use anyhow::{Context, Result};
+use {
+    crate::{
+        config::DEMO,
+        data::{CacheFile, TimeSeriesCollection},
+    },
+    anyhow::{Context, Result},
+};
 
 #[cfg(all(debug_assertions, target_arch = "wasm32"))]
 use crate::config::DF;
-
-use crate::data::{CacheFile, TimeSeriesCollection};
 
 // Embed the demo data binary
 const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(

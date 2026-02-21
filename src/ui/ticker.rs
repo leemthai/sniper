@@ -1,13 +1,12 @@
-// use std::collections::HashMap;
-use eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2};
-
-use crate::config::{BASE_INTERVAL, Price, PriceLike, TICKER};
-
-use crate::engine::SniperEngine;
-
-use crate::models::find_matching_ohlcv;
-
-use crate::utils::{AppInstant, now_timestamp_ms};
+use {
+    crate::{
+        config::{BASE_INTERVAL, Price, PriceLike, TICKER},
+        engine::SniperEngine,
+        models::find_matching_ohlcv,
+        utils::{AppInstant, now_timestamp_ms},
+    },
+    eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2},
+};
 
 pub(crate) struct TickerItem {
     pub symbol: String,

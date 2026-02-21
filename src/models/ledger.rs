@@ -1,16 +1,20 @@
-use serde::{Deserialize, Serialize};
-
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use {
+    crate::{
+        config::{DF, Pct, PriceLike},
+        models::TradeOpportunity,
+    },
+    serde::{Deserialize, Serialize},
+    std::{
+        cmp::Ordering,
+        collections::{HashMap, HashSet},
+    },
+};
 
 #[cfg(debug_assertions)]
 use crate::config::OptimizationStrategy;
-use crate::config::{DF, Pct, PriceLike};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::load_ledger;
-
-use crate::models::TradeOpportunity;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct OpportunityLedger {

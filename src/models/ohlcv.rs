@@ -1,14 +1,15 @@
-use anyhow::{Result, anyhow};
-use serde::{Deserialize, Serialize};
-
-use crate::config::{
-    BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike, QuoteVol, VolRatio,
-    VolatilityPct,
+use {
+    crate::{
+        config::{
+            BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike, QuoteVol,
+            VolRatio, VolatilityPct,
+        },
+        domain::{Candle, PairInterval},
+        models::{CVACore, ScoreType},
+    },
+    anyhow::{Result, anyhow},
+    serde::{Deserialize, Serialize},
 };
-
-use crate::domain::{Candle, PairInterval};
-
-use crate::models::{CVACore, ScoreType};
 
 const RVOL_WINDOW: usize = 20;
 

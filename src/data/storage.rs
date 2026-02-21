@@ -1,19 +1,15 @@
-// Native-only code i.e. gated in mod.rs by #[cfg(not(target_arch = "wasm32"))] so no need to gate internally here
-
-use anyhow::Result;
-use async_trait::async_trait;
-
-use crate::domain::Candle;
-
 use {
-    crate::config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, PriceLike, QuoteVol},
-    sqlx::ConnectOptions,
+    crate::{
+        config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, PriceLike, QuoteVol},
+        domain::Candle,
+    },
+    anyhow::Result,
+    async_trait::async_trait,
     sqlx::{
-        Pool, QueryBuilder, Row, Sqlite,
+        ConnectOptions, Pool, QueryBuilder, Row, Sqlite,
         sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
     },
-    std::str::FromStr,
-    std::time::Duration,
+    std::{str::FromStr, time::Duration},
 };
 
 /// The contract that any storage engine (SQLite or Memory) must obey.

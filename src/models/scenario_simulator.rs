@@ -1,13 +1,14 @@
-use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-
-use crate::config::{
-    DF, Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice, Weight,
+use {
+    crate::{
+        config::{
+            DF, Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice, Weight,
+        },
+        models::{MarketState, OhlcvTimeSeries, TradeDirection},
+        utils::AppInstant,
+    },
+    serde::{Deserialize, Serialize},
+    std::cmp::Ordering,
 };
-
-use crate::models::{MarketState, OhlcvTimeSeries, TradeDirection};
-
-use crate::utils::AppInstant;
 
 const WEIGHT_VOLATILITY: Weight = Weight::new(10.0);
 const WEIGHT_MOMENTUM: Weight = Weight::new(5.0);

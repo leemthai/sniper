@@ -1,7 +1,8 @@
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
-
-use crate::models::OhlcvTimeSeries;
+use {
+    crate::models::OhlcvTimeSeries,
+    serde::{Deserialize, Serialize},
+    std::collections::BTreeSet,
+};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct TimeSeriesCollection {

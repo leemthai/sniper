@@ -1,22 +1,22 @@
-use serde::{Deserialize, Serialize};
 use {
+    crate::{
+        config::{
+            OptimizationStrategy, PhPct, Price, PriceLike, StationId, StopPrice, TargetPrice,
+        },
+        models::{MarketState, TradeDirection, TradeOutcome},
+    },
     anyhow::{Result, anyhow},
     async_trait::async_trait,
+    serde::{Deserialize, Serialize},
     sqlx::sqlite::{
         SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
     },
-    std::str::FromStr,
-    std::time::Duration,
+    std::{str::FromStr, time::Duration},
     tokio::sync::mpsc,
 };
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
-use crate::config::{
-    OptimizationStrategy, PhPct, Price, PriceLike, StationId, StopPrice, TargetPrice,
-};
-
-use crate::models::{MarketState, TradeDirection, TradeOutcome};
 
 /// A finalized trade record ready for persistent storage
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,11 +1,11 @@
-// Native-only code i.e. gated in mod.rs by #[cfg(not(target_arch = "wasm32"))] so no need to gate internally here
-
-use anyhow::Result;
-use async_trait::async_trait;
-
-use crate::data::{GlobalRateLimiter, load_klines};
-
-use crate::domain::{Candle, PairInterval};
+use {
+    crate::{
+        data::{GlobalRateLimiter, load_klines},
+        domain::{Candle, PairInterval},
+    },
+    anyhow::Result,
+    async_trait::async_trait,
+};
 
 /// Abstract interface for fetching market data.
 #[async_trait]

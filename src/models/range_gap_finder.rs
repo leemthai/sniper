@@ -1,8 +1,8 @@
-use crate::config::{HighPrice, LowPrice, Price};
-
-use crate::models::OhlcvTimeSeries;
-
-use crate::utils::format_duration;
+use crate::{
+    config::{HighPrice, LowPrice, Price},
+    models::OhlcvTimeSeries,
+    utils::format_duration,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GapReason {

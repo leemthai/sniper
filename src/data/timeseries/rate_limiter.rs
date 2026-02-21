@@ -1,6 +1,10 @@
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
+use {
+    std::{
+        sync::Arc,
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    },
+    tokio::sync::Mutex,
+};
 
 #[derive(Clone)]
 pub struct GlobalRateLimiter {

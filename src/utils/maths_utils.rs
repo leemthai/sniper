@@ -1,6 +1,7 @@
-use argminmax::ArgMinMax;
-use std::f64;
-use std::time::Duration;
+use {
+    argminmax::ArgMinMax,
+    std::{f64, time::Duration},
+};
 
 /// Converts a Duration into a specific number of candles based on the interval.
 pub(crate) fn duration_to_candles(duration: Duration, interval_ms: i64) -> usize {

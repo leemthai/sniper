@@ -1,19 +1,13 @@
 use crate::config::{Pct, Price};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::models::LiveCandle;
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::mpsc::Sender;
-// Add these inside a cfg block for Native support
-#[cfg(not(target_arch = "wasm32"))]
-use std::thread;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::runtime::Runtime;
-
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Duration;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::time::sleep;
+use {
+    crate::models::LiveCandle,
+    std::sync::mpsc::Sender,
+    std::thread,
+    std::time::Duration,
+    tokio::{runtime::Runtime, time::sleep},
+};
 
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]

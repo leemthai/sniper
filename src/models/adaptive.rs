@@ -1,8 +1,10 @@
-use std::time::Duration;
-
-use crate::config::{DurationMs, JourneySettings, PhPct, VolatilityPct};
-
-use crate::utils::remap;
+use {
+    crate::{
+        config::{DurationMs, JourneySettings, PhPct, VolatilityPct},
+        utils::remap,
+    },
+    std::time::Duration,
+};
 
 pub struct AdaptiveParameters;
 

@@ -1,12 +1,12 @@
-use anyhow::{Context, Result, bail};
-
-use crate::config::{BASE_INTERVAL, PhPct, Price, TIME_DECAY_FACTOR, ZONE_COUNT};
-
-use crate::data::TimeSeriesCollection;
-
-use crate::domain::auto_select_ranges;
-
-use crate::models::{CVACore, MIN_CANDLES_FOR_ANALYSIS, TimeSeriesSlice, find_matching_ohlcv};
+use {
+    crate::{
+        config::{BASE_INTERVAL, PhPct, Price, TIME_DECAY_FACTOR, ZONE_COUNT},
+        data::TimeSeriesCollection,
+        domain::auto_select_ranges,
+        models::{CVACore, MIN_CANDLES_FOR_ANALYSIS, TimeSeriesSlice, find_matching_ohlcv},
+    },
+    anyhow::{Context, Result, bail},
+};
 
 // --- NEW PURE FUNCTION FOR THE ENGINE ---
 /// Calculates CVA for a pair given a specific price and configuration.

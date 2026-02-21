@@ -1,37 +1,34 @@
-use chrono::Duration;
-use eframe::egui::{
-    Align, CentralPanel, Color32, ComboBox, Context, FontId, Frame, Grid, Layout, Order, RichText,
-    Sense, SidePanel, TopBottomPanel, Ui, Window,
-};
-use egui_extras::{Column, TableBuilder, TableRow};
-use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::HashMap};
-use strum::IntoEnumIterator;
-
-use crate::app::{App, AutoScaleY, Selection, SortDirection};
-
-use crate::config::{
-    CandleResolution, MomentumPct, OptimizationStrategy, Pct, Price, PriceLike, QuoteVol, TICKER,
-    TUNER_CONFIG, VolatilityPct, plot::PLOT_CONFIG,
+use {
+    crate::{
+        app::{App, AutoScaleY, Selection, SortDirection},
+        config::{
+            CandleResolution, MomentumPct, OptimizationStrategy, PLOT_CONFIG, Pct, Price,
+            PriceLike, QuoteVol, TICKER, TUNER_CONFIG, VolatilityPct,
+        },
+        domain::PairInterval,
+        engine::JobMode,
+        models::{
+            DEFAULT_JOURNEY_SETTINGS, MarketState, ScoreType, TradeDirection, TradeOpportunity,
+        },
+        ui::{
+            CandleRangePanel, DirectionColor, PlotInteraction, TunerAction, UI_CONFIG, UI_TEXT,
+            UiStyleExt, get_momentum_color, get_outcome_color, render_time_tuner,
+        },
+        utils::{format_duration, now_utc},
+    },
+    chrono::Duration,
+    eframe::egui::{
+        Align, CentralPanel, Color32, ComboBox, Context, FontId, Frame, Grid, Layout, Order,
+        RichText, Sense, SidePanel, TopBottomPanel, Ui, Window,
+    },
+    egui_extras::{Column, TableBuilder, TableRow},
+    serde::{Deserialize, Serialize},
+    std::{cmp::Ordering, collections::HashMap},
+    strum::IntoEnumIterator,
 };
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
-
-use crate::domain::PairInterval;
-
-use crate::engine::JobMode;
-
-use crate::models::{
-    DEFAULT_JOURNEY_SETTINGS, MarketState, ScoreType, TradeDirection, TradeOpportunity,
-};
-
-use crate::ui::{
-    CandleRangePanel, DirectionColor, PlotInteraction, TunerAction, UI_CONFIG, UI_TEXT, UiStyleExt,
-    get_momentum_color, get_outcome_color, render_time_tuner,
-};
-
-use crate::utils::{format_duration, now_utc};
 
 const CELL_PADDING_Y: f32 = 4.0;
 

@@ -1,19 +1,16 @@
-use std::collections::HashMap;
-use strum::IntoEnumIterator;
-
-use crate::analysis::pair_analysis;
-
-use crate::config::{BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, StationId};
-
-use crate::data::timeseries::TimeSeriesCollection;
-
-use crate::engine::run_pathfinder_simulations;
-
-use crate::models::find_matching_ohlcv;
-
-use crate::utils::time_utils::AppInstant;
-
-use crate::ph_audit::{AUDIT_PAIRS, AuditReporter, PH_LEVELS};
+use {
+    crate::{
+        analysis::pair_analysis,
+        config::{BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, StationId},
+        data::timeseries::TimeSeriesCollection,
+        engine::run_pathfinder_simulations,
+        models::find_matching_ohlcv,
+        ph_audit::{AUDIT_PAIRS, AuditReporter, PH_LEVELS},
+        utils::time_utils::AppInstant,
+    },
+    std::collections::HashMap,
+    strum::IntoEnumIterator,
+};
 
 #[cfg(feature = "ph_audit")]
 pub fn execute_audit(

@@ -1,27 +1,25 @@
-use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
-
-use colorgrad::Gradient;
-use eframe::egui::{Color32, PointerButton, Rect, Ui, Vec2b};
-use egui_plot::{
-    Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotPoint, PlotUi, VPlacement,
+use {
+    crate::{
+        config::{CandleResolution, PLOT_CONFIG, Price, PriceLike},
+        engine::SniperEngine,
+        models::{
+            CVACore, DisplaySegment, ScoreType, TradeOpportunity, TradingModel, find_matching_ohlcv,
+        },
+        ui::{
+            BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,
+            PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer,
+            UI_TEXT,
+        },
+        utils::{epoch_ms_to_date_string, normalize_max, smooth_data},
+    },
+    colorgrad::Gradient,
+    eframe::egui::{Color32, PointerButton, Rect, Ui, Vec2b},
+    egui_plot::{
+        Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotPoint, PlotUi, VPlacement,
+    },
+    serde::{Deserialize, Serialize},
+    std::hash::{Hash, Hasher},
 };
-
-use crate::config::plot::PLOT_CONFIG;
-use crate::config::{CandleResolution, Price, PriceLike};
-
-use crate::engine::SniperEngine;
-
-use crate::models::{
-    CVACore, DisplaySegment, ScoreType, TradeOpportunity, TradingModel, find_matching_ohlcv,
-};
-
-use crate::ui::{
-    BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,
-    PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer, UI_TEXT,
-};
-
-use crate::utils::{epoch_ms_to_date_string, normalize_max, smooth_data};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub(crate) struct PlotVisibility {
@@ -99,7 +97,7 @@ fn create_time_axis(
     resolution: CandleResolution,
 ) -> AxisHints<'static> {
     let segments = model.segments.clone();
-    let gap_width = PLOT_CONFIG.segment_gap_width;
+    let gap_width = PLOT_CONFIG.segment_gap_width_px;
 
     let agg_interval_ms = resolution.duration().as_millis() as i64;
 
@@ -332,7 +330,7 @@ impl PlotView {
         current_segment_idx: Option<usize>,
         resolution: CandleResolution,
     ) -> (f64, f64, f64) {
-        let gap_size = PLOT_CONFIG.segment_gap_width;
+        let gap_size = PLOT_CONFIG.segment_gap_width_px;
         let agg_interval_ms = resolution.duration().as_millis() as i64;
 
         // Helper: Calculate visual width using UTC Grid logic

@@ -1,8 +1,11 @@
-use serde::{Deserialize, Serialize};
-use std::fmt;
-
-use crate::config::{HighPrice, LowPrice, PhPct, Price, PriceRange, VolatilityPct};
-use crate::utils::MS_IN_D;
+use {
+    crate::{
+        config::{HighPrice, LowPrice, PhPct, Price, PriceRange, VolatilityPct},
+        utils::MS_IN_D,
+    },
+    serde::{Deserialize, Serialize},
+    std::fmt,
+};
 
 pub(crate) const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
 pub(crate) const MIN_CANDLES_FOR_ANALYSIS: usize = 250;

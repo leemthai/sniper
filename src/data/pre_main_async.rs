@@ -1,9 +1,7 @@
-// Shared imports
-use std::sync::mpsc::Sender;
-
-use crate::Cli;
-use crate::app::ProgressEvent;
-use crate::data::TimeSeriesCollection;
+use {
+    crate::{Cli, app::ProgressEvent, data::TimeSeriesCollection},
+    std::sync::mpsc::Sender,
+};
 
 #[cfg(target_arch = "wasm32")]
 use {crate::config::DEMO, crate::data::WasmDemoData};

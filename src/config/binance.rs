@@ -1,5 +1,4 @@
 //! Binance-specific configuration constants and types.
-
 /// Configuration for Binance REST API client
 pub struct BinanceApiConfig {
     pub timeout_ms: u64,
@@ -78,5 +77,8 @@ pub const BINANCE: BinanceConfig = BinanceConfig {
     },
     max_pairs: 20, // 100,
     pairs_filename: "pairs.txt",
-    quote_assets: &["USDT", "USDC", "FDUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "JPY", "BRL", "USD", "USD1", "COP", "BRL", "ARS", "MXN"],
+    quote_assets: &[
+        "USDT", "USDC", "FDUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "JPY", "BRL", "USD", "USD1",
+        "COP", "BRL", "ARS", "MXN",
+    ],
 };

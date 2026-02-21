@@ -1,8 +1,8 @@
-//! Analysis and computation constants (Immutable Blueprints)
-
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Div, Mul, Sub};
-use std::time::Duration;
+use std::{
+    ops::{Add, Div, Mul, Sub},
+    time::Duration,
+};
 use strum_macros::{Display, EnumIter};
 
 use crate::ui::UI_TEXT;

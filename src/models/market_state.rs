@@ -1,7 +1,10 @@
-use serde::{Deserialize, Serialize};
-
-use crate::config::{MomentumPct, PriceLike, VolRatio, VolatilityPct};
-use crate::models::OhlcvTimeSeries;
+use {
+    crate::{
+        config::{MomentumPct, PriceLike, VolRatio, VolatilityPct},
+        models::OhlcvTimeSeries,
+    },
+    serde::{Deserialize, Serialize},
+};
 
 /// A normalized "Fingerprint" of the market conditions at a specific moment in time.
 /// Used to find historical matches for the Ghost Runner simulation.

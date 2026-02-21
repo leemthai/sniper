@@ -4,7 +4,7 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 
-// Core modules
+// Make core modules accessible
 pub mod app;
 pub mod config;
 pub mod data;
@@ -17,13 +17,12 @@ mod shared;
 pub mod ui;
 pub mod utils;
 
-// Re-export commonly used types outside of crate (for make_demo_cache.rs)
+// Re-export for outside crate use (e.g make_demo_cache.rs)
 pub use crate::models::OhlcvTimeSeries;
 pub use app::App;
 pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
 pub use domain::PairInterval;
 
-// CLI argument parsing
 use clap::Parser;
 
 #[derive(Parser, Debug, Clone)]
@@ -35,8 +34,6 @@ pub struct Cli {
 }
 
 /// Main application entry point - creates the GUI app
-/// This is the public API for the binary to call
-// Change signature:
 pub fn run_app(
     cc: &eframe::CreationContext<'_>,
     args: Cli, // Was TimeSeriesCollection

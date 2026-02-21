@@ -1,33 +1,31 @@
-use rayon::prelude::*;
-use std::cmp::Ordering;
-use std::sync::Arc;
-use std::sync::mpsc::Sender;
-use uuid::Uuid;
+use {
+    crate::{
+        config::{
+            BASE_INTERVAL, DF, DurationMs, HighPrice, LowPrice, OptimizationStrategy, Pct, PhPct,
+            Price, PriceLike, StationId, StopPrice, TUNER_SCAN_STEPS, TargetPrice, TradeProfile,
+            TunerStation,
+        },
+        data::TimeSeriesCollection,
+        domain::{auto_select_ranges, calculate_price_range},
+        engine::{JobMode, JobRequest, JobResult},
+        models::{
+            AdaptiveParameters, CVACore, DEFAULT_JOURNEY_SETTINGS, DEFAULT_SIMILARITY,
+            EmpiricalOutcomeStats, MarketState, OhlcvTimeSeries, ScenarioSimulator, TradeDirection,
+            TradeOpportunity, TradeVariant, TradingModel, VisualFluff, find_matching_ohlcv,
+            pair_analysis_pure,
+        },
+        utils::{AppInstant, duration_to_candles, now_utc},
+    },
+    rayon::prelude::*,
+    std::{cmp::Ordering, sync::Arc, sync::mpsc::Sender},
+    uuid::Uuid,
+};
+
 #[cfg(not(target_arch = "wasm32"))]
 use {std::sync::mpsc::Receiver, std::thread};
 
-use crate::config::{
-    BASE_INTERVAL, DF, DurationMs, HighPrice, LowPrice, OptimizationStrategy, Pct, PhPct, Price,
-    PriceLike, StationId, StopPrice, TUNER_SCAN_STEPS, TargetPrice, TradeProfile, TunerStation,
-};
-
-use crate::data::TimeSeriesCollection;
-
-use crate::domain::{auto_select_ranges, calculate_price_range};
-
-use crate::engine::{JobMode, JobRequest, JobResult};
-
-use crate::models::{
-    AdaptiveParameters, CVACore, DEFAULT_JOURNEY_SETTINGS, DEFAULT_SIMILARITY,
-    EmpiricalOutcomeStats, MarketState, OhlcvTimeSeries, ScenarioSimulator, TradeDirection,
-    TradeOpportunity, TradeVariant, TradingModel, VisualFluff, find_matching_ohlcv,
-    pair_analysis_pure,
-};
-
-use crate::utils::{AppInstant, duration_to_candles, now_utc};
-
 #[cfg(debug_assertions)]
-use {crate::ui::UI_TEXT, crate::utils::format_duration};
+use crate::{ui::UI_TEXT, utils::format_duration};
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]

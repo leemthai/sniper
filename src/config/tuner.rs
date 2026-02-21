@@ -1,7 +1,8 @@
-use serde::{Deserialize, Serialize};
-use std::fmt;
-
-use crate::config::PhPct;
+use {
+    crate::config::PhPct,
+    serde::{Deserialize, Serialize},
+    std::fmt,
+};
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum StationId {

@@ -1,5 +1,3 @@
-//! Debugging feature flags.
-
 #[allow(dead_code)]
 pub struct LogFlags {
     /// Emit verbose logging for live price stream connections and ticks.

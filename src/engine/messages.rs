@@ -1,10 +1,11 @@
-use std::sync::{Arc, RwLock};
-
-use crate::config::{OptimizationStrategy, PhPct, Price, StationId};
-
-use crate::data::TimeSeriesCollection;
-
-use crate::models::TradingModel;
+use {
+    crate::{
+        config::{OptimizationStrategy, PhPct, Price, StationId},
+        data::TimeSeriesCollection,
+        models::TradingModel,
+    },
+    std::sync::{Arc, RwLock},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum JobMode {

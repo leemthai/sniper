@@ -1,15 +1,17 @@
-use std::sync::Arc;
+use {
+    crate::{
+        config::{Price, ZoneClassificationConfig, ZoneParams},
+        models::{
+            CVACore, DEFAULT_ZONE_CONFIG, DisplaySegment, OhlcvTimeSeries, RangeGapFinder,
+            SEGMENT_MERGE_TOLERANCE_MS, ScoreType, TradeOpportunity,
+        },
+        utils::{mean_and_stddev, normalize_max, smooth_data},
+    },
+    std::sync::Arc,
+};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
-use crate::config::{Price, ZoneClassificationConfig, ZoneParams};
-
-use crate::models::{
-    CVACore, DEFAULT_ZONE_CONFIG, DisplaySegment, OhlcvTimeSeries, RangeGapFinder,
-    SEGMENT_MERGE_TOLERANCE_MS, ScoreType, TradeOpportunity,
-};
-
-use crate::utils::{mean_and_stddev, normalize_max, smooth_data};
 
 /// Represents a clustered "Island" of activity.
 #[derive(Debug, Clone)]

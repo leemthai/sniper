@@ -1,26 +1,29 @@
-use anyhow::{Result, bail};
-use binance_sdk::config::ConfigurationRestApi;
-use binance_sdk::models::RestApiRateLimit;
-use binance_sdk::spot::{
-    SpotRestApi,
-    rest_api::{KlinesIntervalEnum, KlinesItemInner, KlinesParams, RestApi},
+use {
+    anyhow::{Result, bail},
+    binance_sdk::{
+        config::ConfigurationRestApi,
+        errors::{self, ConnectorError as connection_error},
+        models::RestApiRateLimit,
+        spot::{
+            SpotRestApi,
+            rest_api::{KlinesIntervalEnum, KlinesItemInner, KlinesParams, RestApi},
+        },
+    },
+    std::{collections::HashSet, convert::TryFrom, error::Error, fmt},
 };
-use binance_sdk::{errors, errors::ConnectorError as connection_error};
-use std::collections::HashSet;
-use std::convert::TryFrom;
-use std::error::Error;
-use std::fmt;
 
-// Local crates
+use crate::{
+    config::{
+        BINANCE, BaseVol, BinanceApiConfig, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol,
+    },
+    data::GlobalRateLimiter,
+    domain::{Candle, PairInterval},
+    // TEMP get rid of this soon once we have enum time intervals
+    utils::*,
+};
+
 #[cfg(debug_assertions)]
 use crate::config::DF;
-use crate::config::{
-    BINANCE, BaseVol, BinanceApiConfig, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol,
-};
-
-use crate::data::GlobalRateLimiter;
-use crate::domain::{Candle, PairInterval};
-use crate::utils::*; // TEMP get rid of this soon once we have enum time intervals
 
 // For "MS -> Enum", a static helper is still best,
 //    but we return Result instead of panicking.

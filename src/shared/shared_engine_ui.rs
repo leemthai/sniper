@@ -1,10 +1,14 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use {
+    crate::config::{OptimizationStrategy, PhPct, StationId},
+    serde::{Deserialize, Deserializer, Serialize, Serializer},
+    std::{
+        collections::HashMap,
+        sync::{Arc, RwLock},
+    },
+};
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
-use crate::config::{OptimizationStrategy, PhPct, StationId};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct UIEngineSharedData {

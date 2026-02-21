@@ -1,21 +1,20 @@
-use std::fmt;
-use std::time::Duration;
+use {
+    crate::{
+        config::{
+            AroiPct, DurationMs, JourneySettings, OptimalSearchSettings, OptimizationStrategy, Pct,
+            PhPct, Price, RoiPct, Sigma, StationId, StopPrice, TargetPrice, TradeProfile,
+            ZoneClassificationConfig, ZoneParams,
+        },
+        models::{EmpiricalOutcomeStats, MarketState},
+        ui::UI_TEXT,
+    },
+    chrono::{DateTime, Utc},
+    serde::{Deserialize, Serialize},
+    std::{fmt, time::Duration},
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 use chrono::Duration as ChronoDuration;
-
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-
-use crate::config::{
-    AroiPct, DurationMs, JourneySettings, OptimalSearchSettings, OptimizationStrategy, Pct, PhPct,
-    Price, RoiPct, Sigma, StationId, StopPrice, TargetPrice, TradeProfile,
-    ZoneClassificationConfig, ZoneParams,
-};
-
-use crate::models::{EmpiricalOutcomeStats, MarketState};
-
-use crate::ui::UI_TEXT;
 
 const SAMPLE_COUNT: usize = 50;
 const RISK_REWARD_TESTS: &[f64] = &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0];

@@ -1,7 +1,5 @@
-//! File persistence and serialization configuration
 use crate::utils::interval_to_string;
 
-/// Configuration for Kline Data Persistence
 pub struct KlinePersistenceConfig {
     /// Directory path for storing kline data
     pub directory: &'static str,

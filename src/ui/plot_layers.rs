@@ -1,22 +1,22 @@
-use eframe::egui::{
-    Align2, Color32, FontId, Id, LayerId, Order, Order::Tooltip, Painter, Pos2, Rect, RichText,
-    Stroke, Ui, Vec2,
+use {
+    crate::{
+        config::{
+            BASE_INTERVAL, CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice,
+            PLOT_CONFIG, Price, PriceLike,
+        },
+        models::{GapReason, OhlcvTimeSeries, SuperZone, TradeOpportunity, TradingModel},
+        ui::{DirectionColor, PlotCache, PlotVisibility, UI_TEXT, apply_opacity},
+    },
+    eframe::egui::{
+        Align2, Color32, FontId, Id, LayerId,
+        Order::{self, Tooltip},
+        Painter, Pos2, Rect, RichText, Stroke, Ui, Vec2,
+    },
+    egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon},
 };
 
 #[allow(deprecated)]
 use eframe::egui::show_tooltip_at_pointer;
-
-use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Polygon};
-
-use crate::config::{
-    BASE_INTERVAL, CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike,
-};
-
-use crate::config::plot::PLOT_CONFIG;
-
-use crate::models::{GapReason, OhlcvTimeSeries, SuperZone, TradeOpportunity, TradingModel};
-
-use crate::ui::{DirectionColor, PlotCache, PlotVisibility, UI_TEXT, apply_opacity};
 
 pub(crate) struct HorizonLinesLayer;
 
@@ -296,7 +296,7 @@ impl PlotLayer for CandlestickLayer {
             let segment_duration = last_candle_ts - seg_start_ts;
             let segment_width = (segment_duration / agg_interval_ms) as f64 + 1.0;
 
-            segment_start_visual_x += segment_width + PLOT_CONFIG.segment_gap_width;
+            segment_start_visual_x += segment_width + PLOT_CONFIG.segment_gap_width_px;
         }
     }
 }
@@ -411,7 +411,7 @@ fn draw_wick_line(ui: &mut PlotUi, x: f64, top: Price, bottom: Price, color: Col
             PlotPoints::new(vec![[x, bottom.value()], [x, top.value()]]),
         )
         .color(color)
-        .width(PLOT_CONFIG.candle_wick_width),
+        .width(PLOT_CONFIG.candle_wick_width_px),
     );
 }
 
@@ -609,7 +609,7 @@ impl PlotLayer for SegmentSeparatorLayer {
             return;
         }
 
-        let gap_width = PLOT_CONFIG.segment_gap_width;
+        let gap_width = PLOT_CONFIG.segment_gap_width_px;
         let mut visual_x = 0.0;
         let step_size = ctx.resolution.steps_from(BASE_INTERVAL);
 
