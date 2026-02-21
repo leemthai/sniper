@@ -1,5 +1,5 @@
 use {
-    crate::{config::BINANCE, utils::TimeUtils},
+    crate::{config::BINANCE_QUOTE_ASSETS, utils::TimeUtils},
     serde::{Deserialize, Serialize},
 };
 
@@ -21,8 +21,7 @@ impl PairInterval {
     // Finds the trading quote at the end of the pair name and returns it.
     // Returns None if no matching quote is found.
     pub(crate) fn get_quote(text: &str) -> Option<&str> {
-        BINANCE
-            .quote_assets
+        BINANCE_QUOTE_ASSETS
             .iter()
             .find(|&&ext| text.ends_with(ext))
             .copied()

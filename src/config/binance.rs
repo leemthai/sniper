@@ -1,13 +1,11 @@
-//! Binance-specific configuration constants and types.
-/// Configuration for Binance REST API client
-#[cfg(not(target_arch = "wasm32"))]
+// Binance-specific configuration constants and types.
+// Gate externally to be NON-WASM only
 pub struct BinanceApiConfig {
     pub timeout_ms: u64,
     pub retries: u32,
     pub backoff_ms: u64,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Default for BinanceApiConfig {
     fn default() -> Self {
         Self {
@@ -18,7 +16,6 @@ impl Default for BinanceApiConfig {
     }
 }
 
-#[allow(dead_code)]
 /// Configuration for REST API Limits and Weights
 pub struct RestLimits {
     /// Default limit for number of klines returned in a single request (1000 is max)
@@ -31,7 +28,6 @@ pub struct RestLimits {
     pub concurrent_sync_tasks: usize,
 }
 
-#[allow(dead_code)]
 /// Configuration for WebSocket Connections
 pub struct WsConfig {
     /// WebSocket base URL for Binance combined streaming API
@@ -43,25 +39,20 @@ pub struct WsConfig {
 }
 
 /// Default values for the Rest Client
-#[allow(dead_code)]
 pub struct ClientDefaults {
     pub timeout_ms: u64,
     pub retries: u32,
     pub backoff_ms: u64,
 }
 
+pub const BINANCE_PAIRS_FILENAME: &str = "pairs.txt";
+pub const BINANCE_MAX_PAIRS: usize = 20;
+
 /// The Master Configuration Struct
-#[allow(dead_code)]
 pub struct BinanceConfig {
     pub limits: RestLimits,
     pub ws: WsConfig,
     pub client: ClientDefaults,
-    /// Maximum number of pairs to load from the file
-    pub max_pairs: usize,
-    /// Name of the file containing the list of pairs
-    pub pairs_filename: &'static str,
-    /// List of valid quote assets (used for parsing pair names)
-    pub quote_assets: &'static [&'static str],
 }
 
 pub const BINANCE: BinanceConfig = BinanceConfig {
@@ -81,10 +72,4 @@ pub const BINANCE: BinanceConfig = BinanceConfig {
         retries: 5,
         backoff_ms: 5000,
     },
-    max_pairs: 20, // 100,
-    pairs_filename: "pairs.txt",
-    quote_assets: &[
-        "USDT", "USDC", "FDUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "JPY", "BRL", "USD", "USD1",
-        "COP", "BRL", "ARS", "MXN",
-    ],
 };

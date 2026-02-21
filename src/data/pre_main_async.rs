@@ -93,6 +93,8 @@ pub async fn fetch_pair_data(
     // --- NATIVE IMPLEMENTATION ---
     #[cfg(not(target_arch = "wasm32"))]
     {
+        use crate::config::{BINANCE_MAX_PAIRS, BINANCE_PAIRS_FILENAME};
+
         let _ = klines_acceptable_age_secs;
         let _ = args;
 
@@ -113,7 +115,7 @@ pub async fn fetch_pair_data(
         let provider = Arc::new(BinanceProvider::new(limiter));
 
         // Read ALL pairs from file first
-        let mut supply_pairs: Vec<String> = match fs::read_to_string(BINANCE.pairs_filename) {
+        let mut supply_pairs: Vec<String> = match fs::read_to_string(BINANCE_PAIRS_FILENAME) {
             Ok(content) => content
                 .lines()
                 .map(|line| line.split('#').next().unwrap_or("").trim().to_uppercase())
@@ -122,14 +124,14 @@ pub async fn fetch_pair_data(
             Err(_) => {
                 log::warn!(
                     "{} not found, using default BTC/ETH",
-                    BINANCE.pairs_filename
+                    BINANCE_PAIRS_FILENAME,
                 );
                 vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()]
             }
         };
 
         // Production Limit (from binance.rs)
-        supply_pairs.truncate(BINANCE.max_pairs);
+        supply_pairs.truncate(BINANCE_MAX_PAIRS);
 
         // Debug Limit (from debug.rs)
         #[cfg(debug_assertions)]
