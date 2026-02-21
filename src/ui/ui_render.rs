@@ -8,10 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap};
 use strum::IntoEnumIterator;
 
-use crate::app::{
-    App,
-    root::{AutoScaleY, Selection, SortDirection},
-};
+use crate::app::{App, AutoScaleY, Selection, SortDirection};
 
 use crate::config::{
     CandleResolution, MomentumPct, OptimizationStrategy, Pct, Price, PriceLike, QuoteVol, TICKER,
@@ -75,7 +72,7 @@ pub(crate) struct NavigationState {
 #[derive(Debug, Clone)]
 pub(crate) struct TradeFinderRow {
     pub pair_name: String,
-    pub quote_volume_24h: QuoteVol, // 24h Quote Volume (e.g. USDT volume). Crucial for filtering "Dead" coins.
+    pub quote_volume_24h: QuoteVol, // 24h Quote Volume (e.g. USDT volume). Filtering "Dead" coins.
     pub market_state: Option<MarketState>, // Market State (Volatility, Momentum)
     pub opportunity: Option<TradeOpportunity>,
     pub current_price: Price,
@@ -92,7 +89,6 @@ impl App {
             .show(ctx, |ui| {
                 ui.add_space(5.0);
 
-                // Safety check for Engine/Model
                 if let Some(engine) = &self.engine {
                     if let Some(pair) = &self.selection.pair_owned() {
                         if let Some(model) = engine.get_model(pair) {
@@ -127,14 +123,13 @@ impl App {
         Window::new(&UI_TEXT.kbs_name_long)
             .open(&mut self.show_debug_help)
             .resizable(false)
-            .order(Order::Tooltip) // Need to set this because Plot draws elements on Order::Foreground (and redraws them every second) so we need be a higher-level than Foreground even
+            .order(Order::Tooltip) // Need coz Plot draws elements on Order::Foreground (and redraws them every second) so need be a higher-level
             .collapsible(false)
             .default_width(400.0)
             .show(ctx, |ui| {
                 ui.heading("Press keys to execute commands");
                 ui.add_space(10.0);
 
-                // General Shortcuts
                 let mut _general_shortcuts = vec![
                     ("ESC", UI_TEXT.kbs_close_all_panes.as_str()),
                     ("K (or H)", UI_TEXT.kbs_open_close.as_str()),
@@ -147,14 +142,8 @@ impl App {
                     ("7", UI_TEXT.kbs_toolbar_shortcut_price_limits.as_str()),
                     ("8", UI_TEXT.kbs_toolbar_shortcut_live_price.as_str()),
                     ("9", UI_TEXT.kbs_toolbar_shortcut_targets.as_str()),
-                    // Note, can use '0' as well here ie numeric zero, if we need antoher one
-                    // ("O", UI_TEXT.kbs_view_opp_explainer.as_str()),
                     ("T", UI_TEXT.kbs_view_time_machine.as_str()),
                 ];
-
-                // // Only add 'S' for Native
-                // #[cfg(not(target_arch = "wasm32"))]
-                // _general_shortcuts.push(("S", &UI_TEXT.kbs_sim_mode));
 
                 Grid::new("general_shortcuts_grid")
                     .num_columns(2)
@@ -166,7 +155,7 @@ impl App {
 
                 #[cfg(debug_assertions)]
                 {
-                    // Note: any keys added here have to be hand-inserted in handle_global_shortcuts to activate them, too
+                    // Also add keys here to handle_global_shortcuts
                     let debug_shortcuts = [(
                         "INSERT-HERE",
                         "Insert future debug only key-trigger operation here",
@@ -199,11 +188,10 @@ impl App {
         let frame = UI_CONFIG.side_panel_frame();
 
         SidePanel::left("left_panel")
-            .min_width(280.0) // I believe this is irrelevant because items we draw inside have higher total min_width
+            .min_width(280.0)
             .resizable(false)
             .frame(frame)
             .show(ctx, |ui| {
-                // TIME TUNER
                 if let Some(pair) = self.selection.pair_owned() {
                     if let Some(action) = render_time_tuner(
                         ui,
@@ -217,13 +205,8 @@ impl App {
 
                 ui.add_space(10.0);
                 ui.separator();
-
-                // ACTIVE TARGET (New Context Panel)
                 self.render_active_target_panel(ui);
-
                 ui.separator();
-
-                // MARKET SCANNER (Formerly Trade Finder)
                 self.render_trade_finder_content(ui);
             });
     }
@@ -236,9 +219,7 @@ impl App {
             .min_height(30.0)
             .resizable(false)
             .show(ctx, |ui| {
-                // --- TOP TOOLBAR ---
                 ui.horizontal(|ui| {
-                    // CANDLE RESOLUTION
                     ui.label(
                         RichText::new(&UI_TEXT.tb_time)
                             .size(16.0)
@@ -254,7 +235,6 @@ impl App {
 
                     self.render_optimization_strategy(ui);
 
-                    // LAYER VISIBILITY
                     ui.checkbox(&mut self.plot_visibility.sticky, &UI_TEXT.tb_sticky);
                     ui.checkbox(&mut self.plot_visibility.low_wicks, &UI_TEXT.tb_low_wicks);
                     ui.checkbox(&mut self.plot_visibility.high_wicks, &UI_TEXT.tb_high_wicks);
@@ -266,7 +246,6 @@ impl App {
 
                     ui.separator();
 
-                    // CONTEXT
                     ui.checkbox(&mut self.plot_visibility.separators, &UI_TEXT.tb_gaps);
                     ui.checkbox(
                         &mut self.plot_visibility.horizon_lines,
@@ -275,7 +254,6 @@ impl App {
                     ui.checkbox(&mut self.plot_visibility.price_line, &UI_TEXT.tb_live_price);
                     ui.checkbox(&mut self.plot_visibility.opportunities, &UI_TEXT.tb_targets);
 
-                    // STATUS INDICATOR
                     if self.auto_scale_y.value() {
                         ui.label(
                             RichText::new(&UI_TEXT.tb_y_locked)
@@ -296,8 +274,6 @@ impl App {
     pub(crate) fn render_ticker_panel(&mut self, ctx: &Context) {
         let panel_frame = UI_CONFIG.bottom_panel_frame();
 
-        // Render at bottom. If called BEFORE status panel in update(), it sits below it.
-        // If called AFTER, it sits above it.
         TopBottomPanel::bottom("ticker_panel")
             .frame(panel_frame)
             .min_height(TICKER.height)
@@ -306,8 +282,6 @@ impl App {
                 if let Some(engine) = &self.engine {
                     self.ticker_state.update_data(engine);
                 }
-
-                // Render Ticker and Capture Result
                 if let Some(pair) = self.ticker_state.render(ui) {
                     #[cfg(not(target_arch = "wasm32"))]
                     {
@@ -327,11 +301,8 @@ impl App {
         CentralPanel::default()
             .frame(central_panel_frame)
             .show(ctx, |ui| {
-                // FIX: Grab Nav State HERE (Before borrowing self.engine)
-                // This requires us to clone it because it's Copy/Clone
                 let nav_state = self.get_nav_state();
 
-                // Safety Check: Engine existence
                 let Some(engine) = &self.engine else {
                     render_fullscreen_message(
                         ui,
@@ -342,7 +313,6 @@ impl App {
                     return;
                 };
 
-                // Safety Check: Selected Pair
                 let Some(pair) = self.selection.pair_owned() else {
                     render_fullscreen_message(
                         ui,
@@ -353,13 +323,10 @@ impl App {
                     return;
                 };
 
-                // Get Price
                 let current_price = engine.get_price(&pair);
 
                 let (is_calculating, last_error) = engine.get_pair_status(&pair);
 
-                // PRIORITY 1: ERRORS
-                // If the most recent calculation failed (e.g. "Insufficient Data" at 1%), show the error, even if we have an old cached model.
                 if let Some(err_msg) = last_error {
                     let body = if err_msg.contains("Insufficient data") {
                         format!("{}\n\n{}", UI_TEXT.error_insufficient_data_body, err_msg)
@@ -367,10 +334,7 @@ impl App {
                         err_msg.to_string()
                     };
                     render_fullscreen_message(ui, &UI_TEXT.error_analysis_failed, &body, true);
-                }
-                // PRIORITY 2: VALID MODEL
-                // If no error, and we have data, draw it.
-                else if let Some(model) = engine.get_model(&pair) {
+                } else if let Some(model) = engine.get_model(&pair) {
                     let interaction = self.plot_view.show_my_plot(
                         ui,
                         &model.cva,
@@ -385,7 +349,6 @@ impl App {
                         self.selection.opportunity().cloned(),
                     );
 
-                    // HANDLE INTERACTION
                     match interaction {
                         PlotInteraction::UserInteracted => {
                             // User wants control. Disable auto-scale.
@@ -397,27 +360,21 @@ impl App {
                         }
                         PlotInteraction::None => {}
                     }
-                }
-                // PRIORITY 3: CALCULATING (Initial Load)
-                else if is_calculating {
+                } else if is_calculating {
                     render_fullscreen_message(
                         ui,
                         &format!("{} {}...", UI_TEXT.cp_analyzing, pair),
                         &UI_TEXT.cp_calculating_zones,
                         false,
                     );
-                }
-                // PRIORITY 4: QUEUED / WAITING
-                else if current_price.is_some() {
+                } else if current_price.is_some() {
                     render_fullscreen_message(
                         ui,
                         &format!("{}: {}...", UI_TEXT.cp_queued, pair),
                         &UI_TEXT.cp_wait_thread,
                         false,
                     );
-                }
-                // PRIORITY 5: NO DATA STREAM
-                else {
+                } else {
                     render_fullscreen_message(
                         ui,
                         &UI_TEXT.cp_wait_prices,
@@ -436,26 +393,13 @@ impl App {
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        // Price
                         self.render_price(ui);
-
-                        // Zone Info
                         self.render_status_zone_info(ui);
-
                         ui.separator();
-
-                        // Coverage
                         self.render_status_coverage(ui);
-
-                        // 4. Candle Stats
                         self.render_status_candles(ui);
-
-                        // 5. System Status
                         self.render_status_system(ui);
-
                         ui.separator();
-
-                        // 6. Network
                         self.render_status_network(ui);
                     });
                 });
@@ -480,8 +424,7 @@ impl App {
                 .color(PLOT_CONFIG.color_text_subdued),
             );
 
-            // Locate Button (Center on Target)
-            // Only show if we actually have a target to scroll to
+            // Center on Target button - Only show if target available
             if self.selection.pair_owned().is_some() {
                 ui.add_space(5.0);
                 if ui
@@ -498,7 +441,6 @@ impl App {
 
             ui.separator();
 
-            // "ALL PAIRS" Button
             if ui
                 .selectable_label(!self.tf_scope_match_base, &UI_TEXT.tf_scope_all)
                 .clicked()
@@ -508,7 +450,6 @@ impl App {
                 self.update_scroll_to_selection();
             }
 
-            // "[BASE ASSET] ONLY"
             let base_asset = self
                 .selection
                 .pair()
@@ -544,7 +485,6 @@ impl App {
         let goals: Vec<_> = OptimizationStrategy::iter().collect();
         let count = goals.len();
 
-        // Helper closure to render a specific goal by index
         let mut render_btn = |ui: &mut Ui, idx: usize| {
             if let Some(goal) = goals.get(idx) {
                 let col = match goal {
@@ -563,13 +503,11 @@ impl App {
             ui.add_space(2.0);
 
             if count == 1 {
-                // Case 1: Single Center
                 ui.horizontal(|ui| {
                     ui.add_space(12.0);
                     render_btn(ui, 0);
                 });
             } else if count == 2 {
-                // Case 2: Split Left/Right
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0; // Gap
                     render_btn(ui, 0);
@@ -577,16 +515,11 @@ impl App {
                 });
             } else if count == 3 {
                 // Case 3: Top Center, Bottom Split
-                // Top Row
                 ui.horizontal(|ui| {
                     ui.add_space(12.0);
                     render_btn(ui, 0);
                 });
-
-                // Bottom Row
                 ui.horizontal(|ui| {
-                    // Manual padding to center the pair or split them
-                    // Since column is 70px wide, and icons are ~20px, we have room.
                     ui.spacing_mut().item_spacing.x = 12.0;
                     render_btn(ui, 1);
                     render_btn(ui, 2);
@@ -626,30 +559,23 @@ impl App {
             }
         }
 
-        // Sort
+        // Sortx
         self.sort_trade_finder_rows(&mut rows);
-        // Empty table check
         if rows.is_empty() {
             ui.centered_and_justified(|ui| ui.label("Loading Market Data..."));
             return;
         }
 
-        // --- SCROLL INDEX LOGIC (PRECISE) ---
         let mut target_index = None;
-
         if let Some(target) = &self.scroll_target {
             target_index = rows.iter().position(|r| {
                 match target {
-                    // Case A: Hunting a specific Trade (UUID)
+                    // Hunting a specific Trade (UUID)
                     NavigationTarget::Opportunity(id) => {
                         r.opportunity.as_ref().is_some_and(|op| op.id == *id)
                     }
-                    // Case B: Hunting a Pair (Market View)
-                    NavigationTarget::Pair(name) => {
-                        // Only match if row is the pair AND has no op (Market View row)
-                        // Let's stick to "First instance of pair" for fallback.
-                        r.pair_name == *name
-                    }
+                    // Hunting a Pair (Market View)
+                    NavigationTarget::Pair(name) => r.pair_name == *name,
                 }
             });
         }
@@ -661,9 +587,8 @@ impl App {
         ui.scope(|ui| {
             let visuals = ui.visuals_mut();
 
-            // Set "Selected" color
             visuals.selection.bg_fill = PLOT_CONFIG.color_tf_selected;
-            // Set "Stripe" color
+            // "Stripe" color
             visuals.faint_bg_color = Color32::from_white_alpha(15);
 
             let mut builder = TableBuilder::new(ui)
@@ -680,8 +605,8 @@ impl App {
                 .min_scrolled_height(0.0)
                 .max_scroll_height(available_height);
 
-            // FIX: Apply Scroll at the Builder Level
-            // This works even if the row is virtualized (off-screen)
+            // Apply Scroll at Builder Level
+            // Works even if the row is virtualized (off-screen)
             if let Some(idx) = target_index {
                 builder = builder.scroll_to_row(idx, Some(Align::Center));
             }
@@ -700,7 +625,7 @@ impl App {
 
             // 6. Sticky Scroll Cleanup
             // If Sort OR Filter changed, we DO NOT clear the request.
-            // We wait for the NEXT frame where the rows are regenerated/resorted.
+            // Wait for NEXT frame where rows are regenerated/resorted.
             if !sort_changed && !filter_changed {
                 if target_index.is_some() {
                     self.scroll_target = None;
@@ -719,12 +644,9 @@ impl App {
         col_bot: Option<(SortColumn, &str)>,
     ) {
         ui.vertical_centered(|ui| {
-            // Top Item
             if self.render_stable_sort_label(ui, col_top, txt_top) {
                 *sort_changed = true;
             }
-
-            // Bottom Item (Optional)
             if let Some((c, t)) = col_bot {
                 if self.render_stable_sort_label(ui, c, t) {
                     *sort_changed = true;
@@ -747,12 +669,11 @@ impl App {
             );
         });
 
-        // Col 2: Strategy Metrics (Grid Layout)
         header.col(|ui| {
             self.render_strategy_header_grid(ui, sort_changed);
         });
 
-        // Col 3: Market
+        // Market
         header.col(|ui| {
             self.render_header_stack(
                 ui,
@@ -763,7 +684,7 @@ impl App {
             );
         });
 
-        // Col 4: Average Duration / Trade Balance Score
+        // Average Duration / Trade Balance Score
         header.col(|ui| {
             self.render_header_stack(
                 ui,
@@ -774,7 +695,7 @@ impl App {
             );
         });
 
-        // Col 5: Volume
+        // Volume
         header.col(|ui| {
             self.render_header_stack(
                 ui,
@@ -785,7 +706,7 @@ impl App {
             );
         });
 
-        // Col 6: Risk
+        // Risk
         header.col(|ui| {
             self.render_header_stack(
                 ui,
@@ -806,23 +727,14 @@ impl App {
     ) {
         // Selection Logic (Selection-only)
         let is_selected = match (&self.selection, &row.opportunity) {
-            // Opportunity view: exact opportunity match
             (Selection::Opportunity(sel), Some(op)) => sel.id == op.id,
-
-            // Pair view: row has no opportunity AND pair matches
             (Selection::Pair(pair), None) => pair == &row.pair_name,
-
-            // Market view: nothing is selected
             (Selection::None, _) => false,
-
-            // All other combinations are not selected
             _ => false,
         };
 
-        // paint background correctly behind the correct row
         table_row.set_selected(is_selected);
 
-        // We pass the scroll tracker as a local bool to the column helper
         self.col_pair_name(table_row, row, index);
         self.col_strategy_metrics(table_row, row);
         self.col_market_state(table_row, row);
@@ -832,7 +744,6 @@ impl App {
 
         let response = table_row.response();
 
-        // Click handling
         if response.clicked() {
             match &row.opportunity {
                 Some(op) => {
@@ -865,40 +776,30 @@ impl App {
     ) {
         table_row.col(|ui| {
             ui.vertical(|ui| {
-                // LINE 1: Pair Name + Direction Icon
                 ui.horizontal(|ui| {
                     ui.style_mut().spacing.item_spacing.x = 4.0;
-
-                    // Row Number
                     ui.label(
                         RichText::new(format!("{}.", index))
                             .size(10.0)
                             .color(PLOT_CONFIG.color_text_subdued),
                     );
-
-                    // Visual Text (Pair Name)
                     ui.label(
                         RichText::new(&row.pair_name)
                             .strong()
                             .size(14.0)
                             .color(PLOT_CONFIG.color_text_primary),
                     );
-
-                    // Icons first
                     if let Some(op) = &row.opportunity {
-                        // Station ID ICON
                         ui.label(
                             RichText::new(op.station_id.short_name())
                                 .size(14.0)
                                 .color(PLOT_CONFIG.color_text_neutral),
                         );
-                        // --- STRATEGY ICON ---
                         ui.label(
                             RichText::new(op.strategy.icon())
                                 .size(14.0)
                                 .color(PLOT_CONFIG.color_text_neutral),
                         );
-                        // DIRECTION ICON
                         let arrow = match op.direction {
                             TradeDirection::Long => &UI_TEXT.icon_long,
                             TradeDirection::Short => &UI_TEXT.icon_short,
@@ -909,15 +810,11 @@ impl App {
 
                 if let Some(op) = &row.opportunity {
                     ui.horizontal(|ui| {
-                        // Left: Target Price
-                        // Use truncation/small font to fit
                         ui.label(
                             RichText::new(format!("T: {}", op.target_price))
                                 .size(10.0)
                                 .color(PLOT_CONFIG.color_info),
                         );
-
-                        // Right: Age (Pushed to edge)
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             let now = now_utc();
                             let age = now - op.created_at;
@@ -934,10 +831,8 @@ impl App {
                             );
                         });
                     });
-                    // --- LINE 3: DEBUG UUID and PH value of op........
                     #[cfg(debug_assertions)]
                     {
-                        // Show first 8 chars of UUID
                         let uuid = &op.id;
                         let short_id = if uuid.len() > 8 { &uuid[..8] } else { uuid };
                         ui.label(
@@ -961,7 +856,6 @@ impl App {
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
 
-                    // ROI (Primary) + Icon
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(RichText::new(&UI_TEXT.icon_strategy_roi).size(10.0)); // Mountain
@@ -972,7 +866,6 @@ impl App {
                         );
                     });
 
-                    // AROI (Secondary) + Icon
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(RichText::new(&UI_TEXT.icon_strategy_aroi).size(10.0)); // Lightning
@@ -983,8 +876,6 @@ impl App {
                         );
                     });
 
-                    // Score (Conditional)
-                    // Show if sorting by Score OR if the trade was born from Balance strategy
                     let show_score = self.tf_sort_col == SortColumn::Score
                         || op.strategy == OptimizationStrategy::Balanced;
 
@@ -1083,23 +974,19 @@ impl App {
 
         let selected_op_id = self.selection.opportunity().map(|o| &o.id);
 
-        // Scope Helper
         let base_asset = self
             .selection
             .pair()
             .and_then(|p| PairInterval::get_base(p))
             .unwrap_or("");
 
-        // Scope Logic
         let is_in_scope = |pair: &str| -> bool {
             if !self.tf_scope_match_base {
                 return true;
             }
-            // Always keep selected/target pair
             if self.selection.pair() == Some(pair) {
                 return true;
             }
-            // Check Base
             !base_asset.is_empty() && pair.starts_with(base_asset)
         };
 
@@ -1134,7 +1021,7 @@ impl App {
                     }
                     true
                 } else {
-                    false // Remove existing placeholders (we regenerate below if needed)
+                    false // Remove existing placeholders (regenerate below if needed)
                 }
             });
 
@@ -1147,7 +1034,6 @@ impl App {
                     pair_name: sample.pair_name,
                     quote_volume_24h: sample.quote_volume_24h,
                     market_state: sample.market_state,
-                    // opportunity_count_total: 0,
                     opportunity: None,
                     current_price: sample.current_price,
                 });
@@ -1167,19 +1053,16 @@ impl App {
             PLOT_CONFIG.color_text_subdued
         };
 
-        // NEW: Append Sort Arrow if active
         let label_text = if is_active {
             let arrow = match self.tf_sort_dir {
                 SortDirection::Ascending => &UI_TEXT.icon_sort_asc,
                 SortDirection::Descending => &UI_TEXT.icon_sort_desc,
             };
-            // Small gap between icon and arrow
             format!("{}{}", icon, arrow)
         } else {
             icon.to_string()
         };
 
-        // Render
         let response =
             ui.interactive_label(&label_text, is_active, color, FontId::proportional(14.0));
 
@@ -1205,14 +1088,13 @@ impl App {
             PLOT_CONFIG.color_text_subdued
         };
 
-        // STABILITY: Always include space for the icon.
         let suffix = if is_active {
             match self.tf_sort_dir {
                 SortDirection::Ascending => &UI_TEXT.icon_sort_asc,
                 SortDirection::Descending => &UI_TEXT.icon_sort_desc,
             }
         } else {
-            "  " // Spacer
+            "  "
         };
 
         let label_text = format!("{} {}", text, suffix);
@@ -1226,7 +1108,6 @@ impl App {
                 self.tf_sort_dir = self.tf_sort_dir.toggle();
             } else {
                 self.tf_sort_col = col;
-                // Intelligent Defaults
                 self.tf_sort_dir = match col {
                     SortColumn::PairName | SortColumn::AvgDuration => SortDirection::Ascending,
                     _ => SortDirection::Descending,
@@ -1262,11 +1143,9 @@ impl App {
 
                     ui.add_space(5.0);
 
-                    // Context Status
                     if let Some(op) = opp_opt {
                         // A. Trade is Locked
                         ui.horizontal(|ui| {
-                            // Direction
                             let dir_color = op.direction.color();
                             let arrow = match op.direction {
                                 TradeDirection::Long => &UI_TEXT.icon_long,
@@ -1279,8 +1158,6 @@ impl App {
                                     .color(dir_color),
                             );
 
-                            // Live Stats (Mini)
-                            // We can safely borrow self here for get_display_price because 'pair_opt' owns the string now
                             if let Some(engine) = &mut self.engine {
                                 if let Some(current_price) = engine.get_price(&pair) {
                                     let roi_pct = op.live_roi(current_price);
@@ -1341,14 +1218,11 @@ impl App {
     }
 
     fn handle_tuner_action(&mut self, action: TunerAction) {
-        // Handles events from the Time Tuner UI (Left Panel). including calling self.handle_tuner_action() which updates self.shared_config.ph_overrides for the given pair.
+        // Handles events from the Time Tuner UI (Left Panel).
         match action {
             TunerAction::StationSelected(station_id) => {
-                // Run Auto-Tune for selected pair
                 if let Some(pair) = self.selection.pair_owned() {
                     let pair_name = pair.clone();
-
-                    // Save the preference immediately
                     self.shared_config
                         .insert_station(pair_name.clone(), station_id);
                     #[cfg(debug_assertions)]
@@ -1374,7 +1248,6 @@ impl App {
                                 );
                             }
 
-                            // Persist override in engine config
                             engine
                                 .shared_config
                                 .insert_ph(pair_name.clone(), best_ph_pct);
@@ -1388,7 +1261,7 @@ impl App {
                                 );
                             }
 
-                            // Recalculate only this pair
+                            // Recalculate this pair
                             engine.invalidate_pair_and_recalc(
                                 &pair_name,
                                 None,
@@ -1401,7 +1274,6 @@ impl App {
                         }
                     }
                 } else {
-                    // Nothing going on here yet (or ever probably)
                 }
             }
             TunerAction::ConfigureTuner => {
@@ -1456,19 +1328,14 @@ impl App {
         if let Some(engine) = &self.engine {
             if let Some(pair) = &self.selection.pair_owned() {
                 if let Some(model) = engine.get_model(pair) {
-                    // Helper closure for coverage colors
                     let cov_color = |pct: f64| {
                         if pct > 30.0 {
                             PLOT_CONFIG.color_loss
-                        }
-                        // Red (Too Cluttered)
-                        else if pct < 5.0 {
+                        } else if pct < 5.0 {
                             PLOT_CONFIG.color_warning
-                        }
-                        // Yellow (Too sparse)
-                        else {
+                        } else {
                             PLOT_CONFIG.color_profit
-                        } // Green (Good)
+                        }
                     };
                     ui.label_subdued(&UI_TEXT.sp_coverage);
                     ui.metric(
@@ -1567,11 +1434,7 @@ impl App {
 
     fn render_card_variants(&mut self, ui: &mut Ui, op: &TradeOpportunity) {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            // Determine which variant is currently active
             let active_stop_price = if let Some(sel) = &self.selection.opportunity() {
-                // FIX: Check exact UUID match.
-                // Previous logic checked target_zone_id, which is now often 0 for generated trades,
-                // causing all trades to think they were selected.
                 if sel.id == op.id {
                     sel.stop_price
                 } else {
@@ -1581,7 +1444,6 @@ impl App {
                 op.stop_price
             };
 
-            // Find the index (1-based)
             let current_index = op
                 .variants
                 .iter()
@@ -1624,12 +1486,10 @@ impl App {
                     let is_current = variant.stop_price == active_stop_price;
 
                     if ui.selectable_label(is_current, text).clicked() {
-                        // Construct the specific variant opportunity
                         let mut new_selected = op.clone();
                         new_selected.stop_price = variant.stop_price;
                         new_selected.simulation = variant.simulation.clone();
 
-                        // Use the Helper
                         self.select_opportunity(
                             new_selected,
                             ScrollBehavior::None,
@@ -1648,14 +1508,10 @@ impl App {
     fn render_optimization_strategy(&mut self, ui: &mut Ui) {
         ui.label(&UI_TEXT.label_goal);
 
-        // Read current value
         let current_strategy = self.shared_config.get_strategy();
         let mut selected_strategy = current_strategy;
-
-        // Selected text (icon + display)
         let selected_text = format!("{} {}", selected_strategy.icon(), selected_strategy);
 
-        // ComboBox
         ComboBox::from_id_salt("Optimization strategy")
             .selected_text(selected_text)
             .width(100.0)
@@ -1676,7 +1532,6 @@ impl App {
                     selected_strategy
                 );
             }
-
             self.shared_config.set_strategy(selected_strategy);
             self.handle_strategy_selection();
         }

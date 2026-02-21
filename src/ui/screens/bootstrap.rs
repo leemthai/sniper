@@ -1,10 +1,8 @@
-// src/ui/screens/bootstrap.rs
-
 use eframe::egui::{
     Align, CentralPanel, Context, Grid, Layout, ProgressBar, RichText, ScrollArea, Ui,
 };
 
-use crate::app::{SyncStatus, state::BootstrapState};
+use crate::app::{BootstrapState, SyncStatus};
 
 use crate::config::BASE_INTERVAL;
 use crate::config::plot::PLOT_CONFIG;
@@ -26,7 +24,6 @@ pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
                     .color(PLOT_CONFIG.color_warning),
             );
 
-            // Subtitle / Info
             let interval_str = interval_to_string(BASE_INTERVAL.as_millis() as i64);
             ui.label(
                 RichText::new(format!(
@@ -71,7 +68,6 @@ pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
             ui.add_space(20.0);
         });
 
-        // Call the Grid Helper we made earlier
         render_loading_grid(ui, state);
     });
 }
@@ -113,24 +109,19 @@ fn render_loading_grid(ui: &mut Ui, state: &BootstrapState) {
                         ui.set_min_width(240.0);
                         ui.label(RichText::new(pair).strong().color(color));
 
-                        // Clean Layout syntax using imports
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            match status {
-                                SyncStatus::Syncing => {
-                                    ui.spinner();
-                                }
-                                SyncStatus::Completed(_) => {
-                                    // We use status_text ("+500") here
-                                    ui.label(RichText::new(status_text).color(status_color));
-                                }
-                                _ => {
-                                    ui.label(RichText::new(status_text).color(status_color));
-                                }
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| match status {
+                            SyncStatus::Syncing => {
+                                ui.spinner();
+                            }
+                            SyncStatus::Completed(_) => {
+                                ui.label(RichText::new(status_text).color(status_color));
+                            }
+                            _ => {
+                                ui.label(RichText::new(status_text).color(status_color));
                             }
                         });
                     });
 
-                    // New row every 3 items
                     if (i + 1) % 3 == 0 {
                         ui.end_row();
                     }

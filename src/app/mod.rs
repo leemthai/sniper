@@ -1,6 +1,9 @@
-// src/app/mod.rs
+mod root;
+mod state;
 
-pub(crate) mod phases;
-pub(crate) mod root;
-pub(crate) mod state;
-pub use root::{App, ProgressEvent, SyncStatus};
+pub(crate) use state::{
+    AppState, AutoScaleY, BootstrapState, PersistedSelection, PhaseView, ProgressEvent,
+    RunningState, Selection, SortDirection, SyncStatus, TuningState,
+};
+
+pub use root::App;

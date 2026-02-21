@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    fmt,
     sync::{Arc, mpsc, mpsc::Receiver},
 };
 
@@ -18,8 +17,8 @@ use {crate::data::save_ledger, std::thread, tokio::runtime::Runtime};
 use crate::Cli;
 
 use crate::app::{
-    phases::phase_view::PhaseView,
-    state::{AppState, BootstrapState, RunningState, TuningState},
+    AppState, AutoScaleY, BootstrapState, PersistedSelection, PhaseView, ProgressEvent,
+    RunningState, Selection, SortDirection, SyncStatus, TuningState,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -40,112 +39,6 @@ use crate::ui::{
 };
 
 use crate::utils::AppInstant;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum SyncStatus {
-    Pending,
-    Syncing,
-    Completed(usize), // number of new candles
-    Failed(String),   // Error message
-}
-
-#[derive(Debug, Clone)]
-pub struct ProgressEvent {
-    pub index: usize,
-    pub pair: String,
-    pub status: SyncStatus,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub(crate) enum SortDirection {
-    Ascending,
-    #[default]
-    Descending,
-}
-
-impl SortDirection {
-    pub fn toggle(&self) -> Self {
-        match self {
-            Self::Ascending => Self::Descending,
-            Self::Descending => Self::Ascending,
-        }
-    }
-}
-
-#[allow(clippy::large_enum_variant)]
-#[derive(Clone, Debug, Default)]
-pub(crate) enum Selection {
-    #[default]
-    None,
-    Pair(String),
-    Opportunity(TradeOpportunity),
-}
-
-impl fmt::Display for Selection {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Selection::None => write!(f, "Selection::None"),
-            Selection::Pair(pair_name) => write!(f, "Selection::Pair({})", pair_name),
-            Selection::Opportunity(op) => {
-                write!(f, "Selection::Opportunity({}, id={})", op.pair_name, op.id)
-            }
-        }
-    }
-}
-
-impl Selection {
-    /// owned String
-    #[inline]
-    pub(crate) fn pair_owned(&self) -> Option<String> {
-        match self {
-            Selection::Pair(p) => Some(p.clone()),
-            Selection::Opportunity(op) => Some(op.pair_name.clone()),
-            Selection::None => None,
-        }
-    }
-
-    /// borrowed view
-    #[inline]
-    pub(crate) fn pair(&self) -> Option<&str> {
-        match self {
-            Selection::Pair(p) => Some(p),
-            Selection::Opportunity(op) => Some(&op.pair_name),
-            Selection::None => None,
-        }
-    }
-
-    pub(crate) fn opportunity(&self) -> Option<&TradeOpportunity> {
-        match self {
-            Selection::Opportunity(op) => Some(op),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum PersistedSelection {
-    None,
-    Pair(String),
-    Opportunity {
-        pair: String,
-        opportunity_id: String,
-    },
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct AutoScaleY(pub bool);
-
-impl AutoScaleY {
-    pub fn value(&self) -> bool {
-        self.0
-    }
-}
-
-impl Default for AutoScaleY {
-    fn default() -> Self {
-        Self(true)
-    }
-}
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
