@@ -18,19 +18,25 @@ mod ticker;
 mod tuner;
 mod types;
 
-pub use binance::{BINANCE, BinanceApiConfig};
-
-pub(crate) use debug::DF;
-pub(crate) use plot::PLOT_CONFIG;
-pub(crate) use ticker::TICKER;
-pub(crate) use tuner::{StationId, TUNER_CONFIG, TimeTunerConfig, TunerStation};
-pub(crate) use types::{
-    AroiPct, BaseVol, CandleResolution, ClosePrice, DurationMs, HighPrice, JourneySettings,
-    LowPrice, MomentumPct, OpenPrice, OptimalSearchSettings, OptimizationStrategy, Pct, PhPct,
-    PriceRange, Prob, QuoteVol, RoiPct, Sigma, SimilaritySettings, StopPrice, TargetPrice,
-    TradeProfile, VolRatio, VolatilityPct, Weight, ZoneClassificationConfig, ZoneParams,
+pub(crate) use {
+    debug::DF,
+    plot::PLOT_CONFIG,
+    ticker::TICKER,
+    tuner::{StationId, TUNER_CONFIG, TimeTunerConfig, TunerStation},
+    types::{
+        AroiPct, BaseVol, CandleResolution, ClosePrice, DurationMs, HighPrice, JourneySettings,
+        LowPrice, MomentumPct, OpenPrice, OptimalSearchSettings, OptimizationStrategy, Pct, PhPct,
+        PriceRange, Prob, QuoteVol, RoiPct, Sigma, SimilaritySettings, StopPrice, TargetPrice,
+        TradeProfile, VolRatio, VolatilityPct, Weight, ZoneClassificationConfig, ZoneParams,
+    },
 };
 
-pub use demo::DEMO;
-pub use persistence::{PERSISTENCE, kline_cache_filename};
-pub use types::{Price, PriceLike};
+pub use {
+    binance::BINANCE,
+    demo::DEMO,
+    persistence::{PERSISTENCE, kline_cache_filename},
+    types::{Price, PriceLike},
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use binance::BinanceApiConfig;

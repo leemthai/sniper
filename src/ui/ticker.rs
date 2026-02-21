@@ -3,7 +3,7 @@ use {
         config::{BASE_INTERVAL, Price, PriceLike, TICKER},
         engine::SniperEngine,
         models::find_matching_ohlcv,
-        utils::{AppInstant, now_timestamp_ms},
+        utils::{AppInstant, TimeUtils},
     },
     eframe::egui::{Color32, FontId, OpenUrl, Pos2, Rect, Sense, Ui, Vec2},
 };
@@ -75,8 +75,8 @@ impl TickerState {
         }
 
         if cfg!(not(target_arch = "wasm32")) {
-            let now_ms = now_timestamp_ms();
-            let day_ago_ms = now_ms - (24 * 60 * 60 * 1000); // 24 Hours ago
+            let now_ms = TimeUtils::now_timestamp_ms();
+            let day_ago_ms = now_ms - TimeUtils::MS_IN_D;
 
             // Sync Pairs with Engine
             let pairs = engine.get_all_pair_names();
@@ -371,7 +371,7 @@ impl TickerState {
 
     fn get_rainbow_color(&self, x_pos: f32) -> Color32 {
         // Phase based on Time + Position
-        let time = now_timestamp_ms() as f64 / 1000.0;
+        let time = TimeUtils::now_timestamp_ms() as f64 / 1000.0;
         let phase = (x_pos as f64 * 0.005) + (time * TICKER.rainbow_speed);
 
         // Simple HSV -> RGB logic or sine waves

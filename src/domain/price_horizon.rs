@@ -1,6 +1,7 @@
-use crate::config::{HighPrice, LowPrice, PhPct, Price};
-
-use crate::models::OhlcvTimeSeries;
+use crate::{
+    config::{HighPrice, LowPrice, PhPct, Price},
+    models::OhlcvTimeSeries,
+};
 
 /// Automatically select discontinuous slice ranges based on price relevancy.
 /// Returns a tuple: (Vector of ranges [(start, end)], (price_min, price_max)).

@@ -5,23 +5,29 @@
 #![allow(clippy::too_many_arguments)]
 
 // Make core modules accessible
-pub mod app;
-pub mod config;
-pub mod data;
-pub mod domain;
-pub mod engine;
-pub mod models;
+mod app;
+mod config;
+mod data;
+mod domain;
+mod engine;
+mod models;
 #[cfg(feature = "ph_audit")]
-pub mod ph_audit;
+mod ph_audit;
 mod shared;
-pub mod ui;
-pub mod utils;
+mod ui;
+mod utils;
 
-// Re-export for outside crate use (e.g make_demo_cache.rs)
-pub use crate::models::OhlcvTimeSeries;
-pub use app::App;
-pub use data::{PriceStreamManager, TimeSeriesCollection, fetch_pair_data};
-pub use domain::PairInterval;
+pub use {
+    config::{BASE_INTERVAL, DEMO, PERSISTENCE, Price, PriceLike, kline_cache_filename},
+    data::{CacheFile, PriceStreamManager, TimeSeriesCollection},
+    domain::PairInterval,
+    models::OhlcvTimeSeries,
+    utils::TimeUtils,
+};
+
+// Gate the SQLite/Native storage specifically
+#[cfg(not(target_arch = "wasm32"))]
+pub use data::{MarketDataStorage, SqliteStorage};
 
 use clap::Parser;
 
@@ -33,10 +39,11 @@ pub struct Cli {
     pub prefer_api: bool,
 }
 
+use crate::app::App as AppInternal;
 /// Main application entry point - creates the GUI app
 pub fn run_app(
     cc: &eframe::CreationContext<'_>,
     args: Cli, // Was TimeSeriesCollection
-) -> App {
-    App::new(cc, args)
+) -> AppInternal {
+    AppInternal::new(cc, args)
 }

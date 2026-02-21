@@ -5,7 +5,7 @@ use std::{
 };
 use strum_macros::{Display, EnumIter};
 
-use crate::ui::UI_TEXT;
+use {crate::ui::UI_TEXT, crate::utils::TimeUtils as T};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, Default)]
 pub enum CandleResolution {
@@ -23,18 +23,17 @@ pub enum CandleResolution {
 impl CandleResolution {
     pub(crate) fn duration(&self) -> Duration {
         match self {
-            Self::M5 => Duration::from_secs(5 * 60),
-            Self::M15 => Duration::from_secs(15 * 60),
-            Self::H1 => Duration::from_secs(60 * 60),
-            Self::H4 => Duration::from_secs(4 * 60 * 60),
-            Self::D1 => Duration::from_secs(24 * 60 * 60),
-            Self::D3 => Duration::from_secs(3 * 24 * 60 * 60),
-            Self::W1 => Duration::from_secs(7 * 24 * 60 * 60),
-            Self::M1 => Duration::from_secs(30 * 24 * 60 * 60), // approx
+            Self::M5 => Duration::from_millis(T::MS_IN_5_MIN as u64),
+            Self::M15 => Duration::from_millis(T::MS_IN_15_MIN as u64),
+            Self::H1 => Duration::from_millis(T::MS_IN_H as u64),
+            Self::H4 => Duration::from_millis(T::MS_IN_4_H as u64),
+            Self::D1 => Duration::from_millis(T::MS_IN_D as u64),
+            Self::D3 => Duration::from_millis(T::MS_IN_3_D as u64),
+            Self::W1 => Duration::from_millis(T::MS_IN_W as u64),
+            Self::M1 => Duration::from_millis(T::MS_IN_1_M as u64),
         }
     }
 }
-
 impl std::fmt::Display for CandleResolution {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -283,10 +282,6 @@ impl From<DurationMs> for ChronoDuration {
 pub(crate) struct DurationMs(i64);
 
 impl DurationMs {
-    const MS_IN_YEAR: f64 = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0;
-    #[cfg(feature = "ph_audit")]
-    const MS_IN_HOURS: f64 = 3_600_000.0;
-
     pub(crate) const fn new(ms: i64) -> Self {
         Self(ms)
     }
@@ -304,7 +299,7 @@ impl DurationMs {
         if self.0 <= 0 {
             0.0
         } else {
-            self.0 as f64 / Self::MS_IN_HOURS
+            self.0 as f64 / T::MS_IN_H as f64
         }
     }
 
@@ -313,7 +308,7 @@ impl DurationMs {
         if self.0 <= 0 {
             0.0
         } else {
-            self.0 as f64 / Self::MS_IN_YEAR
+            self.0 as f64 / T::MS_IN_YEAR as f64
         }
     }
 }

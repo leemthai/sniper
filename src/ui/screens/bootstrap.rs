@@ -3,7 +3,7 @@ use {
         app::{BootstrapState, SyncStatus},
         config::{BASE_INTERVAL, PLOT_CONFIG},
         ui::UI_TEXT,
-        utils::interval_to_string,
+        utils::TimeUtils,
     },
     eframe::egui::{
         Align, CentralPanel, Context, Grid, Layout, ProgressBar, RichText, ScrollArea, Ui,
@@ -23,7 +23,7 @@ pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
                     .color(PLOT_CONFIG.color_warning),
             );
 
-            let interval_str = interval_to_string(BASE_INTERVAL.as_millis() as i64);
+            let interval_str = TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
             ui.label(
                 RichText::new(format!(
                     "{} {} {}",

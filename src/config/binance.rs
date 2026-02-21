@@ -1,11 +1,13 @@
 //! Binance-specific configuration constants and types.
 /// Configuration for Binance REST API client
+#[cfg(not(target_arch = "wasm32"))]
 pub struct BinanceApiConfig {
     pub timeout_ms: u64,
     pub retries: u32,
     pub backoff_ms: u64,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Default for BinanceApiConfig {
     fn default() -> Self {
         Self {
@@ -16,6 +18,7 @@ impl Default for BinanceApiConfig {
     }
 }
 
+#[allow(dead_code)]
 /// Configuration for REST API Limits and Weights
 pub struct RestLimits {
     /// Default limit for number of klines returned in a single request (1000 is max)
@@ -28,6 +31,7 @@ pub struct RestLimits {
     pub concurrent_sync_tasks: usize,
 }
 
+#[allow(dead_code)]
 /// Configuration for WebSocket Connections
 pub struct WsConfig {
     /// WebSocket base URL for Binance combined streaming API
@@ -39,6 +43,7 @@ pub struct WsConfig {
 }
 
 /// Default values for the Rest Client
+#[allow(dead_code)]
 pub struct ClientDefaults {
     pub timeout_ms: u64,
     pub retries: u32,
@@ -46,6 +51,7 @@ pub struct ClientDefaults {
 }
 
 /// The Master Configuration Struct
+#[allow(dead_code)]
 pub struct BinanceConfig {
     pub limits: RestLimits,
     pub ws: WsConfig,

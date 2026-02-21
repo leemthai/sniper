@@ -14,7 +14,7 @@ use {
             TradeOpportunity, TradeVariant, TradingModel, VisualFluff, find_matching_ohlcv,
             pair_analysis_pure,
         },
-        utils::{AppInstant, duration_to_candles, now_utc},
+        utils::{AppInstant, TimeUtils},
     },
     rayon::prelude::*,
     std::{cmp::Ordering, sync::Arc, sync::mpsc::Sender},
@@ -25,7 +25,7 @@ use {
 use {std::sync::mpsc::Receiver, std::thread};
 
 #[cfg(debug_assertions)]
-use crate::{ui::UI_TEXT, utils::format_duration};
+use crate::ui::UI_TEXT;
 
 /// NATIVE ONLY: Spawns a background thread to process jobs
 #[cfg(not(target_arch = "wasm32"))]
@@ -258,7 +258,8 @@ pub(crate) fn run_pathfinder_simulations(
         DurationMs::new(BASE_INTERVAL.as_millis() as i64),
         &DEFAULT_JOURNEY_SETTINGS,
     );
-    let duration_candles = duration_to_candles(duration, BASE_INTERVAL.as_millis() as i64);
+    let duration_candles =
+        TimeUtils::duration_to_candles(duration, BASE_INTERVAL.as_millis() as i64);
 
     let matches_opt = ScenarioSimulator::find_historical_matches(
         ohlcv.pair_interval.name(),
@@ -399,7 +400,7 @@ fn evaluate_target_candidate(
 
             let opp = TradeOpportunity {
                 id: uuid,
-                created_at: now_utc(),
+                created_at: TimeUtils::now_utc(),
                 ph_pct: ctx.ph_pct,
                 pair_name: ctx.pair_name.to_string(),
                 direction,
@@ -459,7 +460,7 @@ fn apply_diversity_filter(
             for (i, c) in debug_view.iter().take(5).enumerate() {
                 let roi = c.opportunity.expected_roi();
                 let duration = c.opportunity.avg_duration;
-                let dur_str = format_duration(duration.value());
+                let dur_str = TimeUtils::format_duration(duration.value());
                 let aroi = TradeProfile::calculate_annualized_roi(roi, duration);
 
                 log::info!(

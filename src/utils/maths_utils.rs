@@ -1,15 +1,4 @@
-use {
-    argminmax::ArgMinMax,
-    std::{f64, time::Duration},
-};
-
-/// Converts a Duration into a specific number of candles based on the interval.
-pub(crate) fn duration_to_candles(duration: Duration, interval_ms: i64) -> usize {
-    if interval_ms <= 0 {
-        return 0;
-    }
-    (duration.as_millis() as i64 / interval_ms) as usize
-}
+use {argminmax::ArgMinMax, std::f64};
 
 #[inline]
 pub(crate) fn get_max(vec: &[f64]) -> f64 {

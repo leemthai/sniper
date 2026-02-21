@@ -13,7 +13,7 @@ use {
 #[cfg(not(target_arch = "wasm32"))]
 use {
     crate::config::{BASE_INTERVAL, BINANCE, BinanceApiConfig},
-    crate::utils::interval_to_string,
+    crate::utils::TimeUtils,
     binance_sdk::{
         config::ConfigurationRestApi,
         spot::{
@@ -33,7 +33,7 @@ use {
 #[cfg(target_arch = "wasm32")]
 use {serde_json, std::collections::HashMap};
 
-// WASM + debug imports
+//WASM + debug imports
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
 
@@ -70,7 +70,7 @@ pub struct PriceStreamManager {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn build_combined_stream_url(symbols: &[String]) -> String {
-    let interval = interval_to_string(BASE_INTERVAL.as_millis() as i64);
+    let interval = TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
 
     // CHANGE: Only subscribe to kline
     let streams: Vec<String> = symbols

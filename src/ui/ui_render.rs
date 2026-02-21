@@ -14,7 +14,7 @@ use {
             CandleRangePanel, DirectionColor, PlotInteraction, TunerAction, UI_CONFIG, UI_TEXT,
             UiStyleExt, get_momentum_color, get_outcome_color, render_time_tuner,
         },
-        utils::{format_duration, now_utc},
+        utils::TimeUtils,
     },
     chrono::Duration,
     eframe::egui::{
@@ -813,12 +813,12 @@ impl App {
                                 .color(PLOT_CONFIG.color_info),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let now = now_utc();
+                            let now = TimeUtils::now_utc();
                             let age = now - op.created_at;
                             let age_str = if age < Duration::minutes(1) {
                                 "New".to_string()
                             } else {
-                                format_duration(age.num_milliseconds())
+                                TimeUtils::format_duration(age.num_milliseconds())
                             };
 
                             ui.label(
@@ -925,7 +925,7 @@ impl App {
                     self.down_from_top(ui);
                     // Avg Duration Only
                     ui.label(
-                        RichText::new(format_duration(op.avg_duration.value()))
+                        RichText::new(TimeUtils::format_duration(op.avg_duration.value()))
                             .small()
                             .color(PLOT_CONFIG.color_text_neutral),
                     );

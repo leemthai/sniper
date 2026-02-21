@@ -8,13 +8,12 @@ use {
     std::path::PathBuf,
     std::thread,
     std::time::{Duration, Instant},
-    zone_sniper::config::{BASE_INTERVAL, DEMO, PERSISTENCE, Price, PriceLike},
-    zone_sniper::data::{
-        CacheFile, MarketDataStorage, PriceStreamManager, SqliteStorage, TimeSeriesCollection,
+    // EVERYTHING below now comes directly from zone_sniper root
+    zone_sniper::{
+        BASE_INTERVAL, CacheFile, DEMO, MarketDataStorage, OhlcvTimeSeries, PERSISTENCE,
+        PairInterval, Price, PriceLike, PriceStreamManager, SqliteStorage, TimeSeriesCollection,
+        TimeUtils,
     },
-    zone_sniper::domain::PairInterval,
-    zone_sniper::models::OhlcvTimeSeries,
-    zone_sniper::utils::interval_to_string,
 };
 
 // Limit demo data to keep WASM binary small (Github limit < 100MB)
@@ -32,7 +31,7 @@ async fn main() -> Result<()> {
     let demo_pairs = DEMO.resources.pairs;
 
     let interval_ms = BASE_INTERVAL.as_millis() as i64;
-    let interval_str = interval_to_string(interval_ms);
+    let interval_str = TimeUtils::interval_to_string(interval_ms);
     let db_path = "klines.sqlite";
 
     log::info!("🚀 Building WASM Demo Cache from local DB: {}", db_path);
@@ -85,7 +84,7 @@ async fn main() -> Result<()> {
         series_data: series_list,
     };
 
-    let standard_name = zone_sniper::config::kline_cache_filename(interval_ms);
+    let standard_name = zone_sniper::kline_cache_filename(interval_ms);
     let demo_filename = format!("demo_{}", standard_name);
     let output_path = PathBuf::from(PERSISTENCE.kline.directory).join(&demo_filename);
 

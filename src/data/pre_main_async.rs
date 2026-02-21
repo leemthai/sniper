@@ -15,7 +15,7 @@ use {
     },
     crate::domain::PairInterval,
     crate::models::OhlcvTimeSeries,
-    crate::utils::interval_to_string,
+    crate::utils::TimeUtils,
     anyhow::Result,
     futures::stream::{self, StreamExt},
     std::fs,
@@ -32,7 +32,7 @@ async fn sync_pair(
     storage: Arc<SqliteStorage>,
     provider: Arc<BinanceProvider>,
 ) -> Result<(OhlcvTimeSeries, usize)> {
-    let interval_str = interval_to_string(interval_ms);
+    let interval_str = TimeUtils::interval_to_string(interval_ms);
 
     // Check DB for last candle
     let last_time = storage.get_last_candle_time(&pair, interval_str).await?;

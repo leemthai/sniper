@@ -12,7 +12,7 @@ use {
         },
         shared::SharedConfiguration,
         ui::TradeFinderRow,
-        utils::{AppInstant, now_timestamp_ms},
+        utils::{AppInstant, TimeUtils},
     },
     std::{
         collections::{HashMap, VecDeque},
@@ -32,7 +32,6 @@ use {
     crate::data::{ResultsRepositoryTrait, SqliteResultsRepository, TradeResult},
     crate::engine::spawn_worker_thread,
     crate::models::{TradeDirection, TradeOutcome},
-    crate::utils::now_utc,
     std::path::Path,
 };
 
@@ -245,7 +244,7 @@ impl SniperEngine {
         crate::trace_time!("Core: Get TradeFinder Rows", 2000, {
             let mut rows = Vec::new();
 
-            let now_ms = now_timestamp_ms();
+            let now_ms = TimeUtils::now_timestamp_ms();
             let day_ms = 86_400_000;
 
             // Group Ledger Opportunities by Pair for fast lookup
@@ -674,7 +673,7 @@ impl SniperEngine {
     fn tick_prune_ledger(&mut self) -> Vec<String> {
         // GARBAGE COLLECTION: Removes finished trades and archives them.
         // If a wick hits our Stop Loss mid-candle, we want to kill the trade immediately.
-        let time_now_utc = now_utc();
+        let time_now_utc = TimeUtils::now_utc();
         let mut dead_trades: Vec<TradeResult> = Vec::new();
         let mut ids_to_remove: Vec<String> = Vec::new();
 

@@ -3,7 +3,7 @@ use {
         config::PLOT_CONFIG,
         models::{DisplaySegment, GapReason},
         ui::{UI_TEXT, UiStyleExt},
-        utils::epoch_ms_to_date_string,
+        utils::TimeUtils,
     },
     eframe::egui::{Button, Grid, RichText, ScrollArea, Ui},
 };
@@ -127,8 +127,8 @@ impl<'a> CandleRangePanel<'a> {
                             }
 
                             // SEGMENT ROW
-                            let start_date = epoch_ms_to_date_string(seg.start_ts);
-                            let end_date = epoch_ms_to_date_string(seg.end_ts);
+                            let start_date = TimeUtils::epoch_ms_to_date_string(seg.start_ts);
+                            let end_date = TimeUtils::epoch_ms_to_date_string(seg.end_ts);
 
                             // Column 1: Date Range + Count (Clickable)
                             // Format: "2024-01-01 - 2024-02-01 (500c)"

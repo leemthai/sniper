@@ -1,7 +1,7 @@
 use crate::{
     config::{HighPrice, LowPrice, Price},
     models::OhlcvTimeSeries,
-    utils::format_duration,
+    utils::TimeUtils,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -214,7 +214,7 @@ impl RangeGapFinder {
                 }
             };
 
-            (reason, format_duration(time_gap))
+            (reason, TimeUtils::format_duration(time_gap))
         };
 
         // NEW: Calculate Min/Max for this segment

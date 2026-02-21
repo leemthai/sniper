@@ -2,5 +2,7 @@ mod audit_config;
 mod reporter;
 mod runner;
 
-pub use audit_config::{AUDIT_PAIRS, PH_LEVELS};
-pub use reporter::AuditReporter;
+pub use {
+    audit_config::{AUDIT_PAIRS, PH_LEVELS},
+    reporter::AuditReporter,
+};

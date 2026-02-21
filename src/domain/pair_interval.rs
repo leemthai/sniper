@@ -1,8 +1,7 @@
-use serde::{Deserialize, Serialize};
-
-use crate::config::BINANCE;
-
-use crate::utils::interval_to_string;
+use {
+    crate::{config::BINANCE, utils::TimeUtils},
+    serde::{Deserialize, Serialize},
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct PairInterval {
@@ -51,7 +50,7 @@ impl std::fmt::Display for PairInterval {
             quote,
             self.name,
             self.interval_ms,
-            interval_to_string(self.interval_ms)
+            TimeUtils::interval_to_string(self.interval_ms)
         )
     }
 }

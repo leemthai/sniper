@@ -18,33 +18,32 @@ use crate::{
     },
     data::GlobalRateLimiter,
     domain::{Candle, PairInterval},
-    // TEMP get rid of this soon once we have enum time intervals
-    utils::*,
+    utils::TimeUtils,
 };
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
-// For "MS -> Enum", a static helper is still best,
-//    but we return Result instead of panicking.
+// For "MS -> Enum", a static helper is still best, but we return Result instead of panicking.
 pub fn try_interval_from_ms(ms: i64) -> Result<KlinesIntervalEnum, String> {
+    use TimeUtils as T;
     match ms {
-        MS_IN_S => Ok(KlinesIntervalEnum::Interval1s),
-        MS_IN_MIN => Ok(KlinesIntervalEnum::Interval1m),
-        MS_IN_3_MIN => Ok(KlinesIntervalEnum::Interval3m),
-        MS_IN_5_MIN => Ok(KlinesIntervalEnum::Interval5m),
-        MS_IN_15_MIN => Ok(KlinesIntervalEnum::Interval15m),
-        MS_IN_30_MIN => Ok(KlinesIntervalEnum::Interval30m),
-        MS_IN_H => Ok(KlinesIntervalEnum::Interval1h),
-        MS_IN_2_H => Ok(KlinesIntervalEnum::Interval2h),
-        MS_IN_4_H => Ok(KlinesIntervalEnum::Interval4h),
-        MS_IN_6_H => Ok(KlinesIntervalEnum::Interval6h),
-        MS_IN_8_H => Ok(KlinesIntervalEnum::Interval8h),
-        MS_IN_12_H => Ok(KlinesIntervalEnum::Interval12h),
-        MS_IN_D => Ok(KlinesIntervalEnum::Interval1d),
-        MS_IN_3_D => Ok(KlinesIntervalEnum::Interval3d),
-        MS_IN_W => Ok(KlinesIntervalEnum::Interval1w),
-        MS_IN_1_M => Ok(KlinesIntervalEnum::Interval1M),
+        T::MS_IN_S => Ok(KlinesIntervalEnum::Interval1s),
+        T::MS_IN_MIN => Ok(KlinesIntervalEnum::Interval1m),
+        T::MS_IN_3_MIN => Ok(KlinesIntervalEnum::Interval3m),
+        T::MS_IN_5_MIN => Ok(KlinesIntervalEnum::Interval5m),
+        T::MS_IN_15_MIN => Ok(KlinesIntervalEnum::Interval15m),
+        T::MS_IN_30_MIN => Ok(KlinesIntervalEnum::Interval30m),
+        T::MS_IN_H => Ok(KlinesIntervalEnum::Interval1h),
+        T::MS_IN_2_H => Ok(KlinesIntervalEnum::Interval2h),
+        T::MS_IN_4_H => Ok(KlinesIntervalEnum::Interval4h),
+        T::MS_IN_6_H => Ok(KlinesIntervalEnum::Interval6h),
+        T::MS_IN_8_H => Ok(KlinesIntervalEnum::Interval8h),
+        T::MS_IN_12_H => Ok(KlinesIntervalEnum::Interval12h),
+        T::MS_IN_D => Ok(KlinesIntervalEnum::Interval1d),
+        T::MS_IN_3_D => Ok(KlinesIntervalEnum::Interval3d),
+        T::MS_IN_W => Ok(KlinesIntervalEnum::Interval1w),
+        T::MS_IN_1_M => Ok(KlinesIntervalEnum::Interval1M),
         _ => Err(format!("Unsupported interval: {}ms", ms)),
     }
 }

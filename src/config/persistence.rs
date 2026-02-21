@@ -1,4 +1,4 @@
-use crate::utils::interval_to_string;
+use crate::utils::TimeUtils;
 
 pub struct KlinePersistenceConfig {
     /// Directory path for storing kline data
@@ -40,7 +40,7 @@ pub const PERSISTENCE: PersistenceConfig = PersistenceConfig {
 pub fn kline_cache_filename(interval_ms: i64) -> String {
     // Note: Assuming you renamed this to 'interval_to_string' in TimeUtils earlier.
     // If not, stick to 'interval_ms_to_string'.
-    let interval_str = interval_to_string(interval_ms);
+    let interval_str = TimeUtils::interval_to_string(interval_ms);
 
     format!(
         "{}_{}_v{}.bin",

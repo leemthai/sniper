@@ -10,7 +10,7 @@ use {
             PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer,
             UI_TEXT,
         },
-        utils::{epoch_ms_to_date_string, normalize_max, smooth_data},
+        utils::{TimeUtils, normalize_max, smooth_data},
     },
     colorgrad::Gradient,
     eframe::egui::{Color32, PointerButton, Rect, Ui, Vec2b},
@@ -123,7 +123,7 @@ fn create_time_axis(
                     // Reconstruct the Timestamp for this bucket
                     let bucket_ts = (start_bucket + local_offset) * agg_interval_ms;
 
-                    return epoch_ms_to_date_string(bucket_ts);
+                    return TimeUtils::epoch_ms_to_date_string(bucket_ts);
                 }
 
                 current_visual_start = current_visual_end + gap_width;
