@@ -2,6 +2,7 @@ use {
     crate::{app::App, models::TradeOpportunity},
     eframe::egui::Context,
     serde::{Deserialize, Serialize},
+    std::collections::BTreeMap,
     std::fmt,
 };
 
@@ -145,7 +146,7 @@ impl PhaseView for TuningState {
 
 #[derive(Default, Clone)]
 pub(crate) struct BootstrapState {
-    pub(crate) pairs: std::collections::BTreeMap<usize, (String, SyncStatus)>,
+    pub(crate) pairs: BTreeMap<usize, (String, SyncStatus)>,
     pub(crate) total_pairs: usize,
     pub(crate) completed: usize,
     pub(crate) failed: usize,

@@ -11,7 +11,7 @@ use {
     sqlx::sqlite::{
         SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
     },
-    std::{str::FromStr, time::Duration},
+    std::{str::FromStr, thread, time::Duration},
     tokio::sync::mpsc,
 };
 
@@ -71,7 +71,7 @@ impl SqliteResultsRepository {
         let pool_clone = pool.clone();
 
         // Dedicated writer task
-        std::thread::spawn(move || {
+        thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()

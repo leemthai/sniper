@@ -79,7 +79,7 @@ pub enum BNKlineError {
 }
 
 impl fmt::Display for BNKlineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
         match self {
             BNKlineError::InvalidLength => write!(f, "Invalid length"),
             BNKlineError::InvalidType(string) => write!(f, "Invalid type: {}", string),

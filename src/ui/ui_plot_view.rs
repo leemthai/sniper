@@ -18,7 +18,9 @@ use {
         Axis, AxisHints, GridInput, GridMark, HPlacement, Plot, PlotPoint, PlotUi, VPlacement,
     },
     serde::{Deserialize, Serialize},
+    std::collections::hash_map,
     std::hash::{Hash, Hasher},
+    std::ops,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -372,7 +374,7 @@ impl PlotView {
         &self,
         cva_results: &CVACore,
         current_price_opt: Option<Price>,
-    ) -> std::ops::RangeInclusive<f64> {
+    ) -> ops::RangeInclusive<f64> {
         let (ph_min, ph_max) = cva_results.price_range.min_max();
         let current_price = current_price_opt.unwrap_or_default();
 
@@ -500,7 +502,7 @@ impl PlotView {
         let zone_count = cva_results.zone_count;
         let time_decay_factor = cva_results.time_decay_factor;
 
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let mut hasher = hash_map::DefaultHasher::new();
         cva_results
             .price_range
             .min_max()

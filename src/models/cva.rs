@@ -11,53 +11,42 @@ pub(crate) const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
 pub(crate) const MIN_CANDLES_FOR_ANALYSIS: usize = 250;
 pub(crate) const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
 
-/// Lean CVA results containing only actively used metrics
-/// Memory footprint: ~3.2KB per 100 zones vs 14.4KB with full CVAResults
-#[derive(Default, Debug, Clone, serde::Deserialize, serde::Serialize)]
+/// Lean CVA results containing only actively used metrics.
+/// Memory footprint: ~3.2KB per 100 zones vs 14.4KB with full CVAResults.
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct CVACore {
-    // Active metrics (volume-weighted)
-    pub candle_bodies_vw: Vec<f64>, // Mapped to FullCandleTVW
-
+    pub candle_bodies_vw: Vec<f64>,
     pub low_wick_counts: Vec<f64>,
     pub high_wick_counts: Vec<f64>,
-
     pub total_candles: usize,
-
     pub included_ranges: Vec<(usize, usize)>,
-
-    // Metadata
     pub pair_name: String,
     pub price_range: PriceRange<Price>,
     pub zone_count: usize,
-
-    // Metadata fields required by pair_analysis.rs and ui_plot_view.rs
     pub start_timestamp_ms: i64,
     pub end_timestamp_ms: i64,
     pub time_decay_factor: f64,
-
-    // NEW METRICS
-    pub relevant_candle_count: usize, // Number of candles inside the horizon
-    pub interval_ms: i64,             // e.g. 3600000 for 1h
-    pub volatility_pct: VolatilityPct, // Average (High-Low)/Close % for relevant candles
+    pub relevant_candle_count: usize,
+    pub interval_ms: i64,
+    pub volatility_pct: VolatilityPct,
 }
 
-/// Score types for the lean CVA model
 #[derive(
     Copy, Clone, PartialEq, Eq, Hash, Default, Debug, Serialize, Deserialize, strum_macros::EnumIter,
 )]
 pub(crate) enum ScoreType {
     #[default]
-    FullCandleTVW, // Sticky (Volume * Time)
-    LowWickCount,  // Reversal (Count * Time) - Renamed from LowWickVW
-    HighWickCount, // Reversal (Count * Time) - Renamed from HighWickVW
+    FullCandleTVW,
+    LowWickCount,
+    HighWickCount,
 }
 
 impl fmt::Display for ScoreType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ScoreType::FullCandleTVW => write!(f, "Full Candle Temporal-Volume Weighted"),
-            ScoreType::LowWickCount => write!(f, "Low Wick Count (Rejection Prob. Numerator)"),
-            ScoreType::HighWickCount => write!(f, "High Wick Count (Rejection Prob. Numerator)"),
+            Self::FullCandleTVW => write!(f, "Full Candle Temporal-Volume Weighted"),
+            Self::LowWickCount => write!(f, "Low Wick Count (Rejection Prob. Numerator)"),
+            Self::HighWickCount => write!(f, "High Wick Count (Rejection Prob. Numerator)"),
         }
     }
 }
@@ -79,9 +68,8 @@ impl CVACore {
         }
     }
 
-    /// Applies a score to a range of zones WITHOUT diluting it.
-    /// Used for: Wicks / Rejection / Presence.
-    /// If a wick covers 5 zones, all 5 zones get the full rejection score.
+    /// Applies full score to all zones in range without dilution.
+    /// Used for wicks/rejection. If a wick covers 5 zones, all 5 get full score.
     pub(crate) fn apply_rejection_impact(
         &mut self,
         st: ScoreType,
@@ -89,33 +77,28 @@ impl CVACore {
         end_range: Price,
         score_to_apply: f64,
     ) {
-        // Safety: Zero width implies no range to score
+        // Zero width implies no range to score
         if (start_range - end_range).abs() < f64::EPSILON {
             return;
         }
 
-        let range_copy = self.price_range.clone();
-        let num_chunks = range_copy.count_intersecting_chunks(start_range, end_range);
-
+        let num_chunks = self
+            .price_range
+            .count_intersecting_chunks(start_range, end_range);
         if num_chunks == 0 {
             return;
         }
 
-        // FLAT LOGIC: Do NOT divide by num_chunks.
-        // We apply the full 'score_to_apply' to every bin touched.
-        let start_chunk = range_copy.chunk_index(start_range);
-        let scores = self.get_scores_mut_ref(st);
-
-        scores
+        let start_chunk = self.price_range.chunk_index(start_range);
+        self.get_scores_mut_ref(st)
             .iter_mut()
-            .enumerate()
             .skip(start_chunk)
             .take(num_chunks)
-            .for_each(|(_, score)| {
-                *score += score_to_apply;
-            });
+            .for_each(|score| *score += score_to_apply);
     }
 
+    /// Distributes score evenly across zones (density logic).
+    /// Total score is conserved by dividing by number of zones covered.
     pub(crate) fn distribute_conserved_volume(
         &mut self,
         st: ScoreType,
@@ -139,19 +122,13 @@ impl CVACore {
             return;
         }
 
-        // Density Logic: Divide score by number of zones covered
-        let quantity_per_zone = score_to_spread / (num_chunks as f64);
-        let start_chunk = range_copy.chunk_index(start_range);
-        let scores = self.get_scores_mut_ref(st);
-
-        scores
+        let quantity_per_zone = score_to_spread / num_chunks as f64;
+        let start_chunk = self.price_range.chunk_index(start_range);
+        self.get_scores_mut_ref(st)
             .iter_mut()
-            .enumerate()
             .skip(start_chunk)
             .take(num_chunks)
-            .for_each(|(_, count)| {
-                *count += quantity_per_zone;
-            });
+            .for_each(|count| *count += quantity_per_zone);
     }
 
     pub(crate) fn new(

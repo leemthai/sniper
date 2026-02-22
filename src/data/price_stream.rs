@@ -2,7 +2,9 @@ use crate::config::{Pct, Price};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
+    crate::config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol},
     crate::models::LiveCandle,
+    std::error,
     std::sync::mpsc::Sender,
     std::thread,
     std::time::Duration,
@@ -333,7 +335,7 @@ async fn run_combined_price_stream(
     status_arc: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     suspended_arc: Arc<Mutex<bool>>,
     candle_tx: Option<Sender<LiveCandle>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(), Box<dyn error::Error + Send + Sync>> {
     let (ws_stream, _) = connect_async(url).await?;
 
     // Update status to connected
@@ -502,14 +504,12 @@ fn parse_and_send_kline(data: &serde_json::Value, tx: &Sender<LiveCandle>) {
     let candle = LiveCandle {
         symbol,
         open_time: k["t"].as_i64().unwrap_or(0),
-        open: crate::config::OpenPrice::new(k["o"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
-        high: crate::config::HighPrice::new(k["h"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
-        low: crate::config::LowPrice::new(k["l"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
-        close: crate::config::ClosePrice::new(close),
-        volume: crate::config::BaseVol::new(k["v"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
-        quote_vol: crate::config::QuoteVol::new(
-            k["q"].as_str().unwrap_or("0").parse().unwrap_or(0.0),
-        ),
+        open: OpenPrice::new(k["o"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
+        high: HighPrice::new(k["h"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
+        low: LowPrice::new(k["l"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
+        close: ClosePrice::new(close),
+        volume: BaseVol::new(k["v"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
+        quote_vol: QuoteVol::new(k["q"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
         is_closed,
     };
 

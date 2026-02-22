@@ -12,6 +12,9 @@ use {
 };
 
 #[cfg(feature = "ph_audit")]
+use std::process;
+
+#[cfg(feature = "ph_audit")]
 pub fn execute_audit(
     ts_collection: &TimeSeriesCollection,
     current_prices: &HashMap<String, Price>, // NEW: Live prices from Ticker
@@ -67,7 +70,7 @@ pub fn execute_audit(
     println!("Audit Complete. Flushing CSV...");
     reporter.print_all();
 
-    std::process::exit(0);
+    process::exit(0);
 }
 
 fn run_single_simulation(

@@ -9,7 +9,7 @@ use {crate::config::DEMO, crate::data::WasmDemoData};
 #[cfg(not(target_arch = "wasm32"))]
 use {
     crate::app::SyncStatus,
-    crate::config::{BASE_INTERVAL, BINANCE},
+    crate::config::{BASE_INTERVAL, BINANCE, BINANCE_MAX_PAIRS, BINANCE_PAIRS_FILENAME},
     crate::data::{
         BinanceProvider, GlobalRateLimiter, MarketDataProvider, MarketDataStorage, SqliteStorage,
     },
@@ -93,8 +93,6 @@ pub async fn fetch_pair_data(
     // --- NATIVE IMPLEMENTATION ---
     #[cfg(not(target_arch = "wasm32"))]
     {
-        use crate::config::{BINANCE_MAX_PAIRS, BINANCE_PAIRS_FILENAME};
-
         let _ = klines_acceptable_age_secs;
         let _ = args;
 

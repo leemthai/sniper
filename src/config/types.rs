@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    fmt,
     ops::{Add, Div, Mul, Sub},
     time::Duration,
 };
@@ -34,8 +35,8 @@ impl CandleResolution {
         }
     }
 }
-impl std::fmt::Display for CandleResolution {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for CandleResolution {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::M5 => write!(f, "5m"),
             Self::M15 => write!(f, "15m"),
@@ -92,8 +93,8 @@ impl Default for PhPct {
     }
 }
 
-impl std::fmt::Display for PhPct {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for PhPct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:.4}%", self.0 * 100.)
     }
 }
@@ -121,8 +122,8 @@ impl Pct {
     // }
 }
 
-impl std::fmt::Display for Pct {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Pct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:.4}%", self.0 * 100.)
     }
 }
@@ -158,8 +159,8 @@ impl VolatilityPct {
     }
 }
 
-impl std::fmt::Display for VolatilityPct {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for VolatilityPct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:.3}%", self.0 * 100.0)
     }
 }
@@ -188,8 +189,8 @@ impl MomentumPct {
     }
 }
 
-impl std::fmt::Display for MomentumPct {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for MomentumPct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:+.2}%", self.0 * 100.0)
     }
 }
@@ -215,8 +216,8 @@ impl RoiPct {
     }
 }
 
-impl std::fmt::Display for RoiPct {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for RoiPct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:+.2}%", self.0 * 100.0)
     }
 }
@@ -236,8 +237,8 @@ impl AroiPct {
     }
 }
 
-impl std::fmt::Display for AroiPct {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for AroiPct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:+.0}%", self.0 * 100.0)
     }
 }
@@ -263,8 +264,8 @@ impl Prob {
     // }
 }
 
-impl std::fmt::Display for Prob {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Prob {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:.1}%", self.0 * 100.0)
     }
 }
@@ -313,8 +314,8 @@ impl DurationMs {
     }
 }
 
-impl std::fmt::Display for DurationMs {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for DurationMs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}ms", self.0)
     }
 }
@@ -345,8 +346,8 @@ impl VolRatio {
     }
 }
 
-impl std::fmt::Display for VolRatio {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for VolRatio {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:.2}x", self.0)
     }
 }
@@ -368,8 +369,8 @@ impl Sigma {
     }
 }
 
-impl std::fmt::Display for Sigma {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Sigma {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:.1}σ", self.0)
     }
 }
@@ -523,8 +524,8 @@ macro_rules! define_price_type {
             }
         }
 
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{}", self.format_price())
             }
         }
@@ -724,8 +725,8 @@ impl BaseVol {
     }
 }
 
-impl std::fmt::Display for BaseVol {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for BaseVol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:.8}", self.0)
     }
 }
@@ -752,8 +753,8 @@ impl std::ops::AddAssign for QuoteVol {
     }
 }
 
-impl std::fmt::Display for QuoteVol {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for QuoteVol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = self.0;
         if val >= 1_000_000.0 {
             write!(f, "{:.1}M", val / 1_000_000.0)
@@ -781,8 +782,8 @@ impl Weight {
     }
 }
 
-impl std::fmt::Display for Weight {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Weight {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:.1}", self.0)
     }
 }

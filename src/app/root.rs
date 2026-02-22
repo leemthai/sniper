@@ -8,6 +8,7 @@ use {
     serde::{Deserialize, Serialize},
     std::{
         collections::{HashMap, HashSet},
+        mem,
         sync::{Arc, mpsc, mpsc::Receiver},
     },
 };
@@ -54,8 +55,6 @@ pub struct App {
 
     #[serde(skip)]
     pub(crate) valid_session_pairs: HashSet<String>, // Valid pairs for this session only - this is passed to the engine
-    // #[serde(skip)]
-    // pub(crate) prices: HashMap<String, Price>,
 
     // Persisted user intent (thin, serializable)
     pub(crate) persisted_selection: PersistedSelection,
@@ -728,7 +727,7 @@ impl App {
             println!(">> App State is RUNNING. Ticker & Data Ready. Starting Audit...");
 
             // Gather Live Prices (Only for the ones we found)
-            let mut live_prices = std::collections::HashMap::new();
+            let mut live_prices = HashMap::new();
             for &pair in crate::ph_audit::AUDIT_PAIRS {
                 if let Some(p) = e.get_price(pair) {
                     live_prices.insert(pair.to_string(), p);
@@ -736,7 +735,6 @@ impl App {
             }
             execute_audit(&e.timeseries.read().unwrap(), &live_prices);
         } else {
-            // Engine not initialized yet
             log::warn!("Engine not init yet in try_run_audit");
         }
     }
@@ -747,7 +745,7 @@ impl eframe::App for App {
         setup_custom_visuals(ctx);
 
         // Take ownership of state cleanly
-        let current = std::mem::take(&mut self.state);
+        let current = mem::take(&mut self.state);
 
         self.state = match current {
             AppState::Bootstrapping(mut s) => s.tick(self, ctx),
@@ -787,7 +785,6 @@ impl eframe::App for App {
     }
 }
 
-/// Sets up custom visuals for the entire application
 fn setup_custom_visuals(ctx: &Context) {
     let mut visuals = Visuals::dark();
 
@@ -801,8 +798,7 @@ fn setup_custom_visuals(ctx: &Context) {
     visuals.widgets.hovered.fg_stroke.color = UI_CONFIG.colors.heading;
     visuals.widgets.active.fg_stroke.color = UI_CONFIG.colors.heading;
 
-    // Set the custom visuals
     ctx.set_visuals(visuals);
-    // Disable text selection globally. This stops the I-Beam cursor appearing on labels/buttons unless it is a text edit box. Also prevents any text from being selectable
+    // Disable text selection globally (stops annyoing I-Beam cursor appearing unless text edit box.
     ctx.style_mut(|s| s.interaction.selectable_labels = false);
 }

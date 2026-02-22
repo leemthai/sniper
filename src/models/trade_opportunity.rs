@@ -202,8 +202,8 @@ pub(crate) enum TradeOutcome {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl std::fmt::Display for TradeOutcome {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TradeOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TradeOutcome::TargetHit => write!(f, "TARGET"),
             TradeOutcome::StopHit => write!(f, "STOP"),
