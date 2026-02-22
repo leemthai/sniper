@@ -5,4 +5,5 @@ mod runner;
 pub use {
     audit_config::{AUDIT_PAIRS, PH_LEVELS},
     reporter::AuditReporter,
+    runner::execute_audit,
 };

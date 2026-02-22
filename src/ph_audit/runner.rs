@@ -1,12 +1,11 @@
 use {
     crate::{
-        analysis::pair_analysis,
         config::{BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, StationId},
-        data::timeseries::TimeSeriesCollection,
+        data::TimeSeriesCollection,
         engine::run_pathfinder_simulations,
-        models::find_matching_ohlcv,
+        models::{find_matching_ohlcv, pair_analysis_pure},
         ph_audit::{AUDIT_PAIRS, AuditReporter, PH_LEVELS},
-        utils::time_utils::AppInstant,
+        utils::AppInstant,
     },
     std::collections::HashMap,
     strum::IntoEnumIterator,
@@ -88,7 +87,7 @@ fn run_single_simulation(
     let start_time = AppInstant::now();
 
     // C. Run Pipeline (Using worker internals)
-    let cva_res = pair_analysis::pair_analysis_pure(pair.to_string(), ts_collection, price, ph_pct);
+    let cva_res = pair_analysis_pure(pair.to_string(), ts_collection, price, ph_pct);
 
     let strat_name = format!("{:?}", strategy);
 

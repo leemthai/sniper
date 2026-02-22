@@ -9,6 +9,9 @@ pub(crate) use {
     worker::tune_to_station,
 };
 
+#[cfg(feature = "ph_audit")]
+pub(crate) use worker::run_pathfinder_simulations;
+
 #[cfg(target_arch = "wasm32")]
 pub(crate) use worker::process_request_sync;
 

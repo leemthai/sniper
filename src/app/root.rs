@@ -37,6 +37,13 @@ use {
     tokio::runtime::Runtime,
 };
 
+#[cfg(feature = "ph_audit")]
+use crate::{
+    config::BASE_INTERVAL,
+    models::find_matching_ohlcv,
+    ph_audit::{AUDIT_PAIRS, execute_audit},
+};
+
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct App {
@@ -676,7 +683,7 @@ impl App {
 
     // --- AUDIT HELPER ---
     #[cfg(feature = "ph_audit")]
-    fn try_run_audit(&self, ctx: &Context) {
+    pub(crate) fn try_run_audit(&self, ctx: &Context) {
         if let Some(e) = &self.engine {
             // ACCESS DATA FIRST
             // We need to know what pairs we actually HAVE before we decide what to wait for.
@@ -688,15 +695,16 @@ impl App {
                 return;
             }
 
-            // CHECK TICKER (Smart Wait)
             // Only wait for prices on pairs that actually exist in our KLine data.
             let mut waiting_for_price = false;
 
-            for &pair in crate::ph_audit::config::AUDIT_PAIRS {
-                // Check if we have KLines for this pair
-                let has_data =
-                    find_matching_ohlcv(&ts_guard.series_data, pair, CONSTANTS.interval_width_ms)
-                        .is_ok();
+            for &pair in AUDIT_PAIRS {
+                let has_data = find_matching_ohlcv(
+                    &ts_guard.series_data,
+                    pair,
+                    BASE_INTERVAL.as_millis() as i64,
+                )
+                .is_ok();
 
                 if has_data {
                     // If we have data, we MUST wait for a live price
@@ -713,7 +721,6 @@ impl App {
                 return;
             }
 
-            // EXECUTE
             // We hold the lock from step 1, so we drop it now to allow the runner to use it if needed
             // (though we pass a ref, so dropping is just good hygiene here)
             drop(ts_guard);
@@ -722,17 +729,12 @@ impl App {
 
             // Gather Live Prices (Only for the ones we found)
             let mut live_prices = std::collections::HashMap::new();
-            for &pair in crate::ph_audit::config::AUDIT_PAIRS {
+            for &pair in crate::ph_audit::AUDIT_PAIRS {
                 if let Some(p) = e.get_price(pair) {
                     live_prices.insert(pair.to_string(), p);
                 }
             }
-
-            let config = self.app_config.clone();
-            let ts = e.timeseries.read().unwrap();
-
-            // Run & Exit
-            crate::ph_audit::runner::execute_audit(&ts, &config, &live_prices);
+            execute_audit(&e.timeseries.read().unwrap(), &live_prices);
         } else {
             // Engine not initialized yet
             log::warn!("Engine not init yet in try_run_audit");
