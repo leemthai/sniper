@@ -580,13 +580,13 @@ impl App {
         // Load the MONO Font (For Data/Tables)
         // Keep scale at 0.85 or tweak as needed
         let mut font_data_mono =
-            FontData::from_static(include_bytes!("../fonts/HackNerdFont-Regular.ttf"));
+            FontData::from_static(include_bytes!("../../fonts/HackNerdFont-Regular.ttf"));
         font_data_mono.tweak.scale = 0.85;
 
         // Load the PROPO Font (For General UI)
         // This is the new file you downloaded
         let mut font_data_propo =
-            FontData::from_static(include_bytes!("../fonts/HackNerdFontPropo-Regular.ttf"));
+            FontData::from_static(include_bytes!("../../fonts/HackNerdFontPropo-Regular.ttf"));
         font_data_propo.tweak.scale = 0.85; // Match scale so they look consistent
 
         // Register them
