@@ -81,7 +81,6 @@ impl PhPct {
         Self(v)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }
@@ -115,11 +114,6 @@ impl Pct {
         };
         Self(v)
     }
-
-    // #[inline]
-    // pub(crate) fn value(self) -> f64 {
-    // self.0
-    // }
 }
 
 impl fmt::Display for Pct {
@@ -140,7 +134,6 @@ impl VolatilityPct {
         Self(v)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }
@@ -174,7 +167,6 @@ impl MomentumPct {
         Self(val)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }
@@ -206,7 +198,6 @@ impl RoiPct {
         Self(val)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }
@@ -231,7 +222,6 @@ impl AroiPct {
         Self(val)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }
@@ -330,7 +320,6 @@ impl VolRatio {
         Self(v)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }
@@ -363,7 +352,6 @@ impl Sigma {
         Self(v)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }
@@ -510,7 +498,6 @@ macro_rules! define_price_type {
         }
 
         impl $name {
-            #[inline]
             pub fn abs(self) -> f64 {
                 self.value().abs()
             }
@@ -558,7 +545,6 @@ define_price_type!(TargetPrice);
 define_price_type!(StopPrice);
 
 impl Price {
-    #[inline]
     pub(crate) fn clamp(self, min: Price, max: Price) -> Price {
         if self < min {
             min
@@ -719,7 +705,6 @@ impl BaseVol {
         Self(v)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }
@@ -741,7 +726,6 @@ impl QuoteVol {
         Self(v)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }
@@ -776,7 +760,6 @@ impl Weight {
         Self(v)
     }
 
-    #[inline]
     pub(crate) fn value(self) -> f64 {
         self.0
     }

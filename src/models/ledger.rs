@@ -18,7 +18,6 @@ use crate::data::load_ledger;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct OpportunityLedger {
-    // Map UUID -> Opportunity
     pub opportunities: HashMap<String, TradeOpportunity>,
 }
 
@@ -30,8 +29,6 @@ impl OpportunityLedger {
     }
 
     #[cfg(debug_assertions)]
-    /// DEBUG: Summarizes how many TradeOpportunities exist per OptimizationStrategy.
-    /// This inspects the ledger directly (ground truth), not the UI.
     pub(crate) fn debug_log_strategy_summary(&self) {
         if !DF.log_ledger {
             return;
@@ -45,7 +42,6 @@ impl OpportunityLedger {
         }
 
         let mut counts: BTreeMap<OptimizationStrategy, usize> = BTreeMap::new();
-
         for op in &ops {
             *counts.entry(op.strategy).or_insert(0) += 1;
         }
@@ -54,12 +50,10 @@ impl OpportunityLedger {
             "📒 LEDGER STRATEGY SUMMARY: {} total opportunities",
             ops.len()
         );
-
         for (strategy, count) in counts {
             log::info!("   • {:?}: {} ops", strategy, count);
         }
 
-        // Optional: detailed per-op trace
         log::info!("📒 LEDGER STRATEGY DETAILS:");
         for op in ops {
             if op.pair_name == "PEPEUSDT" {
@@ -74,21 +68,19 @@ impl OpportunityLedger {
         }
     }
 
-    /// Intelligently updates the ledger.
-    /// Returns: (IsNew, ActiveID)
+    /// Updates ledger with new opportunity using exact match or fuzzy matching within tolerance.
+    /// Returns (is_new, active_id).
     pub(crate) fn evolve(
         &mut self,
         new_opp: TradeOpportunity,
         tolerance_pct: Pct,
     ) -> (bool, String) {
-        // Try Exact ID Match (Fast Path)
         let exact_id = new_opp.id.clone();
         if self.opportunities.contains_key(&exact_id) {
             self.update_existing(&exact_id, new_opp);
             return (false, exact_id);
         }
 
-        // Try Fuzzy Match (Nearest Neighbor)
         let closest_match = self
             .opportunities
             .values()
@@ -100,26 +92,22 @@ impl OpportunityLedger {
             })
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
 
-        // Evaluate Match using Configured Tolerance
         if let Some((id, diff_pct)) = closest_match {
             if diff_pct < tolerance_pct {
-                // LOGGING (Drift Detection)
                 #[cfg(debug_assertions)]
                 {
-                    if DF.log_ledger {
-                        if id != new_opp.id {
-                            log::info!(
-                                "LEDGER FUZZY MATCH [{}]: New ID {} merged into Existing {}. Drift: {:.3}%",
-                                new_opp.pair_name,
-                                if new_opp.id.len() > 8 {
-                                    &new_opp.id[..8]
-                                } else {
-                                    &new_opp.id
-                                },
-                                if id.len() > 8 { &id[..8] } else { &id },
-                                diff_pct
-                            );
-                        }
+                    if DF.log_ledger && id != new_opp.id {
+                        log::info!(
+                            "LEDGER FUZZY MATCH [{}]: New ID {} merged into Existing {}. Drift: {:.3}%",
+                            new_opp.pair_name,
+                            if new_opp.id.len() > 8 {
+                                &new_opp.id[..8]
+                            } else {
+                                &new_opp.id
+                            },
+                            if id.len() > 8 { &id[..8] } else { &id },
+                            diff_pct
+                        );
                     }
                     self.debug_log_strategy_summary();
                 }
@@ -129,7 +117,6 @@ impl OpportunityLedger {
             }
         }
 
-        // 4. No Match? It's a GENESIS (New Trade)
         let id = new_opp.id.clone();
         #[cfg(debug_assertions)]
         if DF.log_ledger {
@@ -144,8 +131,6 @@ impl OpportunityLedger {
         (true, id)
     }
 
-    /// Prunes opportunities based on a predicate.
-    /// Keeps the entry if the closure returns true, removes it if false.
     pub(crate) fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&String, &mut TradeOpportunity) -> bool,
@@ -161,30 +146,10 @@ impl OpportunityLedger {
         self.opportunities.remove(id);
     }
 
-    /// Scans for overlapping trades and resolves collisions.
-    ///
-    /// POLICY: Comparable-Trade Collision Resolution.
-    ///
-    /// Only *comparable* trades are ever considered for merging.
-    /// Two trades are comparable if and only if they share:
-    ///   - the same trading pair (`pair_name`)
-    ///   - the same direction (long / short)
-    ///   - the same optimization strategy
-    ///   - the same station (`station_id`)
-    ///
-    /// Collision Rules:
-    /// Trades from different strategies NEVER merge; they always coexist.
-    /// Trades from the same strategy *and* comparable context with overlapping
-    ///    target prices (within tolerance) are considered colliding.
-    /// For colliding trades, the winner is selected using the quality score
-    ///    defined by that specific strategy.
-    /// Non-winning trades are removed from the ledger; winners are preserved.
-    ///
-    /// Returns a list of opportunity IDs that got pruned. This is passed back to UI from the engine to update Selection
+    /// Resolves collisions between comparable trades (same pair/direction/strategy/station).
+    /// Keeps higher quality trade, removes lower. Returns list of pruned IDs.
     pub(crate) fn prune_collisions(&mut self, tolerance_pct: Pct) -> Vec<String> {
         let mut to_remove: Vec<String> = Vec::new();
-
-        // Snapshot for stable comparison
         let ops: Vec<_> = self.opportunities.values().cloned().collect();
 
         for i in 0..ops.len() {
@@ -192,18 +157,14 @@ impl OpportunityLedger {
                 let a = &ops[i];
                 let b = &ops[j];
 
-                // Skip if either already marked for removal
                 if to_remove.contains(&a.id) || to_remove.contains(&b.id) {
                     continue;
                 }
 
-                // 🔐 COMPARABILITY GATE
-                // Non-comparable opportunities must never collide
                 if !a.is_comparable_to(b) {
                     continue;
                 }
 
-                // Compute target drift
                 let pct_diff = Pct::new(a.target_price.percent_diff_from_0_1(&b.target_price));
 
                 #[cfg(debug_assertions)]
@@ -217,38 +178,34 @@ impl OpportunityLedger {
                     );
                 }
 
-                // Only collide if within tolerance
                 if pct_diff >= tolerance_pct {
                     continue;
                 }
 
-                // 🧨 DESTRUCTIVE DECISION BOUNDARY
                 #[cfg(debug_assertions)]
                 TradeOpportunity::assert_comparable_to(a, b);
 
                 let score_a = a.calculate_quality_score();
                 let score_b = b.calculate_quality_score();
                 let (_winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
+
                 #[cfg(debug_assertions)]
-                {
-                    if DF.log_ledger {
-                        log::info!(
-                            "🧹 LEDGER PRUNE [Strategy: {} | Station: {:?}]: {} removed in favor of {} (Δ={})",
-                            _winner.strategy,
-                            _winner.station_id,
-                            &loser.id[..loser.id.len().min(8)],
-                            &_winner.id[.._winner.id.len().min(8)],
-                            pct_diff
-                        );
-                        self.debug_log_strategy_summary();
-                    }
+                if DF.log_ledger {
+                    log::info!(
+                        "🧹 LEDGER PRUNE [Strategy: {} | Station: {:?}]: {} removed in favor of {} (Δ={})",
+                        _winner.strategy,
+                        _winner.station_id,
+                        &loser.id[..loser.id.len().min(8)],
+                        &_winner.id[.._winner.id.len().min(8)],
+                        pct_diff
+                    );
+                    self.debug_log_strategy_summary();
                 }
 
                 to_remove.push(loser.id.clone());
             }
         }
 
-        // Apply removals to the real ledger
         for id in to_remove.clone() {
             #[cfg(debug_assertions)]
             if DF.log_ledger {
@@ -262,55 +219,46 @@ impl OpportunityLedger {
         to_remove
     }
 
-    /// Helper to update an existing opportunity while preserving its history
     fn update_existing(&mut self, existing_id: &str, mut new_opp: TradeOpportunity) {
         if let Some(existing) = self.opportunities.get(existing_id) {
-            // LOGGING  EVOLVE
             #[cfg(debug_assertions)]
-            if DF.log_ledger {
-                if (existing.expected_roi().value() - new_opp.expected_roi().value()).abs() > 0.1 {
-                    log::info!(
-                        "LEDGER EVOLVE [{}]: ID {} kept. Target: {:.2} -> {:.2} | ROI {} -> {} (Win: {}->{}) | SL: {:.2} -> {:.2}",
-                        new_opp.pair_name,
-                        if existing_id.len() > 8 {
-                            &existing_id[..8]
-                        } else {
-                            existing_id
-                        },
-                        existing.target_price,
-                        new_opp.target_price,
-                        existing.expected_roi(),
-                        new_opp.expected_roi(),
-                        existing.simulation.success_rate,
-                        new_opp.simulation.success_rate,
-                        existing.stop_price,
-                        new_opp.stop_price
-                    );
-                }
+            if DF.log_ledger
+                && (existing.expected_roi().value() - new_opp.expected_roi().value()).abs() > 0.1
+            {
+                log::info!(
+                    "LEDGER EVOLVE [{}]: ID {} kept. Target: {:.2} -> {:.2} | ROI {} -> {} (Win: {}->{}) | SL: {:.2} -> {:.2}",
+                    new_opp.pair_name,
+                    if existing_id.len() > 8 {
+                        &existing_id[..8]
+                    } else {
+                        existing_id
+                    },
+                    existing.target_price,
+                    new_opp.target_price,
+                    existing.expected_roi(),
+                    new_opp.expected_roi(),
+                    existing.simulation.success_rate,
+                    new_opp.simulation.success_rate,
+                    existing.stop_price,
+                    new_opp.stop_price
+                );
                 self.debug_log_strategy_summary();
             }
 
-            // CRITICAL: Preserve Identity
-            new_opp.id = existing.id.clone(); // Keep the OLD ID (so UI selection sticks)
-            new_opp.created_at = existing.created_at; // Keep Birth Time (Age)
-
-            // Insert (Overwrite)
+            new_opp.id = existing.id.clone();
+            new_opp.created_at = existing.created_at;
             self.opportunities.insert(existing_id.to_string(), new_opp);
         }
     }
 }
 
-/// Called in fn called build_engine() in root.rs start-up code
 pub(crate) fn restore_engine_ledger(valid_session_pairs: &HashSet<String>) -> OpportunityLedger {
-    // Returns a fully-initialized OpprtuntyLedger (including startup-culling against valid_session_pairs)
-    // If the Nuke Flag is on, we start fresh.
     if DF.wipe_ledger_on_startup {
         #[cfg(debug_assertions)]
         log::info!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
         return OpportunityLedger::new();
     }
 
-    // Otherwise attempt to load persistence
     let mut ledger = {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -336,7 +284,6 @@ pub(crate) fn restore_engine_ledger(valid_session_pairs: &HashSet<String>) -> Op
         }
     };
 
-    // Remove all opportunities for pairs that were not loaded in this session.
     let _count_before = ledger.opportunities.len();
 
     #[cfg(debug_assertions)]
@@ -357,10 +304,7 @@ pub(crate) fn restore_engine_ledger(valid_session_pairs: &HashSet<String>) -> Op
                 );
             }
         }
-    }
 
-    #[cfg(debug_assertions)]
-    {
         let count_after = ledger.opportunities.len();
         if _count_before != count_after && DF.log_ledger {
             log::info!(

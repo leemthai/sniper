@@ -9,18 +9,12 @@ use {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum JobMode {
-    /// Standard operation: Calculate CVA, then run Pathfinder (Scouts/Drills)
     FullAnalysis,
-
-    /// Visualization only: Calculate CVA (Zones/Volume Profile) but SKIP Pathfinder.
-    /// Used when clicking an existing trade to restore the chart context.
     ContextOnly,
 }
 
-/// A request to calculate a model for a specific pair
-/// /// Invariant:
-/// - Each JobRequest is immutable
-/// - Exactly one JobRequest per pair may be in-flight
+/// Job request for pair analysis.
+/// Invariant: Immutable, exactly one per pair in-flight.
 #[derive(Debug, Clone)]
 pub(crate) struct JobRequest {
     pub pair_name: String,
@@ -32,7 +26,6 @@ pub(crate) struct JobRequest {
     pub mode: JobMode,
 }
 
-/// The result returned by the worker
 #[derive(Debug, Clone)]
 pub(crate) struct JobResult {
     pub pair_name: String,

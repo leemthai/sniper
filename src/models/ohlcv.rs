@@ -27,23 +27,16 @@ pub struct LiveCandle {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-/// OhlcvTimeSeries: Raw time series data for a trading pair
 pub struct OhlcvTimeSeries {
     pub pair_interval: PairInterval,
     pub first_kline_timestamp_ms: i64,
-
     pub timestamps: Vec<i64>,
-
-    // Prices
     pub open_prices: Vec<OpenPrice>,
     pub high_prices: Vec<HighPrice>,
     pub low_prices: Vec<LowPrice>,
     pub close_prices: Vec<ClosePrice>,
-
-    // Volumes
     pub base_asset_volumes: Vec<BaseVol>,
     pub quote_asset_volumes: Vec<QuoteVol>,
-
     pub relative_volumes: Vec<VolRatio>,
 }
 
@@ -74,29 +67,22 @@ impl OhlcvTimeSeries {
 
         let last_idx = self.timestamps.len() - 1;
         let last_ts = self.timestamps[last_idx];
-
-        // Logic: Is this an update to the current candle, or a new one?
         let is_update = candle.open_time == last_ts;
 
         if is_update {
-            // Update current (forming) candle
             self.high_prices[last_idx] = candle.high;
             self.low_prices[last_idx] = candle.low;
             self.close_prices[last_idx] = candle.close;
             self.base_asset_volumes[last_idx] = candle.volume;
             self.quote_asset_volumes[last_idx] = candle.quote_vol;
 
-            // Recalculate RVOL for this updating candle
             let rvol = self.calculate_rvol_at_index(last_idx);
-
-            // Safety check for vector length sync
             if last_idx < self.relative_volumes.len() {
                 self.relative_volumes[last_idx] = rvol;
             } else {
                 self.relative_volumes.push(rvol);
             }
         } else {
-            // New candle started
             self.timestamps.push(candle.open_time);
             self.open_prices.push(candle.open);
             self.high_prices.push(candle.high);
@@ -105,7 +91,6 @@ impl OhlcvTimeSeries {
             self.base_asset_volumes.push(candle.volume);
             self.quote_asset_volumes.push(candle.quote_vol);
 
-            // Calculate RVOL for the new candle
             let new_idx = self.timestamps.len() - 1;
             let rvol = self.calculate_rvol_at_index(new_idx);
             self.relative_volumes.push(rvol);
@@ -113,19 +98,16 @@ impl OhlcvTimeSeries {
     }
 
     fn calculate_rvol_at_index(&self, idx: usize) -> VolRatio {
-        // Helper: Calculates Relative Volume for a specific index using existing data
         let start = idx.saturating_sub(RVOL_WINDOW - 1);
         let slice = &self.base_asset_volumes[start..=idx];
         let sum: f64 = slice.iter().map(|v| v.value()).sum();
         let count = slice.len().max(1) as f64;
         let avg = sum / count;
-
         let current_vol = self.base_asset_volumes[idx].value();
 
         VolRatio::calculate(current_vol, avg)
     }
 
-    /// Create a TimeSeries from a list of Candles (Loaded from DB)
     pub fn from_candles(pair_interval: PairInterval, candles: Vec<Candle>) -> Self {
         if candles.is_empty() {
             return Self {
@@ -145,7 +127,6 @@ impl OhlcvTimeSeries {
         let len = candles.len();
         let first_ts = candles.first().map(|c| c.timestamp_ms).unwrap_or(0);
 
-        // Pre-allocate everything
         let mut ts_vec = Vec::with_capacity(len);
         let mut open_vec = Vec::with_capacity(len);
         let mut high_vec = Vec::with_capacity(len);
@@ -155,7 +136,6 @@ impl OhlcvTimeSeries {
         let mut quote_vec = Vec::with_capacity(len);
         let mut rvol_vec = Vec::with_capacity(len);
 
-        // Optimization: Rolling Sum for RVOL
         let mut rolling_sum = 0.0;
         let window_size = RVOL_WINDOW;
 
@@ -168,18 +148,14 @@ impl OhlcvTimeSeries {
             base_vec.push(c.base_asset_volume);
             quote_vec.push(c.quote_asset_volume);
 
-            // --- RVOL Calculation (O(1) Rolling) ---
             rolling_sum += c.base_asset_volume.value();
 
             if i >= window_size {
-                // Subtract the element that fell out of the window
                 rolling_sum -= candles[i - window_size].base_asset_volume.value();
             }
 
-            // Count is i+1 until we hit window_size, then it stays at window_size
             let count = (i + 1).min(window_size) as f64;
             let avg = rolling_sum / count;
-
             let rvol = VolRatio::calculate(c.base_asset_volume.value(), avg);
             rvol_vec.push(rvol);
         }
@@ -198,8 +174,8 @@ impl OhlcvTimeSeries {
         }
     }
 
-    /// Calculates the Average Volatility ((High-Low)/Close) over a range of indices.
-    /// Returns 0.0 if range is invalid or empty.
+    /// Calculates average volatility ((High-Low)/Close) over range.
+    /// Returns 0 if range is invalid or empty.
     pub(crate) fn calculate_volatility_in_range(
         &self,
         start_idx: usize,
@@ -228,19 +204,16 @@ impl OhlcvTimeSeries {
             VolatilityPct::new(0.)
         }
     }
-
     pub(crate) fn get_candle(&self, idx: usize) -> Candle {
-        // Direct access since the vectors are already f64
-        let open = self.open_prices[idx];
-        let high = self.high_prices[idx];
-        let low = self.low_prices[idx];
-        let close = self.close_prices[idx];
-        let base_vol = self.base_asset_volumes[idx];
-        let quote_vol = self.quote_asset_volumes[idx];
-
-        let timestamp = self.timestamps[idx];
-
-        Candle::new(timestamp, open, high, low, close, base_vol, quote_vol)
+        Candle::new(
+            self.timestamps[idx],
+            self.open_prices[idx],
+            self.high_prices[idx],
+            self.low_prices[idx],
+            self.close_prices[idx],
+            self.base_asset_volumes[idx],
+            self.quote_asset_volumes[idx],
+        )
     }
 
     pub(crate) fn klines(&self) -> usize {
@@ -248,29 +221,24 @@ impl OhlcvTimeSeries {
     }
 }
 
-/// TimeSeriesSlice: Windowed view into OhlcvTimeSeries with CVA generation
+/// Windowed view into OhlcvTimeSeries for CVA generation.
+/// Supports discontinuous ranges.
 pub(crate) struct TimeSeriesSlice<'a> {
     pub series_data: &'a OhlcvTimeSeries,
-    pub ranges: Vec<(usize, usize)>, // Vector of (start_idx, end_idx) where end_idx is exclusive
+    pub ranges: Vec<(usize, usize)>,
 }
 
 impl TimeSeriesSlice<'_> {
-    /// Generate CVA results from this time slice (potentially discontinuous ranges)
     pub(crate) fn generate_cva_results(
         &self,
         n_chunks: usize,
         pair_name: String,
         time_decay_factor: f64,
-        price_range: (LowPrice, HighPrice), // User-defined price range
+        price_range: (LowPrice, HighPrice),
     ) -> CVACore {
         let (min_price, max_price) = price_range;
-
-        // Calculate total candles across all ranges
         let total_candles: usize = self.ranges.iter().map(|(start, end)| end - start).sum();
 
-        // NEW: Calculate Volatility here or pass it in?
-        // Let's calculate it here to keep pair_analysis cleaner,
-        // iterating the ranges we already have.
         let mut volatility_sum = 0.0;
         for (start, end) in &self.ranges {
             for i in *start..*end {
@@ -281,6 +249,7 @@ impl TimeSeriesSlice<'_> {
                 }
             }
         }
+
         let volatility_pct = if total_candles > 0 {
             volatility_sum / total_candles as f64
         } else {
@@ -299,14 +268,12 @@ impl TimeSeriesSlice<'_> {
             VolatilityPct::new(volatility_pct),
         );
 
-        // Process all candles across all ranges, maintaining temporal decay based on position
         let mut position = 0;
         crate::trace_time!("CVA Math Loop", 8000, {
             for (start_idx, end_idx) in &self.ranges {
                 for idx in *start_idx..*end_idx {
                     let candle = self.series_data.get_candle(idx);
 
-                    // Exponential temporal decay based on position within relevant candles
                     let progress = if total_candles > 1 {
                         position as f64 / (total_candles - 1) as f64
                     } else {
@@ -318,7 +285,7 @@ impl TimeSeriesSlice<'_> {
                     } else {
                         time_decay_factor
                     };
-                    let temporal_weight = decay_base.powf(progress); // powf() call takes around 30ns in release build. Fairly reasonable
+                    let temporal_weight = decay_base.powf(progress);
                     self.process_candle_scores(&mut cva_core, &candle, temporal_weight);
                     position += 1;
                 }
@@ -328,15 +295,12 @@ impl TimeSeriesSlice<'_> {
         cva_core
     }
 
-    #[inline]
     fn process_candle_scores(&self, cva_core: &mut CVACore, candle: &Candle, temporal_weight: f64) {
         let (price_min, price_max) = cva_core.price_range.min_max();
-        let min_p: Price = price_min.into();
-        let max_p: Price = price_max.into();
-
+        let min_p = Price::from(price_min);
+        let max_p = Price::from(price_max);
         let clamp = |price: Price| price.clamp(min_p, max_p);
 
-        // FULL CANDLE (Sticky Zones) - Keep Volume Weighting
         let candle_low = clamp(Price::from(candle.low_price));
         let candle_high = clamp(Price::from(candle.high_price));
         cva_core.distribute_conserved_volume(
@@ -346,10 +310,8 @@ impl TimeSeriesSlice<'_> {
             candle.base_asset_volume.value() * temporal_weight,
         );
 
-        // LOW WICK - USE FLAT LOGIC
         let low_wick_start = clamp(Price::from(candle.low_wick_low()));
         let low_wick_end = clamp(Price::from(candle.low_wick_high()));
-
         cva_core.apply_rejection_impact(
             ScoreType::LowWickCount,
             low_wick_start,
@@ -357,10 +319,8 @@ impl TimeSeriesSlice<'_> {
             temporal_weight,
         );
 
-        // HIGH WICK - USE FLAT LOGIC
         let high_wick_start = clamp(Price::from(candle.high_wick_low()));
         let high_wick_end = clamp(Price::from(candle.high_wick_high()));
-
         cva_core.apply_rejection_impact(
             ScoreType::HighWickCount,
             high_wick_start,

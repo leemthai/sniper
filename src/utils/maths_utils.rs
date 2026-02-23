@@ -1,6 +1,5 @@
 use {argminmax::ArgMinMax, std::f64};
 
-#[inline]
 pub(crate) fn get_max(vec: &[f64]) -> f64 {
     let max_index: usize = vec.argmax();
     vec[max_index]
@@ -28,7 +27,6 @@ pub(crate) fn normalize_max(vec: &[f64]) -> Vec<f64> {
 
 /// Applies a simple centered moving average to smooth the data.
 /// window_size should be an odd number (e.g., 3, 5, 7).
-#[inline]
 pub(crate) fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
     if data.is_empty() {
         return Vec::new();
@@ -52,7 +50,6 @@ pub(crate) fn smooth_data(data: &[f64], window_size: usize) -> Vec<f64> {
     smoothed
 }
 
-#[inline]
 pub(crate) fn mean_and_stddev(data: &[f64]) -> (f64, f64) {
     let count = data.len();
     if count == 0 {

@@ -399,7 +399,6 @@ fn draw_split_candle(
     }
 }
 
-#[inline]
 fn draw_wick_line(ui: &mut PlotUi, x: f64, top: Price, bottom: Price, color: Color32, min_x: f64) {
     if x < min_x || top <= bottom {
         return;
@@ -415,7 +414,6 @@ fn draw_wick_line(ui: &mut PlotUi, x: f64, top: Price, bottom: Price, color: Col
     );
 }
 
-#[inline]
 fn draw_body_rect(
     ui: &mut PlotUi,
     x: f64,

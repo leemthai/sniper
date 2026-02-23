@@ -61,7 +61,6 @@ impl fmt::Display for Selection {
 
 impl Selection {
     /// owned String
-    #[inline]
     pub(crate) fn pair_owned(&self) -> Option<String> {
         match self {
             Selection::Pair(p) => Some(p.clone()),
@@ -71,7 +70,6 @@ impl Selection {
     }
 
     /// borrowed view
-    #[inline]
     pub(crate) fn pair(&self) -> Option<&str> {
         match self {
             Selection::Pair(p) => Some(p),
