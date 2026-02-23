@@ -23,59 +23,45 @@ pub(crate) struct TargetZone {
 }
 
 /// Identifies target zones using the "Islands" strategy (Threshold + Clustering).
-/// Filters all zones that meet the `threshold`.
-/// Clusters them together if they are within `max_gap` of each other.
-/// Computes the mass and center of gravity for each cluster.
+/// Scores at or above `threshold` are "land"; islands separated by gaps wider than
+/// `max_gap` become distinct [`TargetZone`]s.
 pub(crate) fn find_target_zones(scores: &[f64], threshold: f64, max_gap: usize) -> Vec<TargetZone> {
-    if scores.is_empty() {
-        return Vec::new();
-    }
-
-    // Step 1: Identify all "Land" indices (scores above threshold)
-    let valid_indices: Vec<usize> = scores
+    let valid: Vec<usize> = scores
         .iter()
         .enumerate()
-        .filter(|&(_, &score)| score >= threshold)
-        .map(|(i, _)| i)
+        .filter_map(|(i, &s)| (s >= threshold).then_some(i))
         .collect();
 
-    if valid_indices.is_empty() {
+    if valid.is_empty() {
         return Vec::new();
     }
 
     let mut targets = Vec::new();
-    let mut cluster_start = valid_indices[0];
-    let mut prev_idx = valid_indices[0];
 
-    // Helper to finalize a cluster
-    let mut finalize_cluster = |start: usize, end: usize| {
-        targets.push(TargetZone {
-            start_idx: start,
-            end_idx: end,
-        });
-    };
+    let mut cluster_start = valid[0];
+    let mut prev = valid[0];
 
-    // Step 2: Cluster indices based on max_gap
-    for &idx in valid_indices.iter().skip(1) {
-        // If the distance to the previous index is greater than gap + 1, the bridge breaks.
-        // e.g. indices [2, 4] with max_gap 1. 4 - 2 = 2. (gap is 1). <= 2. Bridge holds.
-        // e.g. indices [2, 5] with max_gap 1. 5 - 2 = 3. Bridge breaks.
-        if idx - prev_idx > max_gap + 1 {
-            // Finalize previous cluster
-            finalize_cluster(cluster_start, prev_idx);
-            // Start new cluster
+    for &idx in valid.iter().skip(1) {
+        // Bridge breaks when gap between land indices exceeds max_gap.
+        // e.g. [2,4] max_gap=1 → 4-2=2 ≤ 2, holds. [2,5] → 5-2=3 > 2, breaks.
+        if idx - prev > max_gap + 1 {
+            targets.push(TargetZone {
+                start_idx: cluster_start,
+                end_idx: prev,
+            });
             cluster_start = idx;
         }
-        prev_idx = idx;
-    }
 
-    // Finalize the last cluster
-    finalize_cluster(cluster_start, prev_idx);
+        prev = idx;
+    }
+    targets.push(TargetZone {
+        start_idx: cluster_start,
+        end_idx: prev,
+    });
 
     targets
 }
 
-/// A single price zone with its properties
 #[derive(Debug, Clone)]
 pub struct Zone {
     pub index: usize,
@@ -84,11 +70,10 @@ pub struct Zone {
     // pub price_center: Price,
 }
 
-/// A SuperZone representing one or more contiguous zones of the same type
-/// Aggregates adjacent zones to reduce visual noise and provide more meaningful ranges
+/// Aggregates one or more contiguous [`Zone`]s to reduce visual noise.
 #[derive(Debug, Clone)]
 pub(crate) struct SuperZone {
-    pub id: usize, // Unique identifier for this superzone (based on first zone index)
+    pub id: usize, // first zone index
     pub price_bottom: Price,
     pub price_top: Price,
     pub price_center: Price,
@@ -97,88 +82,64 @@ pub(crate) struct SuperZone {
 impl Zone {
     fn new(index: usize, price_min: f64, price_max: f64, zone_count: usize) -> Self {
         let zone_height = (price_max - price_min) / zone_count as f64;
-        let price_bottom = price_min + (index as f64 * zone_height);
-        let price_top = price_bottom + zone_height;
 
+        let price_bottom = price_min + index as f64 * zone_height;
         Self {
             index,
             price_bottom: Price::new(price_bottom),
-            price_top: Price::new(price_top),
-            // price_center: Price::new(price_center),
+
+            price_top: Price::new(price_bottom + zone_height),
         }
     }
 }
 
 impl SuperZone {
-    /// Create a SuperZone from a list of contiguous zones
     fn from_zones(zones: Vec<Zone>) -> Self {
         assert!(
             !zones.is_empty(),
             "Cannot create SuperZone from empty zone list"
         );
-
-        let first = zones.first().unwrap();
-        let last = zones.last().unwrap();
-
-        let price_bottom = first.price_bottom;
-        let price_top = last.price_top;
-        let price_center = (price_bottom + price_top) / 2.0;
-
+        let price_bottom = zones.first().unwrap().price_bottom;
+        let price_top = zones.last().unwrap().price_top;
         Self {
-            id: first.index,
-            // index_range: (first.index, last.index),
+            id: zones[0].index,
             price_bottom,
             price_top,
-            price_center: Price::new(price_center),
-            // constituent_zones: zones,
+
+            price_center: Price::new((price_bottom + price_top) / 2.0),
         }
     }
 
-    /// Check if a price is within this superzone
     pub(crate) fn contains(&self, price: Price) -> bool {
         price >= self.price_bottom && price <= self.price_top
     }
 }
 
-/// Aggregate contiguous zones into SuperZones
-/// Adjacent zones (index differs by 1) are merged into a single SuperZone
 fn aggregate_zones(zones: &[Zone]) -> Vec<SuperZone> {
     if zones.is_empty() {
         return Vec::new();
     }
 
     let mut superzones = Vec::new();
-    let mut current_group = vec![zones[0].clone()];
 
-    for i in 1..zones.len() {
-        let prev_index = zones[i - 1].index;
-        let curr_index = zones[i].index;
+    let mut group = vec![zones[0].clone()];
 
-        if curr_index == prev_index + 1 {
-            // Contiguous - add to current group
-            current_group.push(zones[i].clone());
+    for w in zones.windows(2) {
+        if w[1].index == w[0].index + 1 {
+            group.push(w[1].clone());
         } else {
-            // Gap found - finalize current group and start new one
-            superzones.push(SuperZone::from_zones(current_group));
-            current_group = vec![zones[i].clone()];
+            superzones.push(SuperZone::from_zones(group));
+            group = vec![w[1].clone()];
         }
     }
-    if !current_group.is_empty() {
-        superzones.push(SuperZone::from_zones(current_group));
-    }
+
+    superzones.push(SuperZone::from_zones(group));
 
     superzones
 }
 
-/// Classified zones representing different trading characteristics
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ClassifiedZones {
-    // Raw fixed-width zones
-    // pub low_wicks: Vec<Zone>,
-    // pub high_wicks: Vec<Zone>,
-    // pub sticky: Vec<Zone>,
-
-    // SuperZones (aggregated contiguous zones)
     pub sticky_superzones: Vec<SuperZone>,
     pub high_wicks_superzones: Vec<SuperZone>,
     pub low_wicks_superzones: Vec<SuperZone>,
@@ -191,11 +152,8 @@ pub(crate) struct ZoneCoverageStats {
     pub support_pct: f64,
 }
 
-/// Complete trading model for a pair containing CVA and classified zones
-/// This is the domain model independent of UI/plotting concerns
 #[derive(Debug, Clone)]
 pub(crate) struct TradingModel {
-    // pub pair_name: String,
     pub cva: Arc<CVACore>,
     pub zones: ClassifiedZones,
     pub coverage: ZoneCoverageStats,
@@ -204,23 +162,21 @@ pub(crate) struct TradingModel {
 }
 
 impl TradingModel {
-    /// Create a new trading model from CVA results and optional current price
     pub(crate) fn from_cva(cva: Arc<CVACore>, ohlcv: &OhlcvTimeSeries) -> Self {
-        let (classified, stats) = Self::classify_zones(&cva, &DEFAULT_ZONE_CONFIG);
-
+        let (zones, coverage) = Self::classify_zones(&cva, &DEFAULT_ZONE_CONFIG);
         let (low, high) = cva.price_range.min_max();
-        let bounds: (Price, Price) = (Price::new(low), Price::new(high));
 
-        let merge_ms = SEGMENT_MERGE_TOLERANCE_MS;
-
-        let segments = RangeGapFinder::analyze(ohlcv, &cva.included_ranges, bounds, merge_ms);
-
+        let bounds = (Price::new(low), Price::new(high));
+        let segments = RangeGapFinder::analyze(
+            ohlcv,
+            &cva.included_ranges,
+            bounds,
+            SEGMENT_MERGE_TOLERANCE_MS,
+        );
         Self {
             cva,
-            // profile,
-            zones: classified,
-            coverage: stats,
-            // pair_name: ohlcv.pair_interval.name().to_string(),
+            zones,
+            coverage,
             segments,
             opportunities: Vec::new(),
         }
@@ -239,13 +195,12 @@ impl TradingModel {
                                  params: ZoneParams,
                                  resource_total: f64,
                                  _layer_name: &str| {
-                // VIABILITY GATE (Absolute)
-                // Filter out bins that represent insignificant noise relative to the total.
+                // VIABILITY GATE: zero out bins below the noise floor
                 let viable_data: Vec<f64> = if resource_total > 0.0 {
                     raw_data
                         .iter()
                         .map(|&x| {
-                            if (x / resource_total) >= params.viability_pct.value() {
+                            if x / resource_total >= params.viability_pct.value() {
                                 x
                             } else {
                                 0.0
@@ -256,22 +211,14 @@ impl TradingModel {
                     raw_data.to_vec()
                 };
 
-                // SMOOTH
                 let smooth_window =
                     ((zone_count as f64 * params.smooth_pct.value()).ceil() as usize).max(1) | 1;
-                let smoothed = smooth_data(&viable_data, smooth_window);
 
-                // NORMALIZE (Max)
-                let normalized = normalize_max(&smoothed);
+                let normalized = normalize_max(&smooth_data(&viable_data, smooth_window));
 
-                // ADAPTIVE THRESHOLD (Relative)
                 let (mean, std_dev) = mean_and_stddev(&normalized);
-
-                // Threshold = Mean + (Sigma * StdDev)
-                // We clamp it between 0.05 and 0.95 to prevent
-                // "Selecting Everything" (if flat) or "Selecting Nothing" (if extreme outliers).
-                let adaptive_threshold =
-                    (mean + (params.sigma.value() * std_dev)).clamp(0.05, 0.95);
+                // Clamp to [0.05, 0.95]: prevents selecting everything (flat) or nothing (outliers)
+                let adaptive_threshold = (mean + params.sigma.value() * std_dev).clamp(0.05, 0.95);
 
                 #[cfg(debug_assertions)]
                 if DF.log_zones {
@@ -314,10 +261,8 @@ impl TradingModel {
                     );
                 }
 
-                // FIND TARGETS
                 let gap = (zone_count as f64 * params.gap_pct.value()).ceil() as usize;
-                // Note: We use 'normalized' data against the adaptive threshold.
-                // We SKIP the 'Sharpening/Contrast' step because Z-Score handles the filtering statistically.
+
                 let targets = find_target_zones(&normalized, adaptive_threshold, gap);
 
                 let zones: Vec<Zone> = targets
@@ -330,10 +275,9 @@ impl TradingModel {
                 (zones, superzones)
             };
 
-            // Sticky Zones
-            // Resource: Total Volume in this range
             let total_volume: f64 = cva.get_scores_ref(ScoreType::FullCandleTVW).iter().sum();
 
+            // Sticky: resource = total volume
             let (sticky, sticky_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::FullCandleTVW),
                 config.sticky,
@@ -341,11 +285,7 @@ impl TradingModel {
                 "STICKY",
             );
 
-            // Reversal Zones
-            // Resource: Total Candles (Opportunity count)
-            // Note: Use total_candles, NOT sum of scores (which is inflated by width)
-
-            // Low Wicks
+            // Reversal: resource = total_candles (NOT sum of scores, which is inflated by wick width)
             let (low_wicks, low_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::LowWickCount),
                 config.reversal,
@@ -353,7 +293,6 @@ impl TradingModel {
                 "LOW WICKS",
             );
 
-            // High Wicks
             let (high_wicks, high_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::HighWickCount),
                 config.reversal,
@@ -361,27 +300,26 @@ impl TradingModel {
                 "HIGH WICKS",
             );
 
-            // Calculate Coverage Statistics
-            let calc_coverage = |zones: &[Zone]| -> f64 {
+            let coverage_pct = |zones: &[Zone]| {
                 if zone_count == 0 {
-                    return 0.0;
+                    0.0
+                } else {
+                    zones.len() as f64 / zone_count as f64 * 100.0
                 }
-                (zones.len() as f64 / zone_count as f64) * 100.0
             };
 
-            let stats = ZoneCoverageStats {
-                sticky_pct: calc_coverage(&sticky),
-                support_pct: calc_coverage(&low_wicks),
-                resistance_pct: calc_coverage(&high_wicks),
-            };
-
-            let classified = ClassifiedZones {
-                sticky_superzones,
-                low_wicks_superzones,
-                high_wicks_superzones,
-            };
-
-            (classified, stats)
+            (
+                ClassifiedZones {
+                    sticky_superzones,
+                    low_wicks_superzones,
+                    high_wicks_superzones,
+                },
+                ZoneCoverageStats {
+                    sticky_pct: coverage_pct(&sticky),
+                    support_pct: coverage_pct(&low_wicks),
+                    resistance_pct: coverage_pct(&high_wicks),
+                },
+            )
         })
     }
 }
