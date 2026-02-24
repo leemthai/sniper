@@ -1,14 +1,17 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
-
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Windows release: hide console window 
 use zone_sniper::{Cli, run_app};
 
 #[cfg(not(target_arch = "wasm32"))]
-use {clap::Parser, eframe::NativeOptions, std::path::PathBuf, zone_sniper::PERSISTENCE};
+use {
+    clap::Parser,
+    eframe::NativeOptions,
+    std::{panic, path::PathBuf},
+    zone_sniper::PERSISTENCE,
+};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, prelude::*};
 
-// This keeps the WASM memory allocator from being stripped
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn _keep_alive() {}
@@ -45,9 +48,6 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
     console_error_panic_hook::set_once();
     init_log();
 
-    log::info!("🚀 Zone Sniper starting in WASM mode...");
-
-    // Get DOM elements
     let window = web_sys::window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
     let canvas = document
@@ -56,13 +56,8 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
         .dyn_into::<web_sys::HtmlCanvasElement>()
         .map_err(|_| "the_canvas_id was not a valid HtmlCanvasElement")?;
 
-    // Prepare Args (Default for Web)
-    // We construct the Cli struct manually or use default if derived
     let args = Cli { prefer_api: false };
 
-    // Start App
-    // We pass 'args' into run_app. The App itself handles loading the Demo Data
-    // via its internal async loading state.
     eframe::WebRunner::new()
         .start(
             canvas,
@@ -72,12 +67,9 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
         .await
 }
 
-// NATIVE SPECIFIC CODE
-
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
-    // A. Init Logging
-    std::panic::set_hook(Box::new(|info| {
+    panic::set_hook(Box::new(|info| {
         let backtrace = std::backtrace::Backtrace::force_capture();
         log::error!("CRITICAL PANIC:\n{}\nStack Trace:\n{}", info, backtrace);
     }));
@@ -91,21 +83,11 @@ fn main() -> eframe::Result {
     let mut builder = env_logger::Builder::new();
 
     builder
-        .filter(None, global_level) // Default for everyone
-        .filter(Some("zone_sniper"), my_code_level) // Override for us
-        // NUCLEAR OPTION: Explicitly silence the noisy neighbors (TEMP but this fails as well I think)
-        .filter_module("reqwest", log::LevelFilter::Error)
-        .filter_module("hyper", log::LevelFilter::Error)
-        .filter_module("tungstenite", log::LevelFilter::Error)
-        .filter_module("tokio_tungstenite", log::LevelFilter::Error)
-        .filter_module("sqlx", log::LevelFilter::Error)
-        .filter_module("binance_sdk", log::LevelFilter::Error)
+        .filter(None, global_level)
+        .filter(Some("zone_sniper"), my_code_level)
         .init();
 
-    // B. Parse Args
     let args = Cli::parse();
-
-    // C. Setup Options
     let options = NativeOptions {
         persistence_path: Some(PathBuf::from(PERSISTENCE.app.state_path)),
         viewport: eframe::egui::ViewportBuilder::default()
@@ -114,9 +96,6 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    // D. Run
-    // Note: We no longer load data here. We pass 'args' to the App,
-    // and the App spawns its own loading thread.
     eframe::run_native(
         "Zone Sniper",
         options,

@@ -18,31 +18,25 @@ use {
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
-/// A finalized trade record ready for persistent storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct TradeResult {
-    pub trade_id: String, // Original UUID
+    pub trade_id: String,
     pub pair_name: String,
     pub direction: TradeDirection,
     pub entry_price: Price,
     pub exit_price: Price,
     pub stop_price: StopPrice,
     pub target_price: TargetPrice,
-
     pub exit_reason: TradeOutcome,
-
     pub entry_time: i64,
     pub exit_time: i64,
     pub planned_expiry_time: i64,
-
     pub strategy: OptimizationStrategy,
     pub station_id: StationId,
     pub market_state: MarketState,
-
     pub ph_pct: PhPct,
 }
 
-/// Abstract interface for results storage (Native vs WASM)
 #[async_trait]
 pub(crate) trait ResultsRepositoryTrait: Send + Sync {
     async fn initialize(&self) -> Result<()>;
@@ -63,14 +57,13 @@ impl SqliteResultsRepository {
             .synchronous(SqliteSynchronous::Normal);
 
         let pool = SqlitePoolOptions::new()
-            .max_connections(1) // single writer
+            .max_connections(1)
             .connect_with(connection_options)
             .await?;
 
         let (tx, mut rx) = mpsc::unbounded_channel::<TradeResult>();
         let pool_clone = pool.clone();
 
-        // Dedicated writer task
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -134,22 +127,9 @@ async fn insert_trade(pool: &SqlitePool, result: TradeResult) -> Result<()> {
     #[cfg(debug_assertions)]
     if DF.log_results_repo {
         log::info!(
-            "RESULTS DB WRITE \
-            | id={} \
-            | pair={} \
-            | dir={:?} \
-            | entry={} \
-            | exit={} \
-            | stop={} \
-            | target={} \
-            | entry_time={} \
-            | exit_time={} \
-            | expiry_time={} \
-            | reason={:?} \
-            | strategy={:?} \
-            | station={:?} \
-            | market={:?} \
-            | ph_pct={}",
+            "RESULTS DB WRITE | id={} | pair={} | dir={:?} | entry={} | exit={} | stop={} \
+            | target={} | entry_time={} | exit_time={} | expiry_time={} | reason={:?} | strategy={:?} \
+            | station={:?} | market={:?} | ph_pct={}",
             result.trade_id,
             result.pair_name,
             result.direction,
@@ -167,6 +147,7 @@ async fn insert_trade(pool: &SqlitePool, result: TradeResult) -> Result<()> {
             result.ph_pct,
         );
     }
+
     let mut tx = pool.begin().await?;
 
     sqlx::query(

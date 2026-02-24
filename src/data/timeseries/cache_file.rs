@@ -13,7 +13,6 @@ use {
     },
 };
 
-/// Serialized cache wrapper used for both native and WASM demo builds.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CacheFile {
     pub version: f64,

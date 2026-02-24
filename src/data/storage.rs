@@ -12,19 +12,11 @@ use {
     std::{str::FromStr, time::Duration},
 };
 
-/// The contract that any storage engine (SQLite or Memory) must obey.
 #[async_trait]
 pub trait MarketDataStorage: Send + Sync {
-    /// Initialize the storage (Create tables / Load bytes)
     async fn initialize(&self) -> Result<()>;
-
-    /// Get the timestamp of the last candle stored for this pair.
     async fn get_last_candle_time(&self, pair: &str, interval: &str) -> Result<Option<i64>>;
-
-    /// Save new candles to storage (Insert / Append)
     async fn insert_candles(&self, pair: &str, interval: &str, candles: &[Candle]) -> Result<u64>;
-
-    /// Load candles for analysis.
     async fn load_candles(
         &self,
         pair: &str,
@@ -38,18 +30,16 @@ pub struct SqliteStorage {
 }
 
 impl SqliteStorage {
-    /// Connect to (or create) the database file
     pub async fn new(db_path: &str) -> Result<Self> {
-        // Configure options to apply to EVERY connection in the pool
         let connection_options = SqliteConnectOptions::from_str(&format!("sqlite://{}", db_path))?
             .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Wal) // Enable WAL
-            .busy_timeout(Duration::from_secs(60)) // Wait 60s for locks
-            .synchronous(SqliteSynchronous::Normal) // Faster writes
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(60))
+            .synchronous(SqliteSynchronous::Normal)
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(10));
 
         let pool = SqlitePoolOptions::new()
-            .max_connections(5) // Limit max concurrent connections
+            .max_connections(5)
             .connect_with(connection_options)
             .await?;
 
@@ -60,7 +50,6 @@ impl SqliteStorage {
 #[async_trait]
 impl MarketDataStorage for SqliteStorage {
     async fn initialize(&self) -> Result<()> {
-        // We don't need manual PRAGMA queries here anymore because SqliteConnectOptions in new() handles them for every connection.
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS klines (
@@ -96,19 +85,15 @@ impl MarketDataStorage for SqliteStorage {
         .fetch_one(&self.pool)
         .await?;
 
-        // Extract value (might be NULL if new pair)
         let last_time: Option<i64> = result.try_get("last_time")?;
         Ok(last_time)
     }
 
+    /// Batches candles in chunks of 3000 to stay within SQLite's 32k parameter limit.
     async fn insert_candles(&self, pair: &str, interval: &str, candles: &[Candle]) -> Result<u64> {
         if candles.is_empty() {
             return Ok(0);
         }
-
-        // Use QueryBuilder for massive speedup (Single Query vs 500 Queries)
-        // SQLite limit is usually 32k params, so we batch in chunks of ~3000 candles to be safe.
-        // Each candle has 9 params. 3000 * 9 = 27000 < 32000.
 
         for chunk in candles.chunks(3000) {
             let mut query_builder = QueryBuilder::new(
@@ -127,8 +112,7 @@ impl MarketDataStorage for SqliteStorage {
                     .push_bind(c.quote_asset_volume.value());
             });
 
-            let query = query_builder.build();
-            query.execute(&self.pool).await?;
+            query_builder.build().execute(&self.pool).await?;
         }
 
         Ok(candles.len() as u64)

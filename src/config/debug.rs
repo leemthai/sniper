@@ -1,79 +1,46 @@
 #[allow(dead_code)]
 pub struct LogFlags {
-    /// Emit verbose logging for live price stream connections and ticks.
-    pub log_price_stream_updates: bool,
-
-    /// Emit simulation-mode state changes (enter/exit, price adjustments, etc.).
-    pub log_simulation_events: bool,
-
-    /// Activate trace_time macro (for cool scope-level timing)
-    pub log_performance: bool,
-    /// Log ledger activity
-    pub log_ledger: bool,
-
-    pub log_results_repo: bool,
-
-    pub log_engine_core: bool,
-
-    pub log_tuner: bool,
-    pub log_station_overrides: bool,
-    pub log_ph_overrides: bool,
-
-    pub log_pathfinder: bool,
-    pub log_zones: bool,
-
-    /// Anything about handling self.selection i.. the Selection struct
-    pub log_selection: bool,
-
     pub log_candle_update: bool,
-
+    pub log_engine_core: bool,
+    pub log_ledger: bool,
+    pub log_pairs: bool,
+    pub log_pathfinder: bool,
+    pub log_performance: bool,
+    pub log_ph_overrides: bool,
+    pub log_price_stream_updates: bool,
+    pub log_results_repo: bool,
+    pub log_selection: bool,
+    pub log_simd: bool,
+    pub log_startup_prices: bool,
+    pub log_station_overrides: bool,
+    pub log_strategy_selection: bool,
+    pub log_tuner: bool,
+    pub log_zones: bool,
+    pub max_pairs_load: usize,
+    pub wipe_ledger_on_startup: bool,
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
     pub log_wasm_demo: bool,
-
-    /// Verify SIMD produces near-same results as scalar version
-    pub log_simd: bool,
-
-    pub log_strategy_selection: bool,
-
-    pub log_startup_prices: bool,
-
-    // Limit how many pairs are loaded in Debug mode.
-    pub max_pairs_load: usize,
-
-    // Nuke ledger automatically on start-up
-    pub wipe_ledger_on_startup: bool,
-
-    pub log_pairs: bool,
 }
 
 pub const DF: LogFlags = LogFlags {
-    log_results_repo: true,
-    log_ledger: false,
-    log_station_overrides: false,
-    log_ph_overrides: false,
-
-    log_selection: false,
-    log_startup_prices: false,
-    wipe_ledger_on_startup: false,
-
-    log_tuner: false,
-
-    log_pairs: false,
-
-    log_engine_core: false,
-    log_pathfinder: false,
-
-    log_strategy_selection: false,
     log_candle_update: false,
+    log_engine_core: false,
+    log_ledger: false,
+    log_pairs: false,
+    log_pathfinder: false,
     log_performance: false,
+    log_ph_overrides: false,
     log_price_stream_updates: false,
-    log_simulation_events: false,
-    log_zones: false,
+    log_results_repo: true,
+    log_selection: false,
     log_simd: false,
-
+    log_startup_prices: false,
+    log_station_overrides: false,
+    log_strategy_selection: false,
+    log_tuner: false,
+    log_zones: false,
+    wipe_ledger_on_startup: false,
+    max_pairs_load: 20,
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
     log_wasm_demo: false,
-
-    // Default to a small number for quick UI testing. Change this to 1000 when you want to stress-test the model i.e all pairs.
-    max_pairs_load: 20, // 40, // 25, // 60,
 };

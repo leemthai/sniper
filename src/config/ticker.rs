@@ -34,7 +34,7 @@ pub const TICKER: TickerConfig = TickerConfig {
     item_spacing: 40.0,
     min_change_pct_for_color: 0.01,
     rainbow_mode: true,
-    rainbow_speed: 2.0, // animation frequecy of color cycle
+    rainbow_speed: 2.0,
     speed_pixels_per_sec: 30.0,
     text_color_down: Color32::RED,
     text_color_link: Color32::from_rgb(100, 200, 255),

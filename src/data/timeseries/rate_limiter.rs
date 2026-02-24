@@ -13,8 +13,6 @@ pub struct GlobalRateLimiter {
 
 struct InnerLimiter {
     used_weight: u32,
-    // We track the specific minute we are currently counting for
-    // e.g. 28,500,123 minutes since Epoch
     current_minute_idx: u64,
     limit: u32,
 }
@@ -30,26 +28,23 @@ impl GlobalRateLimiter {
         }
     }
 
-    /// Acquires permission to use `cost` weight.
+    /// Acquires permission to use `cost` weight, waiting until next minute boundary if limit exceeded.
     pub(crate) async fn acquire(&self, cost: u32, _context: &str) {
         loop {
             let (wait_duration, _stats) = {
                 let mut guard = self.inner.lock().await;
                 let now_idx = Self::get_current_minute_idx();
 
-                // Check for New Minute (Wall Clock)
                 if now_idx > guard.current_minute_idx {
                     guard.used_weight = 0;
                     guard.current_minute_idx = now_idx;
                 }
 
-                // Check Capacity
                 if guard.used_weight + cost <= guard.limit {
                     guard.used_weight += cost;
-                    return; // Success
+                    return;
                 }
 
-                // Calculate Wait (Until next :00)
                 let now_secs = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or(Duration::ZERO)
@@ -57,8 +52,6 @@ impl GlobalRateLimiter {
 
                 let seconds_into_minute = now_secs % 60;
                 let wait_secs = 60 - seconds_into_minute;
-
-                // Add a tiny buffer (100ms) to ensure we land IN the next minute
                 let wait = Duration::from_secs(wait_secs) + Duration::from_millis(100);
 
                 (wait, (guard.used_weight, guard.limit))

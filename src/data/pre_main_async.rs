@@ -18,8 +18,7 @@ use {
     crate::utils::TimeUtils,
     anyhow::Result,
     futures::stream::{self, StreamExt},
-    std::fs,
-    std::sync::Arc,
+    std::{fs, sync::Arc},
 };
 
 #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
@@ -38,22 +37,16 @@ async fn sync_pair(
     let last_time = storage.get_last_candle_time(&pair, interval_str).await?;
     let start_fetch = last_time.map(|t| t + 1);
 
-    // Fetch API (Real Delta Sync)
     let new_candles = provider
         .fetch_candles(&pair, interval_ms, start_fetch)
         .await?;
-
     let count = new_candles.len();
-
     if !new_candles.is_empty() {
         storage
             .insert_candles(&pair, interval_str, &new_candles)
             .await?;
     }
-
-    // Load from DB
     let full_history = storage.load_candles(&pair, interval_str, None).await?;
-
     let pair_interval = PairInterval {
         name: pair,
         interval_ms,
@@ -65,20 +58,18 @@ async fn sync_pair(
     ))
 }
 
-// MAIN ENTRY POINT
+/// Main entry
 pub async fn fetch_pair_data(
     klines_acceptable_age_secs: i64,
     args: &Cli,
     progress_tx: Option<Sender<ProgressEvent>>,
 ) -> (TimeSeriesCollection, &'static str) {
-    // --- WASM IMPLEMENTATION ---
     #[cfg(target_arch = "wasm32")]
     {
         let _ = klines_acceptable_age_secs;
         let _ = args;
         let _ = progress_tx;
 
-        // Use WasmDemoData directly (it is imported now)
         let mut timeseries_data =
             WasmDemoData::load().expect("failed to retrieve time series data for WASM");
 
@@ -90,7 +81,6 @@ pub async fn fetch_pair_data(
         return (timeseries_data, "WASM Static Cache");
     }
 
-    // --- NATIVE IMPLEMENTATION ---
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = klines_acceptable_age_secs;
@@ -112,7 +102,6 @@ pub async fn fetch_pair_data(
 
         let provider = Arc::new(BinanceProvider::new(limiter));
 
-        // Read ALL pairs from file first
         let mut supply_pairs: Vec<String> = match fs::read_to_string(BINANCE_PAIRS_FILENAME) {
             Ok(content) => content
                 .lines()
@@ -128,10 +117,8 @@ pub async fn fetch_pair_data(
             }
         };
 
-        // Production Limit (from binance.rs)
         supply_pairs.truncate(BINANCE_MAX_PAIRS);
 
-        // Debug Limit (from debug.rs)
         #[cfg(debug_assertions)]
         {
             if DF.log_pairs {
@@ -151,8 +138,7 @@ pub async fn fetch_pair_data(
             }
         }
 
-        // INITIALIZE UI LIST
-        // Tell the UI about all pairs immediately so they appear as "Pending"
+        // Tell UI about all pairs => "Pending"
         if let Some(ref tx) = progress_tx {
             for (i, pair) in supply_pairs.iter().enumerate() {
                 let _ = tx.send(ProgressEvent {
@@ -163,9 +149,7 @@ pub async fn fetch_pair_data(
             }
         }
 
-        // Run in Parallel
         let interval = BASE_INTERVAL.as_millis() as i64;
-
         let results = stream::iter(supply_pairs)
             .enumerate()
             .map(|(i, pair)| {

@@ -2,20 +2,21 @@ use crate::config::{Pct, Price};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol},
-    crate::models::LiveCandle,
-    std::error,
-    std::sync::mpsc::Sender,
-    std::thread,
-    std::time::Duration,
+    crate::{
+        config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol},
+        models::LiveCandle,
+    },
+    std::{error, sync::mpsc::Sender, thread, time::Duration},
     tokio::{runtime::Runtime, time::sleep},
 };
 
 // Native imports
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::config::{BASE_INTERVAL, BINANCE, BinanceApiConfig},
-    crate::utils::TimeUtils,
+    crate::{
+        config::{BASE_INTERVAL, BINANCE, BinanceApiConfig},
+        utils::TimeUtils,
+    },
     binance_sdk::{
         config::ConfigurationRestApi,
         spot::{
@@ -31,11 +32,9 @@ use {
     tokio_tungstenite::{connect_async, tungstenite::Message},
 };
 
-// WASM imports
 #[cfg(target_arch = "wasm32")]
 use {serde_json, std::collections::HashMap};
 
-//WASM + debug imports
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
 
@@ -43,9 +42,9 @@ use crate::config::DF;
 const DEMO_PRICES_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    crate::kline_data_dir!(), // Expands to "kline_data"
+    crate::kline_data_dir!(),
     "/",
-    crate::demo_prices_file!() // Expands to "demo_prices.json"
+    crate::demo_prices_file!()
 ));
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -56,16 +55,12 @@ enum ConnectionStatus {
     Disconnected,
 }
 
-/// Manages WebSocket connections to Binance for live price updates
 /// Subscribes to all pairs upfront with automatic reconnection
 #[cfg(not(target_arch = "wasm32"))]
 pub struct PriceStreamManager {
-    // Map of symbol -> current price
     prices: Arc<Mutex<HashMap<String, Price>>>,
-    // Map of symbol -> connection status
     connection_status: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     subscribed_symbols: Arc<Mutex<Vec<String>>>,
-    // Suspension flag - when true, price updates are ignored
     suspended: Arc<Mutex<bool>>,
     candle_tx: Option<Sender<LiveCandle>>,
 }
@@ -73,8 +68,6 @@ pub struct PriceStreamManager {
 #[cfg(not(target_arch = "wasm32"))]
 fn build_combined_stream_url(symbols: &[String]) -> String {
     let interval = TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
-
-    // CHANGE: Only subscribe to kline
     let streams: Vec<String> = symbols
         .iter()
         .map(|symbol| {
@@ -82,7 +75,6 @@ fn build_combined_stream_url(symbols: &[String]) -> String {
             format!("{}@kline_{}", s, interval)
         })
         .collect();
-
     format!("{}{}", BINANCE.ws.combined_base_url, streams.join("/"))
 }
 
@@ -98,7 +90,6 @@ impl PriceStreamManager {
         }
     }
 
-    /// Get the current live price for a symbol
     pub fn get_price(&self, symbol: &str) -> Option<Price> {
         let symbol_lower = symbol.to_lowercase();
         self.prices.lock().unwrap().get(&symbol_lower).copied()
@@ -108,32 +99,19 @@ impl PriceStreamManager {
         let symbols_lower: Vec<String> = symbols.iter().map(|s| s.to_lowercase()).collect();
         let mut subscribed = self.subscribed_symbols.lock().unwrap();
 
-        // Avoid re-subscribing if list matches (optional optimization, but good practice)
-        // For now, we assume a fresh start or simple overwrite as per original code.
         *subscribed = symbols_lower.clone();
-
-        // Clone Arcs to move into the background thread
         let prices_arc = self.prices.clone();
         let status_arc = self.connection_status.clone();
         let suspended_arc = self.suspended.clone();
-
-        // NEW: Clone the candle sender
         let candle_tx = self.candle_tx.clone();
-
-        // Clone symbol list for the warmup call
         let symbols_for_warmup = symbols_lower.clone();
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            // Spawn a dedicated thread for the runtime
             thread::spawn(move || {
                 let rt = Runtime::new().expect("Failed to create runtime");
                 rt.block_on(async move {
-                    // PULL (Batch Snapshot)
                     warm_up_prices(prices_arc.clone(), &symbols_for_warmup).await;
-
-                    // PUSH (Live Updates)
-                    // We now pass 'candle_tx' down the chain
                     run_combined_price_stream_with_reconnect(
                         &symbols_lower,
                         prices_arc,
@@ -151,30 +129,6 @@ impl PriceStreamManager {
         self.candle_tx = Some(tx);
     }
 
-    /// Suspend price updates (enter simulation mode)
-    pub fn suspend(&self) {
-        *self.suspended.lock().unwrap() = true;
-        #[cfg(debug_assertions)]
-        if DF.log_simulation_events {
-            log::info!("🔇 WebSocket price updates suspended");
-        }
-    }
-
-    /// Resume price updates (exit simulation mode)
-    pub fn resume(&self) {
-        *self.suspended.lock().unwrap() = false;
-        #[cfg(debug_assertions)]
-        if DF.log_simulation_events {
-            log::info!("🔊 WebSocket price updates resumed");
-        }
-    }
-
-    /// Check if price updates are suspended
-    pub fn is_suspended(&self) -> bool {
-        *self.suspended.lock().unwrap()
-    }
-
-    /// Delay continuation (entire app) until price stream connection health reaches threshold % (0 to 100)
     pub fn wait_for_health_threshold(&self, threshold_pct: Pct) {
         loop {
             let health = self.connection_health();
@@ -201,7 +155,6 @@ impl PriceStreamManager {
         }
     }
 
-    /// Get overall connection health (percentage of connected streams)
     pub fn connection_health(&self) -> Pct {
         let status_map = self.connection_status.lock().unwrap();
         if status_map.is_empty() {
@@ -252,14 +205,6 @@ impl PriceStreamManager {
         self.prices.get(&symbol_lower).copied()
     }
 
-    pub fn suspend(&self) {}
-
-    pub fn resume(&self) {}
-
-    pub fn is_suspended(&self) -> bool {
-        true
-    }
-
     pub fn connection_health(&self) -> Pct {
         Pct::new(100.0)
     }
@@ -279,7 +224,6 @@ async fn run_combined_price_stream_with_reconnect(
     let url = build_combined_stream_url(symbols); // Ensure your build_combined_stream_url includes klines now!
 
     loop {
-        // Update status to connecting
         {
             let mut status_map = status_arc.lock().unwrap();
             for symbol in symbols {
@@ -314,7 +258,6 @@ async fn run_combined_price_stream_with_reconnect(
             }
         }
 
-        // Update status to disconnected
         {
             let mut status_map = status_arc.lock().unwrap();
             for symbol in symbols {
@@ -338,7 +281,6 @@ async fn run_combined_price_stream(
 ) -> Result<(), Box<dyn error::Error + Send + Sync>> {
     let (ws_stream, _) = connect_async(url).await?;
 
-    // Update status to connected
     {
         let mut status_map = status_arc.lock().unwrap();
         for symbol in symbols {
@@ -359,21 +301,15 @@ async fn run_combined_price_stream(
                             parse_and_send_kline(&v["data"], tx);
                         }
 
-                        // UPDATE LIVE PRICE CACHE (UI Display)
-                        // We use the current candle close ("c") as the live price
                         if let Some(k) = v["data"].get("k") {
                             if let Some(c_str) = k["c"].as_str() {
                                 if let Ok(raw) = c_str.parse::<f64>() {
-                                    // Check Suspension
                                     let is_suspended = *suspended_arc.lock().unwrap();
                                     if !is_suspended {
                                         let symbol =
                                             v["data"]["s"].as_str().unwrap_or("").to_lowercase();
-
-                                        // Update Map
                                         let price = Price::new(raw);
                                         prices_arc.lock().unwrap().insert(symbol.clone(), price);
-
                                         #[cfg(debug_assertions)]
                                         if DF.log_price_stream_updates {
                                             log::info!("[kline-tick] {} -> {:.6}", symbol, price);
@@ -383,7 +319,6 @@ async fn run_combined_price_stream(
                             }
                         }
                     }
-                // Ignore other events (like 24hrTicker if any sneak in)
                 } else {
                     log::warn!("⚠️ Failed to parse WebSocket JSON message");
                 }
@@ -426,59 +361,48 @@ async fn warm_up_prices(prices_arc: Arc<Mutex<HashMap<String, Price>>>, symbols:
         symbol_status: None,
     };
 
-    // Make the Request
     match client.ticker_price(params).await {
-        Ok(response) => {
-            // Await the data extraction (It returns a Result<TickerPriceResponse>)
-            match response.data().await {
-                Ok(ticker_data) => {
-                    match ticker_data {
-                        // Match the Vector Variant
-                        TickerPriceResponse::TickerPriceResponse2(all_tickers) => {
-                            let mut p_lock = prices_arc.lock().unwrap();
-                            let mut _updated_count = 0;
-
-                            let wanted_set: HashSet<String> =
-                                symbols.iter().map(|s| s.to_lowercase()).collect();
-
-                            for ticker in all_tickers {
-                                // 4. Safely handle Option fields (symbol/price might be None)
-                                if let (Some(s), Some(p)) = (&ticker.symbol, &ticker.price) {
-                                    let symbol_lower = s.to_lowercase();
-
-                                    if wanted_set.contains(&symbol_lower) {
-                                        let raw = p.parse::<f64>().unwrap_or(0.0);
-                                        if raw > 0.0 {
-                                            p_lock.insert(symbol_lower, Price::new(raw));
-                                            _updated_count += 1;
-                                        }
-                                    }
+        Ok(response) => match response.data().await {
+            Ok(ticker_data) => match ticker_data {
+                TickerPriceResponse::TickerPriceResponse2(all_tickers) => {
+                    let mut p_lock = prices_arc.lock().unwrap();
+                    let mut _updated_count = 0;
+                    let wanted_set: HashSet<String> =
+                        symbols.iter().map(|s| s.to_lowercase()).collect();
+                    for ticker in all_tickers {
+                        if let (Some(s), Some(p)) = (&ticker.symbol, &ticker.price) {
+                            let symbol_lower = s.to_lowercase();
+                            if wanted_set.contains(&symbol_lower) {
+                                let raw = p.parse::<f64>().unwrap_or(0.0);
+                                if raw > 0.0 {
+                                    p_lock.insert(symbol_lower, Price::new(raw));
+                                    _updated_count += 1;
                                 }
                             }
-                            #[cfg(debug_assertions)]
-                            if DF.log_price_stream_updates {
-                                log::info!(
-                                    ">>> PriceStream: Warmup complete. Updated {}/{} pairs.",
-                                    _updated_count,
-                                    symbols.len()
-                                );
-                            }
-                        }
-                        TickerPriceResponse::TickerPriceResponse1(_) => {
-                            log::warn!(
-                                ">>> PriceStream: Unexpected 'Single' response type during batch warmup."
-                            );
-                        }
-                        _ => {
-                            log::warn!(">>> PriceStream: Unexpected 'Other' response type.");
                         }
                     }
+                    #[cfg(debug_assertions)]
+                    if DF.log_price_stream_updates {
+                        log::info!(
+                            ">>> PriceStream: Warmup complete. Updated {}/{} pairs.",
+                            _updated_count,
+                            symbols.len()
+                        );
+                    }
                 }
-                Err(e) => {
-                    log::error!(">>> PriceStream: Failed to parse response data: {:?}", e);
+                TickerPriceResponse::TickerPriceResponse1(_) => {
+                    log::warn!(
+                        ">>> PriceStream: Unexpected 'Single' response type during batch warmup."
+                    );
                 }
+                _ => {
+                    log::warn!(">>> PriceStream: Unexpected 'Other' response type.");
+                }
+            },
+            Err(e) => {
+                log::error!(">>> PriceStream: Failed to parse response data: {:?}", e);
             }
-        }
+        },
         Err(e) => {
             log::error!(">>> PriceStream: Warmup request failed: {:?}", e);
         }
@@ -493,14 +417,9 @@ fn parse_and_send_kline(data: &serde_json::Value, tx: &Sender<LiveCandle>) {
     if k.is_null() {
         return;
     }
-
-    // "x": true means the candle is closed. We generally want all updates (open and closed),
-    // but the Engine handles the logic of update vs append.
     let is_closed = k["x"].as_bool().unwrap_or(false);
-
     let symbol = data["s"].as_str().unwrap_or("").to_string();
     let close = k["c"].as_str().unwrap_or("0").parse().unwrap_or(0.0);
-
     let candle = LiveCandle {
         symbol,
         open_time: k["t"].as_i64().unwrap_or(0),
@@ -512,7 +431,5 @@ fn parse_and_send_kline(data: &serde_json::Value, tx: &Sender<LiveCandle>) {
         quote_vol: QuoteVol::new(k["q"].as_str().unwrap_or("0").parse().unwrap_or(0.0)),
         is_closed,
     };
-
-    // Send to Engine. If receiver is dropped, this fails silently (ok).
     let _ = tx.send(candle);
 }

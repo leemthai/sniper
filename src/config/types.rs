@@ -103,7 +103,6 @@ impl fmt::Display for PhPct {
 pub struct Pct(f64);
 
 impl Pct {
-    // A 'general' % clamped between 0 and 1
     pub(crate) const fn new(val: f64) -> Self {
         let v = if val < 0.0 {
             0.0
@@ -142,7 +141,6 @@ impl VolatilityPct {
         self.0.max(Self::MIN_EPSILON)
     }
 
-    /// Calculates Volatility % from candle data: (High - Low) / Close
     pub(crate) fn calculate(high: f64, low: f64, close: f64) -> Self {
         if close > f64::EPSILON {
             Self::new((high - low) / close)
@@ -171,7 +169,6 @@ impl MomentumPct {
         self.0
     }
 
-    /// Calculates Momentum %: (Current - Previous) / Previous
     pub(crate) fn calculate(current_close: f64, prev_close: f64) -> Self {
         if prev_close > f64::EPSILON {
             Self::new((current_close - prev_close) / prev_close)
@@ -248,10 +245,6 @@ impl Prob {
         };
         Self(v)
     }
-
-    // pub(crate) fn value(self) -> f64 {
-    //     self.0
-    // }
 }
 
 impl fmt::Display for Prob {
@@ -294,7 +287,6 @@ impl DurationMs {
         }
     }
 
-    /// Converts duration to a float number of years (for annualized math).
     pub(crate) fn to_years(self) -> f64 {
         if self.0 <= 0 {
             0.0
@@ -324,7 +316,6 @@ impl VolRatio {
         self.0
     }
 
-    /// Calculates the ratio between current and average volume.
     /// Handles division by zero by returning 1.0 (neutral).
     pub(crate) fn calculate(current_vol: f64, avg_vol: f64) -> Self {
         if avg_vol > f64::EPSILON {
@@ -347,7 +338,6 @@ pub(crate) struct Sigma(f64);
 
 impl Sigma {
     pub(crate) const fn new(val: f64) -> Self {
-        // Sigma for thresholds is usually positive, but we'll allow 0.0
         let v = if val < 0.0 { 0.0 } else { val };
         Self(v)
     }
@@ -363,7 +353,6 @@ impl fmt::Display for Sigma {
     }
 }
 
-/// A behavioral contract for anything that behaves like a price.
 pub trait PriceLike {
     fn value(&self) -> f64;
 
@@ -387,10 +376,7 @@ pub trait PriceLike {
         if price == 0.0 {
             return "$0.00".to_string();
         }
-
-        // Determine magnitude
         let abs_price = price.abs();
-
         if abs_price >= 1000.0 {
             format!("${:.2}", price)
         } else if abs_price >= 1.0 {
@@ -437,7 +423,6 @@ macro_rules! define_price_type {
 
         impl $name {
             pub const fn new(val: f64) -> Self {
-                // Absolute prices should not be negative
                 let v = if val < 0.0 { 0.0 } else { val };
                 Self(v)
             }
@@ -535,7 +520,6 @@ macro_rules! impl_price_compare {
     };
 }
 
-// Generate the Price Hierarchy
 define_price_type!(Price);
 define_price_type!(OpenPrice);
 define_price_type!(HighPrice);
@@ -664,18 +648,9 @@ pub(crate) enum OptimizationStrategy {
     Balanced,
 
     /// Log-Growth Confidence Score
-    /// This gives you: Growth-optimal bias (Kelly foundation)
-    /// Risk awareness
-    /// Sample-size confidence adjustment
-    /// Stability over training
-    /// It directly aligns with your architecture.
-    /// Why Log-Growth?
-    /// Long-term capital growth is maximized by: maxE[log(1+fR)]maxE[log(1+fR)]
-    /// For small R, this approximates: E[R]−1/2(​Var(R))
-    /// That is profound. It automatically:
-    /// Penalizes variance
-    /// Penalizes tail risk
-    /// Penalizes instability
+    /// **Goal:** Maximize long-term capital via geometric growth ($E[\log(1+fR)]$).
+    /// **Math:** Approximates **Mean Return − ½ Variance**.
+    /// **Result:** Auto penalizes volatility and tail risk, ensuring stable, growth-optimal performance aligned with your architecture.
     #[strum(to_string = "Log Growth (Confidence)")]
     #[default]
     LogGrowthConfidence,
@@ -797,8 +772,6 @@ pub(crate) struct ZoneClassificationConfig {
 pub(crate) struct TradeProfile {
     pub min_roi_pct: RoiPct,
     pub min_aroi_pct: AroiPct,
-    // pub weight_roi: Weight,
-    // pub weight_aroi: Weight,
 }
 
 impl TradeProfile {
@@ -810,7 +783,6 @@ impl TradeProfile {
         let factor = 1.0 / years;
         AroiPct::new(roi.value() * factor)
     }
-    /// Returns true if both ROI and AROI meet the minimum thresholds defined in this profile.
     pub(crate) fn is_worthwhile(&self, roi_pct: RoiPct, aroi_pct: AroiPct) -> bool {
         roi_pct >= self.min_roi_pct && aroi_pct >= self.min_aroi_pct
     }
@@ -835,7 +807,6 @@ pub(crate) struct OptimalSearchSettings {
 pub(crate) struct JourneySettings {
     pub sample_count: usize,
     pub risk_reward_tests: &'static [f64],
-    // pub volatility_zigzag_factor: f64,
     pub min_journey_duration: Duration,
     pub max_journey_time: Duration,
     pub profile: TradeProfile,

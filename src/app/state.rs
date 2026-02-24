@@ -2,8 +2,7 @@ use {
     crate::{app::App, models::TradeOpportunity},
     eframe::egui::Context,
     serde::{Deserialize, Serialize},
-    std::collections::BTreeMap,
-    std::fmt,
+    std::{collections::BTreeMap, fmt},
 };
 
 #[allow(dead_code)]
@@ -11,8 +10,8 @@ use {
 pub enum SyncStatus {
     Pending,
     Syncing,
-    Completed(usize), // number of new candles
-    Failed(String),   // Error
+    Completed(usize), // new candles
+    Failed(String),
 }
 
 #[derive(Debug, Clone)]
@@ -60,7 +59,6 @@ impl fmt::Display for Selection {
 }
 
 impl Selection {
-    /// owned String
     pub(crate) fn pair_owned(&self) -> Option<String> {
         match self {
             Selection::Pair(p) => Some(p.clone()),

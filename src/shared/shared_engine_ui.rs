@@ -12,10 +12,8 @@ use crate::config::DF;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct UIEngineSharedData {
-    // pub(crate) persisted_pairs: HashSet<String>,
     pub(crate) station_overrides: HashMap<String, StationId>,
     pub(crate) ph_overrides: HashMap<String, PhPct>,
-    // Add other shared configurations here as needed in the future
     pub(crate) strategy: OptimizationStrategy,
 }
 
@@ -67,7 +65,6 @@ impl SharedConfiguration {
         }
     }
 
-    // --- Read Accessors ---
     pub(crate) fn get_station(&self, key: &str) -> Option<StationId> {
         self.inner
             .read()
@@ -77,7 +74,6 @@ impl SharedConfiguration {
             .copied()
     }
 
-    /// impl AsRef<str>: Most flexible -  allows a single function to conveniently accept both owned Strings and borrowed &str slices
     pub(crate) fn get_station_opt(&self, key: Option<impl AsRef<str>>) -> Option<StationId> {
         key.and_then(|k| {
             self.inner
@@ -93,7 +89,6 @@ impl SharedConfiguration {
         self.inner.read().unwrap().ph_overrides.get(key).copied()
     }
 
-    // --- Write Accessors ---
     pub(crate) fn insert_station(&self, key: String, value: StationId) {
         self.inner
             .write()
@@ -107,7 +102,6 @@ impl SharedConfiguration {
     }
 }
 
-// --- SERDE MAGIC ---
 impl Serialize for SharedConfiguration {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

@@ -48,8 +48,6 @@ pub(crate) struct TimeTunerConfig {
 pub(crate) const STATIONS: &[TunerStation] = &[
     TunerStation {
         id: StationId::Scalp,
-        // name: "⚡ SCALP",
-        // short_name: "⚡",
         name: "\u{f00d5} SCALP",
         short_name: "\u{f00d5}",
         target_min_hours: 1.0,
@@ -68,8 +66,6 @@ pub(crate) const STATIONS: &[TunerStation] = &[
     },
     TunerStation {
         id: StationId::Swing,
-        // name: "🌊 SWING",
-        // short_name: "🌊",
         name: "\u{f095b} SWING",
         short_name: "\u{f095b}",
         target_min_hours: 24.0,

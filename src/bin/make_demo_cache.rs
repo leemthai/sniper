@@ -1,14 +1,13 @@
-// Only compile the logic for NATIVE builds.
-
 #[cfg(not(target_arch = "wasm32"))]
 use {
     anyhow::{Context, Result, anyhow},
     serde_json::Value,
-    std::collections::HashMap,
-    std::path::PathBuf,
-    std::thread,
-    std::time::{Duration, Instant},
-    // EVERYTHING below now comes directly from zone_sniper root
+    std::{
+        collections::HashMap,
+        path::PathBuf,
+        thread,
+        time::{Duration, Instant},
+    },
     zone_sniper::{
         BASE_INTERVAL, CacheFile, DEMO, MarketDataStorage, OhlcvTimeSeries, PERSISTENCE,
         PairInterval, Price, PriceLike, PriceStreamManager, SqliteStorage, TimeSeriesCollection,
@@ -20,14 +19,11 @@ use {
 #[cfg(not(target_arch = "wasm32"))]
 const DEMO_CANDLE_LIMIT: usize = 50_000;
 
-// --- NATIVE IMPLEMENTATION ---
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Setup Logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    // Configuration from demo.rs
     let demo_pairs = DEMO.resources.pairs;
 
     let interval_ms = BASE_INTERVAL.as_millis() as i64;
@@ -54,7 +50,6 @@ async fn main() -> Result<()> {
             continue;
         }
 
-        // TRUNCATE DATA FOR DEMO SIZE LIMITS
         if candles.len() > DEMO_CANDLE_LIMIT {
             let start = candles.len() - DEMO_CANDLE_LIMIT;
             candles = candles.drain(start..).collect();
@@ -112,7 +107,6 @@ fn fetch_current_prices_for_demo_pairs(demo_pairs: &[&str]) -> Result<HashMap<St
         return Err(anyhow!("No WASM demo pairs configured"));
     }
 
-    // This spawns a background thread/runtime to fetch prices
     stream.subscribe_all(symbols.clone());
 
     let timeout = Duration::from_secs(15);

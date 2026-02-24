@@ -3,42 +3,42 @@ use eframe::egui::Color32;
 pub struct PlotConfig {
     pub active_zone_stroke_color: Color32,
     pub active_zone_stroke_width: f32,
-    pub background_bar_intensity_pct: f32, // Lower values = more dimmed, letting zone overlays stand out
+    pub background_bar_intensity_pct: f32,
     pub candle_bearish_color: Color32,
     pub candle_bullish_color: Color32,
     pub candle_wick_width_px: f32,
-    pub candle_width_pct: f64, // 0.0 to 1.0 (relative to time step)
-    pub color_gap_above: Color32, // Price went > PH (Resistance-ish)
-    pub color_gap_below: Color32, // Price went < PH (Support-ish)
-    pub color_gap_missing: Color32, // Exchange down / Data hole
+    pub candle_width_pct: f64,
+    pub color_gap_above: Color32,
+    pub color_gap_below: Color32,
+    pub color_gap_missing: Color32,
     pub color_info: Color32,
     pub color_long: Color32,
     pub color_loss: Color32,
     pub color_profit: Color32,
-    pub color_separator: Color32, // Subtle vertical separator line on plot
+    pub color_separator: Color32,
     pub color_short: Color32,
     pub color_stop_loss: Color32,
-    pub color_text_neutral: Color32, // Main values (white)
-    pub color_text_primary: Color32, // For the galley tint (Light Gray)
+    pub color_text_neutral: Color32,
+    pub color_text_primary: Color32,
     pub color_text_subdued: Color32,
     pub color_tf_selected: Color32,
     pub color_warning: Color32,
-    pub color_widget_border: Color32, // Subtle border
+    pub color_widget_border: Color32,
     pub current_price_color: Color32,
     pub current_price_line_width: f32,
     pub high_wicks_zone_color: Color32,
     pub low_wicks_zone_color: Color32,
-    pub opacity_path_line: f32, // Path line relative to scope_base (0.8 * 0.6)
-    pub opacity_scope_base: f32, // Main circle intensity
-    pub opacity_scope_crosshair: f32, // Crosshair relative to scope_base (0.8 * 1.0)
+    pub opacity_path_line: f32,
+    pub opacity_scope_base: f32,
+    pub opacity_scope_crosshair: f32,
     pub opacity_separator: f32,
-    pub plot_x_padding_pct: f64, // if viewing 100 candles, add 2 "empty" candles of space on each side.
-    pub plot_y_padding_pct: f64, // Y-Axis Padding factor around PH (e.g. 0.05 = 5% padding top and bottom)
+    pub plot_x_padding_pct: f64,
+    pub plot_y_padding_pct: f64,
     pub resistance_zone_color: Color32,
-    pub segment_gap_width_px: f64, // Visual space between accordion segments
+    pub segment_gap_width_px: f64,
     pub sticky_zone_color: Color32,
     pub support_zone_color: Color32,
-    pub zone_fill_opacity_pct: f32, // Lower values = more transparent, less visual clutter
+    pub zone_fill_opacity_pct: f32,
     pub zone_gradient_colors: &'static [&'static str],
 }
 

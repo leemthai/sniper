@@ -17,7 +17,7 @@ use std::process;
 #[cfg(feature = "ph_audit")]
 pub fn execute_audit(
     ts_collection: &TimeSeriesCollection,
-    current_prices: &HashMap<String, Price>, // NEW: Live prices from Ticker
+    current_prices: &HashMap<String, Price>,
 ) {
     println!("=== STARTING MULTI-STRATEGY SPECTRUM AUDIT ===");
 
@@ -25,7 +25,6 @@ pub fn execute_audit(
     reporter.add_header();
 
     for &pair in AUDIT_PAIRS {
-        // Validate Data Exists
         if find_matching_ohlcv(
             &ts_collection.series_data,
             pair,
@@ -37,22 +36,16 @@ pub fn execute_audit(
             continue;
         }
 
-        // Validate Live Price Exists (Strict)
         let Some(&live_price) = current_prices.get(pair) else {
             println!("Skipping {} (No Live Price Available)", pair);
             continue;
         };
-
         if !live_price.is_positive() {
             println!("Skipping {} (Live Price is Zero)", pair);
             continue;
         }
-
         println!(">> Scanning {} @ ${:.4}...", pair, live_price);
-
-        // Loop Strategies
         for strategy in OptimizationStrategy::iter() {
-            // Loop PH Levels
             for &ph_pct in PH_LEVELS {
                 run_single_simulation(
                     pair,
@@ -60,16 +53,13 @@ pub fn execute_audit(
                     &strategy,
                     PhPct::new(ph_pct),
                     ts_collection,
-                    // base_config,
                     &mut reporter,
                 );
             }
         }
     }
-
     println!("Audit Complete. Flushing CSV...");
     reporter.print_all();
-
     process::exit(0);
 }
 
@@ -86,14 +76,11 @@ fn run_single_simulation(
         pair,
         BASE_INTERVAL.as_millis() as i64,
     )
-    .unwrap(); // Unwrap is safe here because we checked existence in the main loop
+    .unwrap();
     let start_time = AppInstant::now();
 
-    // C. Run Pipeline (Using worker internals)
     let cva_res = pair_analysis_pure(pair.to_string(), ts_collection, price, ph_pct);
-
     let strat_name = format!("{:?}", strategy);
-
     if cva_res.is_err() {
         return;
     }
@@ -101,7 +88,6 @@ fn run_single_simulation(
     let cva = cva_res.unwrap();
     let ph_candles = cva.relevant_candle_count;
 
-    // Pathfinder (Scout + Drill)
     let pf_result = run_pathfinder_simulations(
         ohlcv,
         price,
@@ -112,22 +98,15 @@ fn run_single_simulation(
     );
     let elapsed = start_time.elapsed().as_millis();
     let opportunities = pf_result.opportunities;
-    let trend_k = pf_result.trend_lookback; // Truth from the engine
-    let sim_k = pf_result.sim_duration; // Truth from the engine
-
-    // D. Extract Stats
+    let trend_k = pf_result.trend_lookback;
+    let sim_k = pf_result.sim_duration;
     let count = opportunities.len();
-
     let top_score = opportunities.first().map(|o| o.calculate_quality_score());
-
-    // DISPLAY LOGIC: Convert ms to hours for CSV readability
     let durations_hours: Vec<f64> = opportunities
         .iter()
         .take(5)
         .map(|o| o.avg_duration.to_hours())
         .collect();
-
-    // Avg Stop Loss %
     let top_5_b = opportunities.iter().take(5);
     let avg_stop: Option<f64> = if count > 0 {
         let sum: f64 = top_5_b

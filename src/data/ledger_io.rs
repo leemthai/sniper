@@ -1,11 +1,10 @@
-// Native-only code i.e. gated in mod.rs by #[cfg(not(target_arch = "wasm32"))] so no need to gate internally here
-
 use {
-    crate::config::PERSISTENCE,
-    crate::models::OpportunityLedger,
+    crate::{config::PERSISTENCE, models::OpportunityLedger},
     anyhow::Result,
-    std::fs::File,
-    std::io::{BufReader, BufWriter},
+    std::{
+        fs::File,
+        io::{BufReader, BufWriter},
+    },
 };
 
 pub(crate) fn save_ledger(ledger: &OpportunityLedger) -> Result<()> {

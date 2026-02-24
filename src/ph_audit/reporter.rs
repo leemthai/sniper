@@ -16,7 +16,6 @@ impl AuditReporter {
     }
 
     pub fn add_header(&mut self) {
-        // Added PH_Candles column
         self.buffer.push("Timestamp,Pair,Strategy,PH_Pct,Trend_K,Sim_K,Total_Candles,PH_Candles,Candidates,Top_Score,Stop_Pct,Exec_Ms,Dur_1_Hrs,Dur_2_Hrs,Dur_3_Hrs,Dur_4_Hrs,Dur_5_Hrs".to_string());
     }
 
@@ -46,7 +45,6 @@ impl AuditReporter {
             }
         }
 
-        // FIX: Conditional Formatting based on Strategy
         let score_str = top_score
             .map(|v| {
                 if strategy.contains("ROI") {
@@ -81,12 +79,11 @@ impl AuditReporter {
     }
 
     pub(crate) fn print_all(&self) {
-        // Optional: clear screen or add newlines to separate from noise
         println!("\n\n\n");
-        println!("==================== CSV DATA START ====================");
+        println!("= CSV DATA START =");
         for line in &self.buffer {
             println!("{}", line);
         }
-        println!("===================== CSV DATA END =====================");
+        println!("= CSV DATA END =");
     }
 }

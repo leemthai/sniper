@@ -12,7 +12,6 @@ pub type AppInstant = web_time::Instant;
 pub struct TimeUtils;
 
 impl TimeUtils {
-    // Time constants
     pub const MS_IN_S: i64 = 1000;
     pub const MS_IN_MIN: i64 = Self::MS_IN_S * 60;
     pub const MS_IN_3_MIN: i64 = Self::MS_IN_MIN * 3;
@@ -56,8 +55,6 @@ impl TimeUtils {
 
     /// Returns current UTC time in milliseconds.
     /// Unlike Instant::now(), this *is* WASM safe
-    /// On Native, it asks the OS System Clock.
-    /// On WASM, the chrono crate bindings internally call JavaScript's Date.now()
     pub fn now_timestamp_ms() -> i64 {
         Utc::now().timestamp_millis()
     }
@@ -66,7 +63,6 @@ impl TimeUtils {
         Utc::now()
     }
 
-    /// Converts a Duration into a specific number of candles based on the interval.
     pub(crate) fn duration_to_candles(duration: Duration, interval_ms: i64) -> usize {
         if interval_ms <= 0 {
             return 0;

@@ -9,7 +9,6 @@ use {
 #[cfg(all(debug_assertions, target_arch = "wasm32"))]
 use crate::config::DF;
 
-// Embed the demo data binary
 const DEMO_CACHE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
@@ -32,7 +31,6 @@ impl WasmDemoData {
 
         let mut data = cache.data;
 
-        // Enforce the WASM pair limit
         if data.series_data.len() > DEMO.max_pairs {
             data.series_data.truncate(DEMO.max_pairs);
         }

@@ -7,10 +7,8 @@ use {
     async_trait::async_trait,
 };
 
-/// Abstract interface for fetching market data.
 #[async_trait]
 pub trait MarketDataProvider: Send + Sync {
-    /// Fetch candles for a pair starting from a specific timestamp.
     async fn fetch_candles(
         &self,
         pair: &str,
@@ -25,7 +23,6 @@ impl BinanceProvider {
     }
 }
 
-// Update Struct
 pub struct BinanceProvider {
     limiter: GlobalRateLimiter,
 }
@@ -43,10 +40,8 @@ impl MarketDataProvider for BinanceProvider {
             interval_ms,
         };
 
-        // Call the legacy loader (modified to accept start_time)
-        let result = load_klines(pair_interval, 1, start_time, self.limiter.clone()).await?;
+        let result = load_klines(pair_interval, start_time, self.limiter.clone()).await?;
 
-        // Convert using the From impl
         let candles: Vec<Candle> = result
             .klines
             .into_iter()

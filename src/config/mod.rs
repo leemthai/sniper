@@ -37,8 +37,6 @@ pub(crate) use {
     },
 };
 
-// pub(crate) use binance_assets::BINANCE_QUOTE_ASSETS;
-
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use binance::{BINANCE, BINANCE_MAX_PAIRS, BINANCE_PAIRS_FILENAME, BinanceApiConfig};
 

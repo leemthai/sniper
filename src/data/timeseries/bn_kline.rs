@@ -24,7 +24,6 @@ use crate::{
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
-// For "MS -> Enum", a static helper is still best, but we return Result instead of panicking.
 pub fn try_interval_from_ms(ms: i64) -> Result<KlinesIntervalEnum, String> {
     use TimeUtils as T;
     match ms {
@@ -61,7 +60,7 @@ impl AllValidKlines4Pair {
 
 #[derive(Debug, PartialOrd, PartialEq)]
 pub struct BNKline {
-    pub open_timestamp_ms: i64, // only necessary field. All others are optional
+    pub open_timestamp_ms: i64,
     pub open_price: Option<OpenPrice>,
     pub high_price: Option<HighPrice>,
     pub low_price: Option<LowPrice>,
@@ -70,12 +69,11 @@ pub struct BNKline {
     pub quote_asset_volume: Option<QuoteVol>,
 }
 
-// Custom error type for BNKline for better error messages.
-#[derive(Debug)] // Added derive for Debug
+#[derive(Debug)]
 pub enum BNKlineError {
     InvalidLength,
-    InvalidType(String),      // Changed to hold a String
-    ConnectionFailed(String), // Added new variant
+    InvalidType(String),
+    ConnectionFailed(String),
 }
 
 impl fmt::Display for BNKlineError {
@@ -90,9 +88,6 @@ impl fmt::Display for BNKlineError {
     }
 }
 
-// Safely and cleanly extract a floating-point number from a potentially heterogeneous enum type.
-// It returns a Some(f64) only if the input was the String variant of the enum and that string could be successfully parsed.
-// In all other cases—the input was a different enum variant or the string was invalid—it returns None.
 fn convert_kline_item_inner_enum_string_to_float(kline: Option<KlinesItemInner>) -> Option<f64> {
     kline.and_then(|inner| {
         if let KlinesItemInner::String(s) = inner {
@@ -103,9 +98,8 @@ fn convert_kline_item_inner_enum_string_to_float(kline: Option<KlinesItemInner>)
     })
 }
 
-impl Error for BNKlineError {} // Needed in order to compile
+impl Error for BNKlineError {}
 
-// Implement the conversion using the iterator pattern.
 impl TryFrom<Vec<KlinesItemInner>> for BNKline {
     type Error = BNKlineError;
 
@@ -160,7 +154,6 @@ fn process_new_klines(
     all_klines: &mut Vec<BNKline>,
     pair_interval: &PairInterval,
 ) -> Result<(Option<i64>, bool), anyhow::Error> {
-    // Convert to your BNKline
     let mut bn_klines = convert_klines(new_klines).map_err(|e| {
         anyhow::Error::new(e).context(format!("{} convert_klines failed", pair_interval))
     })?;
@@ -172,16 +165,12 @@ fn process_new_klines(
         );
     }
 
-    // Will we finish after this batch?
     let mut read_all_klines = false;
     if bn_klines.len() < limit_klines_returned as usize {
         read_all_klines = true;
     }
 
-    // New end_time is open time of first entry in bn_klines
     let end_time = Some(bn_klines[0].open_timestamp_ms);
-
-    // If we already have existing klines, sanity check that last of bn_klines matches first of all_klines
     if !all_klines.is_empty() {
         let last_bn_klines_open_timestamp_ms = &bn_klines[bn_klines.len() - 1].open_timestamp_ms;
         let first_all_klines_open_timestamp_ms = &all_klines[0].open_timestamp_ms;
@@ -206,10 +195,7 @@ fn process_new_klines(
         all_klines.splice(0..0, Vec::<BNKline>::new());
         return Ok((end_time, true));
     }
-
-    // Prepend the new klines to all_klines
     all_klines.splice(0..0, bn_klines);
-
     Ok((end_time, read_all_klines))
 }
 
@@ -218,18 +204,14 @@ async fn fetch_binance_klines_with_limits(
     params: KlinesParams,
     pair_interval: &PairInterval,
 ) -> Result<(Option<Vec<RestApiRateLimit>>, Vec<Vec<KlinesItemInner>>), anyhow::Error> {
-    // Make the call
     let response_result = rest_client.klines(params).await;
-
     match response_result {
         Ok(r) => {
-            // Take the rate_limits (Option<Vec<...>>) from the response, then get the inner data
             let rate_limits = r.rate_limits.clone();
             let data = r.data().await?;
             Ok((rate_limits, data))
         }
         Err(e) => {
-            // Preserve your original detailed ConnectorError matching / logging
             if let Some(conn_err) = e.downcast_ref::<errors::ConnectorError>() {
                 match conn_err {
                     connection_error::ConnectorClientError(msg) => {
@@ -305,7 +287,6 @@ async fn fetch_binance_klines_with_limits(
 // Required parameters: PairInterval, Limiter
 pub async fn load_klines(
     pair_interval: PairInterval,
-    _max_simultaneous_kline_calls: u32, // Unused now, but kept for signature if needed, or remove.
     start_time: Option<i64>,
     limiter: GlobalRateLimiter, // <--- NEW ARGUMENT
 ) -> Result<AllValidKlines4Pair, anyhow::Error> {
@@ -315,15 +296,11 @@ pub async fn load_klines(
     let mut end_time: Option<i64> = None;
     let mut all_klines: Vec<BNKline> = Vec::new();
 
-    // We use the configured weight (usually 2 for klines)
     let call_weight = BINANCE.limits.kline_call_weight;
 
     let pair_name = pair_interval.bn_name().to_string();
 
     loop {
-        // GLOBAL RATE LIMIT CHECK
-        // This will sleep automatically if the bucket is empty.
-        // It coordinates across ALL threads.
         limiter.acquire(call_weight, &pair_name).await;
 
         let params = KlinesParams::builder(
@@ -336,20 +313,15 @@ pub async fn load_klines(
         .start_time(start_time)
         .build()?;
 
-        // FETCH (Ignore headers, we track locally)
         let (_rate_limits, new_klines) =
             fetch_binance_klines_with_limits(&rest_client, params, &pair_interval).await?;
-
-        // PROCESS
         let (new_end_time, batch_read_all) = process_new_klines(
             new_klines,
             limit_klines_returned,
             &mut all_klines,
             &pair_interval,
         )?;
-
         end_time = new_end_time;
-
         if batch_read_all {
             break;
         }
@@ -367,11 +339,9 @@ pub async fn load_klines(
 }
 
 fn has_duplicate_kline_open_time(klines: &[BNKline]) -> bool {
-    // Checks whether kline.open_time is duplicated anywhere in the `klines` slice
     let mut seen_ids = HashSet::new();
     for kline in klines {
         if !seen_ids.insert(kline.open_timestamp_ms) {
-            // If `insert` returns `false` the element was already present
             return true;
         }
     }

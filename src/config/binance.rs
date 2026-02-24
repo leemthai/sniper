@@ -1,5 +1,3 @@
-// Binance-specific configuration constants and types.
-// Gate externally to be NON-WASM only
 pub struct BinanceApiConfig {
     pub timeout_ms: u64,
     pub retries: u32,
@@ -16,29 +14,20 @@ impl Default for BinanceApiConfig {
     }
 }
 
-/// Configuration for REST API Limits and Weights
+/// REST constraints: 1000 klines, weight budget, call costs, and sync concurrency.
 pub struct RestLimits {
-    /// Default limit for number of klines returned in a single request (1000 is max)
     pub klines_limit: i32,
-    /// Weight limit per minute as specified in Binance FAQ
     pub weight_limit_minute: u32,
-    /// Weight cost for a single kline API call
     pub kline_call_weight: u32,
-    /// Number of parallel threads running delta syncs
     pub concurrent_sync_tasks: usize,
 }
 
-/// Configuration for WebSocket Connections
 pub struct WsConfig {
-    /// WebSocket base URL for Binance combined streaming API
     pub combined_base_url: &'static str,
-    /// Maximum reconnection delay (seconds)
     pub max_reconnect_delay_sec: u64,
-    /// Initial reconnection delay (seconds)
     pub initial_reconnect_delay_sec: u64,
 }
 
-/// Default values for the Rest Client
 pub struct ClientDefaults {
     pub timeout_ms: u64,
     pub retries: u32,
@@ -48,7 +37,6 @@ pub struct ClientDefaults {
 pub const BINANCE_PAIRS_FILENAME: &str = "pairs.txt";
 pub const BINANCE_MAX_PAIRS: usize = 20;
 
-/// The Master Configuration Struct
 pub struct BinanceConfig {
     pub limits: RestLimits,
     pub ws: WsConfig,

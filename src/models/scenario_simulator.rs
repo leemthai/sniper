@@ -23,7 +23,7 @@ pub(crate) const DEFAULT_SIMILARITY: SimilaritySettings = SimilaritySettings {
 /// Structure of Arrays (SoA) layout for AVX-512 processing.
 /// Instead of [State, State, State], we have [All_Vols], [All_Moms], [All_Rels].
 pub(crate) struct SimdHistory {
-    pub indices: Vec<usize>, // Keep track of which candle index generated this data
+    pub indices: Vec<usize>, // Candle index
     pub vol: Vec<f32>,
     pub mom: Vec<f32>,
     pub rel_vol: Vec<f32>,
@@ -39,7 +39,6 @@ impl SimdHistory {
         }
     }
 
-    /// Padding ensures we don't segfault when loading chunks of 16 at the end
     fn pad_to_16(&mut self) {
         while !self.vol.len().is_multiple_of(16) {
             self.vol.push(0.0);
@@ -49,7 +48,6 @@ impl SimdHistory {
     }
 }
 
-/// The Scalar Fallback (For non-AVX512 machines)
 fn calculate_scores_scalar(
     history: &SimdHistory,
     current: &MarketState,
@@ -74,7 +72,6 @@ fn calculate_scores_scalar(
     results
 }
 
-/// The AVX-512 Kernel (The Race Car)
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 unsafe fn calculate_scores_avx512(
     history: &SimdHistory,
@@ -86,7 +83,7 @@ unsafe fn calculate_scores_avx512(
     let len = history.vol.len();
     let mut results = vec![0.0f32; len];
 
-    // Explicit unsafe block required for intrinsics and pointer arithmetic
+    // Required for intrinsics and pointer arithmetic
     unsafe {
         let cur_vol = _mm512_set1_ps(current.volatility_pct.value() as f32);
         let cur_mom = _mm512_set1_ps(current.momentum_pct.value() as f32);
@@ -116,7 +113,6 @@ unsafe fn calculate_scores_avx512(
     results
 }
 
-/// Generates Momentum using AVX-512 for (Close - OldClose) / OldClose
 fn generate_momentum_optimized(
     ts: &OhlcvTimeSeries,
     start_idx: usize,
@@ -149,7 +145,6 @@ fn generate_momentum_optimized(
                 let diff = _mm512_sub_pd(curr, prev);
                 let mom_f64 = _mm512_div_pd(diff, prev);
 
-                // Convert f64 -> f32 (256-bit result)
                 let mom_f32 = _mm512_cvtpd_ps(mom_f64);
 
                 _mm256_storeu_ps(results.as_mut_ptr().add(i), mom_f32);
@@ -157,8 +152,6 @@ fn generate_momentum_optimized(
         }
     }
 
-    // Scalar Fallback / Tail
-    // FIX: Define 'processed' logic inside cfg blocks to avoid unused variables
     #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
     let processed = 0;
 
@@ -187,7 +180,6 @@ fn generate_momentum_optimized(
     results
 }
 
-/// Generates Volatility using AVX-512 for Raw Vals + Rolling Sum
 fn generate_volatility_optimized(
     ts: &OhlcvTimeSeries,
     start_idx: usize,
@@ -197,7 +189,6 @@ fn generate_volatility_optimized(
     let len = end_idx.saturating_sub(start_idx);
     let mut results = vec![0.0f32; len];
 
-    // Generate Raw Volatility: (H - L) / C
     let raw_start = start_idx.saturating_sub(lookback);
     let raw_len = end_idx - raw_start;
     let mut raw_vols = vec![0.0f64; raw_len];
@@ -227,8 +218,6 @@ fn generate_volatility_optimized(
         }
     }
 
-    // Scalar Tail for Raw Vols
-    // FIX: Define 'processed' logic inside cfg blocks
     #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
     let processed = 0;
 
@@ -249,7 +238,6 @@ fn generate_volatility_optimized(
         }
     }
 
-    // Rolling Sum (SMA)
     let mut current_sum: f64 = raw_vols.iter().take(lookback).sum();
     let lookback_f = lookback as f64;
 
@@ -293,9 +281,7 @@ pub(crate) struct EmpiricalOutcomeStats {
 pub(crate) struct ScenarioSimulator;
 
 impl ScenarioSimulator {
-    /// STEP 1: The Heavy Lift.
     /// Scans history to find the Top N moments that look like "Now".
-    /// This runs ONCE per job.
     pub(crate) fn find_historical_matches(
         pair_name: &str,
         ts: &OhlcvTimeSeries,
@@ -307,12 +293,8 @@ impl ScenarioSimulator {
     ) -> Option<(Vec<(usize, f64)>, MarketState)> {
         let t_start = AppInstant::now();
 
-        // Calculate Current Market State
         let current_market_state = MarketState::calculate(ts, current_idx, trend_lookback)?;
-
-        // Define Scan Range (Matches original logic exactly)
         let end_scan = current_idx.saturating_sub(max_duration_candles);
-        // --- PHASE 1: DATA PREPARATION (Optimized Generation) ---
         let t_prep_start = AppInstant::now();
 
         let start_idx = trend_lookback;
@@ -322,11 +304,7 @@ impl ScenarioSimulator {
         let mut simd_history = SimdHistory::new(count);
 
         if count > 0 {
-            // A. Indices
             simd_history.indices = (start_idx..end_idx).collect();
-
-            // B. Relative Volume (Copy & Cast)
-            // Scalar copy is fast enough here
             if start_idx < ts.relative_volumes.len() {
                 let safe_end = end_idx.min(ts.relative_volumes.len());
                 simd_history.rel_vol = ts.relative_volumes[start_idx..safe_end]
@@ -335,20 +313,15 @@ impl ScenarioSimulator {
                     .collect();
             }
 
-            // C. Momentum (AVX Gen)
             simd_history.mom = generate_momentum_optimized(ts, start_idx, end_idx, trend_lookback);
-
-            // D. Volatility (AVX Gen + Rolling Sum)
             simd_history.vol =
                 generate_volatility_optimized(ts, start_idx, end_idx, trend_lookback);
         }
 
-        // Critical for SIMD safety: Pad float vectors only
-        simd_history.pad_to_16();
+        simd_history.pad_to_16(); // Critical for SIMD safety
 
         let t_prep = t_prep_start.elapsed();
 
-        // --- PHASE 2: SCORING (The SIMD Kernel) ---
         let t_simd_start = AppInstant::now();
 
         #[allow(unused_assignments)]
@@ -369,11 +342,7 @@ impl ScenarioSimulator {
         }
 
         let t_simd = t_simd_start.elapsed();
-
-        // --- PHASE 3: SORT & SELECT ---
         let t_sort_start = AppInstant::now();
-
-        // Zip indices back with scores
         let mut candidates: Vec<(usize, f64)> = simd_history
             .indices
             .iter()
@@ -381,7 +350,7 @@ impl ScenarioSimulator {
             .map(|(&idx, &score)| (idx, score as f64))
             .collect();
 
-        // Partial Sort (The "Quickselect" Optimization)
+        // Partial Sort ("Quickselect" Optimization)
         if candidates.len() > sample_count {
             candidates.select_nth_unstable_by(sample_count, |a, b| {
                 a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)
@@ -390,11 +359,9 @@ impl ScenarioSimulator {
         }
 
         candidates.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
-
         let t_sort = t_sort_start.elapsed();
         let t_total = t_start.elapsed();
 
-        // Manual trace_time logic
         if DF.log_performance {
             let t_threshold = 5_000;
             if t_total.as_micros() > t_threshold {
@@ -431,10 +398,10 @@ impl ScenarioSimulator {
             }
 
             let mut wins = 0;
-            let mut accumulated_candle_count = 0.0; // Unit: Count (aggregated as float)
+            let mut accumulated_candle_count = 0.0;
             let mut valid_samples = 0;
-            let mut total_pnl_pct = 0.0; // Unit: Percentage
-            let mut total_pnl_sq = 0.0; // NEW: sum of squared returns
+            let mut total_pnl_pct = 0.0;
+            let mut total_pnl_sq = 0.0;
 
             // Pre-calculate theoretical max PnL for Hit/Stop
             let (win_pnl_pct, lose_pnl_pct) = match direction {
@@ -493,13 +460,8 @@ impl ScenarioSimulator {
                 return None;
             }
 
-            // Calculate Stats
             let success_rate = Prob::new(wins as f64 / valid_samples as f64);
-
-            // Calculate Average Candle Count
             let avg_candle_count = accumulated_candle_count / valid_samples as f64;
-
-            // R:R
             let risk = (entry_price - Price::from(stop_price)).abs();
             let reward = (Price::from(target_price) - entry_price).abs();
             let risk_reward_ratio = if risk > f64::EPSILON {
@@ -508,7 +470,6 @@ impl ScenarioSimulator {
                 0.0
             };
 
-            // Real Average PnL (The "true" ROI of the sim)
             let avg_pnl_pct = total_pnl_pct / valid_samples as f64;
             let mean = avg_pnl_pct;
             let mean_sq = total_pnl_sq / valid_samples as f64;
@@ -526,7 +487,6 @@ impl ScenarioSimulator {
         })
     }
 
-    /// Wrapper: Dispatches to SIMD or Scalar and verifies consistency in Debug.
     fn replay_path(
         ts: &OhlcvTimeSeries,
         start_idx: usize,
@@ -536,7 +496,6 @@ impl ScenarioSimulator {
         duration: usize,
         direction: TradeDirection,
     ) -> Outcome {
-        // Run SIMD if available
         #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
         let result = if is_x86_feature_detected!("avx512f") {
             unsafe {
@@ -562,7 +521,6 @@ impl ScenarioSimulator {
             )
         };
 
-        // Fallback for non-AVX builds
         #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
         let result = Self::replay_path_scalar(
             ts,
@@ -574,7 +532,6 @@ impl ScenarioSimulator {
             direction,
         );
 
-        // DEBUG VERIFICATION
         #[cfg(debug_assertions)]
         if DF.log_simd {
             {
@@ -597,7 +554,6 @@ impl ScenarioSimulator {
                     _ => true,
                 };
                 if mismatch {
-                    // --- FORENSIC LOGGING ---
                     let start_candle = ts.get_candle(start_idx);
                     let hist_entry = start_candle.close_price;
 
@@ -623,13 +579,12 @@ impl ScenarioSimulator {
                         let abs_idx = start_idx + simd_idx;
                         let c = ts.get_candle(abs_idx);
 
-                        // DYNAMIC FORENSICS BASED ON DIRECTION
                         match direction {
                             TradeDirection::Long => {
                                 let low_change = (Price::from(c.low_price)
                                     - Price::from(hist_entry))
                                     / Price::from(hist_entry);
-                                let scalar_hit = low_change <= stop_dist; // stop_dist is usually negative for Long
+                                let scalar_hit = low_change <= stop_dist;
                                 let simd_hit = c.low_price <= Price::from(hist_stop);
 
                                 log::error!(
@@ -654,7 +609,7 @@ impl ScenarioSimulator {
                                 let high_change = (Price::from(c.high_price)
                                     - Price::from(hist_entry))
                                     / hist_entry;
-                                let scalar_hit = high_change >= stop_dist; // stop_dist is positive for Short
+                                let scalar_hit = high_change >= stop_dist;
                                 let simd_hit = Price::from(c.high_price) >= Price::from(hist_stop);
 
                                 log::error!(
@@ -677,16 +632,14 @@ impl ScenarioSimulator {
                             }
                         }
                     }
-                    // ------------------------
 
+                    // *Not* a panic situation. Just "maths done different depending on whether SIMD or SCALAR"
                     log::error!(
                         "SIMD REPLAY MISMATCH [Dir: {}]: SIMD {:?} vs SCALAR {:?}",
                         direction,
                         result,
                         scalar_result
                     );
-                    // This is not a panic situation. Just "maths done different depending on whether SIMD or SCALAR"
-                    // panic!("CRITICAL: SIMD Simulation diverged significantly from Scalar Logic.");
                 }
             }
         }
@@ -694,7 +647,6 @@ impl ScenarioSimulator {
         result
     }
 
-    /// The Scalar Implementation (Your Authoritative Logic)
     fn replay_path_scalar(
         ts: &OhlcvTimeSeries,
         start_idx: usize,
@@ -707,12 +659,10 @@ impl ScenarioSimulator {
         let start_candle = ts.get_candle(start_idx);
         let hist_entry = start_candle.close_price;
 
-        // Calculate Target/Stop as % distance from entry
         let target_dist = (Price::from(target) - current_price) / current_price;
         let stop_dist = (Price::from(stop) - current_price) / current_price;
         let mut final_pnl = 0.0;
 
-        // Iterate forward from the historical start point
         for i in 1..=duration {
             let idx = start_idx + i;
             if idx >= ts.klines() {
@@ -748,7 +698,6 @@ impl ScenarioSimulator {
         Outcome::TimedOut(RoiPct::new(final_pnl))
     }
 
-    /// The SIMD Implementation (AVX-512 Optimized)
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
     unsafe fn replay_path_simd(
         ts: &OhlcvTimeSeries,
@@ -819,10 +768,7 @@ impl ScenarioSimulator {
             }
         }
 
-        // Scalar Processing (Hit Block or Tail)
         let scalar_start_offset = hit_idx_offset.unwrap_or(loop_len);
-
-        // Explicit unsafe block for raw pointer dereferencing in the scalar tail
         unsafe {
             for i in scalar_start_offset..search_len {
                 let idx = offset_start + i;
@@ -851,7 +797,6 @@ impl ScenarioSimulator {
             }
         }
 
-        // Time Out
         let final_idx = offset_start + search_len - 1;
         let final_close = ts.close_prices[final_idx];
         let close_change =
