@@ -21,7 +21,7 @@ use {
     std::{fs, sync::Arc},
 };
 
-#[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
 
 #[cfg(not(target_arch = "wasm32"))]

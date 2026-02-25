@@ -1,19 +1,19 @@
 use {
-    crate::{config::PLOT_CONFIG, models::TradeDirection, ui::UI_CONFIG},
+    crate::{
+        config::PLOT_CONFIG,
+        models::TradeDirection,
+        ui::{UI_CONFIG, UI_TEXT},
+    },
     eframe::egui::{
         Align, Align2, Area, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Order,
         Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo, WidgetType,
     },
 };
 
-use crate::ui::UI_TEXT;
-
-/// Creates a colored sub-section headingusing the configured label color
 pub(crate) fn colored_subsection_heading(text: impl Into<String>) -> RichText {
     RichText::new(text.into()).color(UI_CONFIG.colors.subsection_heading)
 }
 
-/// Extension trait to map Data Models to UI Colors
 pub trait DirectionColor {
     fn color(&self) -> Color32;
 }
@@ -21,18 +21,16 @@ pub trait DirectionColor {
 impl DirectionColor for TradeDirection {
     fn color(&self) -> Color32 {
         match self {
-            TradeDirection::Long => PLOT_CONFIG.color_long,
-            TradeDirection::Short => PLOT_CONFIG.color_short,
+            Self::Long => PLOT_CONFIG.color_long,
+            Self::Short => PLOT_CONFIG.color_short,
         }
     }
 }
 
-/// Applies a semantic opacity factor to a color.
 pub fn apply_opacity(color: Color32, factor: f32) -> Color32 {
     color.linear_multiply(factor)
 }
 
-// Helper for values
 pub fn get_outcome_color(value: f64) -> Color32 {
     if value > 0.0 {
         PLOT_CONFIG.color_profit
@@ -41,10 +39,6 @@ pub fn get_outcome_color(value: f64) -> Color32 {
     }
 }
 
-/// Returns the semantic color for Momentum/Trend values.
-/// Positive = Long Color (Blue)
-/// Negative = Short Color (Orange)
-/// Zero = Subdued (Gray)
 pub fn get_momentum_color(value: f64) -> Color32 {
     if value > 0.0 {
         PLOT_CONFIG.color_long
@@ -55,12 +49,8 @@ pub fn get_momentum_color(value: f64) -> Color32 {
     }
 }
 
-/// Extension trait to add semantic styling methods directly to `egui::Ui`.
 pub(crate) trait UiStyleExt {
-    /// A custom label that acts like a button:
-    /// - Idle: Transparent BG, 'idle_color' text.
-    /// - Hover: Gray BG, YELLOW text.
-    /// - Selected: Blue BG, WHITE text.
+    /// Interactive label acting as button: transparent when idle, gray bg on hover, blue bg when selected.
     fn interactive_label(
         &mut self,
         text: &str,
@@ -69,26 +59,11 @@ pub(crate) trait UiStyleExt {
         font_id: FontId,
     ) -> Response;
 
-    /// Renders small, gray text (good for labels like "Coverage:").
     fn label_subdued(&mut self, text: impl Into<String>);
-
-    /// Renders a "Label: Value" pair with consistent spacing and styling.
-    /// The label is subdued, the value is colored.
     fn metric(&mut self, label: &str, value: &str, color: Color32);
-
-    // /// Renders a section header using the configured global color.
-    // fn label_header(&mut self, text: impl Into<String>);
-
-    /// Renders a sub-section header using the configured global color.
     fn label_subheader(&mut self, text: impl Into<String>);
-
-    /// Generates RichText styled specifically for a Primary Action Button (Green/Bold).
     fn button_text_primary(&self, text: impl Into<String>) -> RichText;
-
-    /// Generates RichText styled specifically for a Secondary Action Button (White/Bold).
     fn button_text_secondary(&self, text: impl Into<String>) -> RichText;
-
-    /// Renders a custom dropdown menu.
     fn custom_dropdown(
         &mut self,
         id_salt: &str,
@@ -106,31 +81,23 @@ impl UiStyleExt for Ui {
     ) {
         let popup_id = self.make_persistent_id(id_salt);
         let global_state_id = Id::new("active_trade_variant_popup"); // Shared key to ensure only 1 opens at a time
-
-        // Draw Trigger Button
-        // Use 'interactive_label_small' style (size 10.0)
         let btn_response = self.interactive_label(
             label_text,
             false,
             PLOT_CONFIG.color_info,
             FontId::proportional(10.0),
         );
-
-        // Logic: Is this specific popup open?
         let is_open =
             self.data(|d| d.get_temp::<String>(global_state_id) == Some(id_salt.to_string()));
 
         if btn_response.clicked() {
             if is_open {
-                // Close
                 self.data_mut(|d| d.remove_temp::<String>(global_state_id));
             } else {
-                // Open (Overwrites any other open popup)
                 self.data_mut(|d| d.insert_temp(global_state_id, id_salt.to_string()));
             }
         }
 
-        // Render Popup if Open
         if is_open {
             let area = Area::new(popup_id)
                 .order(Order::Tooltip)
@@ -159,33 +126,24 @@ impl UiStyleExt for Ui {
                             });
                         });
                         ui.separator();
-
-                        // Render Content
-                        // If content returns true, it means "Close Me"
                         if content(ui) {
                             ui.data_mut(|d| d.remove_temp::<String>(global_state_id));
                         }
                     });
             });
 
-            // 4. Click Outside Logic
             if self.input(|i| i.pointer.primary_clicked()) {
-                // Did we click inside the popup?
                 let in_popup = area_response
                     .response
                     .rect
                     .contains(self.input(|i| i.pointer.interact_pos().unwrap_or_default()));
-                // Did we click the button that opened it? (If so, let button logic handle toggle)
                 let on_button = btn_response
                     .rect
                     .contains(self.input(|i| i.pointer.interact_pos().unwrap_or_default()));
-
                 if !in_popup && !on_button {
                     self.data_mut(|d| d.remove_temp::<String>(global_state_id));
                 }
             }
-
-            // 5. Close on ESC
             if self.input(|i| i.key_pressed(Key::Escape)) {
                 self.data_mut(|d| d.remove_temp::<String>(global_state_id));
             }
@@ -200,20 +158,15 @@ impl UiStyleExt for Ui {
         font_id: FontId,
     ) -> Response {
         let padding = Vec2::new(4.0, 4.0);
-
-        // Calculate Size
         let galley = self
             .painter()
             .layout_no_wrap(text.to_string(), font_id, idle_color);
         let desired_size = galley.size() + padding * 2.0;
-
-        // Allocate
         let (rect, response) = self.allocate_exact_size(desired_size, Sense::click());
         response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, is_selected, text));
 
         if self.is_rect_visible(rect) {
             let visuals = self.style().visuals.clone();
-
             let (bg_fill, text_color) = if is_selected {
                 (visuals.selection.bg_fill, Color32::WHITE)
             } else if response.hovered() || response.has_focus() {
@@ -231,11 +184,9 @@ impl UiStyleExt for Ui {
                     StrokeKind::Inside,
                 );
             }
-
             let text_pos = rect.left_top() + padding;
             self.painter().galley(text_pos, galley, text_color);
         }
-
         response
     }
 

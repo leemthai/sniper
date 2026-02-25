@@ -25,7 +25,7 @@ mod types;
 mod binance;
 
 pub(crate) use {
-    debug::DF,
+    debug::LOG_PERFORMANCE,
     plot::PLOT_CONFIG,
     ticker::TICKER,
     tuner::{StationId, TUNER_CONFIG, TimeTunerConfig, TunerStation},
@@ -36,6 +36,9 @@ pub(crate) use {
         TradeProfile, VolRatio, VolatilityPct, Weight, ZoneClassificationConfig, ZoneParams,
     },
 };
+
+#[cfg(debug_assertions)]
+pub(crate) use debug::DF;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use binance::{BINANCE, BINANCE_MAX_PAIRS, BINANCE_PAIRS_FILENAME, BinanceApiConfig};

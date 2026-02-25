@@ -1,13 +1,18 @@
 use {
     crate::{
         config::{
-            DF, Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice, Weight,
+            Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice, Weight,
         },
         models::{MarketState, OhlcvTimeSeries, TradeDirection},
-        utils::AppInstant,
     },
     serde::{Deserialize, Serialize},
     std::cmp::Ordering,
+};
+
+#[cfg(debug_assertions)]
+use crate::{
+    config::{DF, LOG_PERFORMANCE},
+    utils::AppInstant,
 };
 
 const WEIGHT_VOLATILITY: Weight = Weight::new(10.0);
@@ -283,7 +288,7 @@ pub(crate) struct ScenarioSimulator;
 impl ScenarioSimulator {
     /// Scans history to find the Top N moments that look like "Now".
     pub(crate) fn find_historical_matches(
-        pair_name: &str,
+        _pair_name: &str,
         ts: &OhlcvTimeSeries,
         current_idx: usize,
         sim_config: &SimilaritySettings,
@@ -291,16 +296,18 @@ impl ScenarioSimulator {
         trend_lookback: usize,
         max_duration_candles: usize,
     ) -> Option<(Vec<(usize, f64)>, MarketState)> {
+        #[cfg(debug_assertions)]
         let t_start = AppInstant::now();
 
         let current_market_state = MarketState::calculate(ts, current_idx, trend_lookback)?;
         let end_scan = current_idx.saturating_sub(max_duration_candles);
+
+        #[cfg(debug_assertions)]
         let t_prep_start = AppInstant::now();
 
         let start_idx = trend_lookback;
         let end_idx = end_scan;
         let count = end_idx.saturating_sub(start_idx);
-
         let mut simd_history = SimdHistory::new(count);
 
         if count > 0 {
@@ -318,12 +325,11 @@ impl ScenarioSimulator {
                 generate_volatility_optimized(ts, start_idx, end_idx, trend_lookback);
         }
 
-        simd_history.pad_to_16(); // Critical for SIMD safety
-
+        simd_history.pad_to_16();
+        #[cfg(debug_assertions)]
         let t_prep = t_prep_start.elapsed();
-
+        #[cfg(debug_assertions)]
         let t_simd_start = AppInstant::now();
-
         #[allow(unused_assignments)]
         let mut raw_scores = Vec::new();
 
@@ -341,8 +347,11 @@ impl ScenarioSimulator {
             raw_scores = calculate_scores_scalar(&simd_history, &current_market_state, sim_config);
         }
 
+        #[cfg(debug_assertions)]
         let t_simd = t_simd_start.elapsed();
+        #[cfg(debug_assertions)]
         let t_sort_start = AppInstant::now();
+
         let mut candidates: Vec<(usize, f64)> = simd_history
             .indices
             .iter()
@@ -350,7 +359,6 @@ impl ScenarioSimulator {
             .map(|(&idx, &score)| (idx, score as f64))
             .collect();
 
-        // Partial Sort ("Quickselect" Optimization)
         if candidates.len() > sample_count {
             candidates.select_nth_unstable_by(sample_count, |a, b| {
                 a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)
@@ -359,15 +367,17 @@ impl ScenarioSimulator {
         }
 
         candidates.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+        #[cfg(debug_assertions)]
         let t_sort = t_sort_start.elapsed();
+        #[cfg(debug_assertions)]
         let t_total = t_start.elapsed();
-
-        if DF.log_performance {
+        #[cfg(debug_assertions)]
+        if LOG_PERFORMANCE {
             let t_threshold = 5_000;
             if t_total.as_micros() > t_threshold {
                 log::error!(
                     "TRACE: ScenarioSimulator [{}]: Total {:.2?} (Items: {} | Prep: {:.2?} | SIMD: {:.2?} | Sort: {:.2?}) (Threshold: {}ms)",
-                    pair_name,
+                    _pair_name,
                     t_total,
                     simd_history.indices.len(),
                     t_prep,

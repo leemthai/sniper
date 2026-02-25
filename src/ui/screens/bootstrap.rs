@@ -14,15 +14,12 @@ pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
     CentralPanel::default().show(ctx, |ui| {
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
-
-            // Title
             ui.heading(
                 RichText::new(&UI_TEXT.ls_title)
                     .size(24.0)
                     .strong()
                     .color(PLOT_CONFIG.color_warning),
             );
-
             let interval_str = TimeUtils::interval_to_string(BASE_INTERVAL.as_millis() as i64);
             ui.label(
                 RichText::new(format!(
@@ -32,10 +29,7 @@ pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
                 .italics()
                 .color(PLOT_CONFIG.color_text_neutral),
             );
-
             ui.add_space(20.0);
-
-            // Progress Bar Logic
             let total = state.total_pairs;
             let done = state.completed + state.failed;
             let progress = if total > 0 {
@@ -43,7 +37,6 @@ pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
             } else {
                 0.0
             };
-
             ui.add_space(20.0);
             ui.add(
                 ProgressBar::new(progress)
@@ -51,8 +44,6 @@ pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
                     .animate(true)
                     .text(format!("Processed {}/{}", done, total)),
             );
-
-            // Failure Warning
             if state.failed > 0 {
                 ui.add_space(5.0);
                 ui.label(
@@ -63,7 +54,6 @@ pub(crate) fn render_bootstrap(ctx: &Context, state: &BootstrapState) {
                     .color(PLOT_CONFIG.color_loss),
                 );
             }
-
             ui.add_space(20.0);
         });
 
@@ -79,7 +69,6 @@ fn render_loading_grid(ui: &mut Ui, state: &BootstrapState) {
             .min_col_width(250.0)
             .show(ui, |ui| {
                 for (i, (_idx, (pair, status))) in state.pairs.iter().enumerate() {
-                    // Determine Color/Text based on Status
                     let (color, status_text, status_color) = match status {
                         SyncStatus::Pending => (
                             PLOT_CONFIG.color_text_subdued,
@@ -102,12 +91,9 @@ fn render_loading_grid(ui: &mut Ui, state: &BootstrapState) {
                             PLOT_CONFIG.color_loss,
                         ),
                     };
-
-                    // Render Cell
                     ui.horizontal(|ui| {
                         ui.set_min_width(240.0);
                         ui.label(RichText::new(pair).strong().color(color));
-
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| match status {
                             SyncStatus::Syncing => {
                                 ui.spinner();

@@ -1,10 +1,10 @@
 use std::sync::LazyLock;
 
 pub const ICON_CANDLE: &str = "\u{f11c9}";
-pub const ICON_CLOCK: &str = "\u{f0954}"; // (Clock)
+pub const ICON_CLOCK: &str = "\u{f0954}";
 pub const ICON_CLOSE_ALL: &str = "\u{eac1}";
 pub const ICON_CLOSE: &str = "\u{f00d}";
-pub const ICON_COG: &str = "\u{f013}"; // "working"
+pub const ICON_COG: &str = "\u{f013}";
 pub const ICON_DOLLAR_BAG: &str = "\u{ef8d}";
 pub const ICON_EYE: &str = "\u{f0208}";
 pub const ICON_KEYBOARD: &str = "\u{f0313}";
@@ -12,16 +12,16 @@ pub const ICON_LOCKED: &str = "\u{ea75}";
 pub const ICON_ONE_HORIZONTAL: &str = "\u{f45b}";
 pub const ICON_POINT_RIGHT: &str = "\u{f02c7}";
 pub const ICON_PULSE: &str = "\u{e234}";
-pub const ICON_QUEUE: &str = "\u{f1571}"; // queue sizes...
+pub const ICON_QUEUE: &str = "\u{f1571}";
 pub const ICON_RECENTER: &str = "\u{f0622}";
-pub const ICON_RULER: &str = "\u{e21b}"; // "measuring"
+pub const ICON_RULER: &str = "\u{e21b}";
 pub const ICON_SEGMENTED_TIME: &str = "\u{f084e}";
-pub const ICON_SORT_ASC: &str = "\u{f0de}"; // (Sort Up)
-pub const ICON_SORT_DESC: &str = "\u{f0dd}"; // (Sort Down)
-pub const ICON_STRATEGY_AROI: &str = "\u{f046e}"; // For AROI strategy => fast / speedy / sprint / turnover
-pub const ICON_STRATEGY_BALANCED: &str = "\u{f24e}"; // For balanced strategy => middle path / scale  - other scales are available
+pub const ICON_SORT_ASC: &str = "\u{f0de}";
+pub const ICON_SORT_DESC: &str = "\u{f0dd}";
+pub const ICON_STRATEGY_AROI: &str = "\u{f046e}";
+pub const ICON_STRATEGY_BALANCED: &str = "\u{f24e}";
 pub const ICON_STRATEGY_LOG_GROWTH: &str = "\u{f148}";
-pub const ICON_STRATEGY_ROI: &str = "\u{ef08}"; // For ROI strategy => high yield / long term / distasnce . Try e2a6 if ef08 looks nonce
+pub const ICON_STRATEGY_ROI: &str = "\u{ef08}";
 pub const ICON_TARGET: &str = "\u{f04fe}";
 pub const ICON_TIME_MACHINE: &str = "\u{f11ef}";
 pub const ICON_TREND_DOWN: &str = "\u{f0533}";
@@ -229,7 +229,7 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         label_warning: ICON_WARNING.to_string(),
         label_working: ICON_COG.to_string(),
         ls_failed: "FAILED".to_string(),
-        ls_main: "klines from Binance Public API. Please be patient. This may take some time if it hasn't been run for a while or you are collecting many pairs. Subsequent runs will complete much quicker.".to_string(),
+        ls_main: "klines from Binance Public API. Initial or large syncs take time; subsequent runs are faster.".to_string(),
         ls_syncing: "Syncing".to_string(),
         ls_title: "ZONE SNIPER INITIALIZATION".to_string(),
         plot_missing_klines: "OHLCV kline data missing for current model".to_string(),
@@ -264,10 +264,8 @@ pub static UI_TEXT: LazyLock<UiText> = LazyLock::new(|| {
         #[cfg(debug_assertions)]
         label_success_rate: "Success Rate".to_string(),
         error_insufficient_data_body:
-            "The current Time Tuner selection does enough price history for the pair in question.\n\n".to_string()
+            "Insufficient price history.\n\n".to_string()
                 + ICON_POINT_RIGHT
-                + " Select a more inclusive button on the Time Tuner i.e. click a button to the right of currently selected Time Tuner button.",
-
-
+                + " Expand the Time Tuner range (click `right`).",
     }
 });

@@ -1,7 +1,7 @@
 use {
     crate::{
         config::{
-            BASE_INTERVAL, DF, DurationMs, HighPrice, LowPrice, OptimizationStrategy, Pct, PhPct,
+            BASE_INTERVAL, DurationMs, HighPrice, LowPrice, OptimizationStrategy, Pct, PhPct,
             Price, PriceLike, StationId, StopPrice, TUNER_SCAN_STEPS, TargetPrice, TradeProfile,
             TunerStation,
         },
@@ -25,7 +25,7 @@ use {
 use {std::sync::mpsc::Receiver, std::thread};
 
 #[cfg(debug_assertions)]
-use crate::ui::UI_TEXT;
+use crate::{config::DF, ui::UI_TEXT};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn spawn_worker_thread(rx: Receiver<JobRequest>, tx: Sender<JobResult>) {
@@ -492,8 +492,8 @@ fn apply_diversity_filter(
     for (_i, winner_opt) in regional_winners.into_iter().enumerate() {
         if let Some(winner) = winner_opt {
             if winner.score >= qualifying_score {
+                #[cfg(debug_assertions)]
                 if DF.log_pathfinder {
-                    #[cfg(debug_assertions)]
                     log::info!(
                         "   ✅ Region #{} Winner [{}]: Score {:.2} | Target ${:.2} (Qualified)",
                         _i,
@@ -853,8 +853,8 @@ fn run_drill_phase(
             .collect();
 
         if !drill_results.is_empty() {
+            #[cfg(debug_assertions)]
             if DF.log_pathfinder {
-                #[cfg(debug_assertions)]
                 log::info!(
                     "   -> [{}] Drill generated {} refined candidates.",
                     ctx.pair_name,

@@ -49,8 +49,8 @@ pub(crate) enum SortColumn {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NavigationTarget {
-    Opportunity(String), // UUID (Primary)
-    Pair(String),        // Fallback (Market View / No Op)
+    Opportunity(String), // Primary
+    Pair(String),        // Fallback
 }
 
 #[derive(PartialEq, Eq)]
@@ -61,16 +61,15 @@ pub enum ScrollBehavior {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 pub(crate) struct NavigationState {
-    pub current_segment_idx: Option<usize>, // None = Show All
+    pub current_segment_idx: Option<usize>,
     pub last_viewed_segment_idx: usize,
 }
 
-/// A row in the Trade Finder list.
 #[derive(Debug, Clone)]
 pub(crate) struct TradeFinderRow {
     pub pair_name: String,
-    pub quote_volume_24h: QuoteVol, // 24h Quote Volume (e.g. USDT volume). Filtering "Dead" coins.
-    pub market_state: Option<MarketState>, // Market State (Volatility, Momentum)
+    pub quote_volume_24h: QuoteVol,
+    pub market_state: Option<MarketState>,
     pub opportunity: Option<TradeOpportunity>,
     pub current_price: Price,
 }
@@ -78,7 +77,6 @@ pub(crate) struct TradeFinderRow {
 impl App {
     pub(crate) fn render_right_panel(&mut self, ctx: &Context) {
         let frame = UI_CONFIG.side_panel_frame();
-
         SidePanel::right("right_panel")
             .min_width(160.0)
             .resizable(false)
@@ -92,13 +90,10 @@ impl App {
                             let mut nav = self.get_nav_state();
                             let max_idx = model.segments.len().saturating_sub(1);
                             let safe_last = nav.last_viewed_segment_idx.min(max_idx);
-
                             let mut panel =
                                 CandleRangePanel::new(&model.segments, nav.current_segment_idx);
-
                             if let Some(new_idx) = panel.render(ui, safe_last) {
                                 nav.current_segment_idx = new_idx;
-                                // If we switched to a specific segment (not "Show All"), remember it.
                                 if let Some(idx) = new_idx {
                                     nav.last_viewed_segment_idx = idx;
                                 }
@@ -120,7 +115,7 @@ impl App {
         Window::new(&UI_TEXT.kbs_name_long)
             .open(&mut self.show_debug_help)
             .resizable(false)
-            .order(Order::Tooltip) // Need coz Plot draws elements on Order::Foreground (and redraws them every second) so need be a higher-level
+            .order(Order::Tooltip)
             .collapsible(false)
             .default_width(400.0)
             .show(ctx, |ui| {
@@ -152,7 +147,6 @@ impl App {
 
                 #[cfg(debug_assertions)]
                 {
-                    // Also add keys here to handle_global_shortcuts
                     let debug_shortcuts = [(
                         "INSERT-HERE",
                         "Insert future debug only key-trigger operation here",
@@ -164,7 +158,6 @@ impl App {
                         ui.add_space(5.0);
                         ui.heading("Debug Shortcuts");
                         ui.add_space(5.0);
-
                         Grid::new("debug_shortcuts_grid")
                             .num_columns(2)
                             .spacing([20.0, 8.0])
@@ -174,7 +167,6 @@ impl App {
                             });
                     }
                 }
-
                 ui.add_space(10.0);
                 ui.separator();
                 ui.add_space(5.0);
@@ -199,7 +191,6 @@ impl App {
                         self.handle_tuner_action(action);
                     }
                 }
-
                 ui.add_space(10.0);
                 ui.separator();
                 self.render_active_target_panel(ui);
@@ -222,16 +213,12 @@ impl App {
                             .size(16.0)
                             .color(PLOT_CONFIG.color_text_neutral),
                     );
-
                     for res in CandleResolution::iter() {
                         ui.selectable_value(&mut self.candle_resolution, res, res.to_string());
                     }
-
                     ui.add_space(10.0);
                     ui.separator();
-
                     self.render_optimization_strategy(ui);
-
                     ui.checkbox(&mut self.plot_visibility.sticky, &UI_TEXT.tb_sticky);
                     ui.checkbox(&mut self.plot_visibility.low_wicks, &UI_TEXT.tb_low_wicks);
                     ui.checkbox(&mut self.plot_visibility.high_wicks, &UI_TEXT.tb_high_wicks);
@@ -240,9 +227,7 @@ impl App {
                         &UI_TEXT.tb_volume_hist,
                     );
                     ui.checkbox(&mut self.plot_visibility.candles, &UI_TEXT.tb_candles);
-
                     ui.separator();
-
                     ui.checkbox(&mut self.plot_visibility.separators, &UI_TEXT.tb_gaps);
                     ui.checkbox(
                         &mut self.plot_visibility.horizon_lines,
@@ -250,7 +235,6 @@ impl App {
                     );
                     ui.checkbox(&mut self.plot_visibility.price_line, &UI_TEXT.tb_live_price);
                     ui.checkbox(&mut self.plot_visibility.opportunities, &UI_TEXT.tb_targets);
-
                     if self.auto_scale_y.value() {
                         ui.label(
                             RichText::new(&UI_TEXT.tb_y_locked)
@@ -321,9 +305,7 @@ impl App {
                 };
 
                 let current_price = engine.get_price(&pair);
-
                 let (is_calculating, last_error) = engine.get_pair_status(&pair);
-
                 if let Some(err_msg) = last_error {
                     let body = if err_msg.contains("Insufficient data") {
                         format!("{}\n\n{}", UI_TEXT.error_insufficient_data_body, err_msg)
@@ -407,10 +389,7 @@ impl App {
         // Renders the Header, Scope, and Direction controls
         let mut filter_changed = false;
         ui.add_space(10.0);
-
-        // SCOPE TOGGLE
         ui.horizontal(|ui| {
-            // Item count
             ui.label(
                 RichText::new(format!(
                     "{} {}",
@@ -420,8 +399,6 @@ impl App {
                 .strong()
                 .color(PLOT_CONFIG.color_text_subdued),
             );
-
-            // Center on Target button - Only show if target available
             if self.selection.pair_owned().is_some() {
                 ui.add_space(5.0);
                 if ui
@@ -435,9 +412,7 @@ impl App {
                     self.update_scroll_to_selection();
                 }
             }
-
             ui.separator();
-
             if ui
                 .selectable_label(!self.tf_scope_match_base, &UI_TEXT.tf_scope_all)
                 .clicked()
@@ -446,13 +421,11 @@ impl App {
                 filter_changed = true;
                 self.update_scroll_to_selection();
             }
-
             let base_asset = self
                 .selection
                 .pair()
                 .and_then(|p| PairInterval::get_base(p))
                 .unwrap_or("SELECTED");
-
             let pair_label = format!("{} {}", base_asset, UI_TEXT.tf_scope_selected);
             if ui
                 .selectable_label(self.tf_scope_match_base, pair_label)
@@ -470,7 +443,6 @@ impl App {
     }
 
     fn display_no_data(&self, ui: &mut Ui) {
-        // Helper for Empty Cells (SSOT)
         ui.label("-");
     }
 
@@ -488,17 +460,15 @@ impl App {
                     OptimizationStrategy::MaxROI => SortColumn::LiveRoi,
                     OptimizationStrategy::MaxAROI => SortColumn::AnnualizedRoi,
                     OptimizationStrategy::Balanced => SortColumn::Score,
-                    OptimizationStrategy::LogGrowthConfidence => SortColumn::Score, // TEMP shares score column right no
+                    OptimizationStrategy::LogGrowthConfidence => SortColumn::Score,
                 };
                 if self.render_sort_icon_button(ui, col, &goal.icon()) {
                     *sort_changed = true;
                 }
             }
         };
-
         ui.vertical_centered(|ui| {
             ui.add_space(2.0);
-
             if count == 1 {
                 ui.horizontal(|ui| {
                     ui.add_space(12.0);
@@ -511,7 +481,6 @@ impl App {
                     render_btn(ui, 1);
                 });
             } else if count == 3 {
-                // Case 3: Top Center, Bottom Split
                 ui.horizontal(|ui| {
                     ui.add_space(12.0);
                     render_btn(ui, 0);
@@ -522,7 +491,6 @@ impl App {
                     render_btn(ui, 2);
                 });
             } else if count >= 4 {
-                // Case 4: 2x2 Grid
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     render_btn(ui, 0);
@@ -539,15 +507,12 @@ impl App {
 
     fn render_trade_finder_content(&mut self, ui: &mut Ui) {
         let mut rows = self.get_filtered_rows();
-
         let filter_changed = self.render_trade_finder_filters(ui, rows.len());
-
         #[cfg(debug_assertions)]
         if let Selection::Opportunity(sel) = &self.selection {
             let exists = rows
                 .iter()
                 .any(|r| r.opportunity.as_ref().is_some_and(|op| op.id == sel.id));
-
             if !exists && DF.log_selection {
                 log::warn!(
                     "UI invariant violation: selected opportunity {} not present in rendered rows",
@@ -556,7 +521,6 @@ impl App {
             }
         }
 
-        // Sortx
         self.sort_trade_finder_rows(&mut rows);
         if rows.is_empty() {
             ui.centered_and_justified(|ui| ui.label("Loading Market Data..."));
@@ -565,27 +529,18 @@ impl App {
 
         let mut target_index = None;
         if let Some(target) = &self.scroll_target {
-            target_index = rows.iter().position(|r| {
-                match target {
-                    // Hunting a specific Trade (UUID)
-                    NavigationTarget::Opportunity(id) => {
-                        r.opportunity.as_ref().is_some_and(|op| op.id == *id)
-                    }
-                    // Hunting a Pair (Market View)
-                    NavigationTarget::Pair(name) => r.pair_name == *name,
+            target_index = rows.iter().position(|r| match target {
+                NavigationTarget::Opportunity(id) => {
+                    r.opportunity.as_ref().is_some_and(|op| op.id == *id)
                 }
+                NavigationTarget::Pair(name) => r.pair_name == *name,
             });
         }
-
         let available_height = ui.available_height();
-
         let mut sort_changed = false;
-
         ui.scope(|ui| {
             let visuals = ui.visuals_mut();
-
             visuals.selection.bg_fill = PLOT_CONFIG.color_tf_selected;
-            // "Stripe" color
             visuals.faint_bg_color = Color32::from_white_alpha(15);
 
             let mut builder = TableBuilder::new(ui)
@@ -601,13 +556,9 @@ impl App {
                 .column(Column::exact(70.0).clip(true)) // Variant
                 .min_scrolled_height(0.0)
                 .max_scroll_height(available_height);
-
-            // Apply Scroll at Builder Level
-            // Works even if the row is virtualized (off-screen)
             if let Some(idx) = target_index {
                 builder = builder.scroll_to_row(idx, Some(Align::Center));
             }
-
             builder
                 .header(48.0, |mut header| {
                     self.render_tf_table_header(&mut header, &mut sort_changed);
@@ -619,10 +570,6 @@ impl App {
                         });
                     }
                 });
-
-            // 6. Sticky Scroll Cleanup
-            // If Sort OR Filter changed, we DO NOT clear the request.
-            // Wait for NEXT frame where rows are regenerated/resorted.
             if !sort_changed && !filter_changed {
                 if target_index.is_some() {
                     self.scroll_target = None;
@@ -632,7 +579,6 @@ impl App {
     }
 
     fn render_header_stack(
-        // Helper to render a stacked header (Primary Sort Top, Optional Secondary Sort Bottom)
         &mut self,
         ui: &mut Ui,
         sort_changed: &mut bool,
@@ -653,9 +599,6 @@ impl App {
     }
 
     fn render_tf_table_header(&mut self, header: &mut TableRow, sort_changed: &mut bool) {
-        // Helper to render stacked headers
-
-        // Col 1: Pair (Top) / Target (Bottom)
         header.col(|ui| {
             self.render_header_stack(
                 ui,
@@ -665,12 +608,9 @@ impl App {
                 Some((SortColumn::TargetPrice, &UI_TEXT.label_target)),
             );
         });
-
         header.col(|ui| {
             self.render_strategy_header_grid(ui, sort_changed);
         });
-
-        // Market
         header.col(|ui| {
             self.render_header_stack(
                 ui,
@@ -680,8 +620,6 @@ impl App {
                 Some((SortColumn::Momentum, &UI_TEXT.label_momentum_short)),
             );
         });
-
-        // Average Duration / Trade Balance Score
         header.col(|ui| {
             self.render_header_stack(
                 ui,
@@ -691,8 +629,6 @@ impl App {
                 None,
             );
         });
-
-        // Volume
         header.col(|ui| {
             self.render_header_stack(
                 ui,
@@ -716,13 +652,11 @@ impl App {
     }
 
     fn render_tf_table_row(
-        // Renders the data cells for a single row
         &mut self,
         table_row: &mut TableRow,
         row: &TradeFinderRow,
         index: usize,
     ) {
-        // Selection Logic (Selection-only)
         let is_selected = match (&self.selection, &row.opportunity) {
             (Selection::Opportunity(sel), Some(op)) => sel.id == op.id,
             (Selection::Pair(pair), None) => pair == &row.pair_name,
@@ -765,7 +699,6 @@ impl App {
     }
 
     fn col_pair_name(
-        // Column 1: Pair Name + Direction Icon (Static Text) on top line, Age on 2nd line
         &self,
         table_row: &mut egui_extras::TableRow,
         row: &TradeFinderRow,
@@ -820,7 +753,6 @@ impl App {
                             } else {
                                 TimeUtils::format_duration(age.num_milliseconds())
                             };
-
                             ui.label(
                                 RichText::new(age_str)
                                     .size(10.0)
@@ -852,7 +784,6 @@ impl App {
 
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
-
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         ui.label(RichText::new(&UI_TEXT.icon_strategy_roi).size(10.0)); // Mountain
@@ -872,13 +803,10 @@ impl App {
                                 .color(roi_color.linear_multiply(0.7)),
                         );
                     });
-
                     let show_score = self.tf_sort_col == SortColumn::Score
                         || op.strategy == OptimizationStrategy::Balanced;
-
                     if show_score {
                         let score = op.calculate_quality_score();
-
                         ui.label(
                             RichText::new(format!(
                                 "{}: {:.0}",
@@ -923,7 +851,6 @@ impl App {
             if let Some(op) = &row.opportunity {
                 ui.vertical(|ui| {
                     self.down_from_top(ui);
-                    // Avg Duration Only
                     ui.label(
                         RichText::new(TimeUtils::format_duration(op.avg_duration.value()))
                             .small()
@@ -987,7 +914,6 @@ impl App {
             !base_asset.is_empty() && pair.starts_with(base_asset)
         };
 
-        // Group by Pair
         let mut pair_groups: HashMap<String, Vec<TradeFinderRow>> = HashMap::new();
         for row in raw_rows {
             if is_in_scope(&row.pair_name) {
@@ -1000,33 +926,25 @@ impl App {
 
         let mut final_rows = Vec::new();
 
-        // Process Each Pair
         for (_, mut rows) in pair_groups {
-            // Grab metadata from first row for potential placeholder
             let sample = rows[0].clone();
-
-            // Filter down to VALID Opportunities
             rows.retain(|r| {
                 if let Some(op) = &r.opportunity {
-                    // Rule A: Protection (Selected Op always stays)
                     if selected_op_id == Some(&op.id) {
                         return true;
                     }
-                    // Rule B: MWT (Must be worthwhile)
                     if !op.is_worthwhile(&DEFAULT_JOURNEY_SETTINGS.profile) {
                         return false;
                     }
                     true
                 } else {
-                    false // Remove existing placeholders (regenerate below if needed)
+                    false
                 }
             });
 
-            // Result Logic
             if !rows.is_empty() {
                 final_rows.append(&mut rows);
             } else {
-                // Zero valid trades -> Inject ONE "Market View" row
                 final_rows.push(TradeFinderRow {
                     pair_name: sample.pair_name,
                     quote_volume_24h: sample.quote_volume_24h,
@@ -1041,7 +959,6 @@ impl App {
     }
 
     fn render_sort_icon_button(&mut self, ui: &mut Ui, col: SortColumn, icon: &str) -> bool {
-        // Renders a small icon-only sort button. Returns true if sort changed.
         let is_active = self.tf_sort_col == col;
 
         let color = if is_active {
@@ -1059,10 +976,8 @@ impl App {
         } else {
             icon.to_string()
         };
-
         let response =
             ui.interactive_label(&label_text, is_active, color, FontId::proportional(14.0));
-
         if response.clicked() {
             if is_active {
                 self.tf_sort_dir = self.tf_sort_dir.toggle();
@@ -1076,7 +991,6 @@ impl App {
     }
 
     fn render_stable_sort_label(&mut self, ui: &mut Ui, col: SortColumn, text: &str) -> bool {
-        // Renders a single sortable label using the Interactive Button style
         let mut clicked = false;
         let is_active = self.tf_sort_col == col;
         let color = if is_active {
@@ -1139,9 +1053,7 @@ impl App {
                     });
 
                     ui.add_space(5.0);
-
                     if let Some(op) = opp_opt {
-                        // A. Trade is Locked
                         ui.horizontal(|ui| {
                             let dir_color = op.direction.color();
                             let arrow = match op.direction {
@@ -1154,7 +1066,6 @@ impl App {
                                     .strong()
                                     .color(dir_color),
                             );
-
                             if let Some(engine) = &mut self.engine {
                                 if let Some(current_price) = engine.get_price(&pair) {
                                     let roi_pct = op.live_roi(current_price);
@@ -1170,15 +1081,12 @@ impl App {
                                 log::info!("No engine available for {}", pair);
                             }
                         });
-
-                        // Source info + ID
                         ui.horizontal(|ui| {
                             ui.label(
                                 RichText::new(format!("{} {}", UI_TEXT.label_source_ph, op.ph_pct))
                                     .small()
                                     .color(PLOT_CONFIG.color_text_subdued),
                             );
-
                             #[cfg(debug_assertions)]
                             {
                                 let short_id = if op.id.len() > 8 { &op.id[..8] } else { &op.id };
@@ -1190,7 +1098,6 @@ impl App {
                             }
                         });
                     } else {
-                        // B. Market View (No Trade)
                         ui.horizontal(|ui| {
                             ui.label(
                                 RichText::new(&UI_TEXT.label_no_targets)
@@ -1200,7 +1107,6 @@ impl App {
                         });
                     }
                 } else {
-                    // Nothing selected
                     ui.centered_and_justified(|ui| {
                         ui.label(
                             RichText::new(&UI_TEXT.label_select_pair)
@@ -1215,7 +1121,6 @@ impl App {
     }
 
     fn handle_tuner_action(&mut self, action: TunerAction) {
-        // Handles events from the Time Tuner UI (Left Panel).
         match action {
             TunerAction::StationSelected(station_id) => {
                 if let Some(pair) = self.selection.pair_owned() {
@@ -1230,7 +1135,6 @@ impl App {
                             &pair_name,
                         );
                     }
-
                     if let Some(engine) = &mut self.engine {
                         if let Some(best_ph_pct) =
                             engine.tune_pair_with_station(&pair_name, station_id)
@@ -1244,11 +1148,9 @@ impl App {
                                     best_ph_pct
                                 );
                             }
-
                             engine
                                 .shared_config
                                 .insert_ph(pair_name.clone(), best_ph_pct);
-
                             #[cfg(debug_assertions)]
                             if DF.log_ph_overrides {
                                 log::info!(
@@ -1257,8 +1159,6 @@ impl App {
                                     best_ph_pct
                                 );
                             }
-
-                            // Recalculate this pair
                             engine.invalidate_pair_and_recalc(
                                 &pair_name,
                                 None,
@@ -1282,7 +1182,6 @@ impl App {
 
     fn render_price(&self, ui: &mut Ui) {
         if let Some(pair) = &self.selection.pair_owned() {
-            // Live Mode only now (no simulated price mode)
             ui.label(
                 RichText::new(format!("{} ", &UI_TEXT.sp_live_mode))
                     .small()
@@ -1291,7 +1190,6 @@ impl App {
             ui.separator();
 
             if let Some(engine) = &self.engine {
-                // if let Some(price) = self.get_display_price(pair) {
                 ui.label(
                     RichText::new(format!("{} {:?}", UI_TEXT.sp_price, engine.get_price(pair)))
                         .strong()
@@ -1369,15 +1267,12 @@ impl App {
                     } else {
                         0.0
                     };
-
                     ui.metric(
                         &UI_TEXT.label_candle,
                         &format!("{}/{} ({:.1}%)", relevant, total, pct),
                         PLOT_CONFIG.color_text_neutral,
                     );
-
                     ui.separator();
-
                     ui.metric(
                         &UI_TEXT.label_volatility,
                         &format!("{}", model.cva.volatility_pct),
@@ -1398,7 +1293,6 @@ impl App {
                         .color(PLOT_CONFIG.color_short),
                 );
             }
-
             let q_len = engine.get_queue_len();
             if q_len > 0 {
                 ui.separator();
@@ -1440,35 +1334,25 @@ impl App {
             } else {
                 op.stop_price
             };
-
             let current_index = op
                 .variants
                 .iter()
                 .position(|v| v.stop_price == active_stop_price)
                 .unwrap_or(0)
                 + 1;
-
-            // Generate Label "#/# Vrts"
             let label_text = format!(
                 "{}/{} {} ▾",
                 current_index,
                 op.variant_count(),
                 UI_TEXT.label_sl_variants_short
             );
-
-            // FIX: Use Unique UUID for the UI ID source.
-            // Using target_zone_id (which is 0) caused ID collisions in egui.
             let id_source = format!("var_menu_{}", op.id);
-
-            // CALL THE HELPER
             ui.custom_dropdown(&id_source, &label_text, |ui| {
                 let mut should_close = false;
-
                 for (i, variant) in op.variants.iter().enumerate() {
                     let risk_pct =
                         Pct::new(variant.stop_price.percent_diff_from_0_1(&op.start_price));
                     let win_rate = variant.simulation.success_rate;
-
                     let text = format!(
                         "{}. {} {}   {} {}   {} -{}",
                         i + 1,
@@ -1481,12 +1365,10 @@ impl App {
                     );
 
                     let is_current = variant.stop_price == active_stop_price;
-
                     if ui.selectable_label(is_current, text).clicked() {
                         let mut new_selected = op.clone();
                         new_selected.stop_price = variant.stop_price;
                         new_selected.simulation = variant.simulation.clone();
-
                         self.select_opportunity(
                             new_selected,
                             ScrollBehavior::None,
@@ -1518,8 +1400,6 @@ impl App {
                     ui.selectable_value(&mut selected_strategy, strategy, text);
                 }
             });
-
-        // Commit if changed
         if selected_strategy != current_strategy {
             #[cfg(debug_assertions)]
             if DF.log_strategy_selection {
@@ -1546,25 +1426,19 @@ impl App {
 
     fn sort_trade_finder_rows(&self, rows: &mut [TradeFinderRow]) {
         rows.sort_by(|a, b| {
-            // Always push "No Opportunity" rows to the bottom
             let a_has = a.opportunity.is_some();
             let b_has = b.opportunity.is_some();
 
             if a_has != b_has {
                 if a_has {
                     return Ordering::Less;
-                }
-                // A (Has) < B (Empty) -> A First
-                else {
+                } else {
                     return Ordering::Greater;
                 }
             }
 
-            // Standard Sort
             let cmp = match self.tf_sort_col {
                 SortColumn::PairName => a.pair_name.cmp(&b.pair_name),
-
-                // NEW: Target Price Sort
                 SortColumn::TargetPrice => {
                     let val_a = a
                         .opportunity
@@ -1581,13 +1455,11 @@ impl App {
                         .total_cmp(&val_b.value())
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
-
                 SortColumn::QuoteVolume24h => a
                     .quote_volume_24h
                     .value()
                     .total_cmp(&b.quote_volume_24h.value())
                     .then_with(|| a.pair_name.cmp(&b.pair_name)),
-
                 SortColumn::Volatility => {
                     let va = a
                         .market_state
@@ -1618,7 +1490,6 @@ impl App {
                         .total_cmp(&mb.value())
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
-
                 SortColumn::LiveRoi => {
                     let val_a = a
                         .opportunity
@@ -1664,7 +1535,6 @@ impl App {
                         .cmp(&val_a)
                         .then_with(|| a.pair_name.cmp(&b.pair_name))
                 }
-                // Sort by Strategy Score (Balanced/ROI/AROI)
                 SortColumn::Score => {
                     let val_a = a
                         .opportunity
@@ -1707,7 +1577,6 @@ impl App {
 fn render_fullscreen_message(ui: &mut Ui, title: &str, subtitle: &str, is_error: bool) {
     ui.vertical_centered(|ui| {
         ui.add_space(40.0);
-
         if is_error {
             ui.heading(format!("{} {}", UI_TEXT.label_warning, title));
         } else {
@@ -1715,17 +1584,13 @@ fn render_fullscreen_message(ui: &mut Ui, title: &str, subtitle: &str, is_error:
             ui.add_space(12.0);
             ui.heading(title);
         }
-
         ui.add_space(6.0);
-
         let color = if is_error {
             PLOT_CONFIG.color_loss
         } else {
             PLOT_CONFIG.color_text_neutral
         };
-
         let text = RichText::new(subtitle).color(color);
-
         ui.label(text);
     });
 }

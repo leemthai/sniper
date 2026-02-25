@@ -39,7 +39,7 @@ use {
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use chrono::{TimeZone, Utc};
 
-#[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+#[cfg(debug_assertions)]
 use crate::config::DF;
 
 /// All opportunities removed from the ledger during update cycle (pruning, collision resolution).
@@ -688,9 +688,10 @@ impl SniperEngine {
                 }
 
                 for trade in dead_trades {
-                    if let Err(e) = self.results_repo.enqueue(trade) {
+                    if let Err(_e) = self.results_repo.enqueue(trade) {
+                        #[cfg(debug_assertions)]
                         if DF.log_results_repo {
-                            log::error!("Failed to enqueue dead trade: {}", e);
+                            log::error!("Failed to enqueue dead trade: {}", _e);
                         }
                     }
                 }

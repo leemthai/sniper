@@ -2,7 +2,7 @@
 macro_rules! trace_time {
     // $threshold_micros: Enter 500 for 0.5ms, 1000 for 1ms, etc.
     ($name:expr, $threshold_micros:expr, $block:block) => {{
-        if $crate::config::DF.log_performance {
+        if $crate::config::LOG_PERFORMANCE {
             let start = $crate::utils::AppInstant::now();
             let result = $block;
             let elapsed = start.elapsed();

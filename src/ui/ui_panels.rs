@@ -23,10 +23,7 @@ impl<'a> CandleRangePanel<'a> {
 
     pub(crate) fn render(&mut self, ui: &mut Ui, last_viewed_idx: usize) -> Option<Option<usize>> {
         let mut action = None;
-
         ui.add_space(5.0);
-        // ui.heading(format!("{}", UI_TEXT.cr_title));
-        // ui.separator();
         ui.label_subheader(format!(
             "{} {} {}",
             self.segments.len(),
@@ -35,20 +32,16 @@ impl<'a> CandleRangePanel<'a> {
         ));
 
         ui.horizontal(|ui| {
-            // PREV BUTTON
             let prev_enabled = self.current_range_idx.is_some_and(|i| i > 0);
             if ui.add_enabled(prev_enabled, Button::new("⬅")).clicked() {
                 if let Some(curr) = self.current_range_idx {
                     action = Some(Some(curr - 1));
                 }
             }
-
-            // TOGGLE BUTTON (Middle)
             let is_viewing_all = self.current_range_idx.is_none();
             let (btn_label, target_idx) = if is_viewing_all {
                 let safe_target = last_viewed_idx.min(self.segments.len().saturating_sub(1));
                 let is_live = safe_target == self.segments.len().saturating_sub(1);
-
                 let text = if is_live {
                     UI_TEXT.cr_nav_return_live.to_string()
                 } else {
@@ -62,8 +55,6 @@ impl<'a> CandleRangePanel<'a> {
             if ui.button(btn_label).clicked() {
                 action = Some(target_idx);
             }
-
-            // NEXT BUTTON
             let next_enabled = self
                 .current_range_idx
                 .is_some_and(|i| i < self.segments.len() - 1);
@@ -78,16 +69,14 @@ impl<'a> CandleRangePanel<'a> {
 
         ui.separator();
 
-        // --- COMPACT LIST ---
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 Grid::new("cr_grid")
                     .striped(true)
-                    .num_columns(2) // Reduced to 2
-                    .spacing([10.0, 8.0]) // Tighter spacing
+                    .num_columns(2)
+                    .spacing([10.0, 8.0])
                     .show(ui, |ui| {
-                        // Compact Headers
                         ui.label(RichText::new(&UI_TEXT.cr_date_range).strong().small());
                         ui.label(RichText::new(&UI_TEXT.cr_context).strong().small());
                         ui.end_row();
@@ -95,9 +84,7 @@ impl<'a> CandleRangePanel<'a> {
                         for (i, seg) in self.segments.iter().enumerate().rev() {
                             let is_selected = self.current_range_idx == Some(i);
 
-                            // GAP ROW
                             if i > 0 {
-                                // Merged Gap Info (Duration + Reason)
                                 let gap_text = format!(
                                     "-- {} {} ({}) --",
                                     seg.gap_duration_str,
@@ -110,8 +97,6 @@ impl<'a> CandleRangePanel<'a> {
                                         _ => &UI_TEXT.cr_mixed,
                                     }
                                 );
-
-                                // Use Semantic Colors for Gaps
                                 let gap_color = match seg.gap_reason {
                                     GapReason::MissingSourceData => PLOT_CONFIG.color_gap_missing,
                                     GapReason::PriceAbovePH => PLOT_CONFIG.color_gap_above,
@@ -122,16 +107,13 @@ impl<'a> CandleRangePanel<'a> {
                                 ui.label(
                                     RichText::new(gap_text).italics().small().color(gap_color),
                                 );
-                                ui.label(""); // Empty context column for gap
+                                ui.label("");
                                 ui.end_row();
                             }
 
-                            // SEGMENT ROW
                             let start_date = TimeUtils::epoch_ms_to_date_string(seg.start_ts);
                             let end_date = TimeUtils::epoch_ms_to_date_string(seg.end_ts);
 
-                            // Column 1: Date Range + Count (Clickable)
-                            // Format: "2024-01-01 - 2024-02-01 (500c)"
                             let label_text =
                                 format!("{} - {} ({}c)", start_date, end_date, seg.candle_count);
                             if ui
@@ -140,8 +122,6 @@ impl<'a> CandleRangePanel<'a> {
                             {
                                 action = Some(Some(i));
                             }
-
-                            // Column 2: Context
                             if i == self.segments.len() - 1 {
                                 ui.label(
                                     RichText::new(&UI_TEXT.cr_label_live)

@@ -67,13 +67,11 @@ pub struct Zone {
     pub index: usize,
     pub price_bottom: Price,
     pub price_top: Price,
-    // pub price_center: Price,
 }
 
-/// Aggregates one or more contiguous [`Zone`]s to reduce visual noise.
+/// Aggregates one or more contiguous zones to reduce visual noise.
 #[derive(Debug, Clone)]
 pub(crate) struct SuperZone {
-    pub id: usize, // first zone index
     pub price_bottom: Price,
     pub price_top: Price,
     pub price_center: Price,
@@ -102,7 +100,6 @@ impl SuperZone {
         let price_bottom = zones.first().unwrap().price_bottom;
         let price_top = zones.last().unwrap().price_top;
         Self {
-            id: zones[0].index,
             price_bottom,
             price_top,
 
@@ -217,7 +214,6 @@ impl TradingModel {
                 let normalized = normalize_max(&smooth_data(&viable_data, smooth_window));
 
                 let (mean, std_dev) = mean_and_stddev(&normalized);
-                // Clamp to [0.05, 0.95]: prevents selecting everything (flat) or nothing (outliers)
                 let adaptive_threshold = (mean + params.sigma.value() * std_dev).clamp(0.05, 0.95);
 
                 #[cfg(debug_assertions)]
@@ -277,7 +273,6 @@ impl TradingModel {
 
             let total_volume: f64 = cva.get_scores_ref(ScoreType::FullCandleTVW).iter().sum();
 
-            // Sticky: resource = total volume
             let (sticky, sticky_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::FullCandleTVW),
                 config.sticky,
@@ -285,7 +280,6 @@ impl TradingModel {
                 "STICKY",
             );
 
-            // Reversal: resource = total_candles (NOT sum of scores, which is inflated by wick width)
             let (low_wicks, low_wicks_superzones) = process_layer(
                 cva.get_scores_ref(ScoreType::LowWickCount),
                 config.reversal,

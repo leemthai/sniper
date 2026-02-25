@@ -19,7 +19,7 @@ use crate::{
         AppState, AutoScaleY, BootstrapState, PersistedSelection, PhaseView, ProgressEvent,
         RunningState, Selection, SortDirection, SyncStatus, TuningState,
     },
-    config::{CandleResolution, DF, PhPct},
+    config::{CandleResolution, PhPct},
     data::{TimeSeriesCollection, fetch_pair_data},
     engine::SniperEngine,
     models::{TradeOpportunity, restore_engine_ledger},
@@ -37,6 +37,9 @@ use {
     std::thread,
     tokio::runtime::Runtime,
 };
+
+#[cfg(debug_assertions)]
+use crate::config::{DF, LOG_PERFORMANCE};
 
 #[cfg(feature = "ph_audit")]
 use crate::{
@@ -325,6 +328,7 @@ impl App {
         state.completed += processed;
         if state.todo_list.is_empty() {
             if let Some(e) = &mut self.engine {
+                #[cfg(debug_assertions)]
                 if DF.log_tuner {
                     log::info!(">> Global Tuning Complete. Igniting Engine.");
                 }
@@ -367,7 +371,8 @@ impl App {
         let plot_time = start.elapsed().as_micros();
         self.render_help_panel(ctx);
         if engine_time + left_panel_time + plot_time > 500_000 {
-            if DF.log_performance {
+            #[cfg(debug_assertions)]
+            if LOG_PERFORMANCE {
                 log::warn!(
                     "🐢 SLOW FRAME: Engine: {}us | LeftPanel(TF): {}us | Plot: {}us",
                     engine_time,

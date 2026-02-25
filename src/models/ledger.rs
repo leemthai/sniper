@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::{DF, Pct, PriceLike},
+        config::{Pct, PriceLike},
         models::TradeOpportunity,
     },
     serde::{Deserialize, Serialize},
@@ -11,7 +11,10 @@ use {
 };
 
 #[cfg(debug_assertions)]
-use {crate::config::OptimizationStrategy, std::collections::BTreeMap};
+use {
+    crate::config::{DF, OptimizationStrategy},
+    std::collections::BTreeMap,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::load_ledger;
@@ -253,8 +256,8 @@ impl OpportunityLedger {
 }
 
 pub(crate) fn restore_engine_ledger(valid_session_pairs: &HashSet<String>) -> OpportunityLedger {
+    #[cfg(debug_assertions)]
     if DF.wipe_ledger_on_startup {
-        #[cfg(debug_assertions)]
         log::info!("☢️ LEDGER NUKE: Wiping all historical trades from persistence.");
         return OpportunityLedger::new();
     }

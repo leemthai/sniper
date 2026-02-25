@@ -25,14 +25,10 @@ pub(crate) fn render_time_tuner(
             if let Some(station_id) = active_station_id {
                 ui.heading(headline);
                 ui.add_space(4.0);
-
-                // --- ROW 1: STATION BUTTONS ---
                 ui.horizontal(|ui| {
                     ui.style_mut().spacing.item_spacing.x = 2.0;
-
                     for station in time_tuner_config.stations {
                         let is_active = station_id == station.id;
-
                         let btn = if is_active {
                             Button::new(station.name)
                                 .fill(ui.visuals().selection.bg_fill)
@@ -40,15 +36,11 @@ pub(crate) fn render_time_tuner(
                         } else {
                             Button::new(station.name)
                         };
-
                         let response = ui.add_sized(vec2(90.0, y_height), btn);
-
                         if response.clicked() {
                             action = Some(TunerAction::StationSelected(station.id));
                         }
                     }
-
-                    // Gear Icon (Right Aligned)
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui
                             .add_sized(vec2(35.0, y_height), Button::new("⚙"))
@@ -69,9 +61,7 @@ pub(crate) fn render_time_tuner(
             ui.add_space(4.0);
             ui.label("UI not available unless a trading pair is selected");
         }
-
         ui.add_space(4.0);
     });
-
     action
 }
