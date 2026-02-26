@@ -12,14 +12,9 @@ pub struct PairInterval {
 impl PairInterval {
     pub(crate) fn get_base(text: &str) -> Option<&str> {
         let quote = Self::get_quote(text)?;
-        // `strip_suffix` returns `None` if the suffix is not found.
-        // If get_quote returned Some(quote), strip_suffix can still return None
-        // if the quote is not at the end (e.g., malformed pair name).
         text.strip_suffix(quote)
     }
 
-    // Finds the trading quote at the end of the pair name and returns it.
-    // Returns None if no matching quote is found.
     pub(crate) fn get_quote(text: &str) -> Option<&str> {
         BINANCE_QUOTE_ASSETS
             .iter()

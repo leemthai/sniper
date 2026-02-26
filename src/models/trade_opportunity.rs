@@ -1,11 +1,11 @@
 use {
     crate::{
         config::{
-            AroiPct, DurationMs, JourneySettings, OptimalSearchSettings, OptimizationStrategy, Pct,
-            PhPct, Price, RoiPct, Sigma, StationId, StopPrice, TargetPrice, TradeProfile,
-            ZoneClassificationConfig, ZoneParams,
+            AroiPct, DurationMs, JourneySettings, OptimalSearchSettings, Pct, PhPct, Price, RoiPct,
+            Sigma, StationId, StopPrice, TargetPrice, TradeProfile, ZoneClassificationConfig,
+            ZoneParams,
         },
-        models::{EmpiricalOutcomeStats, MarketState},
+        models::{EmpiricalOutcomeStats, MarketState, OptimizationStrategy},
         ui::UI_TEXT,
     },
     chrono::{DateTime, Utc},

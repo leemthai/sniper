@@ -2,13 +2,14 @@ use {
     crate::{
         app::{App, AutoScaleY, Selection, SortDirection},
         config::{
-            CandleResolution, MomentumPct, OptimizationStrategy, PLOT_CONFIG, Pct, Price,
-            PriceLike, QuoteVol, TICKER, TUNER_CONFIG, VolatilityPct,
+            CandleResolution, MomentumPct, PLOT_CONFIG, Pct, Price, PriceLike, QuoteVol, TICKER,
+            TUNER_CONFIG, VolatilityPct,
         },
         domain::PairInterval,
         engine::JobMode,
         models::{
-            DEFAULT_JOURNEY_SETTINGS, MarketState, ScoreType, TradeDirection, TradeOpportunity,
+            DEFAULT_JOURNEY_SETTINGS, MarketState, OptimizationStrategy, ScoreType, TradeDirection,
+            TradeOpportunity,
         },
         ui::{
             CandleRangePanel, DirectionColor, PlotInteraction, TunerAction, UI_CONFIG, UI_TEXT,
@@ -1170,7 +1171,6 @@ impl App {
                             );
                         }
                     }
-                } else {
                 }
             }
             TunerAction::ConfigureTuner => {

@@ -12,7 +12,7 @@ use {
 
 #[cfg(debug_assertions)]
 use {
-    crate::config::{DF, OptimizationStrategy},
+    crate::{config::DF, models::OptimizationStrategy},
     std::collections::BTreeMap,
 };
 

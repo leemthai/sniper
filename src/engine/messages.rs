@@ -1,8 +1,8 @@
 use {
     crate::{
-        config::{OptimizationStrategy, PhPct, Price, StationId},
+        config::{PhPct, Price, StationId},
         data::TimeSeriesCollection,
-        models::TradingModel,
+        models::{OptimizationStrategy, TradingModel},
     },
     std::sync::{Arc, RwLock},
 };

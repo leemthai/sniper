@@ -1,5 +1,6 @@
 use {
-    crate::config::{OptimizationStrategy, PhPct, StationId},
+    crate::config::{PhPct, StationId},
+    crate::models::OptimizationStrategy,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     std::{
         collections::HashMap,

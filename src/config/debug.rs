@@ -1,7 +1,7 @@
 pub const LOG_PERFORMANCE: bool = false;
 
 #[cfg(debug_assertions)]
-pub struct LogFlags {
+pub struct DebugVars {
     pub log_candle_update: bool,
     pub log_engine_core: bool,
     pub log_ledger: bool,
@@ -27,7 +27,7 @@ pub struct LogFlags {
 }
 
 #[cfg(debug_assertions)]
-pub const DF: LogFlags = LogFlags {
+pub const DF: DebugVars = DebugVars {
     log_candle_update: false,
     log_engine_core: false,
     log_ledger: false,

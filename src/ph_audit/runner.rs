@@ -1,9 +1,9 @@
 use {
     crate::{
-        config::{BASE_INTERVAL, OptimizationStrategy, PhPct, Price, PriceLike, StationId},
+        config::{BASE_INTERVAL, PhPct, Price, PriceLike, StationId},
         data::TimeSeriesCollection,
         engine::run_pathfinder_simulations,
-        models::{find_matching_ohlcv, pair_analysis_pure},
+        models::{OptimizationStrategy, find_matching_ohlcv, pair_analysis_pure},
         ph_audit::{AUDIT_PAIRS, AuditReporter, PH_LEVELS},
         utils::AppInstant,
     },

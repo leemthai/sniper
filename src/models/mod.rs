@@ -3,6 +3,7 @@ mod cva;
 mod ledger;
 mod market_state;
 mod ohlcv;
+mod optimization_strategy;
 mod pair_analysis;
 mod range_gap_finder;
 mod scenario_simulator;
@@ -20,6 +21,7 @@ pub(crate) use {
     ledger::{OpportunityLedger, restore_engine_ledger},
     market_state::MarketState,
     ohlcv::{LiveCandle, TimeSeriesSlice, find_matching_ohlcv},
+    optimization_strategy::OptimizationStrategy,
     pair_analysis::pair_analysis_pure,
     range_gap_finder::{DisplaySegment, GapReason, RangeGapFinder},
     scenario_simulator::{DEFAULT_SIMILARITY, EmpiricalOutcomeStats, ScenarioSimulator},

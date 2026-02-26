@@ -1,9 +1,7 @@
 use {
     crate::{
-        config::{
-            OptimizationStrategy, PhPct, Price, PriceLike, StationId, StopPrice, TargetPrice,
-        },
-        models::{MarketState, TradeDirection, TradeOutcome},
+        config::{PhPct, Price, PriceLike, StationId, StopPrice, TargetPrice},
+        models::{MarketState, OptimizationStrategy, TradeDirection, TradeOutcome},
     },
     anyhow::{Result, anyhow},
     async_trait::async_trait,

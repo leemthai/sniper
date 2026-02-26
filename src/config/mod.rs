@@ -31,9 +31,9 @@ pub(crate) use {
     tuner::{StationId, TUNER_CONFIG, TimeTunerConfig, TunerStation},
     types::{
         AroiPct, BaseVol, CandleResolution, ClosePrice, DurationMs, HighPrice, JourneySettings,
-        LowPrice, MomentumPct, OpenPrice, OptimalSearchSettings, OptimizationStrategy, Pct, PhPct,
-        PriceRange, Prob, QuoteVol, RoiPct, Sigma, SimilaritySettings, StopPrice, TargetPrice,
-        TradeProfile, VolRatio, VolatilityPct, Weight, ZoneClassificationConfig, ZoneParams,
+        LowPrice, MomentumPct, OpenPrice, OptimalSearchSettings, Pct, PhPct, PriceRange, Prob,
+        QuoteVol, RoiPct, Sigma, SimilaritySettings, StopPrice, TargetPrice, TradeProfile,
+        VolRatio, VolatilityPct, Weight, ZoneClassificationConfig, ZoneParams,
     },
 };
 
