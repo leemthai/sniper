@@ -7,3 +7,4 @@ zone_sniper.code-workspace
 *.sql*
 .ledger.bin
 *.md
+/private/
