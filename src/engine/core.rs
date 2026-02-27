@@ -41,7 +41,7 @@ use chrono::{TimeZone, Utc};
 #[cfg(debug_assertions)]
 use crate::config::DF;
 
-/// All opportunities removed from the ledger during update cycle (pruning, collision resolution).
+/// All opportunities removed from the ledger during update cycle (pruning, collision resolution)
 #[derive(Debug, Default)]
 pub(crate) struct LedgerRemovals {
     pub ids: Vec<String>,
