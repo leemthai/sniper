@@ -190,14 +190,14 @@ impl SniperEngine {
         pair: &str,
         station_id: StationId,
     ) -> Option<PhPct> {
-        let tuner_station = TUNER_CONFIG.stations.iter().find(|s| s.id == station_id)?;
-        self.tune_pair_internal(pair, tuner_station)
+        self.tune_pair_internal(
+            pair,
+            TUNER_CONFIG.stations.iter().find(|s| s.id == station_id)?,
+        )
     }
 
     pub(crate) fn tune_pair_from_config(&self, pair: &str) -> Option<PhPct> {
-        let station_id = self.shared_config.get_station(pair)?;
-        let tuner_station = TUNER_CONFIG.stations.iter().find(|s| s.id == station_id)?;
-        self.tune_pair_internal(pair, tuner_station)
+        self.tune_pair_with_station(pair, self.shared_config.get_station(pair)?)
     }
 
     /// TEMP shouldn't this be in UI code somewhere?
