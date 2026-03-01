@@ -49,7 +49,7 @@ use crate::{
 };
 
 #[cfg(feature = "backtest")]
-use crate::engine::backtest::{BacktestConfig, run_backtest};
+use crate::engine::{BacktestConfig, run_backtest};
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
