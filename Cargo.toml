@@ -25,6 +25,7 @@ path = "src/bin/make_demo_cache.rs"
 [features]
 default = []
 ph_audit = [] # The Audit Feature
+backtest = [] # Walk-forward backtest runner (Phase 1a)
 
 [dependencies]
 anyhow = "1.0"

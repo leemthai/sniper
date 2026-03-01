@@ -1,3 +1,5 @@
+#[cfg(feature = "backtest")]
+pub mod backtest;
 mod core;
 mod messages;
 mod worker;
@@ -9,7 +11,7 @@ pub(crate) use {
     worker::tune_to_station,
 };
 
-#[cfg(feature = "ph_audit")]
+#[cfg(any(feature = "ph_audit", feature = "backtest"))]
 pub(crate) use worker::run_pathfinder_simulations;
 
 #[cfg(target_arch = "wasm32")]
