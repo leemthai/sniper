@@ -266,6 +266,12 @@ pub fn run_backtest(
             trades_resolved += 1;
             total_pnl += pnl;
 
+            log::info!(
+                "Do we even get this far into run_backtest with {} trades and pnl {}",
+                trades_resolved,
+                total_pnl
+            );
+
             // ── Write to results.sqlite ────────────────────────────────────
             let trade_id = Uuid::new_v4().to_string();
             let trade_result = TradeResult {
