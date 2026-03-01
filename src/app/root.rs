@@ -42,18 +42,12 @@ use {
 use crate::config::{DF, LOG_PERFORMANCE};
 
 #[cfg(feature = "ph_audit")]
-use crate::{
-    config::BASE_INTERVAL,
-    models::find_matching_ohlcv,
-    ph_audit::{AUDIT_PAIRS, execute_audit},
-};
+use crate::ph_audit::{AUDIT_PAIRS, execute_audit};
+#[cfg(any(feature = "ph_audit", feature = "backtest"))]
+use crate::{config::BASE_INTERVAL, models::find_matching_ohlcv};
 
 #[cfg(feature = "backtest")]
-use crate::{
-    config::BASE_INTERVAL,
-    engine::{BacktestConfig, run_backtest},
-    models::find_matching_ohlcv,
-};
+use crate::engine::{BacktestConfig, run_backtest};
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
@@ -617,8 +611,11 @@ impl App {
             self.valid_session_pairs.len()
         );
         let ts_guard = e.timeseries.read().unwrap();
-        let mut config = BacktestConfig::default(); // TEMP start with defaults.... then write app persisted state in
-        config.strategy = e.shared_config.get_strategy();
+        let mut config = BacktestConfig {
+            strategy: e.shared_config.get_strategy(),
+            ..Default::default()
+        };
+
         println!("Running entire backtest with strategy={}", config.strategy);
 
         for pair in &self.valid_session_pairs {
@@ -630,11 +627,11 @@ impl App {
                 Ok(ohlcv) => {
                     config.ph_pct = e
                         .shared_config
-                        .get_ph(&pair)
+                        .get_ph(pair)
                         .expect("Need a ph_pct to run backtest");
                     config.station_id = e
                         .shared_config
-                        .get_station(&pair)
+                        .get_station(pair)
                         .expect("Need a station at all times to run backtest");
                     println!(
                         ">> Backtesting {} with ph_pct {} and station Id {:?} ({} candles)...",
