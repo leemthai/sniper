@@ -1,28 +1,18 @@
-//! Walk-forward backtest runner.
-//!
-//! Enabled via the `backtest` Cargo feature. Entry point: [`run_backtest`].
-//!
-//! # Approach
-//! Given a full [`OhlcvTimeSeries`] for one pair, the most recent `holdout_candles`
-//! are reserved as the out-of-sample hold-out set. The training window grows from
-//! `[0, split)` to `[0, split + i)` as we walk forward candle-by-candle through the
-//! hold-out period. For each hold-out candle `i`:
-//!
-//! 1. A truncated clone of the series (`[0, split + i)`) is created — the engine
-//!    never sees the future.
-//! 2. [`run_pathfinder_simulations`] is called on the truncated series using the
-//!    close price of candle `split + i - 1` as the current price.
-//! 3. Every generated [`TradeOpportunity`] is replayed forward into the real hold-out
-//!    data starting at index `split + i`, using [`check_exit_condition`] logic, and
-//!    the outcome is recorded as a [`TradeResult`].
-//! 4. All results are enqueued into the provided [`ResultsRepositoryTrait`] (same
-//!    `results.sqlite` schema used by the live engine — Phase 1b `analyze` CLI reads
-//!    both together).
-//!
-//! The walk is intentionally simple and single-threaded per pair; the caller can
-//! parallelise across pairs with rayon if desired.
+// Walk-forward backtest runner.
+// Enabled via the `backtest` Cargo feature. Entry point: [`run_backtest`].
+// Approach: Given a full [`OhlcvTimeSeries`] for one pair, the most recent `holdout_candles`
+// are reserved as the out-of-sample hold-out set. The training window grows from
+// `[0, split)` to `[0, split + i)` as we walk forward candle-by-candle through the
+// hold-out period. For each hold-out candle `i`:
+// 1. A truncated clone of the series (`[0, split + i)`) is created — the engine never sees the future.
+// 2. [`run_pathfinder_simulations`] is called on the truncated series using the
+//    close price of candle `split + i - 1` as the current price.
+// 3. Every generated [`TradeOpportunity`] is replayed forward into the real hold-out
+//    data starting at index `split + i`, using [`check_exit_condition`] logic, and
+//    the outcome is recorded as a [`TradeResult`].
+// 4. All results are enqueued into the provided [`ResultsRepositoryTrait`] (same `results.sqlite` schema used by the live engine — Phase 1b `analyze` CLI reads both together).
+// The walk is intentionally simple and single-threaded per pair; the caller can parallelise across pairs with rayon if desired.
 
-#[cfg(feature = "backtest")]
 use {
     crate::{
         config::{PhPct, Price, PriceLike, StationId},
@@ -36,71 +26,48 @@ use {
     uuid::Uuid,
 };
 
-// ─── Public config ────────────────────────────────────────────────────────────
-
-/// Configuration for a single walk-forward backtest run.
-#[cfg(feature = "backtest")]
+// Configuration for a single walk-forward backtest run.
 #[derive(Debug, Clone)]
-pub struct BacktestConfig {
-    /// Price-horizon percentage passed to the pathfinder.
+pub(crate) struct BacktestConfig {
     pub ph_pct: PhPct,
-    /// Station label stored on every result row (cosmetic — use `StationId::default()` if
-    /// you have not tuned the pair).
+    // Station label stored on every result row (cosmetic — use `StationId::default()` if not tuned the pair).
     pub station_id: StationId,
-    /// Which objective the pathfinder optimises.
     pub strategy: OptimizationStrategy,
-    /// How many trailing candles to reserve as the hold-out set.
-    /// At 5-min resolution: 3 months ≈ 26_280 candles.
-    pub holdout_candles: usize,
-    /// Minimum number of training candles required before we start generating
-    /// opportunities. A sensible floor is ~500 (≈ 42 h at 5 min).
+    pub holdout_candles: usize, // How many trailing candles to reserve as the hold-out set.
+    // Min no. of training candles required to start generating opportunities. Sensible floor is ~500 (≈ 42 h at 5 min).
     pub min_training_candles: usize,
 }
 
-#[cfg(feature = "backtest")]
 impl Default for BacktestConfig {
     fn default() -> Self {
         Self {
             ph_pct: PhPct::DEFAULT,
             station_id: StationId::default(),
             strategy: OptimizationStrategy::default(),
-            // ~3 months of 5-min candles
-            holdout_candles: 26_280,
-            // ~48 h of 5-min candles — enough for a meaningful similarity scan
-            min_training_candles: 576,
+            holdout_candles: 26_280,   // ~3 months of 5-min candles
+            min_training_candles: 576, // ~48 h of 5-min candles — enough for a meaningful similarity scan
         }
     }
 }
 
-// ─── Per-trade result (mirrors TradeResult but with an extra `source` tag) ────
-
-/// Summary statistics for one completed backtest.
-#[cfg(feature = "backtest")]
-#[derive(Debug, Clone)]
-pub struct BacktestReport {
+// Per-trade result (mirrors TradeResult but with extra `source` tag (TEMP what is extra 'source' tag - I don't see one))
+// #[derive(Debug, Clone)]
+pub(crate) struct BacktestReport {
     pub pair_name: String,
     pub config: BacktestConfig,
-    /// Total number of opportunities the pathfinder generated during the walk.
-    pub opportunities_generated: usize,
-    /// Subset that resolved before the end of the hold-out window.
-    pub trades_resolved: usize,
+    pub opportunities_generated: usize, // Count opportunities pathfinder generated during walk.
+    pub trades_resolved: usize,         // Subset that resolved before the end of hold-out window.
     pub wins: usize,
     pub losses: usize,
     pub timeouts: usize,
     pub win_rate: f64,
-    /// Mean PnL across resolved trades (fractional, e.g. 0.02 = +2 %).
-    pub avg_pnl: f64,
+    pub avg_pnl: f64, // Mean PnL across resolved trades (fractional, e.g. 0.02 = +2 %).
 }
 
-// ─── Main entry point ─────────────────────────────────────────────────────────
-
-/// Run a walk-forward backtest for one pair and persist every resolved trade to
-/// `repo`.
-///
-/// Returns a [`BacktestReport`] with aggregate statistics.
-/// Non-blocking (no async) — drive from a dedicated thread.
-#[cfg(feature = "backtest")]
-pub fn run_backtest(
+// Run a walk-forward backtest for one pair and persist every resolved trade to `repo`.
+// Returns a [`BacktestReport`] with aggregate statistics.
+// Non-blocking (no async) — drive from a dedicated thread.
+pub(crate) fn run_backtest(
     ohlcv: &OhlcvTimeSeries,
     config: &BacktestConfig,
     repo: &dyn ResultsRepositoryTrait,
@@ -108,7 +75,6 @@ pub fn run_backtest(
     let pair_name = ohlcv.pair_interval.name.clone();
     let total_candles = ohlcv.klines();
 
-    // ── Validate that we have enough data ─────────────────────────────────
     let split = total_candles.saturating_sub(config.holdout_candles);
     if split < config.min_training_candles {
         log::warn!(
@@ -133,7 +99,7 @@ pub fn run_backtest(
         };
     }
 
-    log::info!(
+    println!(
         "[backtest] {} | strategy={:?} | ph_pct={:.3} | split={} | holdout={} candles",
         pair_name,
         config.strategy,
@@ -149,24 +115,20 @@ pub fn run_backtest(
     let mut total_pnl: f64 = 0.0;
     let mut trades_resolved: usize = 0;
 
-    // ── Walk forward through the hold-out window ───────────────────────────
-    //
-    // We step by 1 candle at a time.  In a real production environment you
-    // might step by larger strides (e.g. every `sim_duration / 4` candles) to
-    // avoid generating highly correlated opportunities.  For now, every candle
-    // is evaluated to maximise the number of data points.
+    // Walk forward through the hold-out window
+    // Step 1 candle at a time.  In a real production environment you might step by larger strides (e.g. every `sim_duration / 4` candles) to avoid generating highly correlated opportunities.  For now, every candle is evaluated to maximise the number of data points.
     for i in 0..config.holdout_candles {
         let train_end = split + i; // exclusive upper bound of training window
         if train_end < config.min_training_candles {
             continue;
         }
-        // The "current" candle is the last candle in the training window.
+        // "current" candle is last candle in training window.
         let current_idx = train_end.saturating_sub(1);
         if current_idx >= total_candles {
             break;
         }
 
-        // Build a truncated view — the pathfinder must not see the future.
+        // Build truncated view — pathfinder must not see the future.
         let training_slice = truncate_ohlcv(ohlcv, train_end);
         let current_price = Price::from(training_slice.close_prices[current_idx]);
 
@@ -174,7 +136,7 @@ pub fn run_backtest(
             continue;
         }
 
-        // ── Run pathfinder on training data ───────────────────────────────
+        // Run pathfinder on training data
         let pf_result = run_pathfinder_simulations(
             &training_slice,
             current_price,
@@ -190,7 +152,7 @@ pub fn run_backtest(
 
         opportunities_generated += pf_result.opportunities.len();
 
-        // ── Replay each opportunity forward into the real hold-out data ───
+        // Replay each opportunity forward into real hold-out data
         for opp in &pf_result.opportunities {
             let entry_ts_ms = ohlcv.timestamps[current_idx];
             let entry_time: DateTime<Utc> = ts_ms_to_datetime(entry_ts_ms);
@@ -211,7 +173,7 @@ pub fn run_backtest(
 
             let exit_candle_idx = outcome.exit_candle_idx;
 
-            // Determine exit price from the candle where the trade resolved.
+            // Determine exit price from candle where trade resolved.
             let exit_price = if exit_candle_idx < total_candles {
                 let c = ohlcv.get_candle(exit_candle_idx);
                 match outcome.result {
@@ -230,7 +192,7 @@ pub fn run_backtest(
                 ohlcv.timestamps[total_candles - 1]
             };
 
-            // ── Accumulate aggregate stats ─────────────────────────────────
+            // Accumulate aggregate stats
             let pnl = match outcome.result {
                 TradeOutcome::TargetHit => {
                     wins += 1;
@@ -266,13 +228,12 @@ pub fn run_backtest(
             trades_resolved += 1;
             total_pnl += pnl;
 
-            log::info!(
-                "Do we even get this far into run_backtest with {} trades and pnl {}",
-                trades_resolved,
-                total_pnl
+            println!(
+                "Another trade resolved for {}: now {} trades and pnl {}",
+                pair_name, trades_resolved, total_pnl
             );
 
-            // ── Write to results.sqlite ────────────────────────────────────
+            // ── Write to results.sqlite
             let trade_id = Uuid::new_v4().to_string();
             let trade_result = TradeResult {
                 trade_id,
@@ -342,23 +303,16 @@ pub fn run_backtest(
     report
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/// Resolved outcome of replaying one opportunity forward.
-#[cfg(feature = "backtest")]
+// Resolved outcome of replaying one opportunity forward.
 struct ReplayResult {
     result: TradeOutcome,
-    /// Index of the candle at which the trade exited (or the last available candle).
+    // Candle index where trade exited (or last available candle).
     exit_candle_idx: usize,
 }
 
-/// Replay a [`TradeOpportunity`] forward into the real OHLCV data starting at
-/// `start_idx` (the first hold-out candle), checking each candle's high/low
-/// against target and stop prices, then expiry time.
-///
-/// Mirrors the pessimistic logic of [`TradeOpportunity::check_exit_condition`]:
-/// stop is checked before target on each candle.
-#[cfg(feature = "backtest")]
+// Replay a [`TradeOpportunity`] forward into real OHLCV data starting at `start_idx` (the first hold-out candle), checking each candle's high/low against target and stop prices, then expiry time.
+// Mirrors the pessimistic logic of [`TradeOpportunity::check_exit_condition`]:
+// stop is checked before target on each candle.
 fn replay_opportunity_forward(
     ohlcv: &OhlcvTimeSeries,
     opp: &TradeOpportunity,
@@ -426,13 +380,9 @@ fn replay_opportunity_forward(
     }
 }
 
-/// Create a truncated clone of `ohlcv` containing only `[0, end_idx)`.
-///
-/// This is intentionally a full clone rather than a zero-copy view because
-/// `OhlcvTimeSeries` is owned and the pathfinder takes `&OhlcvTimeSeries`.
-/// The clone is bounded by `end_idx` which is at most a few thousand candles
-/// larger than the training window — acceptable for an offline tool.
-#[cfg(feature = "backtest")]
+// Create a truncated clone of `ohlcv` containing only `[0, end_idx)`.
+// This is intentionally a full clone rather than zero-copy view because `OhlcvTimeSeries` is owned and pathfinder takes `&OhlcvTimeSeries`.
+// The clone is bounded by `end_idx` which is at most a few thousand candles larger than training window — acceptable for offline tool.
 fn truncate_ohlcv(ohlcv: &OhlcvTimeSeries, end_idx: usize) -> OhlcvTimeSeries {
     let n = end_idx.min(ohlcv.klines());
     OhlcvTimeSeries {
@@ -449,8 +399,7 @@ fn truncate_ohlcv(ohlcv: &OhlcvTimeSeries, end_idx: usize) -> OhlcvTimeSeries {
     }
 }
 
-/// Convert a Unix-millisecond timestamp to a `DateTime<Utc>`.
-#[cfg(feature = "backtest")]
+// Convert a Unix-millisecond timestamp to a `DateTime<Utc>`.
 fn ts_ms_to_datetime(ts_ms: i64) -> DateTime<Utc> {
     Utc.timestamp_millis_opt(ts_ms)
         .single()

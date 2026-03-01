@@ -49,7 +49,11 @@ use crate::{
 };
 
 #[cfg(feature = "backtest")]
-use crate::engine::{BacktestConfig, run_backtest};
+use crate::{
+    config::BASE_INTERVAL,
+    engine::{BacktestConfig, run_backtest},
+    models::find_matching_ohlcv,
+};
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
@@ -585,7 +589,7 @@ impl App {
             drop(ts_guard);
             println!(">> App State is RUNNING. Ticker & Data Ready. Starting Audit...");
             let mut live_prices = HashMap::new();
-            for &pair in crate::ph_audit::AUDIT_PAIRS {
+            for &pair in AUDIT_PAIRS {
                 if let Some(p) = e.get_price(pair) {
                     live_prices.insert(pair.to_string(), p);
                 }
@@ -613,15 +617,35 @@ impl App {
             self.valid_session_pairs.len()
         );
         let ts_guard = e.timeseries.read().unwrap();
-        let config = BacktestConfig::default();
+        let mut config = BacktestConfig::default(); // TEMP start with defaults.... then write app persisted state in
+        config.strategy = e.shared_config.get_strategy();
+        println!("Running entire backtest with strategy={}", config.strategy);
+
         for pair in &self.valid_session_pairs {
-            let interval_ms = crate::config::BASE_INTERVAL.as_millis() as i64;
-            match crate::models::find_matching_ohlcv(&ts_guard.series_data, pair, interval_ms) {
+            match find_matching_ohlcv(
+                &ts_guard.series_data,
+                pair,
+                BASE_INTERVAL.as_millis() as i64,
+            ) {
                 Ok(ohlcv) => {
-                    println!(">> Backtesting {} ({} candles)...", pair, ohlcv.klines());
+                    config.ph_pct = e
+                        .shared_config
+                        .get_ph(&pair)
+                        .expect("Need a ph_pct to run backtest");
+                    config.station_id = e
+                        .shared_config
+                        .get_station(&pair)
+                        .expect("Need a station at all times to run backtest");
+                    println!(
+                        ">> Backtesting {} with ph_pct {} and station Id {:?} ({} candles)...",
+                        pair,
+                        config.ph_pct,
+                        config.station_id,
+                        ohlcv.klines()
+                    );
                     let report = run_backtest(ohlcv, &config, e.results_repo.as_ref());
                     println!(
-                        "   {} | resolved={} wins={} losses={} timeouts={} win_rate={:.1}% avg_pnl={:.3}%",
+                        "   {} | resolved={} wins={} losses={} timeouts={} win_rate={:.1}% avg_pnl={:.3}%, op count={} with config={:?}",
                         report.pair_name,
                         report.trades_resolved,
                         report.wins,
@@ -629,6 +653,8 @@ impl App {
                         report.timeouts,
                         report.win_rate * 100.0,
                         report.avg_pnl * 100.0,
+                        report.opportunities_generated,
+                        report.config,
                     );
                 }
                 Err(_) => {
@@ -637,7 +663,7 @@ impl App {
             }
         }
         println!(">> Backtest complete.");
-        std::process::exit(0);
+        std::process::exit(0); // Exit app at end of backtest (we never get there of course coz so slow)
     }
 }
 
