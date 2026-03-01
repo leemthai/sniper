@@ -1,5 +1,5 @@
 #[cfg(feature = "backtest")]
-pub mod backtest;
+pub(crate) mod backtest;
 mod core;
 mod messages;
 mod worker;

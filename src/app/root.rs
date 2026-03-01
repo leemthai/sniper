@@ -48,6 +48,9 @@ use crate::{
     ph_audit::{AUDIT_PAIRS, execute_audit},
 };
 
+#[cfg(feature = "backtest")]
+use crate::engine::backtest::{BacktestConfig, run_backtest};
+
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct App {
@@ -591,6 +594,50 @@ impl App {
         } else {
             log::warn!("Engine not init yet in try_run_audit");
         }
+    }
+
+    #[cfg(feature = "backtest")]
+    pub(crate) fn try_run_backtest(&self, _ctx: &Context) {
+        let Some(e) = &self.engine else {
+            log::warn!("Engine not init yet in try_run_backtest");
+            return;
+        };
+        let ts_guard = e.timeseries.read().unwrap();
+        if ts_guard.series_data.is_empty() {
+            return;
+        }
+        drop(ts_guard);
+
+        println!(
+            ">> Starting walk-forward backtest for {} pairs...",
+            self.valid_session_pairs.len()
+        );
+        let ts_guard = e.timeseries.read().unwrap();
+        let config = BacktestConfig::default();
+        for pair in &self.valid_session_pairs {
+            let interval_ms = crate::config::BASE_INTERVAL.as_millis() as i64;
+            match crate::models::find_matching_ohlcv(&ts_guard.series_data, pair, interval_ms) {
+                Ok(ohlcv) => {
+                    println!(">> Backtesting {} ({} candles)...", pair, ohlcv.klines());
+                    let report = run_backtest(ohlcv, &config, e.results_repo.as_ref());
+                    println!(
+                        "   {} | resolved={} wins={} losses={} timeouts={} win_rate={:.1}% avg_pnl={:.3}%",
+                        report.pair_name,
+                        report.trades_resolved,
+                        report.wins,
+                        report.losses,
+                        report.timeouts,
+                        report.win_rate * 100.0,
+                        report.avg_pnl * 100.0,
+                    );
+                }
+                Err(_) => {
+                    println!(">> Skipping {} (no OHLCV data)", pair);
+                }
+            }
+        }
+        println!(">> Backtest complete.");
+        std::process::exit(0);
     }
 }
 

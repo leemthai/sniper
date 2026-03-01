@@ -121,6 +121,9 @@ impl PhaseView for RunningState {
         #[cfg(feature = "ph_audit")]
         app.try_run_audit(ctx);
 
+        #[cfg(feature = "backtest")]
+        app.try_run_backtest(ctx);
+
         app.tick_running_state(ctx);
 
         AppState::Running(RunningState)
