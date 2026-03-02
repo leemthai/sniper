@@ -45,9 +45,9 @@ pub const DF: DebugVars = DebugVars {
     #[cfg(all(debug_assertions, target_arch = "wasm32"))]
     log_wasm_demo: false,
     #[cfg(not(target_arch = "wasm32"))]
-    log_results_repo: false,
+    log_results_repo: true,
     #[cfg(not(target_arch = "wasm32"))]
-    log_startup_prices: false,
+    log_startup_prices: true,
     #[cfg(not(target_arch = "wasm32"))]
     max_pairs_load: 20,
 };
