@@ -35,7 +35,7 @@ pub struct ClientDefaults {
 }
 
 pub const BINANCE_PAIRS_FILENAME: &str = "pairs.txt";
-pub const BINANCE_MAX_PAIRS: usize = 20;
+pub const BINANCE_MAX_PAIRS: usize = 10;
 
 pub struct BinanceConfig {
     pub limits: RestLimits,

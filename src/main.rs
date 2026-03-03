@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Windows release: hide console window 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Windows release: hide console window
 use zone_sniper::{Cli, run_app};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -95,6 +95,16 @@ fn main() -> eframe::Result {
             .with_title("Zone Sniper - Scope. Lock. Snipe."),
         ..Default::default()
     };
+
+    // Auto-detect threads available and give 1/4 to Rayon (why 1/4? Just coz I have 16 logical threads and 4 runs the best lol):
+    let num_threads = std::thread::available_parallelism()
+        .map(|n| n.get() / 4)
+        .unwrap_or(4);
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build_global()
+        .unwrap();
 
     eframe::run_native(
         "Zone Sniper",

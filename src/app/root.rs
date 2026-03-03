@@ -48,7 +48,7 @@ use crate::{config::BASE_INTERVAL, models::find_matching_ohlcv};
 
 #[cfg(feature = "backtest")]
 use crate::{
-    config::BACKTEST_PAIR_COUNT,
+    config::{BACKTEST_PAIR_COUNT, BACKTEST_SKIP_DB_WRITE},
     engine::{BacktestConfig, run_backtest},
 };
 
@@ -600,7 +600,7 @@ impl App {
     #[cfg(feature = "backtest")]
     pub(crate) fn try_run_backtest(&self, _ctx: &Context) {
         let Some(e) = &self.engine else {
-            log::warn!("Engine not init yet in try_run_backtest");
+            log::error!("Engine not init yet in try_run_backtest");
             return;
         };
         let ts_guard = e.timeseries.read().unwrap();
@@ -609,11 +609,10 @@ impl App {
         }
         drop(ts_guard);
 
-        // println!(
-        //     ">> Starting walk-forward backtest for {} pairs...",
-        //     self.valid_session_pairs.len()
-        // );
         let ts_guard = e.timeseries.read().unwrap();
+
+        let start = AppInstant::now();
+
         let mut config = BacktestConfig {
             strategy: e.shared_config.get_strategy(),
             ..Default::default()
@@ -632,6 +631,9 @@ impl App {
             self.valid_session_pairs.len(),
             random_n_pairs
         );
+        if BACKTEST_SKIP_DB_WRITE {
+            println!("  Skipping DB writes for all pairs");
+        }
 
         for pair in &random_n_pairs {
             match find_matching_ohlcv(
@@ -655,26 +657,29 @@ impl App {
                         config.station_id,
                         ohlcv.klines()
                     );
-                    let report = run_backtest(ohlcv, &config, e.results_repo.as_ref());
-                    println!(
-                        "   {} | resolved={} wins={} losses={} timeouts={} win_rate={:.1}% avg_pnl={:.3}%, op count={} with config={:?}",
-                        report.pair_name,
-                        report.trades_resolved,
-                        report.wins,
-                        report.losses,
-                        report.timeouts,
-                        report.win_rate * 100.0,
-                        report.avg_pnl * 100.0,
-                        report.opportunities_generated,
-                        report.config,
-                    );
+
+                    if let Some(report) = run_backtest(ohlcv, &config, e.results_repo.as_ref()) {
+                        println!(
+                            "   {} | resolved={} wins={} losses={} timeouts={} win_rate={} avg_pnl={}, op count={} with config={:?}",
+                            report.pair_name,
+                            report.trades_resolved,
+                            report.wins,
+                            report.losses,
+                            report.timeouts,
+                            report.win_rate,
+                            report.avg_pnl,
+                            report.opportunities_generated,
+                            report.config,
+                        );
+                    }
                 }
                 Err(_) => {
                     println!(">> Skipping {} (no OHLCV data)", pair);
                 }
             }
         }
-        println!(">> Backtest complete.");
+        let elapsed = start.elapsed();
+        println!(">> Backtest complete. Elapsed: {:?}", elapsed);
         std::process::exit(0);
     }
 }

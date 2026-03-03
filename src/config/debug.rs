@@ -49,5 +49,5 @@ pub const DF: DebugVars = DebugVars {
     #[cfg(not(target_arch = "wasm32"))]
     log_startup_prices: false,
     #[cfg(not(target_arch = "wasm32"))]
-    max_pairs_load: 20,
+    max_pairs_load: 10,
 };

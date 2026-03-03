@@ -1,23 +1,15 @@
-// Walk-forward backtest runner.
-// Enabled via the `backtest` Cargo feature. Entry point: [`run_backtest`].
-// Approach: Given a full [`OhlcvTimeSeries`] for one pair, the most recent `holdout_candles`
-// are reserved as the out-of-sample hold-out set. The training window grows from
-// `[0, split)` to `[0, split + i)` as we walk forward candle-by-candle through the
-// hold-out period. For each hold-out candle `i`:
-// 1. A truncated clone of the series (`[0, split + i)`) is created — the engine never sees the future.
-// 2. [`run_pathfinder_simulations`] is called on the truncated series using the
-//    close price of candle `split + i - 1` as the current price.
-// 3. Every generated [`TradeOpportunity`] is replayed forward into the real hold-out
-//    data starting at index `split + i`, using [`check_exit_condition`] logic, and
-//    the outcome is recorded as a [`TradeResult`].
-// 4. All results are enqueued into the provided [`ResultsRepositoryTrait`] (same `results.sqlite` schema used by the live engine — Phase 1b `analyze` CLI reads both together).
-// The walk is intentionally simple and single-threaded per pair; the caller can parallelise across pairs with rayon if desired.
+// Walk-forward backtester (`feature = "backtest"`).
+// Reserves `holdout_candles` and iteratively expands the training window `[0..split+i)`.
+// 1. Truncates history to prevent look-ahead.
+// 2. Runs simulations on the snapshot.
+// 3. Replays opportunities against future hold-out data to determine outcomes.
+// 4. Stores results in the shared `results.sqlite` for unified analysis.
 
 use {
     crate::{
         config::{
-            BACKTEST_CANDLE_STRIDE, BACKTEST_HOLDOUT_CANDLES, BACKTEST_MIN_TRAINING_CANDLES, PhPct,
-            Price, PriceLike, StationId,
+            BACKTEST_CANDLE_STRIDE, BACKTEST_HOLDOUT_CANDLES, BACKTEST_MIN_TRAINING_CANDLES,
+            BACKTEST_SKIP_DB_WRITE, Pct, PhPct, Price, PriceLike, StationId,
         },
         data::{ResultsRepositoryTrait, TradeResult},
         engine::run_pathfinder_simulations,
@@ -26,6 +18,11 @@ use {
         },
     },
     chrono::{DateTime, TimeZone, Utc},
+    rayon::prelude::*,
+    std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     uuid::Uuid,
 };
 
@@ -52,7 +49,6 @@ impl Default for BacktestConfig {
     }
 }
 
-// Per-trade result (mirrors TradeResult but with extra `source` tag (TEMP what is extra 'source' tag - I don't see one))
 // #[derive(Debug, Clone)]
 pub(crate) struct BacktestReport {
     pub pair_name: String,
@@ -62,17 +58,16 @@ pub(crate) struct BacktestReport {
     pub wins: usize,
     pub losses: usize,
     pub timeouts: usize,
-    pub win_rate: f64,
-    pub avg_pnl: f64, // Mean PnL across resolved trades (fractional, e.g. 0.02 = +2 %) TEMP should be Pct type.
+    pub win_rate: Pct,
+    pub avg_pnl: Pct, // mean pnl across resolved trades
 }
 
 // Run walk-forward backtest for one pair and persist every resolved trade to `repo`.
-// Non-blocking (no async) — drive from a dedicated thread.
 pub(crate) fn run_backtest(
     ohlcv: &OhlcvTimeSeries,
     config: &BacktestConfig,
     repo: &dyn ResultsRepositoryTrait,
-) -> BacktestReport {
+) -> Option<BacktestReport> {
     let pair_name = ohlcv.pair_interval.name.clone();
     let total_candles = ohlcv.klines();
 
@@ -83,216 +78,174 @@ pub(crate) fn run_backtest(
              (total={}, holdout={}, split={}, min_training={}). Skipping.",
             pair_name, total_candles, config.holdout_candles, split, config.min_training_candles,
         );
-        return BacktestReport {
-            pair_name,
-            config: config.clone(),
-            opportunities_generated: 0,
-            trades_resolved: 0,
-            wins: 0,
-            losses: 0,
-            timeouts: 0,
-            win_rate: 0.0,
-            avg_pnl: 0.0,
-        };
+        return None;
     }
 
     println!(
-        "[backtest] {} | strategy={:?} | ph_pct={:.3} | split={} | holdout={} candles",
+        "[backtest] {} with {} Rayon threads made available | strategy={:?} | ph_pct={:.3} | split={} | holdout={} candles",
         pair_name,
+        rayon::current_num_threads(),
         config.strategy,
         config.ph_pct.value(),
         split,
         config.holdout_candles,
     );
 
-    let mut opportunities_generated: usize = 0;
-    let mut wins: usize = 0;
-    let mut losses: usize = 0;
-    let mut timeouts: usize = 0;
-    let mut total_pnl_pct: f64 = 0.0;
-    let mut trades_resolved: usize = 0;
+    let opportunities_generated = AtomicUsize::new(0);
+    let wins = AtomicUsize::new(0);
+    let losses = AtomicUsize::new(0);
+    let timeouts = AtomicUsize::new(0);
+    let trades_resolved = AtomicUsize::new(0);
+    let total_pnl_pct = Mutex::new(0.0_f64);
 
-    // Walk forward through the hold-out window
-    // Step 1 candle at a time.  In a real production environment you might step by larger strides (e.g. every `sim_duration / 4` candles) to avoid generating highly correlated opportunities.  For now, every candle is evaluated to maximise the number of data points.
-    for i in (0..config.holdout_candles).step_by(config.stride) {
-        println!(
-            "  Processing hold-out candle #{} out of {}",
-            i, config.holdout_candles
-        );
-        let train_end = split + i; // exclusive upper bound of training window
-        if train_end < config.min_training_candles {
-            continue;
-        }
-        // "current" candle is last candle in training window.
-        let current_idx = train_end.saturating_sub(1);
-        if current_idx >= total_candles {
-            break;
-        }
-
-        // Build truncated view — pathfinder must not see the future.
-        let training_slice = truncate_ohlcv(ohlcv, train_end);
-        let current_price = Price::from(training_slice.close_prices[current_idx]);
-
-        if !current_price.is_positive() {
-            continue;
-        }
-
-        // Run pathfinder on training data
-        let pf_result = run_pathfinder_simulations(
-            &training_slice,
-            current_price,
-            config.ph_pct,
-            config.strategy,
-            config.station_id,
-            None, // CVA computed internally
-        );
-
-        if pf_result.opportunities.is_empty() {
-            continue;
-        }
-
-        opportunities_generated += pf_result.opportunities.len();
-
-        // Replay each opportunity forward into real hold-out data
-        for opp in &pf_result.opportunities {
-            let entry_ts_ms = ohlcv.timestamps[current_idx];
-            let entry_time: DateTime<Utc> = ts_ms_to_datetime(entry_ts_ms);
-            let max_duration = opp.max_duration;
-            let expiry_time = entry_time
-                + chrono::Duration::from_std(std::time::Duration::from_millis(
-                    max_duration.value().max(0) as u64,
-                ))
-                .unwrap_or(chrono::Duration::days(365));
-
-            let outcome = replay_opportunity_forward(
-                ohlcv,
-                opp,
-                train_end, // first hold-out candle index
-                // entry_time,
-                expiry_time,
-            );
-
-            let exit_candle_idx = outcome.exit_candle_idx;
-
-            // Determine exit price from candle where trade resolved.
-            let exit_price = if exit_candle_idx < total_candles {
-                let c = ohlcv.get_candle(exit_candle_idx);
-                match outcome.result {
-                    TradeOutcome::TargetHit => Price::from(opp.target_price),
-                    TradeOutcome::StopHit => Price::from(opp.stop_price),
-                    TradeOutcome::Timeout | TradeOutcome::ManualClose => Price::from(c.close_price),
-                }
-            } else {
-                // We ran off the end of the data — treat as timeout at last close.
-                Price::from(ohlcv.close_prices[total_candles - 1])
-            };
-
-            let exit_ts_ms = if exit_candle_idx < total_candles {
-                ohlcv.timestamps[exit_candle_idx]
-            } else {
-                ohlcv.timestamps[total_candles - 1]
-            };
-
-            // Accumulate aggregate stats
-            let pnl_pct = match outcome.result {
-                TradeOutcome::TargetHit => {
-                    wins += 1;
-                    match opp.direction {
-                        TradeDirection::Long => {
-                            let pnl_pct =
-                                (Price::from(opp.target_price) - current_price) / current_price;
-                            // Panic if we somehow lost money on a Long Target Hit
-                            if pnl_pct < 0.0 {
-                                panic!(
-                                    "CRITICAL: Long TargetHit produced negative PnL: {}",
-                                    pnl_pct
-                                );
-                            }
-                            pnl_pct
-                        }
-                        TradeDirection::Short => {
-                            let pnl_pct =
-                                (current_price - Price::from(opp.target_price)) / current_price;
-                            if pnl_pct < 0.0 {
-                                panic!(
-                                    "CRITICAL: Short TargetHit produced negative PnL: {}",
-                                    pnl_pct
-                                );
-                            }
-                            pnl_pct
-                        }
-                    }
-                }
-                TradeOutcome::StopHit => {
-                    losses += 1;
-                    match opp.direction {
-                        TradeDirection::Long => {
-                            (Price::from(opp.stop_price) - current_price) / current_price
-                        }
-                        TradeDirection::Short => {
-                            (current_price - Price::from(opp.stop_price)) / current_price
-                        }
-                    }
-                }
-                TradeOutcome::Timeout | TradeOutcome::ManualClose => {
-                    timeouts += 1;
-                    match opp.direction {
-                        TradeDirection::Long => (exit_price - current_price) / current_price,
-                        TradeDirection::Short => (current_price - exit_price) / current_price,
-                    }
-                }
-            };
-            trades_resolved += 1;
-            total_pnl_pct += pnl_pct;
-
-            println!(
-                "  Writing resolved trade for {} to db now: {} trades, cumulative-pnl {}, avg. pnl per trade: {}",
-                pair_name,
-                trades_resolved,
-                total_pnl_pct,
-                total_pnl_pct / trades_resolved as f64,
-            );
-
-            // ── Write to results.sqlite
-            let trade_id = Uuid::new_v4().to_string();
-            let trade_result = TradeResult {
-                trade_id,
-                pair_name: pair_name.clone(),
-                direction: opp.direction,
-                entry_price: current_price,
-                exit_price,
-                stop_price: opp.stop_price,
-                target_price: opp.target_price,
-                exit_reason: outcome.result,
-                entry_time: entry_ts_ms,
-                exit_time: exit_ts_ms,
-                planned_expiry_time: expiry_time.timestamp_millis(),
-                strategy: opp.strategy,
-                station_id: opp.station_id,
-                market_state: opp.market_state,
-                ph_pct: opp.ph_pct,
-            };
-
-            if let Err(e) = repo.enqueue(trade_result) {
-                log::error!(
-                    "[backtest] DB enqueue failed for {} at candle {}: {:?}",
-                    pair_name,
-                    train_end,
-                    e,
-                );
+    (0..config.holdout_candles)
+        .step_by(config.stride)
+        .collect::<Vec<_>>()
+        .par_iter()
+        .for_each(|&i| {
+            let train_end = split + i;
+            if train_end < config.min_training_candles {
+                return;
             }
-        }
-    }
+            let current_idx = train_end.saturating_sub(1);
+            if current_idx >= total_candles {
+                return;
+            }
 
-    let win_rate = if trades_resolved > 0 {
-        wins as f64 / trades_resolved as f64
+            let training_slice = truncate_ohlcv(ohlcv, train_end);
+            let current_price = Price::from(training_slice.close_prices[current_idx]);
+
+            if !current_price.is_positive() {
+                return;
+            }
+
+            let pf_result = run_pathfinder_simulations(
+                &training_slice,
+                current_price,
+                config.ph_pct,
+                config.strategy,
+                config.station_id,
+                None,
+            );
+
+            if pf_result.opportunities.is_empty() {
+                return;
+            }
+
+            opportunities_generated.fetch_add(pf_result.opportunities.len(), Ordering::Relaxed);
+
+            for opp in &pf_result.opportunities {
+                let entry_ts_ms = ohlcv.timestamps[current_idx];
+                let entry_time: DateTime<Utc> = ts_ms_to_datetime(entry_ts_ms);
+                let max_duration = opp.max_duration;
+                let expiry_time = entry_time
+                    + chrono::Duration::from_std(std::time::Duration::from_millis(
+                        max_duration.value().max(0) as u64,
+                    ))
+                    .unwrap_or(chrono::Duration::days(365));
+
+                let outcome = replay_opportunity_forward(ohlcv, opp, train_end, expiry_time);
+
+                let exit_candle_idx = outcome.exit_candle_idx;
+                let exit_price = if exit_candle_idx < total_candles {
+                    let c = ohlcv.get_candle(exit_candle_idx);
+                    match outcome.result {
+                        TradeOutcome::TargetHit => Price::from(opp.target_price),
+                        TradeOutcome::StopHit => Price::from(opp.stop_price),
+                        TradeOutcome::Timeout | TradeOutcome::ManualClose => {
+                            Price::from(c.close_price)
+                        }
+                    }
+                } else {
+                    Price::from(ohlcv.close_prices[total_candles - 1])
+                };
+
+                let exit_ts_ms = if exit_candle_idx < total_candles {
+                    ohlcv.timestamps[exit_candle_idx]
+                } else {
+                    ohlcv.timestamps[total_candles - 1]
+                };
+
+                let pnl_pct = match outcome.result {
+                    TradeOutcome::TargetHit => {
+                        wins.fetch_add(1, Ordering::Relaxed);
+                        match opp.direction {
+                            TradeDirection::Long => {
+                                (Price::from(opp.target_price) - current_price) / current_price
+                            }
+                            TradeDirection::Short => {
+                                (current_price - Price::from(opp.target_price)) / current_price
+                            }
+                        }
+                    }
+                    TradeOutcome::StopHit => {
+                        losses.fetch_add(1, Ordering::Relaxed);
+                        match opp.direction {
+                            TradeDirection::Long => {
+                                (Price::from(opp.stop_price) - current_price) / current_price
+                            }
+                            TradeDirection::Short => {
+                                (current_price - Price::from(opp.stop_price)) / current_price
+                            }
+                        }
+                    }
+                    TradeOutcome::Timeout | TradeOutcome::ManualClose => {
+                        timeouts.fetch_add(1, Ordering::Relaxed);
+                        match opp.direction {
+                            TradeDirection::Long => (exit_price - current_price) / current_price,
+                            TradeDirection::Short => (current_price - exit_price) / current_price,
+                        }
+                    }
+                };
+
+                trades_resolved.fetch_add(1, Ordering::Relaxed);
+                *total_pnl_pct.lock().unwrap() += pnl_pct;
+
+                let trade_id = Uuid::new_v4().to_string();
+                let trade_result = TradeResult {
+                    trade_id,
+                    pair_name: pair_name.clone(),
+                    direction: opp.direction,
+                    entry_price: current_price,
+                    exit_price,
+                    stop_price: opp.stop_price,
+                    target_price: opp.target_price,
+                    exit_reason: outcome.result,
+                    entry_time: entry_ts_ms,
+                    exit_time: exit_ts_ms,
+                    planned_expiry_time: expiry_time.timestamp_millis(),
+                    strategy: opp.strategy,
+                    station_id: opp.station_id,
+                    market_state: opp.market_state,
+                    ph_pct: opp.ph_pct,
+                };
+
+                if BACKTEST_SKIP_DB_WRITE {
+                    if let Err(e) = repo.enqueue(trade_result) {
+                        log::error!(
+                            "[backtest] DB enqueue failed for {} at candle {}: {:?}",
+                            pair_name,
+                            train_end,
+                            e
+                        );
+                    }
+                }
+            }
+        });
+
+    // Convert atomics back to regular values
+    let opportunities_generated = opportunities_generated.load(Ordering::Relaxed);
+    let wins = wins.load(Ordering::Relaxed);
+    let losses = losses.load(Ordering::Relaxed);
+    let timeouts = timeouts.load(Ordering::Relaxed);
+    let trades_resolved = trades_resolved.load(Ordering::Relaxed);
+    let total_pnl_pct = *total_pnl_pct.lock().unwrap();
+
+    let (win_rate, avg_pnl) = if trades_resolved > 0 {
+        let tr = trades_resolved as f64;
+        (Pct::new(wins as f64 / tr), Pct::new(total_pnl_pct / tr))
     } else {
-        0.0
-    };
-    let avg_pnl = if trades_resolved > 0 {
-        total_pnl_pct / trades_resolved as f64
-    } else {
-        0.0
+        (Pct::new(0.0), Pct::new(0.0))
     };
 
     let report = BacktestReport {
@@ -307,32 +260,30 @@ pub(crate) fn run_backtest(
         avg_pnl,
     };
 
-    log::info!(
+    println!(
         "[backtest] {} COMPLETE | ops_generated={} | resolved={} | \
-         wins={} | losses={} | timeouts={} | win_rate={:.1}% | avg_pnl={:.3}%",
+         wins={} | losses={} | timeouts={} | win_rate={} | avg_pnl={}",
         pair_name,
         opportunities_generated,
         trades_resolved,
         wins,
         losses,
         timeouts,
-        win_rate * 100.0,
-        avg_pnl * 100.0,
+        win_rate,
+        avg_pnl,
     );
 
-    report
+    Some(report)
 }
 
 // Resolved outcome of replaying one opportunity forward.
 struct ReplayResult {
     result: TradeOutcome,
-    // Candle index where trade exited (or last available candle).
-    exit_candle_idx: usize,
+    exit_candle_idx: usize, // Candle index where trade exited (or last available candle)
 }
 
-// Replay a [`TradeOpportunity`] forward into real OHLCV data starting at `start_idx` (the first hold-out candle), checking each candle's high/low against target and stop prices, then expiry time.
-// Mirrors the pessimistic logic of [`TradeOpportunity::check_exit_condition`]:
-// stop is checked before target on each candle.
+// Replay a [`TradeOpportunity`] forward into real OHLCV data start at `start_idx` (first hold-out candle), checking each candle's high/low against target and stop prices, then expiry time.
+// Mirrors pessimistic logic of [`TradeOpportunity::check_exit_condition`]: stop is checked before target on each candle.
 fn replay_opportunity_forward(
     ohlcv: &OhlcvTimeSeries,
     opp: &TradeOpportunity,
@@ -348,7 +299,6 @@ fn replay_opportunity_forward(
         let c = ohlcv.get_candle(idx);
         let candle_time: DateTime<Utc> = ts_ms_to_datetime(c.timestamp_ms);
 
-        // Timeout check first (same order as check_exit_condition)
         if candle_time > expiry_time {
             return ReplayResult {
                 result: TradeOutcome::Timeout,
