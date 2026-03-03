@@ -24,6 +24,11 @@ mod types;
 #[cfg(not(target_arch = "wasm32"))]
 mod binance;
 
+#[cfg(feature = "backtest")]
+mod backtest;
+#[cfg(feature = "backtest")]
+pub(crate) use backtest::BACKTEST_PAIR_COUNT;
+
 pub(crate) use {
     debug::LOG_PERFORMANCE,
     plot::PLOT_CONFIG,

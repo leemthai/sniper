@@ -47,7 +47,10 @@ use crate::ph_audit::{AUDIT_PAIRS, execute_audit};
 use crate::{config::BASE_INTERVAL, models::find_matching_ohlcv};
 
 #[cfg(feature = "backtest")]
-use crate::engine::{BacktestConfig, run_backtest};
+use crate::{
+    config::BACKTEST_PAIR_COUNT,
+    engine::{BacktestConfig, run_backtest},
+};
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
@@ -616,9 +619,20 @@ impl App {
             ..Default::default()
         };
 
-        println!("Running entire backtest with strategy={}", config.strategy);
+        let random_n_pairs: Vec<&String> = self
+            .valid_session_pairs
+            .iter()
+            .take(BACKTEST_PAIR_COUNT)
+            .collect();
+        println!(
+            "🚀 Strategy: {} | Pairs ({}/{}): {:?}",
+            config.strategy,
+            random_n_pairs.len(),
+            self.valid_session_pairs.len(),
+            random_n_pairs
+        );
 
-        for pair in &self.valid_session_pairs {
+        for pair in &random_n_pairs {
             match find_matching_ohlcv(
                 &ts_guard.series_data,
                 pair,
