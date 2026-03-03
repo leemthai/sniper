@@ -27,7 +27,10 @@ mod binance;
 #[cfg(feature = "backtest")]
 mod backtest;
 #[cfg(feature = "backtest")]
-pub(crate) use backtest::BACKTEST_PAIR_COUNT;
+pub(crate) use backtest::{
+    BACKTEST_CANDLE_STRIDE, BACKTEST_HOLDOUT_CANDLES, BACKTEST_MIN_TRAINING_CANDLES,
+    BACKTEST_PAIR_COUNT,
+};
 
 pub(crate) use {
     debug::LOG_PERFORMANCE,

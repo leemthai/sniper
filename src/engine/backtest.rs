@@ -15,7 +15,10 @@
 
 use {
     crate::{
-        config::{PhPct, Price, PriceLike, StationId},
+        config::{
+            BACKTEST_CANDLE_STRIDE, BACKTEST_HOLDOUT_CANDLES, BACKTEST_MIN_TRAINING_CANDLES, PhPct,
+            Price, PriceLike, StationId,
+        },
         data::{ResultsRepositoryTrait, TradeResult},
         engine::run_pathfinder_simulations,
         models::{
@@ -43,9 +46,9 @@ impl Default for BacktestConfig {
             ph_pct: PhPct::DEFAULT,
             station_id: StationId::default(),
             strategy: OptimizationStrategy::default(),
-            holdout_candles: 26_280,   // ~3 months of 5-min candles
-            min_training_candles: 576, // ~48 h of 5-min candles — enough for a meaningful similarity scan
-            stride: 10,
+            holdout_candles: BACKTEST_HOLDOUT_CANDLES, // ~3 months of 5-min candles
+            min_training_candles: BACKTEST_MIN_TRAINING_CANDLES,
+            stride: BACKTEST_CANDLE_STRIDE,
         }
     }
 }
