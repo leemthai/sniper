@@ -29,14 +29,13 @@ use {
     uuid::Uuid,
 };
 
-// Configuration for a single walk-forward backtest run.
 #[derive(Debug, Clone)]
 pub(crate) struct BacktestConfig {
     pub ph_pct: PhPct,
     pub station_id: StationId,
     pub strategy: OptimizationStrategy,
     pub holdout_candles: usize,
-    pub min_training_candles: usize, // Min no. of training candles required to start creating opps.
+    pub min_training_candles: usize,
     pub stride: usize,
 }
 
@@ -46,7 +45,7 @@ impl Default for BacktestConfig {
             ph_pct: PhPct::DEFAULT,
             station_id: StationId::default(),
             strategy: OptimizationStrategy::default(),
-            holdout_candles: BACKTEST_HOLDOUT_CANDLES, // ~3 months of 5-min candles
+            holdout_candles: BACKTEST_HOLDOUT_CANDLES,
             min_training_candles: BACKTEST_MIN_TRAINING_CANDLES,
             stride: BACKTEST_CANDLE_STRIDE,
         }
@@ -58,17 +57,16 @@ impl Default for BacktestConfig {
 pub(crate) struct BacktestReport {
     pub pair_name: String,
     pub config: BacktestConfig,
-    pub opportunities_generated: usize, // Count opportunities pathfinder generated during walk.
-    pub trades_resolved: usize,         // Subset that resolved before the end of hold-out window.
+    pub opportunities_generated: usize,
+    pub trades_resolved: usize,
     pub wins: usize,
     pub losses: usize,
     pub timeouts: usize,
     pub win_rate: f64,
-    pub avg_pnl: f64, // Mean PnL across resolved trades (fractional, e.g. 0.02 = +2 %).
+    pub avg_pnl: f64, // Mean PnL across resolved trades (fractional, e.g. 0.02 = +2 %) TEMP should be Pct type.
 }
 
-// Run a walk-forward backtest for one pair and persist every resolved trade to `repo`.
-// Returns a [`BacktestReport`] with aggregate statistics.
+// Run walk-forward backtest for one pair and persist every resolved trade to `repo`.
 // Non-blocking (no async) — drive from a dedicated thread.
 pub(crate) fn run_backtest(
     ohlcv: &OhlcvTimeSeries,
