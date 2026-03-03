@@ -30,12 +30,11 @@ use {
 #[derive(Debug, Clone)]
 pub(crate) struct BacktestConfig {
     pub ph_pct: PhPct,
-    // Station label stored on every result row (cosmetic — use `StationId::default()` if not tuned the pair).
     pub station_id: StationId,
     pub strategy: OptimizationStrategy,
-    pub holdout_candles: usize, // How many trailing candles to reserve as the hold-out set.
-    // Min no. of training candles required to start generating opportunities. Sensible floor is ~500 (≈ 42 h at 5 min).
-    pub min_training_candles: usize,
+    pub holdout_candles: usize,
+    pub min_training_candles: usize, // Min no. of training candles required to start creating opps.
+    pub stride: usize,
 }
 
 impl Default for BacktestConfig {
@@ -46,6 +45,7 @@ impl Default for BacktestConfig {
             strategy: OptimizationStrategy::default(),
             holdout_candles: 26_280,   // ~3 months of 5-min candles
             min_training_candles: 576, // ~48 h of 5-min candles — enough for a meaningful similarity scan
+            stride: 10,
         }
     }
 }
@@ -77,14 +77,10 @@ pub(crate) fn run_backtest(
 
     let split = total_candles.saturating_sub(config.holdout_candles);
     if split < config.min_training_candles {
-        log::warn!(
+        println!(
             "[backtest] {}: not enough training data \
              (total={}, holdout={}, split={}, min_training={}). Skipping.",
-            pair_name,
-            total_candles,
-            config.holdout_candles,
-            split,
-            config.min_training_candles,
+            pair_name, total_candles, config.holdout_candles, split, config.min_training_candles,
         );
         return BacktestReport {
             pair_name,
@@ -112,12 +108,16 @@ pub(crate) fn run_backtest(
     let mut wins: usize = 0;
     let mut losses: usize = 0;
     let mut timeouts: usize = 0;
-    let mut total_pnl: f64 = 0.0;
+    let mut total_pnl_pct: f64 = 0.0;
     let mut trades_resolved: usize = 0;
 
     // Walk forward through the hold-out window
     // Step 1 candle at a time.  In a real production environment you might step by larger strides (e.g. every `sim_duration / 4` candles) to avoid generating highly correlated opportunities.  For now, every candle is evaluated to maximise the number of data points.
-    for i in 0..config.holdout_candles {
+    for i in (0..config.holdout_candles).step_by(config.stride) {
+        println!(
+            "  Processing hold-out candle #{} out of {}",
+            i, config.holdout_candles
+        );
         let train_end = split + i; // exclusive upper bound of training window
         if train_end < config.min_training_candles {
             continue;
@@ -167,7 +167,7 @@ pub(crate) fn run_backtest(
                 ohlcv,
                 opp,
                 train_end, // first hold-out candle index
-                entry_time,
+                // entry_time,
                 expiry_time,
             );
 
@@ -193,15 +193,32 @@ pub(crate) fn run_backtest(
             };
 
             // Accumulate aggregate stats
-            let pnl = match outcome.result {
+            let pnl_pct = match outcome.result {
                 TradeOutcome::TargetHit => {
                     wins += 1;
                     match opp.direction {
                         TradeDirection::Long => {
-                            (Price::from(opp.target_price) - current_price) / current_price
+                            let pnl_pct =
+                                (Price::from(opp.target_price) - current_price) / current_price;
+                            // Panic if we somehow lost money on a Long Target Hit
+                            if pnl_pct < 0.0 {
+                                panic!(
+                                    "CRITICAL: Long TargetHit produced negative PnL: {}",
+                                    pnl_pct
+                                );
+                            }
+                            pnl_pct
                         }
                         TradeDirection::Short => {
-                            (current_price - Price::from(opp.target_price)) / current_price
+                            let pnl_pct =
+                                (current_price - Price::from(opp.target_price)) / current_price;
+                            if pnl_pct < 0.0 {
+                                panic!(
+                                    "CRITICAL: Short TargetHit produced negative PnL: {}",
+                                    pnl_pct
+                                );
+                            }
+                            pnl_pct
                         }
                     }
                 }
@@ -224,13 +241,15 @@ pub(crate) fn run_backtest(
                     }
                 }
             };
-
             trades_resolved += 1;
-            total_pnl += pnl;
+            total_pnl_pct += pnl_pct;
 
             println!(
-                "Another trade resolved for {}: now {} trades and pnl {}",
-                pair_name, trades_resolved, total_pnl
+                "  Writing resolved trade for {} to db now: {} trades, cumulative-pnl {}, avg. pnl per trade: {}",
+                pair_name,
+                trades_resolved,
+                total_pnl_pct,
+                total_pnl_pct / trades_resolved as f64,
             );
 
             // ── Write to results.sqlite
@@ -270,7 +289,7 @@ pub(crate) fn run_backtest(
         0.0
     };
     let avg_pnl = if trades_resolved > 0 {
-        total_pnl / trades_resolved as f64
+        total_pnl_pct / trades_resolved as f64
     } else {
         0.0
     };
@@ -317,7 +336,7 @@ fn replay_opportunity_forward(
     ohlcv: &OhlcvTimeSeries,
     opp: &TradeOpportunity,
     start_idx: usize,
-    entry_time: DateTime<Utc>,
+    // entry_time: DateTime<Utc>,
     expiry_time: DateTime<Utc>,
 ) -> ReplayResult {
     let total = ohlcv.klines();
@@ -373,7 +392,7 @@ fn replay_opportunity_forward(
     }
 
     // Reached the end of available data without a resolution.
-    let _ = entry_time; // suppress unused warning in case it's only used above
+    // let _ = entry_time; // suppress unused warning in case it's only used above
     ReplayResult {
         result: TradeOutcome::Timeout,
         exit_candle_idx: total.saturating_sub(1),

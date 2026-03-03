@@ -8,7 +8,7 @@ autobins = false # Disable automatic binary discovery (so need list bins explici
 # Set default bin name
 default-run = "zone-sniper"
 
-# 1. CRITICAL: Allow the library to be used by WASM *and* your Binary
+# Allow the library to be used by WASM *and* your Binary
 [lib]
 name = "zone_sniper"   # Changed from "klines" to match your code
 path = "src/lib.rs"
