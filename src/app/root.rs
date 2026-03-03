@@ -609,10 +609,10 @@ impl App {
         }
         drop(ts_guard);
 
-        println!(
-            ">> Starting walk-forward backtest for {} pairs...",
-            self.valid_session_pairs.len()
-        );
+        // println!(
+        //     ">> Starting walk-forward backtest for {} pairs...",
+        //     self.valid_session_pairs.len()
+        // );
         let ts_guard = e.timeseries.read().unwrap();
         let mut config = BacktestConfig {
             strategy: e.shared_config.get_strategy(),
@@ -625,7 +625,8 @@ impl App {
             .take(BACKTEST_PAIR_COUNT)
             .collect();
         println!(
-            "🚀 Strategy: {} | Pairs ({}/{}): {:?}",
+            "🚀 Starting walk-forward backtest for these pairs: {:?} pairs with strategy: {} | Pairs ({}/{}): {:?}",
+            random_n_pairs,
             config.strategy,
             random_n_pairs.len(),
             self.valid_session_pairs.len(),
@@ -674,7 +675,7 @@ impl App {
             }
         }
         println!(">> Backtest complete.");
-        std::process::exit(0); // Exit app at end of backtest (we never get there of course coz so slow)
+        std::process::exit(0);
     }
 }
 
