@@ -1,4 +1,4 @@
-// Walk-forward backtester (`feature = "backtest"`).
+// Walk-forward backtester (feature = backtest).
 // Reserves `holdout_candles` and iteratively expands the training window `[0..split+i)`.
 // 1. Truncates history to prevent look-ahead.
 // 2. Runs simulations on the snapshot.
@@ -16,8 +16,9 @@ use {
         models::{
             OhlcvTimeSeries, OptimizationStrategy, TradeDirection, TradeOpportunity, TradeOutcome,
         },
+        utils::TimeUtils,
     },
-    chrono::{DateTime, TimeZone, Utc},
+    chrono::{DateTime, Utc},
     rayon::prelude::*,
     std::sync::{
         Mutex,
@@ -82,11 +83,11 @@ pub(crate) fn run_backtest(
     }
 
     println!(
-        "[backtest] {} with {} Rayon threads made available | strategy={:?} | ph_pct={:.3} | split={} | holdout={} candles",
+        "[backtest] {} with {} Rayon threads made available | strategy={:?} | ph_pct={} | split={} | holdout={} candles",
         pair_name,
         rayon::current_num_threads(),
         config.strategy,
-        config.ph_pct.value(),
+        config.ph_pct,
         split,
         config.holdout_candles,
     );
@@ -136,7 +137,7 @@ pub(crate) fn run_backtest(
 
             for opp in &pf_result.opportunities {
                 let entry_ts_ms = ohlcv.timestamps[current_idx];
-                let entry_time: DateTime<Utc> = ts_ms_to_datetime(entry_ts_ms);
+                let entry_time: DateTime<Utc> = TimeUtils::ms_to_datetime(entry_ts_ms);
                 let max_duration = opp.max_duration;
                 let expiry_time = entry_time
                     + chrono::Duration::from_std(std::time::Duration::from_millis(
@@ -288,7 +289,6 @@ fn replay_opportunity_forward(
     ohlcv: &OhlcvTimeSeries,
     opp: &TradeOpportunity,
     start_idx: usize,
-    // entry_time: DateTime<Utc>,
     expiry_time: DateTime<Utc>,
 ) -> ReplayResult {
     let total = ohlcv.klines();
@@ -297,7 +297,7 @@ fn replay_opportunity_forward(
 
     for idx in start_idx..total {
         let c = ohlcv.get_candle(idx);
-        let candle_time: DateTime<Utc> = ts_ms_to_datetime(c.timestamp_ms);
+        let candle_time: DateTime<Utc> = TimeUtils::ms_to_datetime(c.timestamp_ms);
 
         if candle_time > expiry_time {
             return ReplayResult {
@@ -351,7 +351,6 @@ fn replay_opportunity_forward(
 }
 
 // Create a truncated clone of `ohlcv` containing only `[0, end_idx)`.
-// This is intentionally a full clone rather than zero-copy view because `OhlcvTimeSeries` is owned and pathfinder takes `&OhlcvTimeSeries`.
 // The clone is bounded by `end_idx` which is at most a few thousand candles larger than training window — acceptable for offline tool.
 fn truncate_ohlcv(ohlcv: &OhlcvTimeSeries, end_idx: usize) -> OhlcvTimeSeries {
     let n = end_idx.min(ohlcv.klines());
@@ -367,11 +366,4 @@ fn truncate_ohlcv(ohlcv: &OhlcvTimeSeries, end_idx: usize) -> OhlcvTimeSeries {
         quote_asset_volumes: ohlcv.quote_asset_volumes[..n].to_vec(),
         relative_volumes: ohlcv.relative_volumes[..n].to_vec(),
     }
-}
-
-// Convert a Unix-millisecond timestamp to a `DateTime<Utc>`.
-fn ts_ms_to_datetime(ts_ms: i64) -> DateTime<Utc> {
-    Utc.timestamp_millis_opt(ts_ms)
-        .single()
-        .unwrap_or(DateTime::<Utc>::from(std::time::UNIX_EPOCH))
 }

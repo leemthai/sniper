@@ -111,8 +111,8 @@ impl<'a> CandleRangePanel<'a> {
                                 ui.end_row();
                             }
 
-                            let start_date = TimeUtils::epoch_ms_to_date_string(seg.start_ts);
-                            let end_date = TimeUtils::epoch_ms_to_date_string(seg.end_ts);
+                            let start_date = TimeUtils::ms_to_datestring(seg.start_ts);
+                            let end_date = TimeUtils::ms_to_datestring(seg.end_ts);
 
                             let label_text =
                                 format!("{} - {} ({}c)", start_date, end_date, seg.candle_count);

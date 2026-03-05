@@ -109,7 +109,7 @@ fn create_time_axis(model: &TradingModel, resolution: CandleResolution) -> AxisH
                 if visual_x >= current_visual_start && visual_x < current_visual_end {
                     let local_offset = (visual_x - current_visual_start).floor() as i64;
                     let bucket_ts = (start_bucket + local_offset) * agg_interval_ms;
-                    return TimeUtils::epoch_ms_to_date_string(bucket_ts);
+                    return TimeUtils::ms_to_datestring(bucket_ts);
                 }
                 current_visual_start = current_visual_end + gap_width;
                 if visual_x < current_visual_start {

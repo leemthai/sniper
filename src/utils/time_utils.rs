@@ -1,5 +1,5 @@
 use {
-    chrono::{DateTime, Utc},
+    chrono::{DateTime, TimeZone, Utc},
     std::time::Duration,
 };
 
@@ -70,11 +70,17 @@ impl TimeUtils {
         (duration.as_millis() as i64 / interval_ms) as usize
     }
 
-    /// Format as "YYYY-MM-DD"
-    pub fn epoch_ms_to_date_string(epoch_ms: i64) -> String {
-        let secs = epoch_ms / 1000;
-        let dt = DateTime::from_timestamp(secs, 0).unwrap_or_default();
-        format!("{}", dt.format("%Y-%m-%d"))
+    /// raw epoch milliseconds -> formatted "YYYY-MM-DD" string
+    pub fn ms_to_datestring(ms: i64) -> String {
+        Self::ms_to_datetime(ms).format("%Y-%m-%d").to_string()
+    }
+
+    /// raw epoch milliseconds -> UTC DateTime (NOT local)
+    pub(crate) fn ms_to_datetime(ms: i64) -> DateTime<Utc> {
+        match Utc.timestamp_millis_opt(ms).single() {
+            Some(dt) => dt,
+            None => panic!("Timestamp {} is out of range for DateTime<Utc>", ms),
+        }
     }
 
     pub fn format_duration(ms: i64) -> String {
