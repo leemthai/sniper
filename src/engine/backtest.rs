@@ -68,6 +68,7 @@ pub(crate) fn run_backtest(
     ohlcv: &OhlcvTimeSeries,
     config: &BacktestConfig,
     repo: &dyn ResultsRepositoryTrait,
+    run_id: i64,
 ) -> Option<BacktestReport> {
     let pair_name = ohlcv.pair_interval.name.clone();
     let total_candles = ohlcv.klines();
@@ -219,6 +220,8 @@ pub(crate) fn run_backtest(
                     station_id: opp.station_id,
                     market_state: opp.market_state,
                     ph_pct: opp.ph_pct,
+                    run_id,
+                    predicted_win_rate: None,
                 };
 
                 if BACKTEST_SKIP_DB_WRITE {

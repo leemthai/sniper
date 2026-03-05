@@ -33,12 +33,22 @@ pub(crate) struct TradeResult {
     pub station_id: StationId,
     pub market_state: MarketState,
     pub ph_pct: PhPct,
+    pub run_id: i64,
+    pub predicted_win_rate: Option<f64>,
 }
 
 #[async_trait]
 pub(crate) trait ResultsRepositoryTrait: Send + Sync {
     async fn initialize(&self) -> Result<()>;
     fn enqueue(&self, trade: TradeResult) -> Result<()>;
+    async fn create_run(
+        &self,
+        model_version: &str,
+        parameters: &str,
+        token_set: &str,
+        run_type: &str,
+        description: &str,
+    ) -> Result<i64>;
 }
 
 pub struct SqliteResultsRepository {
@@ -87,6 +97,35 @@ impl SqliteResultsRepository {
 #[async_trait]
 impl ResultsRepositoryTrait for SqliteResultsRepository {
     async fn initialize(&self) -> Result<()> {
+        // --- runs table ---
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS runs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                model_version TEXT NOT NULL,
+                parameters    TEXT NOT NULL,
+                token_set     TEXT NOT NULL,
+                run_type      TEXT NOT NULL,
+                description   TEXT NOT NULL,
+                created_at    INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Sentinel row: run_id = 0 reserved for live (LR) trades.
+        // INSERT OR IGNORE so re-runs are idempotent.
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO runs (id, model_version, parameters, token_set, run_type, description, created_at)
+            VALUES (0, 'live', '{}', 'live', 'live', 'Live trade results', 0);
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // --- trades table ---
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS trades (
@@ -105,19 +144,75 @@ impl ResultsRepositoryTrait for SqliteResultsRepository {
                 strategy              TEXT NOT NULL,
                 station_id            TEXT NOT NULL,
                 market_state          TEXT NOT NULL,
-                ph_pct                REAL NOT NULL
+                ph_pct                REAL NOT NULL,
+                run_id                INTEGER NOT NULL DEFAULT 0 REFERENCES runs(id),
+                predicted_win_rate    REAL
             );
             "#,
         )
         .execute(&self.pool)
         .await?;
 
+        // Migrations: add new columns to an existing DB that predates this schema.
+        for (col, ddl) in &[
+            (
+                "run_id",
+                "ALTER TABLE trades ADD COLUMN run_id INTEGER NOT NULL DEFAULT 0 REFERENCES runs(id)",
+            ),
+            (
+                "predicted_win_rate",
+                "ALTER TABLE trades ADD COLUMN predicted_win_rate REAL",
+            ),
+        ] {
+            let exists: bool = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM pragma_table_info('trades') WHERE name = ?1",
+            )
+            .bind(col)
+            .fetch_one(&self.pool)
+            .await
+            .map(|n| n > 0)
+            .unwrap_or(false);
+
+            if !exists {
+                sqlx::query(ddl).execute(&self.pool).await?;
+            }
+        }
+
         Ok(())
     }
+
     fn enqueue(&self, trade: TradeResult) -> Result<()> {
         self.sender
             .send(trade)
             .map_err(|e| anyhow!("Channel send failed: {:?}", e))
+    }
+
+    async fn create_run(
+        &self,
+        model_version: &str,
+        parameters: &str,
+        token_set: &str,
+        run_type: &str,
+        description: &str,
+    ) -> Result<i64> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let row_id = sqlx::query_scalar::<_, i64>(
+            r#"
+            INSERT INTO runs (model_version, parameters, token_set, run_type, description, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            RETURNING id;
+            "#,
+        )
+        .bind(model_version)
+        .bind(parameters)
+        .bind(token_set)
+        .bind(run_type)
+        .bind(description)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row_id)
     }
 }
 
@@ -127,7 +222,7 @@ async fn insert_trade(pool: &SqlitePool, result: TradeResult) -> Result<()> {
         log::info!(
             "RESULTS DB WRITE | id={} | pair={} | dir={:?} | entry={} | exit={} | stop={} \
             | target={} | entry_time={} | exit_time={} | expiry_time={} | reason={:?} | strategy={:?} \
-            | station={:?} | market={:?} | ph_pct={}",
+            | station={:?} | market={:?} | ph_pct={} | run_id={} | predicted_win_rate={:?}",
             result.trade_id,
             result.pair_name,
             result.direction,
@@ -143,6 +238,8 @@ async fn insert_trade(pool: &SqlitePool, result: TradeResult) -> Result<()> {
             result.station_id,
             result.market_state,
             result.ph_pct,
+            result.run_id,
+            result.predicted_win_rate,
         );
     }
 
@@ -165,9 +262,11 @@ async fn insert_trade(pool: &SqlitePool, result: TradeResult) -> Result<()> {
             strategy,
             station_id,
             market_state,
-            ph_pct
+            ph_pct,
+            run_id,
+            predicted_win_rate
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15);
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17);
         "#,
     )
     .bind(&result.trade_id)
@@ -185,6 +284,8 @@ async fn insert_trade(pool: &SqlitePool, result: TradeResult) -> Result<()> {
     .bind(format!("{:?}", result.station_id))
     .bind(format!("{:?}", result.market_state))
     .bind(result.ph_pct.value())
+    .bind(result.run_id)
+    .bind(result.predicted_win_rate)
     .execute(&mut *tx)
     .await?;
 

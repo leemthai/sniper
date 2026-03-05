@@ -623,10 +623,31 @@ impl App {
             .iter()
             .take(BACKTEST_PAIR_COUNT)
             .collect();
+
+        let token_set = random_n_pairs
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        let run_id = Runtime::new()
+            .expect("Failed to create runtime for create_run")
+            .block_on(e.results_repo.create_run(
+                "mark-ii",
+                &format!("strategy={:?}", config.strategy),
+                &token_set,
+                "backtest",
+                "Walk-forward backtest run",
+            ))
+            .unwrap_or_else(|err| {
+                log::error!("Failed to create run row: {:?}", err);
+                0
+            });
+
         println!(
-            "🚀 Starting walk-forward backtest for these pairs: {:?} pairs with strategy: {} | Pairs ({}/{}): {:?}",
+            "🚀 Starting walk-forward backtest for these pairs: {:?} pairs with strategy: {} | run_id={} | Pairs ({}/{}): {:?}",
             random_n_pairs,
             config.strategy,
+            run_id,
             random_n_pairs.len(),
             self.valid_session_pairs.len(),
             random_n_pairs
@@ -658,7 +679,9 @@ impl App {
                         ohlcv.klines()
                     );
 
-                    if let Some(report) = run_backtest(ohlcv, &config, e.results_repo.as_ref()) {
+                    if let Some(report) =
+                        run_backtest(ohlcv, &config, e.results_repo.as_ref(), run_id)
+                    {
                         println!(
                             "   {} | resolved={} wins={} losses={} timeouts={} win_rate={} avg_pnl={}, op count={} with config={:?}",
                             report.pair_name,

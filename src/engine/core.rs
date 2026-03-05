@@ -647,6 +647,8 @@ impl SniperEngine {
                         station_id: op.station_id,
                         market_state: op.market_state,
                         ph_pct: op.ph_pct,
+                        run_id: 0,
+                        predicted_win_rate: None,
                     };
 
                     dead_trades.push(result);
