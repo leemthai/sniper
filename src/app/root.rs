@@ -48,7 +48,9 @@ use crate::{config::BASE_INTERVAL, models::find_matching_ohlcv};
 
 #[cfg(feature = "backtest")]
 use crate::{
-    config::{BACKTEST_PAIR_COUNT, BACKTEST_SKIP_DB_WRITE},
+    config::{
+        BACKTEST_MODEL_DESC, BACKTEST_MODEL_VERSION, BACKTEST_PAIR_COUNT, BACKTEST_SKIP_DB_WRITE,
+    },
     engine::{BacktestConfig, run_backtest},
 };
 
@@ -632,11 +634,11 @@ impl App {
         let run_id = Runtime::new()
             .expect("Failed to create runtime for create_run")
             .block_on(e.results_repo.create_run(
-                "mark-ii",
+                BACKTEST_MODEL_VERSION,
                 &format!("strategy={:?}", config.strategy),
                 &token_set,
                 "backtest",
-                "Walk-forward backtest run",
+                BACKTEST_MODEL_DESC,
             ))
             .unwrap_or_else(|err| {
                 log::error!("Failed to create run row: {:?}", err);

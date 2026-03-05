@@ -10,8 +10,11 @@ use {
         SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
     },
     std::{str::FromStr, thread, time::Duration},
-    tokio::sync::mpsc,
+    tokio::{runtime::Builder, sync::mpsc},
 };
+
+#[cfg(feature = "backtest")]
+use chrono::Utc;
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
@@ -41,6 +44,7 @@ pub(crate) struct TradeResult {
 pub(crate) trait ResultsRepositoryTrait: Send + Sync {
     async fn initialize(&self) -> Result<()>;
     fn enqueue(&self, trade: TradeResult) -> Result<()>;
+    #[cfg(feature = "backtest")]
     async fn create_run(
         &self,
         model_version: &str,
@@ -73,7 +77,7 @@ impl SqliteResultsRepository {
         let pool_clone = pool.clone();
 
         thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
+            let rt = Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("DB writer runtime");
@@ -97,7 +101,6 @@ impl SqliteResultsRepository {
 #[async_trait]
 impl ResultsRepositoryTrait for SqliteResultsRepository {
     async fn initialize(&self) -> Result<()> {
-        // --- runs table ---
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS runs (
@@ -125,7 +128,6 @@ impl ResultsRepositoryTrait for SqliteResultsRepository {
         .execute(&self.pool)
         .await?;
 
-        // --- trades table ---
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS trades (
@@ -153,30 +155,30 @@ impl ResultsRepositoryTrait for SqliteResultsRepository {
         .execute(&self.pool)
         .await?;
 
-        // Migrations: add new columns to an existing DB that predates this schema.
-        for (col, ddl) in &[
-            (
-                "run_id",
-                "ALTER TABLE trades ADD COLUMN run_id INTEGER NOT NULL DEFAULT 0 REFERENCES runs(id)",
-            ),
-            (
-                "predicted_win_rate",
-                "ALTER TABLE trades ADD COLUMN predicted_win_rate REAL",
-            ),
-        ] {
-            let exists: bool = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM pragma_table_info('trades') WHERE name = ?1",
-            )
-            .bind(col)
-            .fetch_one(&self.pool)
-            .await
-            .map(|n| n > 0)
-            .unwrap_or(false);
+        // // Migrations: add new columns to an existing DB that predates this schema.
+        // for (col, ddl) in &[
+        //     (
+        //         "run_id",
+        //         "ALTER TABLE trades ADD COLUMN run_id INTEGER NOT NULL DEFAULT 0 REFERENCES runs(id)",
+        //     ),
+        //     (
+        //         "predicted_win_rate",
+        //         "ALTER TABLE trades ADD COLUMN predicted_win_rate REAL",
+        //     ),
+        // ] {
+        //     let exists: bool = sqlx::query_scalar::<_, i64>(
+        //         "SELECT COUNT(*) FROM pragma_table_info('trades') WHERE name = ?1",
+        //     )
+        //     .bind(col)
+        //     .fetch_one(&self.pool)
+        //     .await
+        //     .map(|n| n > 0)
+        //     .unwrap_or(false);
 
-            if !exists {
-                sqlx::query(ddl).execute(&self.pool).await?;
-            }
-        }
+        //     if !exists {
+        //         sqlx::query(ddl).execute(&self.pool).await?;
+        //     }
+        // }
 
         Ok(())
     }
@@ -187,6 +189,7 @@ impl ResultsRepositoryTrait for SqliteResultsRepository {
             .map_err(|e| anyhow!("Channel send failed: {:?}", e))
     }
 
+    #[cfg(feature = "backtest")]
     async fn create_run(
         &self,
         model_version: &str,
@@ -195,7 +198,7 @@ impl ResultsRepositoryTrait for SqliteResultsRepository {
         run_type: &str,
         description: &str,
     ) -> Result<i64> {
-        let now = chrono::Utc::now().timestamp_millis();
+        let now = Utc::now().timestamp_millis();
         let row_id = sqlx::query_scalar::<_, i64>(
             r#"
             INSERT INTO runs (model_version, parameters, token_set, run_type, description, created_at)

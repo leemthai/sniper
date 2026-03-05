@@ -224,7 +224,7 @@ pub(crate) fn run_backtest(
                     predicted_win_rate: None,
                 };
 
-                if BACKTEST_SKIP_DB_WRITE {
+                if !BACKTEST_SKIP_DB_WRITE {
                     if let Err(e) = repo.enqueue(trade_result) {
                         log::error!(
                             "[backtest] DB enqueue failed for {} at candle {}: {:?}",
