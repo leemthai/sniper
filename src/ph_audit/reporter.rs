@@ -1,4 +1,4 @@
-use {crate::config::PhPct, chrono::Local};
+use {crate::app::PhPct, chrono::Local};
 
 pub struct AuditReporter {
     buffer: Vec<String>,

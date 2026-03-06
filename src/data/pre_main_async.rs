@@ -1,3 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
+pub const BINANCE_PAIRS_FILENAME: &str = "pairs.txt";
+
 use {
     crate::{Cli, app::ProgressEvent, data::TimeSeriesCollection},
     std::sync::mpsc::Sender,
@@ -8,8 +11,7 @@ use {crate::config::DEMO, crate::data::WasmDemoData};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::app::SyncStatus,
-    crate::config::BASE_INTERVAL,
+    crate::app::{BASE_INTERVAL, SyncStatus},
     crate::data::{
         BINANCE_API, BINANCE_MAX_PAIRS, BinanceProvider, GlobalRateLimiter, MarketDataProvider,
         MarketDataStorage, SqliteStorage,
@@ -21,9 +23,6 @@ use {
     futures::stream::{self, StreamExt},
     std::{fs, sync::Arc},
 };
-
-#[cfg(not(target_arch = "wasm32"))]
-pub const BINANCE_PAIRS_FILENAME: &str = "pairs.txt";
 
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;

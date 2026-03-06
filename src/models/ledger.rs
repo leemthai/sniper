@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::{Pct, PriceLike},
+        app::{Pct, PriceLike},
         models::TradeOpportunity,
     },
     serde::{Deserialize, Serialize},
@@ -188,8 +188,8 @@ impl OpportunityLedger {
                 #[cfg(debug_assertions)]
                 TradeOpportunity::assert_comparable_to(a, b);
 
-                let score_a = a.calculate_quality_score();
-                let score_b = b.calculate_quality_score();
+                let score_a = a.calc_quality_score();
+                let score_b = b.calc_quality_score();
                 let (_winner, loser) = if score_a >= score_b { (a, b) } else { (b, a) };
 
                 #[cfg(debug_assertions)]

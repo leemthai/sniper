@@ -714,7 +714,6 @@ pub(crate) struct SimilaritySettings {
     pub weight_volatility: Weight,
     pub weight_momentum: Weight,
     pub weight_volume: Weight,
-    // pub cutoff_score: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -730,7 +729,7 @@ pub(crate) struct TradeProfile {
 }
 
 impl TradeProfile {
-    pub(crate) fn calculate_annualized_roi(roi: RoiPct, duration: DurationMs) -> AroiPct {
+    pub(crate) fn calc_annualized_roi(roi: RoiPct, duration: DurationMs) -> AroiPct {
         let years = duration.to_years();
         if years <= 0.0000001 {
             return AroiPct::new(0.0);
@@ -762,7 +761,7 @@ pub(crate) struct OptimalSearchSettings {
 pub(crate) struct JourneySettings {
     pub sample_count: usize,
     pub risk_reward_tests: &'static [f64],
-    pub min_journey_duration: Duration,
+    pub min_journey_time: Duration,
     pub max_journey_time: Duration,
     pub profile: TradeProfile,
     pub optimization: OptimalSearchSettings,

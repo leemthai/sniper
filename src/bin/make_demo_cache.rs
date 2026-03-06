@@ -1,3 +1,7 @@
+// Limit demo data to keep WASM binary small (Github limit < 100MB)
+#[cfg(not(target_arch = "wasm32"))]
+const DEMO_CANDLE_LIMIT: usize = 50_000;
+
 #[cfg(not(target_arch = "wasm32"))]
 use {
     anyhow::{Context, Result, anyhow},
@@ -14,10 +18,6 @@ use {
         TimeUtils,
     },
 };
-
-// Limit demo data to keep WASM binary small (Github limit < 100MB)
-#[cfg(not(target_arch = "wasm32"))]
-const DEMO_CANDLE_LIMIT: usize = 50_000;
 
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]

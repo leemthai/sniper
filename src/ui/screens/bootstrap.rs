@@ -1,7 +1,6 @@
 use {
     crate::{
-        app::{BootstrapState, SyncStatus},
-        config::BASE_INTERVAL,
+        app::{BASE_INTERVAL, BootstrapState, SyncStatus},
         ui::{PLOT_CONFIG, UI_TEXT},
         utils::TimeUtils,
     },

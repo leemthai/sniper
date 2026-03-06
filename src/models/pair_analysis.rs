@@ -1,17 +1,15 @@
+const ZONE_COUNT: usize = 256;
+const TIME_DECAY_FACTOR: f64 = 1.5;
+
 use {
     crate::{
-        config::{BASE_INTERVAL, PhPct, Price},
+        app::{BASE_INTERVAL, PhPct, Price},
         data::TimeSeriesCollection,
         domain::auto_select_ranges,
         models::{CVACore, MIN_CANDLES_FOR_ANALYSIS, TimeSeriesSlice, find_matching_ohlcv},
     },
     anyhow::{Context, Result, bail},
 };
-
-/// Number of price zones for analysis
-const ZONE_COUNT: usize = 256;
-/// Time decay factor for historical data weighting
-const TIME_DECAY_FACTOR: f64 = 1.5;
 
 /// Calculates CVA for a pair given price and configuration.
 /// Runs isolated from UI state.

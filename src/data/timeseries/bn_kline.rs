@@ -13,7 +13,7 @@ use {
 };
 
 pub(crate) use crate::{
-    config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol},
+    app::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol},
     data::{BINANCE_API, BinanceApiConfig, GlobalRateLimiter},
     domain::{Candle, PairInterval},
     utils::TimeUtils,

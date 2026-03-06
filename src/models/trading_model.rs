@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::{Price, ZoneClassificationConfig, ZoneParams},
+        app::{Price, ZoneClassificationConfig, ZoneParams},
         models::{
             CVACore, DEFAULT_ZONE_CONFIG, DisplaySegment, OhlcvTimeSeries, RangeGapFinder,
             SEGMENT_MERGE_TOLERANCE_MS, ScoreType, TradeOpportunity,

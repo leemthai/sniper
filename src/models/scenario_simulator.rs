@@ -1,8 +1,16 @@
+const WEIGHT_VOLATILITY: Weight = Weight::new(10.0);
+const WEIGHT_MOMENTUM: Weight = Weight::new(5.0);
+const WEIGHT_VOLUME: Weight = Weight::new(1.0);
+
+pub(crate) const DEFAULT_SIMILARITY: SimilaritySettings = SimilaritySettings {
+    weight_volatility: WEIGHT_VOLATILITY,
+    weight_momentum: WEIGHT_MOMENTUM,
+    weight_volume: WEIGHT_VOLUME,
+};
+
 use {
     crate::{
-        config::{
-            Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice, Weight,
-        },
+        app::{Price, PriceLike, Prob, RoiPct, SimilaritySettings, StopPrice, TargetPrice, Weight},
         models::{MarketState, OhlcvTimeSeries, TradeDirection},
     },
     serde::{Deserialize, Serialize},
@@ -15,17 +23,6 @@ use crate::{
     utils::AppInstant,
 };
 
-const WEIGHT_VOLATILITY: Weight = Weight::new(10.0);
-const WEIGHT_MOMENTUM: Weight = Weight::new(5.0);
-const WEIGHT_VOLUME: Weight = Weight::new(1.0);
-
-pub(crate) const DEFAULT_SIMILARITY: SimilaritySettings = SimilaritySettings {
-    weight_volatility: WEIGHT_VOLATILITY,
-    weight_momentum: WEIGHT_MOMENTUM,
-    weight_volume: WEIGHT_VOLUME,
-};
-
-/// Structure of Arrays (SoA) layout for AVX-512 processing.
 /// Instead of [State, State, State], we have [All_Vols], [All_Moms], [All_Rels].
 pub(crate) struct SimdHistory {
     pub indices: Vec<usize>, // Candle index
@@ -53,7 +50,7 @@ impl SimdHistory {
     }
 }
 
-fn calculate_scores_scalar(
+fn calc_scores_scalar(
     history: &SimdHistory,
     current: &MarketState,
     weights: &SimilaritySettings,
@@ -78,7 +75,7 @@ fn calculate_scores_scalar(
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
-unsafe fn calculate_scores_avx512(
+unsafe fn calc_scores_avx512(
     history: &SimdHistory,
     current: &MarketState,
     weights: &SimilaritySettings,
@@ -335,16 +332,15 @@ impl ScenarioSimulator {
 
         #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
         if is_x86_feature_detected!("avx512f") {
-            raw_scores = unsafe {
-                calculate_scores_avx512(&simd_history, &current_market_state, sim_config)
-            };
+            raw_scores =
+                unsafe { calc_scores_avx512(&simd_history, &current_market_state, sim_config) };
         } else {
-            raw_scores = calculate_scores_scalar(&simd_history, &current_market_state, sim_config);
+            raw_scores = calc_scores_scalar(&simd_history, &current_market_state, sim_config);
         }
 
         #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
         {
-            raw_scores = calculate_scores_scalar(&simd_history, &current_market_state, sim_config);
+            raw_scores = calc_scores_scalar(&simd_history, &current_market_state, sim_config);
         }
 
         #[cfg(debug_assertions)]

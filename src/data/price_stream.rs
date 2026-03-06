@@ -1,9 +1,18 @@
-use crate::config::{Pct, Price};
+#[cfg(target_arch = "wasm32")]
+const DEMO_PRICES_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    crate::kline_data_dir!(),
+    "/",
+    crate::demo_prices_file!()
+));
+
+use crate::app::{Pct, Price};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
     crate::{
-        config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol},
+        app::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol},
         models::LiveCandle,
     },
     std::{error, sync::mpsc::Sender, thread, time::Duration},
@@ -14,7 +23,7 @@ use {
 #[cfg(not(target_arch = "wasm32"))]
 use {
     crate::{
-        config::BASE_INTERVAL,
+        app::BASE_INTERVAL,
         data::{BINANCE_API, BinanceApiConfig},
         utils::TimeUtils,
     },
@@ -38,15 +47,6 @@ use {serde_json, std::collections::HashMap};
 
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
-
-#[cfg(target_arch = "wasm32")]
-const DEMO_PRICES_JSON: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/",
-    crate::kline_data_dir!(),
-    "/",
-    crate::demo_prices_file!()
-));
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -1,12 +1,12 @@
-use {
-    crate::utils::TimeUtils,
-    serde::{Deserialize, Serialize},
-};
-
 const BINANCE_QUOTE_ASSETS: &[&str] = &[
     "USDT", "USDC", "FDUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "JPY", "BRL", "USD", "USD1", "COP",
     "BRL", "ARS", "MXN",
 ];
+
+use {
+    crate::utils::TimeUtils,
+    serde::{Deserialize, Serialize},
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct PairInterval {

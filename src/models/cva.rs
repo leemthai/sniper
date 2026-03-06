@@ -1,15 +1,15 @@
+pub(crate) const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
+pub(crate) const MIN_CANDLES_FOR_ANALYSIS: usize = 250;
+pub(crate) const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
+
 use {
     crate::{
-        config::{HighPrice, LowPrice, PhPct, Price, PriceRange, VolatilityPct},
+        app::{HighPrice, LowPrice, PhPct, Price, PriceRange, VolatilityPct},
         utils::TimeUtils,
     },
     serde::{Deserialize, Serialize},
     std::fmt,
 };
-
-pub(crate) const PRICE_RECALC_THRESHOLD_PCT: PhPct = PhPct::new(0.01);
-pub(crate) const MIN_CANDLES_FOR_ANALYSIS: usize = 250;
-pub(crate) const SEGMENT_MERGE_TOLERANCE_MS: i64 = TimeUtils::MS_IN_D;
 
 /// Lean CVA results containing only actively used metrics.
 /// Memory footprint: ~3.2KB per 100 zones vs 14.4KB with full CVAResults.

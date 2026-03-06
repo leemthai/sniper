@@ -16,7 +16,8 @@ mod ui;
 mod utils;
 
 pub use {
-    config::{BASE_INTERVAL, DEMO, PERSISTENCE, Price, PriceLike, kline_cache_filename},
+    app::{BASE_INTERVAL, Price, PriceLike},
+    config::{DEMO, PERSISTENCE, kline_cache_filename},
     data::{CacheFile, PriceStreamManager, TimeSeriesCollection},
     domain::PairInterval,
     models::OhlcvTimeSeries,

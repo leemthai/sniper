@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::{
+        app::{
             BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike, QuoteVol,
             VolRatio, VolatilityPct,
         },
@@ -76,7 +76,7 @@ impl OhlcvTimeSeries {
             self.base_asset_volumes[last_idx] = candle.volume;
             self.quote_asset_volumes[last_idx] = candle.quote_vol;
 
-            let rvol = self.calculate_rvol_at_index(last_idx);
+            let rvol = self.calc_rvol_at_index(last_idx);
             if last_idx < self.relative_volumes.len() {
                 self.relative_volumes[last_idx] = rvol;
             } else {
@@ -92,12 +92,12 @@ impl OhlcvTimeSeries {
             self.quote_asset_volumes.push(candle.quote_vol);
 
             let new_idx = self.timestamps.len() - 1;
-            let rvol = self.calculate_rvol_at_index(new_idx);
+            let rvol = self.calc_rvol_at_index(new_idx);
             self.relative_volumes.push(rvol);
         }
     }
 
-    fn calculate_rvol_at_index(&self, idx: usize) -> VolRatio {
+    fn calc_rvol_at_index(&self, idx: usize) -> VolRatio {
         let start = idx.saturating_sub(RVOL_WINDOW - 1);
         let slice = &self.base_asset_volumes[start..=idx];
         let sum: f64 = slice.iter().map(|v| v.value()).sum();
@@ -174,9 +174,9 @@ impl OhlcvTimeSeries {
         }
     }
 
-    /// Calculates average volatility ((High-Low)/Close) over range.
+    /// Calc average volatility ((High-Low)/Close) over range.
     /// Returns 0 if range is invalid or empty.
-    pub(crate) fn calculate_volatility_in_range(
+    pub(crate) fn calc_volatility_in_range(
         &self,
         start_idx: usize,
         end_idx: usize,

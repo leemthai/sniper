@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::{BASE_INTERVAL, Price, PriceLike},
+        app::{BASE_INTERVAL, Price, PriceLike},
         engine::SniperEngine,
         models::find_matching_ohlcv,
         utils::{AppInstant, TimeUtils},
@@ -217,7 +217,7 @@ impl TickerState {
                         Color32::GOLD
                     }
                 } else {
-                    let pct = self.calculate_pct(item);
+                    let pct = self.calc_pct(item);
                     if pct > TICKER.min_change_pct_for_color {
                         TICKER.text_color_up
                     } else if pct < -TICKER.min_change_pct_for_color {
@@ -277,7 +277,7 @@ impl TickerState {
             return item.symbol.clone();
         }
         let price_str = format!("{}", item.price);
-        let pct = self.calculate_pct(item);
+        let pct = self.calc_pct(item);
         let abs_change = item.change.abs();
         let precision = if abs_change < 0.0001 {
             6
@@ -314,7 +314,7 @@ impl TickerState {
         )
     }
 
-    fn calculate_pct(&self, item: &TickerItem) -> f64 {
+    fn calc_pct(&self, item: &TickerItem) -> f64 {
         let price_p: Price = item.price;
         let old_price = price_p.value() - item.change;
 

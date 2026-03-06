@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, PriceLike, QuoteVol},
+        app::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, PriceLike, QuoteVol},
         domain::Candle,
     },
     anyhow::Result,

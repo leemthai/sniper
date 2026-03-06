@@ -1,5 +1,5 @@
 use crate::{
-    config::{HighPrice, LowPrice, Price},
+    app::{HighPrice, LowPrice, Price},
     models::OhlcvTimeSeries,
     utils::TimeUtils,
 };

@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::{CandleResolution, Price, PriceLike},
+        app::{CandleResolution, Price, PriceLike},
         engine::SniperEngine,
         models::{
             CVACore, DisplaySegment, ScoreType, TradeOpportunity, TradingModel, find_matching_ohlcv,
@@ -73,7 +73,7 @@ pub(crate) struct PlotView {
     cache: Option<PlotCache>,
 }
 
-fn calculate_adaptive_step(range: f64, target_count: f64) -> f64 {
+fn calc_adaptive_step(range: f64, target_count: f64) -> f64 {
     let raw_step = range / target_count.max(1.0);
     let mag = 10.0_f64.powi(raw_step.log10().floor() as i32);
     let normalized = raw_step / mag;
@@ -155,11 +155,11 @@ impl PlotView {
         .expect(&UI_TEXT.plot_missing_klines);
 
         let (view_min, view_max, total_visual_width) =
-            self.calculate_view_bounds(trading_model, current_segment_idx, resolution);
+            self.calc_view_bounds(trading_model, current_segment_idx, resolution);
 
         // Y-Axis: CONDITIONAL LOCK. Do BEFORE plot so grid spacer knows real visual range
-        let y_bounds_range = self.calculate_y_bounds(cva_results, current_pair_price);
-        let cache = self.calculate_plot_data(cva_results, background_score_type);
+        let y_bounds_range = self.calc_y_bounds(cva_results, current_pair_price);
+        let cache = self.calc_plot_data(cva_results, background_score_type);
         let (ph_min, ph_max) = cva_results.price_range.min_max();
         let time_axis = create_time_axis(trading_model, resolution);
         let price_axis = create_y_axis(&cva_results.pair_name);
@@ -260,7 +260,7 @@ impl PlotView {
         PlotInteraction::None
     }
 
-    fn calculate_view_bounds(
+    fn calc_view_bounds(
         &self,
         model: &TradingModel,
         current_segment_idx: Option<usize>,
@@ -294,7 +294,7 @@ impl PlotView {
         (0.0, total_visual_width, total_visual_width)
     }
 
-    fn calculate_y_bounds(
+    fn calc_y_bounds(
         &self,
         cva_results: &CVACore,
         current_price_opt: Option<Price>,
@@ -312,7 +312,7 @@ impl PlotView {
         let mut marks = Vec::new();
         let (min, max) = input.bounds;
         let range = max - min;
-        let step = calculate_adaptive_step(range, 8.0);
+        let step = calc_adaptive_step(range, 8.0);
         let start = (min / step).ceil() as i64;
         let end = (max / step).floor() as i64;
 
@@ -330,7 +330,7 @@ impl PlotView {
         let mut marks = Vec::new();
         let (min, max) = input.bounds; // Visible range
         let range = max - min;
-        let step = calculate_adaptive_step(range, 8.0);
+        let step = calc_adaptive_step(range, 8.0);
         let start = (min / step).ceil() as i64;
         let end = (max / step).floor() as i64;
         for i in start..=end {
@@ -383,7 +383,7 @@ impl PlotView {
         }
     }
 
-    fn calculate_plot_data(&mut self, cva_results: &CVACore, score_type: ScoreType) -> PlotCache {
+    fn calc_plot_data(&mut self, cva_results: &CVACore, score_type: ScoreType) -> PlotCache {
         let zone_count = cva_results.zone_count;
         let time_decay_factor = cva_results.time_decay_factor;
         let mut hasher = hash_map::DefaultHasher::new();

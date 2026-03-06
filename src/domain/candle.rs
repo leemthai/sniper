@@ -1,6 +1,4 @@
-use crate::config::{
-    BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike, QuoteVol,
-};
+use crate::app::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, Price, PriceLike, QuoteVol};
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum CandleType {

@@ -1,10 +1,15 @@
+const SAMPLE_COUNT: usize = 50;
+const RISK_REWARD_TESTS: &[f64] = &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0];
+const MIN_JOURNEY_TIME: Duration = Duration::from_mins(50);
+const MAX_JOURNEY_TIME: Duration = Duration::from_secs(86400 * 90);
+
 use {
     crate::{
-        config::{
+        app::{
             AroiPct, DurationMs, JourneySettings, OptimalSearchSettings, Pct, PhPct, Price, RoiPct,
-            Sigma, StationId, StopPrice, TargetPrice, TradeProfile, ZoneClassificationConfig,
-            ZoneParams,
+            Sigma, StopPrice, TargetPrice, TradeProfile, ZoneClassificationConfig, ZoneParams,
         },
+        engine::StationId,
         models::{EmpiricalOutcomeStats, MarketState, OptimizationStrategy},
         ui::UI_TEXT,
     },
@@ -15,11 +20,6 @@ use {
 
 #[cfg(not(target_arch = "wasm32"))]
 use chrono::Duration as ChronoDuration;
-
-const SAMPLE_COUNT: usize = 50;
-const RISK_REWARD_TESTS: &[f64] = &[1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0];
-const MAX_JOURNEY_TIME: Duration = Duration::from_secs(86400 * 90);
-const MIN_JOURNEY_DURATION: Duration = Duration::from_secs(3600);
 
 mod profile {
     use super::*;
@@ -45,7 +45,7 @@ mod optimization {
 pub(crate) const DEFAULT_JOURNEY_SETTINGS: JourneySettings = JourneySettings {
     sample_count: SAMPLE_COUNT,
     risk_reward_tests: RISK_REWARD_TESTS,
-    min_journey_duration: MIN_JOURNEY_DURATION,
+    min_journey_time: MIN_JOURNEY_TIME,
     max_journey_time: MAX_JOURNEY_TIME,
     profile: TradeProfile {
         min_roi_pct: profile::MIN_ROI,
@@ -102,9 +102,9 @@ impl OptimizationStrategy {
 
         match self {
             Self::MaxROI => mean,
-            Self::MaxAROI => TradeProfile::calculate_annualized_roi(avg_pnl_pct, duration).value(),
+            Self::MaxAROI => TradeProfile::calc_annualized_roi(avg_pnl_pct, duration).value(),
             Self::Balanced => {
-                let aroi = TradeProfile::calculate_annualized_roi(avg_pnl_pct, duration).value();
+                let aroi = TradeProfile::calc_annualized_roi(avg_pnl_pct, duration).value();
                 if mean <= 0.0 {
                     mean
                 } else {
@@ -120,12 +120,9 @@ impl OptimizationStrategy {
 
         match self {
             Self::MaxROI => mean,
-            Self::MaxAROI => {
-                TradeProfile::calculate_annualized_roi(stats.avg_pnl_pct, duration).value()
-            }
+            Self::MaxAROI => TradeProfile::calc_annualized_roi(stats.avg_pnl_pct, duration).value(),
             Self::Balanced => {
-                let aroi =
-                    TradeProfile::calculate_annualized_roi(stats.avg_pnl_pct, duration).value();
+                let aroi = TradeProfile::calc_annualized_roi(stats.avg_pnl_pct, duration).value();
                 if mean <= 0.0 {
                     mean
                 } else {
@@ -232,7 +229,7 @@ impl TradeOpportunity {
         );
     }
 
-    pub(crate) fn calculate_quality_score(&self) -> f64 {
+    pub(crate) fn calc_quality_score(&self) -> f64 {
         self.strategy
             .objective_score_simple(self.expected_roi(), self.avg_duration)
     }
@@ -278,7 +275,7 @@ impl TradeOpportunity {
 
     pub(crate) fn is_worthwhile(&self, profile: &TradeProfile) -> bool {
         let roi = self.expected_roi();
-        let aroi = TradeProfile::calculate_annualized_roi(roi, self.avg_duration);
+        let aroi = TradeProfile::calc_annualized_roi(roi, self.avg_duration);
         profile.is_worthwhile(roi, aroi)
     }
 
@@ -286,7 +283,7 @@ impl TradeOpportunity {
         self.simulation.avg_pnl_pct
     }
 
-    /// Calculates expected ROI adjusted for price movement since entry.
+    /// Calc expected ROI adjusted for price movement since entry.
     pub(crate) fn live_roi(&self, current_price: Price) -> RoiPct {
         let base_roi = self.expected_roi();
         let price_drift_pct = match self.direction {
@@ -298,7 +295,7 @@ impl TradeOpportunity {
 
     pub(crate) fn live_annualized_roi(&self, current_price: Price) -> AroiPct {
         let roi = self.live_roi(current_price);
-        TradeProfile::calculate_annualized_roi(roi, self.avg_duration)
+        TradeProfile::calc_annualized_roi(roi, self.avg_duration)
     }
 }
 

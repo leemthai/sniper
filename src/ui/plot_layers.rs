@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::{
+        app::{
             BASE_INTERVAL, CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price,
             PriceLike,
         },

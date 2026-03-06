@@ -2,17 +2,16 @@
 mod backtest;
 mod core;
 mod messages;
+mod tuner;
 mod worker;
 
 pub use core::SniperEngine;
 
 pub(crate) use {
     messages::{JobMode, JobRequest, JobResult},
-    worker::tune_to_station,
+    tuner::{StationId, TUNER_CONFIG, TimeTunerConfig, TunerStation, tune_to_station},
+    worker::run_pathfinder_simulations,
 };
-
-#[cfg(any(feature = "ph_audit", feature = "backtest"))]
-pub(crate) use worker::run_pathfinder_simulations;
 
 #[cfg(feature = "backtest")]
 pub(crate) use backtest::{

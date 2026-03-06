@@ -1,3 +1,7 @@
+use std::time::Duration;
+/// Base interval for historic candle width (don't think app will work if we change this. Needs lots of unit tests anyway + refactoring)
+pub const BASE_INTERVAL: Duration = Duration::from_secs(5 * 60);
+
 use {
     eframe::{
         Frame, Storage,
@@ -16,10 +20,9 @@ use {
 use crate::{
     Cli,
     app::{
-        AppState, AutoScaleY, BootstrapState, PersistedSelection, PhaseView, ProgressEvent,
-        RunningState, Selection, SortDirection, SyncStatus, TuningState,
+        AppState, AutoScaleY, BootstrapState, CandleResolution, PersistedSelection, PhPct,
+        PhaseView, ProgressEvent, RunningState, Selection, SortDirection, SyncStatus, TuningState,
     },
-    config::{CandleResolution, PhPct},
     data::{TimeSeriesCollection, fetch_pair_data},
     engine::SniperEngine,
     models::{TradeOpportunity, restore_engine_ledger},
@@ -33,7 +36,7 @@ use crate::{
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::{config::Pct, data::save_ledger},
+    crate::{app::Pct, data::save_ledger},
     std::thread,
     tokio::runtime::Runtime,
 };
@@ -41,10 +44,10 @@ use {
 #[cfg(debug_assertions)]
 use crate::config::{DF, LOG_PERFORMANCE};
 
+#[cfg(any(feature = "ph_audit", feature = "backtest"))]
+use crate::models::find_matching_ohlcv;
 #[cfg(feature = "ph_audit")]
 use crate::ph_audit::{AUDIT_PAIRS, execute_audit};
-#[cfg(any(feature = "ph_audit", feature = "backtest"))]
-use crate::{config::BASE_INTERVAL, models::find_matching_ohlcv};
 
 #[cfg(feature = "backtest")]
 use crate::engine::{

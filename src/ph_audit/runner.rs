@@ -1,8 +1,8 @@
 use {
     crate::{
-        config::{BASE_INTERVAL, PhPct, Price, PriceLike, StationId},
+        app::{BASE_INTERVAL, PhPct, Price, PriceLike},
         data::TimeSeriesCollection,
-        engine::run_pathfinder_simulations,
+        engine::{StationId, run_pathfinder_simulations},
         models::{OptimizationStrategy, find_matching_ohlcv, pair_analysis_pure},
         ph_audit::{AUDIT_PAIRS, AuditReporter, PH_LEVELS},
         utils::AppInstant,
@@ -101,7 +101,7 @@ fn run_single_simulation(
     let trend_k = pf_result.trend_lookback;
     let sim_k = pf_result.sim_duration;
     let count = opportunities.len();
-    let top_score = opportunities.first().map(|o| o.calculate_quality_score());
+    let top_score = opportunities.first().map(|o| o.calc_quality_score());
     let durations_hours: Vec<f64> = opportunities
         .iter()
         .take(5)

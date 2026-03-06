@@ -1,5 +1,5 @@
 use {
-    crate::config::{StationId, TimeTunerConfig},
+    crate::engine::{StationId, TimeTunerConfig},
     eframe::egui::{Align, Button, Layout, Ui, vec2},
 };
 

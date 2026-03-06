@@ -1,5 +1,5 @@
 use crate::{
-    config::{HighPrice, LowPrice, PhPct, Price},
+    app::{HighPrice, LowPrice, PhPct, Price},
     models::OhlcvTimeSeries,
 };
 
@@ -9,15 +9,15 @@ pub fn auto_select_ranges(
     current_price: Price,
     ph_pct: PhPct,
 ) -> (Vec<(usize, usize)>, (LowPrice, HighPrice)) {
-    let (price_min, price_max) = calculate_price_range(current_price, ph_pct);
+    let (price_min, price_max) = calc_price_range(current_price, ph_pct);
     let ranges = crate::trace_time!("Scan All Candles", 3_000, {
         find_relevant_ranges(timeseries, price_min, price_max)
     });
     (ranges, (price_min, price_max))
 }
 
-/// Calculates the price range considered relevant to the current price.
-pub fn calculate_price_range(current_price: Price, threshold: PhPct) -> (LowPrice, HighPrice) {
+/// Calcs the price range considered relevant to the current price.
+pub fn calc_price_range(current_price: Price, threshold: PhPct) -> (LowPrice, HighPrice) {
     let min = current_price * (1.0 - threshold.value());
     let max = current_price * (1.0 + threshold.value());
     (LowPrice::from(min), HighPrice::from(max))

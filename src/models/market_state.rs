@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::{MomentumPct, PriceLike, VolRatio, VolatilityPct},
+        app::{MomentumPct, PriceLike, VolRatio, VolatilityPct},
         models::OhlcvTimeSeries,
     },
     serde::{Deserialize, Serialize},

@@ -1,12 +1,13 @@
+const CELL_PADDING_Y: f32 = 4.0;
+
 use {
     crate::{
-        app::{App, AutoScaleY, Selection, SortDirection},
-        config::{
-            CandleResolution, MomentumPct, Pct, Price, PriceLike, QuoteVol, TUNER_CONFIG,
-            VolatilityPct,
+        app::{
+            App, AutoScaleY, CandleResolution, MomentumPct, Pct, Price, PriceLike, QuoteVol,
+            Selection, SortDirection, VolatilityPct,
         },
         domain::PairInterval,
-        engine::JobMode,
+        engine::{JobMode, TUNER_CONFIG},
         models::{
             DEFAULT_JOURNEY_SETTINGS, MarketState, OptimizationStrategy, ScoreType, TradeDirection,
             TradeOpportunity,
@@ -31,8 +32,6 @@ use {
 
 #[cfg(debug_assertions)]
 use crate::config::DF;
-
-const CELL_PADDING_Y: f32 = 4.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub(crate) enum SortColumn {
@@ -808,7 +807,7 @@ impl App {
                     let show_score = self.tf_sort_col == SortColumn::Score
                         || op.strategy == OptimizationStrategy::Balanced;
                     if show_score {
-                        let score = op.calculate_quality_score();
+                        let score = op.calc_quality_score();
                         ui.label(
                             RichText::new(format!(
                                 "{}: {:.0}",
@@ -1540,12 +1539,12 @@ impl App {
                     let val_a = a
                         .opportunity
                         .as_ref()
-                        .map(|o| o.calculate_quality_score())
+                        .map(|o| o.calc_quality_score())
                         .unwrap_or(f64::NEG_INFINITY);
                     let val_b = b
                         .opportunity
                         .as_ref()
-                        .map(|o| o.calculate_quality_score())
+                        .map(|o| o.calc_quality_score())
                         .unwrap_or(f64::NEG_INFINITY);
 
                     val_a

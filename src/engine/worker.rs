@@ -1,19 +1,19 @@
 use {
     crate::{
-        config::{
+        app::{
             BASE_INTERVAL, DurationMs, HighPrice, LowPrice, Pct, PhPct, Price, PriceLike,
-            StationId, StopPrice, TargetPrice, TradeProfile, TunerStation,
+            StopPrice, TargetPrice, TradeProfile,
         },
         data::TimeSeriesCollection,
-        domain::{auto_select_ranges, calculate_price_range},
-        engine::{JobMode, JobRequest, JobResult},
+        domain::{auto_select_ranges, calc_price_range},
+        engine::{JobMode, JobRequest, JobResult, StationId},
         models::{
             AdaptiveParameters, CVACore, DEFAULT_JOURNEY_SETTINGS, DEFAULT_SIMILARITY,
             EmpiricalOutcomeStats, MarketState, OhlcvTimeSeries, OptimizationStrategy,
             ScenarioSimulator, TradeDirection, TradeOpportunity, TradeVariant, TradingModel,
             VisualFluff, find_matching_ohlcv, pair_analysis_pure,
         },
-        utils::{AppInstant, TimeUtils},
+        utils::TimeUtils,
     },
     rayon::prelude::*,
     std::{cmp::Ordering, sync::Arc, sync::mpsc::Sender},
@@ -49,169 +49,6 @@ struct CandidateResult {
     source_desc: String,
 }
 
-const SAMPLE_COUNT: usize = 50;
-/// Steps for tuner scanning process
-const TUNER_SCAN_STEPS: usize = 4;
-
-/// Runs "Scan & Fit" algo to find the optimal Price Horizon to produce trades within the Station's target time range.
-pub(crate) fn tune_to_station(
-    ohlcv: &OhlcvTimeSeries,
-    current_price: Price,
-    station: &TunerStation,
-    strategy: OptimizationStrategy,
-) -> Option<PhPct> {
-    struct ProbeResult {
-        ph: PhPct,
-        score: f64,
-        duration_hours: f64,
-    }
-
-    let _t_start = AppInstant::now();
-    let _pair_name = ohlcv.pair_interval.name();
-
-    #[cfg(debug_assertions)]
-    {
-        if DF.log_tuner {
-            log::info!(
-                "📻 TUNER START [{}]: Station '{}' (Target: {:.1}-{:.1}h) | Scan Range: {}-{} | Strategy: {}",
-                _pair_name,
-                station.name,
-                station.target_min_hours,
-                station.target_max_hours,
-                station.scan_ph_min,
-                station.scan_ph_max,
-                strategy
-            );
-        }
-    }
-
-    let steps = TUNER_SCAN_STEPS;
-    let mut scan_points = Vec::with_capacity(steps);
-    if steps > 1 {
-        let step_size =
-            (station.scan_ph_max.value() - station.scan_ph_min.value()) / (steps - 1) as f64;
-        for i in 0..steps {
-            scan_points.push(station.scan_ph_min.value() + (i as f64 * step_size));
-        }
-    } else {
-        scan_points.push(station.scan_ph_min.value()); // Fallback
-    }
-
-    let mut results: Vec<ProbeResult> = Vec::new();
-    for &ph in &scan_points {
-        let result = run_pathfinder_simulations(
-            ohlcv,
-            current_price,
-            PhPct::new(ph),
-            strategy,
-            station.id,
-            None,
-        );
-
-        let count = result.opportunities.len();
-        if count > 0 {
-            let duration_hours = result
-                .opportunities
-                .iter()
-                .map(|o| o.avg_duration.value())
-                .sum::<i64>() as f64
-                / count as f64
-                / 3_600_000.0;
-
-            let top_score = result.opportunities[0].calculate_quality_score();
-
-            results.push(ProbeResult {
-                ph: PhPct::new(ph),
-                score: top_score,
-                duration_hours,
-                // count,
-            });
-
-            #[cfg(debug_assertions)]
-            if DF.log_tuner {
-                log::info!(
-                    "   📡 TUNER PROBE {}: Found {} ops | Top Score {:.2} | Avg Dur {:.1}h for {}",
-                    Pct::new(ph),
-                    count,
-                    top_score,
-                    duration_hours,
-                    _pair_name,
-                );
-            }
-        } else {
-            #[cfg(debug_assertions)]
-            if DF.log_tuner {
-                log::info!(
-                    "   📡 TUNER PROBE {}: No signals found (0 candidates) for {}",
-                    Pct::new(ph),
-                    _pair_name,
-                );
-            }
-        }
-    }
-
-    if results.is_empty() {
-        #[cfg(debug_assertions)]
-        if DF.log_tuner {
-            log::warn!(
-                "⚠️ TUNER FAILED: No candidates found across entire range for {}",
-                _pair_name
-            );
-        }
-        return None;
-    }
-
-    let valid_fits: Vec<&ProbeResult> = results
-        .iter()
-        .filter(|r| {
-            r.duration_hours >= station.target_min_hours
-                && r.duration_hours <= station.target_max_hours
-        })
-        .collect();
-
-    let best_match = if !valid_fits.is_empty() {
-        valid_fits
-            .into_iter()
-            .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(Ordering::Equal))
-            .unwrap()
-    } else {
-        #[cfg(debug_assertions)]
-        if DF.log_tuner {
-            log::warn!(
-                "   ⚠️ No perfect time fit. Falling back to closest duration for {}",
-                _pair_name
-            );
-        }
-        let target_center = (station.target_min_hours + station.target_max_hours) / 2.0;
-
-        results
-            .iter()
-            .min_by(|a, b| {
-                let dist_a = (a.duration_hours - target_center).abs();
-                let dist_b = (b.duration_hours - target_center).abs();
-                dist_a.partial_cmp(&dist_b).unwrap_or(Ordering::Equal)
-            })
-            .unwrap()
-    };
-
-    #[cfg(debug_assertions)]
-    {
-        let elapsed = _t_start.elapsed();
-        if DF.log_tuner {
-            log::info!(
-                "✅ TUNER LOCKED: {} (Score {:.2}, Duration {:.1}h) | Took {:?} for {}",
-                best_match.ph,
-                best_match.score,
-                best_match.duration_hours,
-                elapsed,
-                _pair_name,
-            );
-        }
-    }
-
-    Some(best_match.ph)
-}
-
 pub(crate) fn run_pathfinder_simulations(
     ohlcv: &OhlcvTimeSeries,
     current_price: Price,
@@ -236,10 +73,10 @@ pub(crate) fn run_pathfinder_simulations(
         .volatility_lookback
         .min(max_idx);
     let start_vol = ohlcv.klines().saturating_sub(vol_lookback);
-    let avg_volatility = ohlcv.calculate_volatility_in_range(start_vol, ohlcv.klines());
+    let avg_volatility = ohlcv.calc_volatility_in_range(start_vol, ohlcv.klines());
 
-    let trend_lookback = AdaptiveParameters::calculate_trend_lookback_candles(ph_pct);
-    let duration = AdaptiveParameters::calculate_dynamic_journey_duration(
+    let trend_lookback = AdaptiveParameters::calc_trend_lookback_candles(ph_pct);
+    let duration = AdaptiveParameters::calc_dynamic_journey_duration(
         ph_pct,
         avg_volatility,
         DurationMs::new(BASE_INTERVAL.as_millis() as i64),
@@ -253,7 +90,7 @@ pub(crate) fn run_pathfinder_simulations(
         ohlcv,
         max_idx,
         &DEFAULT_SIMILARITY,
-        SAMPLE_COUNT,
+        DEFAULT_JOURNEY_SETTINGS.sample_count,
         trend_lookback,
         duration_candles,
     );
@@ -269,7 +106,7 @@ pub(crate) fn run_pathfinder_simulations(
         }
     };
 
-    let (price_min, price_max) = calculate_price_range(current_price, ph_pct);
+    let (price_min, price_max) = calc_price_range(current_price, ph_pct);
 
     let ctx = PathfinderContext {
         pair_name: ohlcv.pair_interval.name(),
@@ -435,7 +272,7 @@ fn apply_diversity_filter(
                 let roi = c.opportunity.expected_roi();
                 let duration = c.opportunity.avg_duration;
                 let dur_str = TimeUtils::format_duration(duration.value());
-                let aroi = TradeProfile::calculate_annualized_roi(roi, duration);
+                let aroi = TradeProfile::calc_annualized_roi(roi, duration);
 
                 log::info!(
                     "   #{}: Score {:.1} | ROI {} | AROI {} | Time {}",
@@ -520,8 +357,8 @@ fn apply_diversity_filter(
     }
 
     final_results.sort_by(|a, b| {
-        let score_a = a.calculate_quality_score();
-        let score_b = b.calculate_quality_score();
+        let score_a = a.calc_quality_score();
+        let score_b = b.calc_quality_score();
         score_b.partial_cmp(&score_a).unwrap_or(Ordering::Equal)
     });
     if final_results.len() > max_results {
@@ -948,7 +785,7 @@ fn optimize_stop_loss_rr(
             ) {
                 let roi_pct = result.avg_pnl_pct;
                 let duration_real = duration_ms.scale(result.avg_candle_count);
-                let aroi_pct = TradeProfile::calculate_annualized_roi(roi_pct, duration_real);
+                let aroi_pct = TradeProfile::calc_annualized_roi(roi_pct, duration_real);
                 let is_worthwhile = profile.is_worthwhile(roi_pct, aroi_pct);
                 if is_worthwhile {
                     valid_variants.push(TradeVariant {
@@ -1039,7 +876,7 @@ fn perform_standard_analysis(
             }
         };
         let count = crate::trace_time!(&format!("1. Exact Count [{}]", base_label), 4_000, {
-            calculate_exact_candle_count(req, ts_collection, price)
+            calc_exact_candle_count(req, ts_collection, price)
         });
         let full_label = format!("{} ({} candles)", base_label, count);
         let result_cva = crate::trace_time!(&format!("2. CVA Calc [{}]", full_label), 10_000, {
@@ -1102,7 +939,7 @@ fn resolve_analysis_price(
     }
 }
 
-fn calculate_exact_candle_count(
+fn calc_exact_candle_count(
     req: &JobRequest,
     ts_collection: &TimeSeriesCollection,
     price: Price,
