@@ -1,14 +1,14 @@
 use {
     crate::{
-        config::{CandleResolution, PLOT_CONFIG, Price, PriceLike},
+        config::{CandleResolution, Price, PriceLike},
         engine::SniperEngine,
         models::{
             CVACore, DisplaySegment, ScoreType, TradeOpportunity, TradingModel, find_matching_ohlcv,
         },
         ui::{
             BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,
-            PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer,
-            UI_TEXT,
+            PLOT_CONFIG, PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer,
+            StickyZoneLayer, UI_TEXT,
         },
         utils::{TimeUtils, normalize_max, smooth_data},
     },

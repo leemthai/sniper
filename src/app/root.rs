@@ -47,11 +47,9 @@ use crate::ph_audit::{AUDIT_PAIRS, execute_audit};
 use crate::{config::BASE_INTERVAL, models::find_matching_ohlcv};
 
 #[cfg(feature = "backtest")]
-use crate::{
-    config::{
-        BACKTEST_MODEL_DESC, BACKTEST_MODEL_VERSION, BACKTEST_PAIR_COUNT, BACKTEST_SKIP_DB_WRITE,
-    },
-    engine::{BacktestConfig, run_backtest},
+use crate::engine::{
+    BACKTEST_MODEL_DESC, BACKTEST_MODEL_VERSION, BACKTEST_PAIR_COUNT, BACKTEST_SKIP_DB_WRITE,
+    BacktestConfig, run_backtest,
 };
 
 #[derive(Deserialize, Serialize)]

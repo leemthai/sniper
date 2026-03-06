@@ -2,8 +2,8 @@ use {
     crate::{
         app::{App, AutoScaleY, Selection, SortDirection},
         config::{
-            CandleResolution, MomentumPct, PLOT_CONFIG, Pct, Price, PriceLike, QuoteVol, TICKER,
-            TUNER_CONFIG, VolatilityPct,
+            CandleResolution, MomentumPct, Pct, Price, PriceLike, QuoteVol, TUNER_CONFIG,
+            VolatilityPct,
         },
         domain::PairInterval,
         engine::JobMode,
@@ -12,8 +12,9 @@ use {
             TradeOpportunity,
         },
         ui::{
-            CandleRangePanel, DirectionColor, PlotInteraction, TunerAction, UI_CONFIG, UI_TEXT,
-            UiStyleExt, get_momentum_color, get_outcome_color, render_time_tuner,
+            CandleRangePanel, DirectionColor, PLOT_CONFIG, PlotInteraction, TICKER, TunerAction,
+            UI_CONFIG, UI_TEXT, UiStyleExt, get_momentum_color, get_outcome_color,
+            render_time_tuner,
         },
         utils::TimeUtils,
     },

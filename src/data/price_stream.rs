@@ -14,7 +14,8 @@ use {
 #[cfg(not(target_arch = "wasm32"))]
 use {
     crate::{
-        config::{BASE_INTERVAL, BINANCE, BinanceApiConfig},
+        config::BASE_INTERVAL,
+        data::{BINANCE_API, BinanceApiConfig},
         utils::TimeUtils,
     },
     binance_sdk::{
@@ -75,7 +76,7 @@ fn build_combined_stream_url(symbols: &[String]) -> String {
             format!("{}@kline_{}", s, interval)
         })
         .collect();
-    format!("{}{}", BINANCE.ws.combined_base_url, streams.join("/"))
+    format!("{}{}", BINANCE_API.ws.combined_base_url, streams.join("/"))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -220,7 +221,7 @@ async fn run_combined_price_stream_with_reconnect(
     suspended_arc: Arc<Mutex<bool>>,
     candle_tx: Option<Sender<LiveCandle>>,
 ) {
-    let mut reconnect_delay = BINANCE.ws.initial_reconnect_delay_sec;
+    let mut reconnect_delay = BINANCE_API.ws.initial_reconnect_delay_sec;
     let url = build_combined_stream_url(symbols); // Ensure your build_combined_stream_url includes klines now!
 
     loop {
@@ -247,7 +248,7 @@ async fn run_combined_price_stream_with_reconnect(
         {
             Ok(_) => {
                 log::warn!("WebSocket closed normally. Reconnecting...");
-                reconnect_delay = BINANCE.ws.initial_reconnect_delay_sec;
+                reconnect_delay = BINANCE_API.ws.initial_reconnect_delay_sec;
             }
             Err(e) => {
                 log::error!(
@@ -266,7 +267,7 @@ async fn run_combined_price_stream_with_reconnect(
         }
 
         sleep(Duration::from_secs(reconnect_delay)).await;
-        reconnect_delay = (reconnect_delay * 2).min(BINANCE.ws.max_reconnect_delay_sec);
+        reconnect_delay = (reconnect_delay * 2).min(BINANCE_API.ws.max_reconnect_delay_sec);
     }
 }
 

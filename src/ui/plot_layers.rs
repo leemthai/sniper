@@ -1,11 +1,11 @@
 use {
     crate::{
         config::{
-            BASE_INTERVAL, CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice,
-            PLOT_CONFIG, Price, PriceLike,
+            BASE_INTERVAL, CandleResolution, ClosePrice, HighPrice, LowPrice, OpenPrice, Price,
+            PriceLike,
         },
         models::{GapReason, OhlcvTimeSeries, SuperZone, TradeOpportunity, TradingModel},
-        ui::{DirectionColor, PlotCache, PlotVisibility, UI_TEXT, apply_opacity},
+        ui::{DirectionColor, PLOT_CONFIG, PlotCache, PlotVisibility, UI_TEXT, apply_opacity},
     },
     eframe::egui::{
         Align2, Color32, FontId, Id, LayerId, Order, Painter, Pos2, Rect, Stroke, Vec2,

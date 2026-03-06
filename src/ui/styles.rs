@@ -1,8 +1,7 @@
 use {
     crate::{
-        config::PLOT_CONFIG,
         models::TradeDirection,
-        ui::{UI_CONFIG, UI_TEXT},
+        ui::{PLOT_CONFIG, UI_CONFIG, UI_TEXT},
     },
     eframe::egui::{
         Align, Align2, Area, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Order,

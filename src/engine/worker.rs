@@ -2,7 +2,7 @@ use {
     crate::{
         config::{
             BASE_INTERVAL, DurationMs, HighPrice, LowPrice, Pct, PhPct, Price, PriceLike,
-            StationId, StopPrice, TUNER_SCAN_STEPS, TargetPrice, TradeProfile, TunerStation,
+            StationId, StopPrice, TargetPrice, TradeProfile, TunerStation,
         },
         data::TimeSeriesCollection,
         domain::{auto_select_ranges, calculate_price_range},
@@ -50,6 +50,8 @@ struct CandidateResult {
 }
 
 const SAMPLE_COUNT: usize = 50;
+/// Steps for tuner scanning process
+const TUNER_SCAN_STEPS: usize = 4;
 
 /// Runs "Scan & Fit" algo to find the optimal Price Horizon to produce trades within the Station's target time range.
 pub(crate) fn tune_to_station(

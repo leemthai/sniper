@@ -9,9 +9,10 @@ use {crate::config::DEMO, crate::data::WasmDemoData};
 #[cfg(not(target_arch = "wasm32"))]
 use {
     crate::app::SyncStatus,
-    crate::config::{BASE_INTERVAL, BINANCE, BINANCE_MAX_PAIRS, BINANCE_PAIRS_FILENAME},
+    crate::config::BASE_INTERVAL,
     crate::data::{
-        BinanceProvider, GlobalRateLimiter, MarketDataProvider, MarketDataStorage, SqliteStorage,
+        BINANCE_API, BINANCE_MAX_PAIRS, BinanceProvider, GlobalRateLimiter, MarketDataProvider,
+        MarketDataStorage, SqliteStorage,
     },
     crate::domain::PairInterval,
     crate::models::OhlcvTimeSeries,
@@ -20,6 +21,9 @@ use {
     futures::stream::{self, StreamExt},
     std::{fs, sync::Arc},
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+pub const BINANCE_PAIRS_FILENAME: &str = "pairs.txt";
 
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use crate::config::DF;
@@ -97,7 +101,7 @@ pub async fn fetch_pair_data(
             .await
             .expect("Failed to init DB schema");
 
-        let safe_limit = (BINANCE.limits.weight_limit_minute as f32 * 0.8) as u32;
+        let safe_limit = (BINANCE_API.limits.weight_limit_minute as f32 * 0.8) as u32;
         let limiter = GlobalRateLimiter::new(safe_limit);
 
         let provider = Arc::new(BinanceProvider::new(limiter));
@@ -121,19 +125,21 @@ pub async fn fetch_pair_data(
 
         #[cfg(debug_assertions)]
         {
-            if DF.log_pairs {
-                log::info!(
-                    "Pre-culling by DF.max_pairs_load we have {} pairs: {:?}",
-                    supply_pairs.len(),
-                    supply_pairs
+            let before = supply_pairs.len();
+            if DF.debug_binance_max_pairs >= before {
+                log::warn!(
+                    "debug_binance_max_pairs ({}) >= actual pair count ({}), no culling",
+                    DF.debug_binance_max_pairs,
+                    before
                 );
             }
-            supply_pairs.truncate(DF.max_pairs_load);
+            supply_pairs.truncate(DF.debug_binance_max_pairs);
             if DF.log_pairs {
                 log::info!(
-                    "Post-culling by DF.max_pairs_load we have {} pairs: {:?}",
+                    "Pairs culled: {} → {} (DF.debug_binance_max_pairs={})",
+                    before,
                     supply_pairs.len(),
-                    supply_pairs
+                    DF.debug_binance_max_pairs
                 );
             }
         }
@@ -192,7 +198,7 @@ pub async fn fetch_pair_data(
                     }
                 }
             })
-            .buffer_unordered(BINANCE.limits.concurrent_sync_tasks) // Parallelism Limit
+            .buffer_unordered(BINANCE_API.limits.concurrent_sync_tasks) // Parallelism Limit
             .collect::<Vec<_>>()
             .await;
 

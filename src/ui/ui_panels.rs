@@ -1,8 +1,7 @@
 use {
     crate::{
-        config::PLOT_CONFIG,
         models::{DisplaySegment, GapReason},
-        ui::{UI_TEXT, UiStyleExt},
+        ui::{PLOT_CONFIG, UI_TEXT, UiStyleExt},
         utils::TimeUtils,
     },
     eframe::egui::{Button, Grid, RichText, ScrollArea, Ui},

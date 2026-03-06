@@ -1,8 +1,8 @@
 use {
     crate::{
         app::{BootstrapState, SyncStatus},
-        config::{BASE_INTERVAL, PLOT_CONFIG},
-        ui::UI_TEXT,
+        config::BASE_INTERVAL,
+        ui::{PLOT_CONFIG, UI_TEXT},
         utils::TimeUtils,
     },
     eframe::egui::{

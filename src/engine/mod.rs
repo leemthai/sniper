@@ -15,7 +15,10 @@ pub(crate) use {
 pub(crate) use worker::run_pathfinder_simulations;
 
 #[cfg(feature = "backtest")]
-pub(crate) use backtest::{BacktestConfig, run_backtest};
+pub(crate) use backtest::{
+    BACKTEST_MODEL_DESC, BACKTEST_MODEL_VERSION, BACKTEST_PAIR_COUNT, BACKTEST_SKIP_DB_WRITE,
+    BacktestConfig, run_backtest,
+};
 
 #[cfg(target_arch = "wasm32")]
 pub(crate) use worker::process_request_sync;

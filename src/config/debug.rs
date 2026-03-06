@@ -23,7 +23,7 @@ pub struct DebugVars {
     #[cfg(not(target_arch = "wasm32"))]
     pub log_results_repo: bool,
     #[cfg(not(target_arch = "wasm32"))]
-    pub max_pairs_load: usize,
+    pub debug_binance_max_pairs: usize,
 }
 
 #[cfg(debug_assertions)]
@@ -49,5 +49,5 @@ pub const DF: DebugVars = DebugVars {
     #[cfg(not(target_arch = "wasm32"))]
     log_startup_prices: false,
     #[cfg(not(target_arch = "wasm32"))]
-    max_pairs_load: 10,
+    debug_binance_max_pairs: 10,
 };

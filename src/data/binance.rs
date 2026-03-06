@@ -1,3 +1,5 @@
+pub(crate) const BINANCE_MAX_PAIRS: usize = 10;
+
 pub struct BinanceApiConfig {
     pub timeout_ms: u64,
     pub retries: u32,
@@ -7,9 +9,9 @@ pub struct BinanceApiConfig {
 impl Default for BinanceApiConfig {
     fn default() -> Self {
         Self {
-            timeout_ms: BINANCE.client.timeout_ms,
-            retries: BINANCE.client.retries,
-            backoff_ms: BINANCE.client.backoff_ms,
+            timeout_ms: BINANCE_API.client.timeout_ms,
+            retries: BINANCE_API.client.retries,
+            backoff_ms: BINANCE_API.client.backoff_ms,
         }
     }
 }
@@ -34,16 +36,13 @@ pub struct ClientDefaults {
     pub backoff_ms: u64,
 }
 
-pub const BINANCE_PAIRS_FILENAME: &str = "pairs.txt";
-pub const BINANCE_MAX_PAIRS: usize = 10;
-
 pub struct BinanceConfig {
     pub limits: RestLimits,
     pub ws: WsConfig,
     pub client: ClientDefaults,
 }
 
-pub const BINANCE: BinanceConfig = BinanceConfig {
+pub(crate) const BINANCE_API: BinanceConfig = BinanceConfig {
     limits: RestLimits {
         klines_limit: 1000,
         weight_limit_minute: 6000,

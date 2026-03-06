@@ -1,3 +1,4 @@
+mod plot;
 mod plot_layers;
 mod screens;
 mod styles;
@@ -10,13 +11,14 @@ mod ui_render;
 mod ui_text;
 
 pub(crate) use {
+    plot::PLOT_CONFIG,
     plot_layers::{
         BackgroundLayer, CandlestickLayer, HorizonLinesLayer, LayerContext, OpportunityLayer,
         PlotLayer, PriceLineLayer, ReversalZoneLayer, SegmentSeparatorLayer, StickyZoneLayer,
     },
     screens::render_bootstrap,
     styles::{DirectionColor, UiStyleExt, apply_opacity, get_momentum_color, get_outcome_color},
-    ticker::TickerState,
+    ticker::{TICKER, TickerState},
     time_tuner::{TunerAction, render_time_tuner},
     ui_config::UI_CONFIG,
     ui_panels::CandleRangePanel,

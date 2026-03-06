@@ -12,11 +12,9 @@ use {
     std::{collections::HashSet, convert::TryFrom, error::Error, fmt},
 };
 
-use crate::{
-    config::{
-        BINANCE, BaseVol, BinanceApiConfig, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol,
-    },
-    data::GlobalRateLimiter,
+pub(crate) use crate::{
+    config::{BaseVol, ClosePrice, HighPrice, LowPrice, OpenPrice, QuoteVol},
+    data::{BINANCE_API, BinanceApiConfig, GlobalRateLimiter},
     domain::{Candle, PairInterval},
     utils::TimeUtils,
 };
@@ -296,7 +294,7 @@ pub async fn load_klines(
     let mut end_time: Option<i64> = None;
     let mut all_klines: Vec<BNKline> = Vec::new();
 
-    let call_weight = BINANCE.limits.kline_call_weight;
+    let call_weight = BINANCE_API.limits.kline_call_weight;
 
     let pair_name = pair_interval.bn_name().to_string();
 
@@ -308,7 +306,7 @@ pub async fn load_klines(
             try_interval_from_ms(pair_interval.interval_ms)
                 .expect("Invalid Binance interval configuration"),
         )
-        .limit(BINANCE.limits.klines_limit)
+        .limit(BINANCE_API.limits.klines_limit)
         .end_time(end_time)
         .start_time(start_time)
         .build()?;
