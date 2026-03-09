@@ -14,6 +14,22 @@ use {
     tokio::{runtime::Builder, sync::mpsc},
 };
 
+/// Persisted summary of one run — written by the `analyze` CLI after scanning all trades.
+#[derive(Debug, Clone)]
+pub struct RunSummary {
+    pub run_id: i64,
+    pub trade_count: i64,
+    pub win_count: i64,
+    pub loss_count: i64,
+    pub timeout_count: i64,
+    pub win_rate: f64,
+    pub avg_pnl: f64,
+    /// Mean Absolute Error of the calibration (predicted vs actual win-rate); None when
+    /// `predicted_win_rate` is unavailable for all trades in this run.
+    pub calibration_mae: Option<f64>,
+    pub computed_at: i64,
+}
+
 #[cfg(feature = "backtest")]
 use chrono::Utc;
 
@@ -129,6 +145,25 @@ impl ResultsRepositoryTrait for SqliteResultsRepository {
         .execute(&self.pool)
         .await?;
 
+        // run_summaries: one row per run, written/updated by the `analyze` CLI.
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS run_summaries (
+                run_id          INTEGER PRIMARY KEY REFERENCES runs(id),
+                trade_count     INTEGER NOT NULL,
+                win_count       INTEGER NOT NULL,
+                loss_count      INTEGER NOT NULL,
+                timeout_count   INTEGER NOT NULL,
+                win_rate        REAL NOT NULL,
+                avg_pnl         REAL NOT NULL,
+                calibration_mae REAL,
+                computed_at     INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS trades (
@@ -217,6 +252,43 @@ impl ResultsRepositoryTrait for SqliteResultsRepository {
         .await?;
 
         Ok(row_id)
+    }
+}
+
+impl SqliteResultsRepository {
+    /// Persist (or overwrite) the analysis summary for one run into `run_summaries`.
+    /// Called by the `analyze` binary after scanning all trades for a run.
+    pub async fn persist_summary(&self, summary: &RunSummary) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO run_summaries (
+                run_id, trade_count, win_count, loss_count, timeout_count,
+                win_rate, avg_pnl, calibration_mae, computed_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(run_id) DO UPDATE SET
+                trade_count     = excluded.trade_count,
+                win_count       = excluded.win_count,
+                loss_count      = excluded.loss_count,
+                timeout_count   = excluded.timeout_count,
+                win_rate        = excluded.win_rate,
+                avg_pnl         = excluded.avg_pnl,
+                calibration_mae = excluded.calibration_mae,
+                computed_at     = excluded.computed_at;
+            "#,
+        )
+        .bind(summary.run_id)
+        .bind(summary.trade_count)
+        .bind(summary.win_count)
+        .bind(summary.loss_count)
+        .bind(summary.timeout_count)
+        .bind(summary.win_rate)
+        .bind(summary.avg_pnl)
+        .bind(summary.calibration_mae)
+        .bind(summary.computed_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 }
 

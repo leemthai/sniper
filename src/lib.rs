@@ -25,7 +25,7 @@ pub use {
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use data::{MarketDataStorage, SqliteStorage};
+pub use data::{MarketDataStorage, RunSummary, SqliteResultsRepository, SqliteStorage};
 
 use clap::Parser;
 

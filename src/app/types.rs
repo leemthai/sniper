@@ -246,6 +246,11 @@ impl Prob {
         };
         Self(v)
     }
+
+    #[cfg(feature = "backtest")]
+    pub(crate) fn value(self) -> f64 {
+        self.0
+    }
 }
 
 impl fmt::Display for Prob {

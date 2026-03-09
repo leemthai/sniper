@@ -26,10 +26,13 @@ pub use storage::{MarketDataStorage, SqliteStorage};
 pub use timeseries::WasmDemoData;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub use results_repo::{RunSummary, SqliteResultsRepository};
+
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) use {
     binance::{BINANCE_API, BINANCE_MAX_PAIRS, BinanceApiConfig},
     ledger_io::{load_ledger, save_ledger},
     provider::{BinanceProvider, MarketDataProvider},
-    results_repo::{ResultsRepositoryTrait, SqliteResultsRepository, TradeResult},
+    results_repo::{ResultsRepositoryTrait, TradeResult},
     timeseries::{GlobalRateLimiter, load_klines},
 };

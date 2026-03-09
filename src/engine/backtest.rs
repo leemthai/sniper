@@ -226,7 +226,7 @@ pub(crate) fn run_backtest(
                     market_state: opp.market_state,
                     ph_pct: opp.ph_pct,
                     run_id,
-                    predicted_win_rate: None,
+                    predicted_win_rate: Some(opp.simulation.success_rate.value()),
                 };
 
                 if !BACKTEST_SKIP_DB_WRITE {

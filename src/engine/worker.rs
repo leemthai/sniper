@@ -16,12 +16,15 @@ use {
         utils::TimeUtils,
     },
     rayon::prelude::*,
-    std::{cmp::Ordering, sync::Arc, sync::mpsc::Sender},
+    std::{
+        cmp::Ordering,
+        sync::{Arc, mpsc::Sender},
+    },
     uuid::Uuid,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-use {std::sync::mpsc::Receiver, std::thread};
+use std::{sync::mpsc::Receiver, thread};
 
 #[cfg(debug_assertions)]
 use crate::{config::DF, ui::UI_TEXT};

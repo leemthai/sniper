@@ -705,7 +705,7 @@ impl App {
             }
         }
         let elapsed = start.elapsed();
-        println!(">> Backtest complete. Elapsed: {:?}", elapsed);
+        println!("\n>> Backtest complete. Elapsed: {:?}", elapsed);
         std::process::exit(0);
     }
 }
