@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 mod adaptive;
 mod cva;
 mod ledger;
