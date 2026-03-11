@@ -380,3 +380,9 @@ fn cdjd_clamp_enforces_minimum() {
         DEFAULT_JOURNEY_SETTINGS.min_journey_time
     );
 }
+
+// #[test]
+// fn fail_please() {
+//     let condition = true;
+//     assert!(!condition, "The condition is true");
+// }
